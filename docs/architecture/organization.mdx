@@ -6,7 +6,7 @@ description: "Team-level resource sharing with role-based access, optional revie
 
 ## Overview
 
-Organizations are FIM One's unit for team collaboration. They let groups of users share resources — Agents, Connectors, MCP Servers, Workflows, and Skills — within a trusted scope. Knowledge Bases are the one exception: they are never shareable, and reach other members only as an internal dependency of a shared Agent (see [Sharing and credentials](/architecture/sharing-and-credentials)).
+Organizations are FIM One's unit for team collaboration. They let groups of users share resources — Agents, API Connectors, and MCP Servers, plus Skills and Workflows when an administrator has enabled those modules — within a trusted scope. Knowledge Bases and database connectors are the exceptions: database connectors cannot be published, and Knowledge Bases are never shareable, and reach other members only as an internal dependency of a shared Agent (see [Sharing and credentials](/architecture/sharing-and-credentials)).
 
 Every resource in FIM One starts as **personal** (visible only to its creator). When you publish a resource to an organization, it becomes **discoverable** by other org members through the Market's organization scope. Members browse the org's shared resources and subscribe to the ones they need.
 
@@ -76,7 +76,6 @@ Review is **optional** and configured per resource type. Each organization has i
 
 - `review_agents`
 - `review_connectors`
-- `review_kbs`
 - `review_mcp_servers`
 - `review_workflows`
 - `review_skills`
@@ -111,8 +110,8 @@ flowchart TD
 
 There are two modes:
 
-- **Fallback enabled** (`allow_fallback=true`, the default): Members who don't provide their own credentials automatically use the owner's default credentials. This works well for team-shared API keys or internal services where a single key covers the whole team.
-- **Fallback disabled** (`allow_fallback=false`): Every member must configure their own credentials. This is appropriate when each user needs a personal API key (for example, per-seat SaaS licenses).
+- **Fallback disabled** (`allow_fallback=false`, the default): Every member must configure their own credentials; until they do, the tool is hidden from their agents. This is appropriate when each user needs a personal API key (for example, per-seat SaaS licenses).
+- **Fallback enabled** (`allow_fallback=true`, set by the owner): Members who don't provide their own credentials automatically use the owner's default credentials. This works well for team-shared API keys or internal services where a single key covers the whole team.
 
 Resources that don't require credentials — such as a read-only public API connector or an Agent with no authentication — work immediately after subscription. No configuration needed.
 
@@ -149,7 +148,7 @@ A second class of org-scoped resource does **not** follow the personal → publi
 |---|---|---|---|
 | **Channels** | Outbound bridge to an IM platform (Feishu today; Slack / WeCom / Teams planned) | Org Owner / Admin | Every agent's [Hook System](/architecture/hook-system) and proactive-notification tools |
 | **OAuth Providers** | Social-login credentials (GitHub, Google, Feishu, Discord) | System admin (env vars) | Sign-in page |
-| **API Keys** | Programmatic access tokens for headless clients | Each user, org-scoped | External integrations |
+| **API Keys** | Programmatic access tokens for headless clients | Each user, for their own account | External integrations |
 
 ```mermaid
 flowchart LR
@@ -172,14 +171,16 @@ See [Channels overview](/configuration/channels/overview) for the channel lifecy
 
 ## Practical Scenarios
 
-### Team Sharing a Database Connector
+### Team Sharing an API Connector
 
-1. Alice creates a Connector to the team's PostgreSQL database
+1. Alice creates a Connector to the team's internal order API and turns on **Allow fallback**
 2. Alice publishes it to her team's org (review is disabled for connectors)
 3. The Connector becomes discoverable in the org scope of the Market
 4. Bob browses the org's shared resources, finds the Connector, and subscribes
-5. The Connector appears in Bob's workspace, using Alice's database credentials as fallback
+5. The Connector appears in Bob's workspace, using Alice's API credentials as fallback
 6. Carol subscribes too. Dave (an external contractor) subscribes and configures his own read-only credentials instead
+
+Database connectors cannot be published to an organization or the Market; each user who needs one creates their own.
 
 ### Organization with Strict Review
 
@@ -191,8 +192,8 @@ See [Channels overview](/configuration/channels/overview) for the channel lifecy
 
 ### Selective Subscription in a Large Organization
 
-1. An organization publishes 50+ Connectors covering internal APIs, databases, and third-party services
-2. The data team subscribes only to database Connectors and analytics APIs
+1. An organization publishes 50+ Connectors covering internal APIs and third-party services
+2. The data team subscribes only to the data-warehouse and analytics API Connectors
 3. The marketing team subscribes only to the CRM and email platform Connectors
 4. Each team member's workspace stays focused and uncluttered
 

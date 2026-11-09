@@ -24,10 +24,12 @@ A turn passes through all three independently:
   turn without spending tokens.
 * The permission gate runs **after** the model decides which tool to invoke.
 * Security checks run **inside** each connector / provider integration.
-* Output guardrails run **after** the agent has produced its final answer
-  and before it is streamed to the user.
+* Output guardrails run **after** the agent has produced its final answer.
+  When the answer is streamed token by token, the check runs once the
+  stream completes, so text may already be on screen when the tripwire
+  fires.
 
-## Default-enabled guardrails
+## Built-in guardrails
 
 | Name           | Side    | Behaviour |
 | -------------- | ------- | --------- |

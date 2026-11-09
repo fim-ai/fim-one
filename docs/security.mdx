@@ -61,7 +61,10 @@ If you are running FIM One on your own infrastructure, follow these recommendati
 | **Reverse proxy with TLS** | Run behind nginx, Caddy, or a cloud load balancer with HTTPS enabled. Never expose the application port directly to the internet. |
 | **Use PostgreSQL** | SQLite is suitable for development and single-user setups. For multi-user production deployments, use PostgreSQL for proper concurrency and data integrity. |
 | **Keep up to date** | Regularly pull the latest release. Security patches are backported to the previous minor version on a best-effort basis. |
-| **Limit network access** | Restrict database and application ports to trusted networks. Use firewall rules or security groups. |
+| **Limit network access** | Restrict database and application ports to trusted networks. Use firewall rules or security groups. Admin **Security → IP Rules** can also restrict API access by client address; behind a reverse proxy set `FORWARDED_ALLOW_IPS` so the rules see the real client. |
+| **Turn on two-factor authentication** | 2FA applies to password, email-code, and OAuth sign-in alike, and incorrect codes are limited to 5 per 15 minutes per account. |
+| **Scope API keys** | A key with scopes can call only the endpoints those scopes allow. Give integrations the narrowest scope that works. |
+| **Keep operator-channel tools off unless needed** | `send_notification` (`NOTIFICATION_TOOL_ENABLED`) and `email_send` (recipient allowlist or `EMAIL_TOOL_ENABLED`) send through instance-wide channels; enable them only when every user may use those channels. |
 
 ## Security Hall of Fame
 

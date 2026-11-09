@@ -18,7 +18,7 @@ Adding an explicit handoff protocol would duplicate what step dependencies alrea
 
 **Pattern**: Downstream steps feeding results back to upstream steps for re-evaluation (also called backpropagation of results).
 
-**Why excluded**: The PlanAnalyzer re-plan loop already covers this use case. After all steps complete, the analyzer evaluates whether the original goal was achieved. If not (and confidence is below the stop threshold), it triggers a full re-plan with context from the previous round's results — including what went wrong and what was learned.
+**Why excluded**: The PlanAnalyzer re-plan loop already covers this use case. After all steps complete, the analyzer evaluates whether the original goal was achieved. If not (and the analyzer does not judge the goal unreachable), it triggers a re-plan of the remaining work with context from the previous round's results — including what went wrong and what was learned.
 
 This is a coarser-grained but more robust approach than per-step backflow. Per-step backflow creates complex feedback loops that are hard to debug and can lead to infinite cycles. The re-plan loop achieves the same corrective effect with a cleaner execution model: plan, execute, evaluate, re-plan if needed.
 

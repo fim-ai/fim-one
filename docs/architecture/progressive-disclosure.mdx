@@ -45,7 +45,7 @@ FIM One applies progressive disclosure uniformly across five resource types. Eac
 
 | Resource | Meta-Tool | Stubs Show | On-Demand Returns | Config Var | Default |
 |---|---|---|---|---|---|
-| Skills | `read_skill` | Name + description (120 chars) | Full SOP content + embedded script | `SKILL_TOOL_MODE` | `progressive` |
+| Skills (when the module is enabled; off by default) | `read_skill` | Name + description (120 chars) | Full SOP content + embedded script | `SKILL_TOOL_MODE` | `progressive` |
 | API Connectors | `connector` | Connector name + action list | Full action schemas with parameters | `CONNECTOR_TOOL_MODE` | `progressive` |
 | Database Connectors | `database` | DB name + table names + counts | Column schemas, SQL query execution | `DATABASE_TOOL_MODE` | `progressive` |
 | MCP Servers | `mcp` | Server name + tool list | Full tool schemas + invocation | `MCP_TOOL_MODE` | `progressive` |
@@ -62,7 +62,7 @@ Call read_skill(name) to load full content before executing any of these:
 - Refund Processing: Step-by-step refund workflow with approval gates...
 ```
 
-Each stub is roughly 30 tokens -- a name plus a 120-character description truncated from the full Skill content.
+Each stub is roughly 30 tokens -- a name plus the Skill's description, truncated to 120 characters (`SKILL_STUB_DESC_LENGTH`).
 
 **What happens on demand:** The LLM calls `read_skill("Customer Complaint SOP")` and receives the complete SOP text -- potentially thousands of tokens of step-by-step instructions, decision trees, and embedded scripts. This content enters as a tool result, not as system prompt text, so it is subject to normal context management (summarization, truncation) in later turns.
 
@@ -147,13 +147,13 @@ MCP servers are the most dramatic case for progressive disclosure. A GitHub MCP 
 
 The fifth mechanism is architecturally different from the other four. It does not consolidate a resource type behind a meta-tool. Instead, it addresses the **tool selection bottleneck** -- what happens when the agent has more than 12 tools available.
 
-**How it works:** When the total tool count exceeds `REACT_TOOL_SELECTION_THRESHOLD` (default: 12), the ReAct engine runs a lightweight LLM call to select the top 6 most relevant tools for the current query. The remaining tools are stored in a full registry. A `request_tools` meta-tool is automatically registered, listing all unloaded tools as a compact catalog (name + 80-character description).
+**How it works:** When the total tool count exceeds `REACT_TOOL_SELECTION_THRESHOLD` (default: 12), the ReAct engine selects up to 6 relevant tools for the current query (a keyword match first, a lightweight fast-LLM call otherwise) and adds pinned tools such as `read_skill` and `update_plan` on top. The remaining tools are stored in a full registry. A `request_tools` meta-tool is automatically registered, listing all unloaded tools as a compact catalog (name + 80-character description).
 
 ```mermaid
 flowchart TD
     A["30 tools available"] --> B{"Count > 12?"}
-    B -->|Yes| C["LLM selects top 6"]
-    C --> D["6 active tools +<br/>request_tools meta-tool"]
+    B -->|Yes| C["Select top 6<br/>(keyword match or LLM)"]
+    C --> D["6 active tools + pinned tools +<br/>request_tools meta-tool"]
     D --> E["LLM uses active tools"]
     E --> F{"Needs a tool<br/>not in active set?"}
     F -->|Yes| G["request_tools(['web_search', 'email_send'])"]
@@ -193,7 +193,7 @@ The [System Overview](/architecture/system-overview) describes an 8-step per-req
 | **7. CallAgent registration** | No effect -- `call_agent` is already a single tool with a catalog |
 | **8. Runtime selection** | `request_tools` meta-tool registered when selection filters the set |
 
-The net effect: steps 4--6 each reduce their tool count to 1 (or a small constant), and step 8 adds a safety net for dynamically loading anything the selection phase missed. A Hub agent that would have 50+ tools in legacy mode might present 8--10 in progressive mode -- well below the selection threshold.
+The net effect: steps 4--6 each reduce their tool count to 1 (or a small constant), and step 8 adds a safety net for dynamically loading anything the selection phase missed. An agent that would have 50+ tools in legacy mode might present 8--10 in progressive mode -- well below the selection threshold.
 
 ## Configuration
 
@@ -243,7 +243,7 @@ A single `discover_resource(type, name)` tool would be simpler to implement but 
 
 - **Typed parameters.** `connector` has `subcommand`, `connector`, `action`, `parameters`. `database` has `subcommand`, `database`, `table`, `sql`. The parameter schemas tell the LLM exactly what is expected.
 - **Enum constraints.** Each meta-tool lists its valid names (connector names, database names, server names) as enum values in the schema. The LLM cannot hallucinate a connector name.
-- **Category semantics.** The `connector` tool has category `connector`, `database` has category `database`, `mcp` has category `mcp`. This feeds into agent category filtering -- an Agent configured with only `connector` category will not see the `database` or `mcp` meta-tools.
+- **Category semantics.** The `connector` tool has category `connector`, `database` has category `database`, `mcp` has category `mcp`. An agent's `tool_categories` filter applies to built-in tools only; which meta-tools appear is decided by the agent's bound connectors and MCP servers.
 
 ### Why both progressive and legacy modes?
 

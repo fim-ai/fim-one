@@ -77,6 +77,12 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:9000' > frontend/.env.local
 | `REASONING_LLM_EFFORT` | No | *(falls back to `LLM_REASONING_EFFORT`)* | Reasoning effort level for the reasoning model tier. Values: `low`, `medium`, `high` |
 | `REASONING_LLM_BUDGET` | No | *(falls back to `LLM_REASONING_BUDGET_TOKENS`)* | Token budget for reasoning (primarily Anthropic). Overrides the auto-calculated budget for the reasoning tier |
 | `LLM_SUPPORTS_VISION` | No | `true` *(optimistic)* | Controls whether ENV-mode document OCR (via MarkItDown + `markitdown-ocr`) is attempted. Only applies when **no active model group is configured in Admin → Models** (pure ENV mode). When the default `true` is in effect, `convert_to_markdown` and RAG ingestion assume `LLM_MODEL` supports vision and call it for image OCR — this is the correct behavior for all common choices (`gpt-4o`, `claude-3-5-sonnet`, `gemini-1.5-pro/flash`). Set this to `false` when your ENV-configured `LLM_MODEL` does **not** support vision (e.g. `deepseek-v3`, `qwen-chat`, `llama-3.1`, `gpt-3.5-turbo`, `o1-mini`) to skip the failing vision call and go straight to text-only extraction. When an active model group exists in the Admin → Models panel, this flag is ignored and the group's `supports_vision` flags take over — the admin-curated choice is always the source of truth in DB mode. |
+| `LLM_MAX_RETRIES` | No | `3` | Retry attempts on transient errors (429, 5xx, 529, timeouts) for every LLM, embedding, and reranker call. Backoff is exponential with jitter and honours `Retry-After` |
+| `LLM_RETRY_BASE_DELAY` | No | `1.0` | Initial backoff delay in seconds |
+| `LLM_RETRY_MAX_DELAY` | No | `60.0` | Upper bound on the backoff delay in seconds |
+| `LLM_HTTP_MAX_CONNECTIONS` | No | `100` | Size of the shared HTTP connection pool used for LLM, embedding, and reranker calls |
+| `LLM_HTTP_MAX_KEEPALIVE` | No | `20` | Idle connections kept for reuse. Set to `0` to open a new connection for every call when a relay or NAT drops idle connections |
+| `LLM_HTTP_KEEPALIVE_EXPIRY` | No | `5.0` | Seconds an idle connection may be reused before it is dropped |
 
 > **Resolution order**: User Preference → Admin Models (DB) → ENV Fallback. If an admin model with role "General" is configured in Admin → Models, these ENV vars serve as fallback only. The health check considers both sources.
 
@@ -167,8 +173,14 @@ For OpenAI and Gemini, the provider handles token allocation internally based on
 | `REACT_SELF_REFLECTION_INTERVAL` | No | `6` | Inject a self-reflection prompt every N tool calls to help the agent course-correct and avoid loops |
 | `REACT_TOOL_OBS_TRUNCATION` | No | `8000` | Max characters per tool observation when synthesizing the final answer. Higher values preserve more structured data (JSON, tables) at the cost of more tokens |
 | `REACT_TOOL_RESULT_BUDGET` | No | `40000` | Aggregate token budget for all tool results in a single session. When total tool-result tokens exceed this cap, new results are truncated with a notice. Prevents context bloat from large API responses (e.g., 5 connector calls returning 8K each). Set to `0` to disable the cap |
+| `REACT_TOOL_RESULT_MIN_TOKENS` | No | `400` | Minimum tokens each tool result keeps inline after `REACT_TOOL_RESULT_BUDGET` is used up, so later results are shortened instead of blanked. The full text is still saved to the workspace |
+| `REACT_TOOL_TIMEOUT` | No | `180` | Wall-clock limit in seconds for a single tool call. Stops a tool with no timeout of its own (a hung MCP server, a stalled connector) from blocking the run. `0` disables it |
+| `REACT_MAX_INJECT_CHARS` | No | `25000` | Maximum characters of a message injected mid-run that the model sees. The UI still shows the full text |
 | `REACT_COMPLETION_CHECK_SKIP_CHARS` | No | `800` | Skip the post-answer completion-check LLM call when the agent's final answer exceeds this many characters. Long detailed answers don't need a "did I miss anything?" verification round-trip. Set lower to skip more aggressively; set to a very large value to always run the check |
 | `REACT_CYCLE_DETECTION_THRESHOLD` | No | `2` | When the same tool is called with identical arguments this many times in a row, a deterministic warning is injected telling the agent to try a different approach. Unlike self-reflection (which relies on the LLM noticing the loop), this is a hash-based check that cannot be bypassed. Also applies to DAG steps |
+| `REACT_CYCLE_BLOCK_THRESHOLD` | No | `3` | Identical calls (same tool, same arguments) at which the loop stops warning and refuses the call instead of running it again |
+| `REACT_ENDPOINT_WARN_THRESHOLD` | No | `8` | Calls to the same URL host and path (query string ignored) before the agent is warned that it is re-fetching one endpoint with varying parameters |
+| `REACT_ENDPOINT_BLOCK_THRESHOLD` | No | `15` | Calls to the same URL host and path at which further calls are refused |
 | `REACT_STALL_ROUNDS` | No | `3` | End the run when the repeat guard refused every tool call the agent made for this many rounds in a row. The answer lists the steps taken and asks the user how to proceed. Set to `0` to disable |
 | `REACT_MAX_TURN_SECONDS` | No | `0` | Wall-clock limit in seconds for one agent run, checked between iterations. When reached, the run ends with a summary of the steps taken. A single tool call is bounded by `REACT_TOOL_TIMEOUT` instead. `0` = unlimited |
 | `REACT_COMPLETION_CHECK_MIN_TOOLS` | No | `3` | Minimum number of tool calls before the completion checklist fires. Simple tasks (1-2 tool calls) skip verification to avoid unnecessary latency. Set to `1` for always-on verification. Also applies to DAG steps |
@@ -190,6 +202,7 @@ For OpenAI and Gemini, the provider handles token allocation internally based on
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `MAX_CONCURRENCY` | No | `5` | Max parallel steps in DAG executor |
+| `DAG_MAX_CONCURRENCY` | No | `8` | Library default for the same limit, used only when `DAGExecutor` is constructed without an explicit value. The chat API always passes `MAX_CONCURRENCY`, so this has no effect on the portal or API |
 | `DAG_STEP_MAX_ITERATIONS` | No | `15` | Max tool-call iterations within each DAG step |
 | `DAG_STEP_TIMEOUT` | No | `600` | Step execution timeout in seconds. Steps exceeding this are marked as failed and their dependents are cascade-skipped |
 | `DAG_MAX_REPLAN_ROUNDS` | No | `3` | Max autonomous re-plan attempts when goal is not achieved. User interrupts (inject) are unlimited and do not count against this budget |
@@ -203,6 +216,9 @@ For OpenAI and Gemini, the provider handles token allocation internally based on
 | `DAG_STEP_VERIFICATION` | No | `false` | Generic LLM-based quality check after each DAG step. On failure, the step retries once with feedback. **Default off** — adds latency on every step and is rarely needed; most step outputs are acceptable without re-checking. Use only when you observe frequent low-quality step results |
 | `DAG_CITATION_VERIFICATION` | No | `true` | Citation-accuracy check for specialist-domain steps. **Prerequisite**: the query must first be classified as a specialist domain by the LLM domain classifier (see `ESCALATION_DOMAINS`). When the domain is detected AND this flag is `true`, each completed step is scanned for legal/medical/financial citations and verified for accuracy — catching hallucinated article numbers, fabricated case references, and incorrect regulatory citations. If domain classification returns `null` (general query), citation verification does not run regardless of this setting |
 | `DAG_CITATION_VERIFY_TRUNCATION` | No | `6000` | Max characters of step result sent to the citation verification prompt |
+| `DAG_STRUCTURED_CONTEXT_MULTIPLIER` | No | `3.0` | Multiplier applied to the truncation limit when a step result passed to later steps contains citations, tables, or code blocks |
+| `DAG_PLANNER_DESC_LENGTH` | No | `120` | Characters of each tool description shown to the planner |
+| `DAG_ROUTER_QUERY_TRUNCATION` | No | `2000` | Characters of the user query sent to the Auto-mode classifier that picks ReAct or DAG |
 
 ### Domain Classification
 
@@ -259,6 +275,14 @@ Comma-separated names of guardrails that inspect the *content* of input or outpu
 | `EXA_API_KEY` | No | — | Exa Search API key. Required when `WEB_SEARCH_PROVIDER=exa`; also used by auto-detect if the provider is unset. See [Exa](/integrations/exa). Get yours at [exa.ai](https://exa.ai/) |
 | `WEB_SEARCH_PROVIDER` | No | `jina` | Search provider selector: `jina` (default) / `tavily` / `brave` / `exa`. Prefer setting this explicitly when using a non-default provider |
 | `WEB_FETCH_PROVIDER` | No | `jina` (if key set, else `httpx`) | Fetch provider: `jina` (uses Jina Reader API) / `httpx` (direct HTTP request, no API key needed) |
+| `EXA_SEARCH_TYPE` | No | `auto` | Exa search type: `auto`, `neural`, `fast`, `deep-lite`, `deep`, `deep-reasoning`, `instant` |
+| `EXA_CATEGORY` | No | — | Restrict Exa results to one category (`company`, `research paper`, `news`, `personal site`, `financial report`, `people`) |
+| `EXA_INCLUDE_DOMAINS` / `EXA_EXCLUDE_DOMAINS` | No | — | Comma-separated domain allowlist / blocklist for Exa |
+| `EXA_START_PUBLISHED_DATE` / `EXA_END_PUBLISHED_DATE` | No | — | ISO-8601 bounds on the publication date of Exa results |
+| `EXA_MAX_AGE_HOURS` | No | — | Only return pages Exa indexed within the last N hours |
+| `EXA_INCLUDE_HIGHLIGHTS` | No | `true` | Request highlight snippets from Exa |
+| `EXA_TEXT_MAX_CHARS` | No | `800` | Cap on the text returned per Exa result |
+| `EXA_SUMMARY_QUERY` | No | — | Custom summary prompt applied to each Exa result |
 
 > **Quick start tip**: Setting just `JINA_API_KEY` enables the default web search stack, plus web fetch, embedding, and reranking — one key, four services. Switch search to Tavily, Brave, or Exa with `WEB_SEARCH_PROVIDER` and the matching API key.
 
@@ -303,11 +327,11 @@ Reranker re-scores retrieved documents to improve relevance. Three providers are
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `RERANKER_PROVIDER` | No | *(auto-detect)* | `jina` / `cohere` / `openai`. If unset: uses Cohere if `COHERE_API_KEY` set, otherwise Jina |
-| `RERANKER_MODEL` | No | `jina-reranker-v2-base-multilingual` | Model identifier (applies to Jina and OpenAI providers) |
+| `RERANKER_MODEL` | No | `jina-reranker-v2-base-multilingual` | Model identifier (applies to Jina and OpenAI providers). With `RERANKER_PROVIDER=openai` the default is `text-embedding-3-small` |
 | `COHERE_API_KEY` | No | — | Cohere API key (auto-selects Cohere reranker when set and `RERANKER_PROVIDER` is unset) |
 | `COHERE_RERANKER_MODEL` | No | `rerank-multilingual-v3.0` | Cohere-specific reranker model |
 
-> **Jina** uses `JINA_API_KEY` (from Web Tools above). **OpenAI** reuses `LLM_API_KEY` / `LLM_BASE_URL` — no extra key needed. **Cohere** requires its own `COHERE_API_KEY`.
+> **Jina** uses `JINA_API_KEY` (from Web Tools above). **OpenAI** reuses `LLM_API_KEY` / `LLM_BASE_URL` — no extra key needed (`OPENAI_API_KEY`, when set, takes precedence over `LLM_API_KEY` for the reranker). **Cohere** requires its own `COHERE_API_KEY`.
 
 > Reranker is **optional** — knowledge base search works without it using fusion scoring. Embedding is **recommended** for knowledge base features.
 
@@ -327,12 +351,24 @@ Reranker re-scores retrieved documents to improve relevance. Three providers are
 | `DOCKER_PYTHON_IMAGE` | No | `python:3.11-slim` | Docker image for Python execution |
 | `DOCKER_NODE_IMAGE` | No | `node:20-slim` | Docker image for Node.js execution |
 | `DOCKER_SHELL_IMAGE` | No | `python:3.11-slim` | Docker image for shell execution |
-| `DOCKER_MEMORY` | No | *(Docker default)* | RAM cap per container (e.g. `256m`, `512m`, `1g`) |
-| `DOCKER_CPUS` | No | *(Docker default)* | CPU quota per container (e.g. `0.5`, `1.0`) |
+| `DOCKER_MEMORY` | No | `256m` | RAM cap per container (e.g. `256m`, `512m`, `1g`) |
+| `DOCKER_CPUS` | No | `0.5` | CPU quota per container (e.g. `0.5`, `1.0`) |
 | `SANDBOX_TIMEOUT` | No | `120` | Default execution timeout in seconds |
 | `DOCKER_HOST_DATA_DIR` | No | *(not set)* | Host-side absolute path of the `./data` volume mount. Required for DooD (Docker-outside-of-Docker) deployments; `docker-compose.yml` auto-sets via `${PWD}/data`. |
 
 > **Security**: `local` mode runs AI-generated code directly on the host. For internet-facing or multi-user deployments, always set `CODE_EXEC_BACKEND=docker`.
+
+---
+
+## Tool Output Truncation
+
+Limits applied to what a built-in tool returns to the model.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `TOOL_OUTPUT_MAX_CHARS` | No | `50000` | Max characters for JSON-aware truncation of web and API tool output |
+| `TOOL_OUTPUT_MAX_ITEMS` | No | `10` | Max JSON array items kept before truncation |
+| `TOOL_OUTPUT_MAX_BYTES` | No | `102400` (100 KB) | Max bytes of raw output kept from code-execution tools |
 
 ---
 
@@ -367,7 +403,7 @@ Controls how uploaded PDF/DOCX files are processed for LLM consumption. Vision-c
 |---|---|---|---|
 | `IMAGE_GEN_PROVIDER` | No | `google` | `google` (Gemini native API) or `openai` (OpenAI-compatible `/v1/images/generations`) |
 | `IMAGE_GEN_API_KEY` | No | — | Google AI Studio key (`google`) or proxy/OpenAI API key (`openai`) |
-| `IMAGE_GEN_MODEL` | No | `gemini-3.1-flash-image-preview` | Image generation model (e.g. `dall-e-3`, `gemini-nano-banana-2`) |
+| `IMAGE_GEN_MODEL` | No | `gemini-3.1-flash-image-preview` (`google`) / `dall-e-3` (`openai`) | Image generation model (e.g. `dall-e-3`, `gemini-nano-banana-2`) |
 | `IMAGE_GEN_BASE_URL` | No | *(per provider)* | Google: `https://generativelanguage.googleapis.com/v1beta`; OpenAI: `https://api.openai.com/v1` |
 
 ---
@@ -390,6 +426,10 @@ Used for login codes and email notifications. The `email_send` built-in tool is 
 | `SMTP_ALLOWED_ADDRESSES` | No | — | Comma-separated exact-address allowlist; combined with `SMTP_ALLOWED_DOMAINS`. Also applies to email sent through `send_notification` |
 | `EMAIL_TOOL_ENABLED` | No | `false` | Offer `email_send` with no recipient allowlist. Enable only when every user of this instance may mail any address from this account |
 | `NOTIFICATION_TOOL_ENABLED` | No | `false` | Offer the `send_notification` agent tool, which posts to the instance-wide Slack / Lark / WeCom webhooks and the SMTP account. Enable only when every user of this instance may post to those channels |
+| `SLACK_WEBHOOK_URL` | No | — | Slack incoming-webhook URL. Enables the Slack provider for the admin `/api/notifications` endpoints and, when enabled, the `send_notification` tool |
+| `LARK_WEBHOOK_URL` | No | — | Lark (Feishu) group-bot webhook URL for the same notification paths |
+| `WECOM_WEBHOOK_URL` | No | — | WeCom group-bot webhook URL for the same notification paths |
+| `APP_NAME` | No | `FIM One` | Product name used in system emails (login codes, admin notifications) |
 
 ---
 
@@ -399,10 +439,17 @@ Used for login codes and email notifications. The `email_send` built-in tool is 
 |---|---|---|---|
 | `CONNECTOR_RESPONSE_MAX_CHARS` | No | `50000` | Max characters for non-array JSON / plain-text connector responses |
 | `CONNECTOR_RESPONSE_MAX_ITEMS` | No | `10` | Max array items to keep when connector response is a JSON array |
-| `CREDENTIAL_ENCRYPTION_KEY` | No | _(unset)_ | Fernet encryption key for connector credential blobs. When set, auth tokens stored in `connector_credentials` are encrypted at rest. If unset, credentials are stored as plaintext JSON (backward-compatible). Changing this key invalidates all existing encrypted credentials. |
+| `CREDENTIAL_ENCRYPTION_KEY` | No | *(auto-generated)* | Secret from which the Fernet key for connector and MCP credential blobs is derived. Credentials are always encrypted at rest: when the variable is unset, a random key is generated on first start and written to `.env`. Back it up and set it explicitly for multi-replica deployments; changing or losing it makes all stored credentials unreadable. |
 | `CONNECTOR_TOOL_MODE` | No | `progressive` | How connector tools are exposed to agents. `progressive`: single `ConnectorMetaTool` with `discover`/`execute` subcommands (~30 tokens/connector). `classic`: one tool per action (legacy, ~250 tokens/action). |
 | `DATABASE_TOOL_MODE` | No | `progressive` | How database connector tools are exposed to agents. `progressive`: single `DatabaseMetaTool` with `list_tables`/`discover`/`query` subcommands. `legacy`: one tool per action per database connector (3 tools each). |
 | `MCP_TOOL_MODE` | No | `progressive` | How MCP server tools are exposed to agents. `progressive`: single `MCPServerMetaTool` with `discover`/`call` subcommands. `legacy`: one tool per MCP server action (original individual tools). |
+| `SKILL_TOOL_MODE` | No | `progressive` | How Skills reach the agent. `progressive`: stub listing in the system prompt plus `read_skill` on demand. `inline`: full Skill content in the system prompt. Only applies while the Skills module is enabled |
+| `CONNECTOR_DISCOVER_INDENT` | No | `2` | JSON indent of the API connector meta-tool's `discover` output. Lower values use fewer tokens |
+| `DATABASE_DISCOVER_INDENT` | No | `2` | JSON indent of the database meta-tool's `discover` output |
+| `MCP_DISCOVER_INDENT` | No | `2` | JSON indent of the MCP meta-tool's `discover` output |
+| `SKILL_STUB_DESC_LENGTH` | No | `120` | Characters of each Skill description kept in its system-prompt stub. `0` disables truncation |
+| `COMPACT_CATALOG_DESC_LENGTH` | No | `80` | Characters of each tool description in the catalog used for ReAct tool selection |
+| `COMPACT_SCHEMA_DESC_LENGTH` | No | `200` | Characters of each tool description in compact tool schemas |
 
 ---
 
@@ -411,6 +458,9 @@ Used for login codes and email notifications. The `email_send` built-in tool is 
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `DATABASE_URL` | No | `sqlite+aiosqlite:///./data/fim_one.db` | Database connection string. **SQLite** (zero-config): `sqlite+aiosqlite:///./data/fim_one.db`. **PostgreSQL** (production): `postgresql+asyncpg://user:pass@localhost:5432/fim_one`. Docker Compose auto-sets PostgreSQL. |
+| `SQLITE_POOL_SIZE` | No | `10` | Connection pool size when `DATABASE_URL` is SQLite |
+| `SQLITE_MAX_OVERFLOW` | No | `5` | Extra connections allowed beyond the SQLite pool size |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | No | `fim` / `fim` / `fim_one` | Docker Compose only: credentials of the bundled PostgreSQL service; the compose `DATABASE_URL` is derived from them. Change the password before exposing the database port |
 | `JWT_SECRET_KEY` | No | `CHANGE_ME` | Secret key for JWT token signing. Placeholder value `CHANGE_ME` (or any legacy default) triggers auto-generation of a secure 256-bit random key on first start, which is written back to `.env`. Set explicitly in production to keep tokens valid across restarts and replicas. |
 | `FIM_BCRYPT_COST` | No | `12` | bcrypt work factor for password hashing, clamped to 4-31. Default 12 costs roughly 200ms per hash on modern CPUs; lower it on weak hardware, raise it for security-hardened deployments. |
 | `CORS_ORIGINS` | No | — | Comma-separated list of extra allowed CORS origins beyond the default localhost entries. Required when the frontend runs on a non-localhost domain (e.g. `https://app.example.com`). |
@@ -475,6 +525,7 @@ When both `CLIENT_ID` and `CLIENT_SECRET` are set for a provider, the login page
 | `FEISHU_TRUSTED_TENANT_KEYS` | No | — | Comma-separated Feishu `tenant_key` values whose enterprise email may match an existing account by email. Other tenants can sign in but never claim an account by email |
 | `FRONTEND_URL` | **Prod** | `http://localhost:3000` | Where the browser lands after OAuth completes. Must be set in production (e.g. `https://yourdomain.com`) |
 | `API_BASE_URL` | **Prod** | `http://localhost:8000` | Externally reachable backend URL, used to build OAuth callback URLs. Must be set in production |
+| `BACKEND_URL` | No | *(falls back to `PUBLIC_BACKEND_URL`, then `FRONTEND_URL`)* | Public base URL of the backend, used to build the callback URL shown for a Feishu channel and links in channel cards. Set it when the backend is reached at a different address than the portal |
 | `NEXT_PUBLIC_API_URL` | **Prod** | *(auto-detected as `<hostname>:8000`)* | Browser-side API base URL for OAuth redirects. **This is a frontend build-time variable** — set it in `frontend/.env.local` for local dev, or pass it as a Docker build arg for custom production deployments. Auto-detection works for standard reverse-proxy setups (port 80/443). |
 
 > **Prod** = optional locally (defaults work), but **required for any internet-facing deployment**.
@@ -523,7 +574,7 @@ All analytics providers are optional. Set any combination — all active provide
 
 ## Stripe Billing (Optional)
 
-Stripe powers Pro subscriptions. Leave all three variables blank to disable billing — the rest of FIM One works unchanged. **Both** `STRIPE_SECRET_KEY` **and** `STRIPE_WEBHOOK_SECRET` must be set together; partial config raises an error at first use.
+Stripe powers paid subscriptions. Leave all three variables blank to disable billing — the rest of FIM One works unchanged. **Both** `STRIPE_SECRET_KEY` **and** `STRIPE_WEBHOOK_SECRET` must be set together; partial config raises an error at first use. Which access posture applies (no subscriptions, included + paid, or paid only) is chosen in the admin panel; see [Billing](/configuration/billing).
 
 | Variable | Required | Default | Description |
 |---|---|---|---|

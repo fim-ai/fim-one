@@ -14,7 +14,7 @@ DATABASE_URL=sqlite+aiosqlite:///./data/fim_one.db
 DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/fim_one
 ```
 
-Tables are created automatically on first start — no manual migration step is required.
+`start.sh` and the Docker entrypoint run the Alembic migrations on every start, so tables are created automatically — no manual migration step is required.
 
 ---
 
@@ -44,7 +44,7 @@ Tables are created automatically on first start — no manual migration step is 
 
 FIM One uses Server-Sent Events (SSE) for streaming AI responses. During streaming, each active SSE connection holds a database connection from the pool for the duration of the stream. SQLite enforces a global write lock, meaning only one write operation can proceed at a time — all other writes queue behind it.
 
-Even though the connection pool supports up to 30 simultaneous connections (`pool_size=20` + `max_overflow=10`), the bottleneck is the lock itself, not the pool. When multiple users are chatting simultaneously, their write operations (saving messages, updating token counts) serialize against each other.
+Even though the connection pool supports up to 15 simultaneous connections (`pool_size=10` + `max_overflow=5`), the bottleneck is the lock itself, not the pool. When multiple users are chatting simultaneously, their write operations (saving messages, updating token counts) serialize against each other.
 
 **Symptoms you may observe:**
 - Conversation list loads slowly while another user is streaming
@@ -58,14 +58,14 @@ Even though the connection pool supports up to 30 simultaneous connections (`poo
 
 ## Connection Pool Configuration
 
-FIM One configures SQLAlchemy connection pool settings internally for each backend. These are tuned defaults that do not require environment variables — they are applied automatically based on the `DATABASE_URL` scheme. Understanding them helps explain runtime behavior.
+FIM One configures SQLAlchemy connection pool settings internally for each backend. These are tuned defaults that do not require environment variables (the SQLite pool can be resized with `SQLITE_POOL_SIZE` / `SQLITE_MAX_OVERFLOW`) — they are applied automatically based on the `DATABASE_URL` scheme. Understanding them helps explain runtime behavior.
 
 ### SQLite Pool Settings
 
 | Setting | Value | Description |
 |---|---|---|
-| `pool_size` | `20` | Base number of persistent connections in the pool |
-| `max_overflow` | `10` | Additional connections created under load (up to 30 total) |
+| `pool_size` | `10` | Base number of persistent connections in the pool |
+| `max_overflow` | `5` | Additional connections created under load (up to 15 total) |
 | WAL journal mode | Enabled | Write-Ahead Logging allows concurrent reads while a write is in progress, significantly reducing lock contention |
 | `busy_timeout` | `30s` | When the write lock is held, other writers wait up to 30 seconds before raising an error, instead of failing immediately |
 | `synchronous` | `NORMAL` | Safe with WAL mode; provides better write throughput than the default `FULL` |
@@ -129,7 +129,7 @@ If you deploy with Docker Compose, **PostgreSQL and Redis are already included a
 
 ```yaml
 environment:
-  DATABASE_URL: postgresql+asyncpg://fim:fim@postgres:5432/fim_one
+  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-fim}:${POSTGRES_PASSWORD:-fim}@postgres:5432/${POSTGRES_DB:-fim_one}
 ```
 
 No additional database setup is needed when using Docker Compose.

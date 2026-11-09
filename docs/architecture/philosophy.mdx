@@ -24,13 +24,13 @@ DAG planning's lasting value is not "helping dumb models decompose tasks" -- it 
 
 The endgame: **models own the "what" (planning intelligence internalizes into the model), frameworks own the "how" (concurrency, retry, monitoring, cost governance)**. A framework's lasting value is not intelligence -- it is governance.
 
-This is the sentence the rest of FIM One is downstream of. Once the model owns the "what," durable value moves to governing the "how" -- and the highest-value "how" in any enterprise is *reach* into the systems that refuse to talk to each other. The connector hub is one inferential step from here, and the history shows it: the project began as a DAG orchestration framework (`fim-agent`) and became a connector platform within a single week -- not through a rewrite, but because this bet already required it.
+This is the sentence the rest of FIM One is downstream of. Once the model owns the "what," durable value moves to governing the "how" -- and the highest-value "how" in any enterprise is *reach* into the systems that refuse to talk to each other. The integration layer is one inferential step from here, and the history shows it: the project began as a DAG orchestration framework (`fim-agent`) and became a connector platform within a single week -- not through a rewrite, but because this bet already required it.
 
 ## Why not mirror Dify's workflow editor
 
 A natural question: if DAG covers the flexible case, shouldn't we also build a static workflow editor for the deterministic case?
 
-No. The reasoning:
+Not as the core. FIM One does ship a visual Workflow editor (9 node types, cron and API triggers), but as an optional module that is off by default. The reasoning for keeping it secondary:
 
 1. **The workflows already exist elsewhere.** Government and enterprise clients' fixed processes live in their OA, ERP, and legacy systems. They don't want to rebuild those flows in yet another platform -- they want AI that can connect to the systems where those flows already run. The Connector Platform (v0.6) solves this directly.
 
@@ -42,10 +42,10 @@ The strategic bet: **don't compete on workflow visualization; compete on being t
 
 ## Where FIM One stands
 
-FIM One is not an "AGI task scheduler" and not a static workflow engine. It occupies the middle ground: planning capability with constraints, concurrency with observability.
+FIM One is not an "AGI task scheduler" and not primarily a static workflow engine. It occupies the middle ground: planning capability with constraints, concurrency with observability.
 
 - Compared to **Dify**: more flexible -- runtime DAG generation vs. design-time flowcharts. You do not need to anticipate every execution path in advance. Does not compete on visual workflow editing; competes on legacy system integration.
-- Compared to **AutoGPT**: more controlled -- bounded iterations, re-planning limits, with human-in-the-loop on the roadmap. Autonomy within guardrails.
+- Compared to **AutoGPT**: more controlled -- bounded iterations, re-planning limits, with human confirmation gates. Autonomy within guardrails.
 
 The strategy is straightforward: build the orchestration framework now, and let improving models fill it with capability over time.
 
@@ -92,11 +92,11 @@ For readers unfamiliar with the terminology used in this document:
 
 | Term | One-line explanation | Relation to FIM One |
 |------|---------------------|----------------------|
-| **BPM** (Business Process Management) | Processes fully fixed at design time, executed rigidly. Camunda, Activiti. | FIM One is **not** BPM. No fixed process engine. |
+| **BPM** (Business Process Management) | Processes fully fixed at design time, executed rigidly. Camunda, Activiti. | FIM One is **not** BPM. Fixed processes are covered by the optional Workflow module, not the core. |
 | **FSM** (Finite State Machine) | System is in exactly one state at any time; events trigger transitions. Supports loops (reject → resubmit). | Target systems (ERP, contract systems) use FSM internally. FIM One **doesn't need** its own FSM -- it calls the target system's API. |
 | **ACM** (Adaptive Case Management) | Skeleton static, branches dynamic. Main flow pre-defined, each node adapts at runtime. | FIM One's DAG + ReAct naturally falls in this quadrant. |
 | **HTN** (Hierarchical Task Network) | Recursive task decomposition: high-level → subtasks → atomic operations. | DAG re-planning covers most scenarios; full HTN not needed yet. |
-| **iPaaS** (Integration Platform as a Service) | Cloud integration platform connecting multiple SaaS/on-prem systems. MuleSoft, Zapier. | FIM One's Hub Mode is like **AI-native iPaaS** -- natural language drives cross-system integration. |
+| **iPaaS** (Integration Platform as a Service) | Cloud integration platform connecting multiple SaaS/on-prem systems. MuleSoft, Zapier. | FIM One's integration layer is like **AI-native iPaaS** -- natural language drives cross-system integration. |
 | **MDM** (Master Data Management) | Deduplicates and unifies entity records across systems into a "golden record." Reltio, Informatica, Tamr. | FIM One **connects to** MDM systems; it does not replicate entity resolution. |
 | **Context Layer / System of Context** | Unified entity + relationship graph that gives AI agents trusted business context. Term popularized by Reltio (2026). | FIM One delegates this to upstream MDM/data platforms. Skills provide lightweight aggregation for common cases. |
 
@@ -251,7 +251,7 @@ A useful mental model (credit [Phil Schmid](https://www.philschmid.de/)) maps AI
 | **Model** | CPU | ModelRegistry -- any OpenAI-compatible LLM |
 | **Context** | RAM | ContextGuard + Memory (Window / Summary / DB) |
 | **Harness** | Operating System | ReAct Agent + DAG Planner + Hooks + ToolRegistry |
-| **Application** | App | Portal, Copilot, Hub API |
+| **Application** | App | Portal, API |
 
 FIM One operates at the **harness layer** -- it does not compete with models; it makes them productive by providing the right tools, constraints, and feedback loops. The model supplies intelligence; the harness supplies governance, concurrency, and reliability.
 
@@ -259,4 +259,4 @@ FIM One operates at the **harness layer** -- it does not compete with models; it
 
 The discipline has evolved through distinct phases: **Prompt Engineering** focused on crafting better instructions to elicit correct behavior from a fixed model. **Context Engineering** shifted attention to assembling the right information -- retrieving documents, injecting tool results, managing memory -- so the model has what it needs to reason well. **Harness Engineering** goes further: designing the full execution environment around the model, including deterministic guardrails, tool orchestration, feedback loops, and cost controls.
 
-FIM One's architecture embodies harness engineering principles. The [Hook System](/architecture/hook-system) runs platform code outside the LLM loop at well-defined lifecycle points — today `FeishuGateHook` intercepts sensitive tool calls and routes approval through an IM channel, and the same abstraction can carry audit logging, read-only-mode enforcement, rate limits, and result truncation if those are ever needed. ContextGuard manages what enters the context window and when. Dynamic tool selection (progressive-disclosure meta-tools) keeps the tool surface tractable as connector count grows. The ReAct loop's self-reflection mechanism and the DAG planner's re-plan cycle provide structured feedback that improves execution quality without requiring a more capable model.
+FIM One's architecture embodies harness engineering principles. The [Hook System](/architecture/hook-system) runs platform code outside the LLM loop at well-defined lifecycle points — today `FeishuGateHook` intercepts sensitive tool calls and routes approval to an in-portal card or an IM channel, and the same abstraction can carry audit logging, read-only-mode enforcement, rate limits, and result truncation if those are ever needed. ContextGuard manages what enters the context window and when. Dynamic tool selection (progressive-disclosure meta-tools) keeps the tool surface tractable as connector count grows. The ReAct loop's self-reflection mechanism and the DAG planner's re-plan cycle provide structured feedback that improves execution quality without requiring a more capable model.

@@ -36,7 +36,7 @@ FIM One supports social login via GitHub, Google, Discord, and Feishu (Lark). An
 
 **Scopes requested automatically:** `read:user`, `user:email`
 
-GitHub accounts with a private primary email are handled correctly — FIM One always fetches the primary verified email from `/user/emails`, not the public profile email.
+GitHub accounts with a private primary email are handled correctly — FIM One fetches the primary email from `/user/emails` (not the public profile email) and records whether GitHub marks it verified.
 
 ```env
 GITHUB_CLIENT_ID=Ov23li...
@@ -122,7 +122,7 @@ FEISHU_APP_SECRET=...
 
 ### Important: Feishu Email Behavior
 
-The Feishu user info API (`authen/v1/user_info`) returns the user's **enterprise contact email** (联系邮箱) — the address configured by the organization admin in the Feishu admin console. This is **not** the user's personal Feishu login email.
+The Feishu user info API (`authen/v1/user_info`) returns an `email` and an **enterprise contact email** (联系邮箱, `enterprise_email`) — the address configured by the organization admin in the Feishu admin console. FIM One reads `email` first, then `enterprise_email`. The address counts as verified only when it is the enterprise email of a tenant listed in `FEISHU_TRUSTED_TENANT_KEYS`.
 
 Consequences:
 - Users whose org admin has not configured a contact email will get an empty email field from the API, even though they have a valid Feishu account.
@@ -136,26 +136,22 @@ FIM One handles this gracefully: see [Account Binding Rules](#account-binding-ru
 
 Registered users can link additional OAuth providers from **Settings → Account**. The following rules apply when a user initiates a binding:
 
-### General rule (GitHub, Google, Discord)
+### Linking from Settings (all providers)
 
-The email returned by the OAuth provider must match the FIM account's registered email. This prevents accidentally linking another person's social account to your FIM account.
+Linking needs a full sign-in: a session that has passed two-factor authentication where it is enabled. API keys and the temporary 2FA token cannot link a provider.
 
-If the emails do not match, the binding is rejected with an `email_mismatch` error.
+- **Both sides have an email** → the email returned by the provider must match the FIM account's email. This prevents accidentally linking another person's social account to your FIM account. A mismatch is rejected with an `email_mismatch` error.
+- **Either side has no email** (the provider returned none, or the FIM account has no email) → binding succeeds on the signed-in session alone. In practice this affects Feishu accounts without an enterprise email and some Discord accounts.
 
-### Feishu exception
+### First sign-in with a provider (no binding yet)
 
-Because Feishu's API returns the enterprise contact email rather than the login email, and that field is often empty for personal accounts or accounts in orgs where the admin has not configured it, the email-match check for Feishu follows a looser rule:
+When a user signs in through a provider that is not linked to any account yet:
 
-- **Both sides have an email** → the emails must match (same check as other providers).
-- **Either side has no email** (Feishu returned empty, or the FIM account has no email) → binding succeeds based on the ticket-based authentication alone.
+1. FIM One looks for an existing account with the same email. The match is used only when the address is verified on both sides: the provider reports it as verified, and the existing account's email is verified. For Feishu, "verified" means the enterprise email of a tenant listed in `FEISHU_TRUSTED_TENANT_KEYS`.
+2. If a match is found, the provider is linked to that existing FIM account and the user is logged in.
+3. Otherwise a new FIM account is created with whatever email the provider returned (none, if it returned none). This is refused with `registration_disabled` when registration is disabled or invite-only.
 
-### Feishu login (no binding yet)
-
-When a user logs in via Feishu for the first time (no existing binding):
-
-1. FIM One looks for an existing account whose email matches the Feishu enterprise contact email.
-2. If a match is found, the Feishu account is auto-bound to that existing FIM account and the user is logged in.
-3. If no match (including when the email is empty), a new FIM account is created identified by the Feishu `open_id`. The account will have a null email, which the user can fill in from Settings later.
+If the matched or linked account has two-factor authentication enabled, the sign-in stops at the 2FA step before a session is issued.
 
 ---
 
@@ -171,6 +167,7 @@ When a user logs in via Feishu for the first time (no existing binding):
 | `DISCORD_CLIENT_SECRET` | Discord | Both | Discord OAuth2 application client secret |
 | `FEISHU_APP_ID` | Feishu | Both | Feishu in-house app ID (note: not `CLIENT_ID`) |
 | `FEISHU_APP_SECRET` | Feishu | Both | Feishu in-house app secret |
+| `FEISHU_TRUSTED_TENANT_KEYS` | Feishu | No | Comma-separated `tenant_key` values whose enterprise email may match an existing account by email |
 | `FRONTEND_URL` | All | Prod | Where the browser is redirected after OAuth completes (e.g. `https://yourdomain.com`) |
 | `API_BASE_URL` | All | Prod | Externally reachable backend URL, used to build callback URLs |
 | `NEXT_PUBLIC_API_URL` | All | Prod | Browser-side API URL for OAuth redirects — baked in at build time |

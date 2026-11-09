@@ -28,7 +28,7 @@ Three hook points are defined today. Each marks a boundary the agent crosses dur
 
 ```mermaid
 flowchart TD
-    S(["Session start"]) --> SS["SessionStart hooks<br/>inject dynamic context"]
+    S(["Session start"]) --> SS["SessionStart hooks<br/>run for side effects"]
     SS --> LLM["LLM inference<br/>(reasoning / tool pick)"]
     LLM --> DECIDE{"Tool call?"}
     DECIDE -->|no| ANSWER(["Final answer"])
@@ -44,7 +44,7 @@ flowchart TD
 
 | Hook point | Fires when | Can it block? | Can it mutate data? |
 |---|---|---|---|
-| `SessionStart` | Before the first LLM call of a session | No | Yes — injects context into the initial prompt |
+| `SessionStart` | Before the first LLM call of a session | No | No — runs for side effects only |
 | `PreToolUse` | After the LLM picks a tool, before the tool runs | **Yes** (via `allow=False`) | Yes — can rewrite `tool_args` before execution |
 | `PostToolUse` | After the tool returns, before the observation goes to the LLM | No | Yes — can rewrite the observation |
 
@@ -67,7 +67,7 @@ Rule of thumb: **if the wrong behavior is an incident, use a hook. If the wrong 
 
 ## The hook contract
 
-A hook is a subclass of `PreToolUseHook`, `PostToolUseHook`, or `SessionStartHook` with one required method:
+A hook is a subclass of `PreToolUseHook` or `PostToolUseHook` (a session-start hook is registered as a plain `Hook` object) with one required method:
 
 ```python
 class ReadOnlyGuard(PreToolUseHook):
@@ -87,19 +87,19 @@ class ReadOnlyGuard(PreToolUseHook):
         return HookResult()               # default: allow=True, no mutation
 ```
 
-The `HookContext` passed in carries `tool_name`, `tool_args`, `agent_id`, `user_id`, and a flexible `metadata` dict the engine populates with per-request facts (org id, conversation id, the connector action's `requires_confirmation` flag, …).
+The `HookContext` passed in carries `tool_name`, `tool_args`, `agent_id`, `user_id`, and a flexible `metadata` dict the engine populates with per-request facts (org id, tool call id, the connector action's `requires_confirmation` flag).
 
 The `HookResult` returned controls the outcome:
 
 - `allow: bool = True` — whether the tool call proceeds (ignored for `PostToolUse` / `SessionStart`)
 - `error: str | None` — human-readable reason, surfaced to the LLM as the observation when blocked
 - `modified_args: dict | None` — if set, replaces the tool args before execution
-- `modified_result: Any | None` — if set (PostToolUse), replaces the observation before it returns to the LLM
-- `side_effects: list[str]` — audit trail of what the hook did, merged into the agent's trace
+- `modified_result: str | None` — if set (PostToolUse), replaces the observation before it returns to the LLM
+- `side_effects: list[str]` — notes on what the hook did, collected by the registry (not surfaced in the agent's trace today)
 
 ## Case study: `FeishuGateHook`
 
-The first hook shipped on top of this system is `FeishuGateHook` — a `PreToolUse` hook that turns any tool flagged `requires_confirmation=True` into a human-in-the-loop approval card posted to the org's Feishu group.
+The first hook shipped on top of this system is `FeishuGateHook` — a `PreToolUse` hook that turns any tool call needing confirmation (the action's `requires_confirmation` flag, or the agent's confirm-all setting) into a human approval. The approval is delivered as a card in the portal chat or as a Feishu card in the approval channel bound to the agent, according to the agent's confirmation mode (Auto / Inline only / Channel only); Auto uses the in-portal card when no channel is bound.
 
 This hook exercises the full lifecycle:
 
@@ -133,7 +133,7 @@ What this design is buying:
 - **The decision is audited.** `ConfirmationRequest` keeps `payload`, `responded_at`, `responded_by_open_id`, and the final status — an auditable record of who approved what and when.
 - **No LLM in the decision loop.** The model produces the tool call. Humans produce the verdict. The hook is the deterministic bridge.
 
-`FeishuGateHook` depends on a configured [Feishu Channel](/configuration/channels/feishu) — the hook sends the card through the channel's `send_interactive_card()` method and listens for callback events the channel parsed. The separation is deliberate: the hook owns "approval state machine", the channel owns "IM platform mechanics". The same hook could target Slack or WeCom tomorrow without changing its logic — only the channel implementation.
+The channel path of `FeishuGateHook` depends on a [Feishu Channel](/configuration/channels/feishu) bound as the agent's approval channel — the hook sends the card through the channel's `send_interactive_card()` method and listens for callback events the channel parsed. The separation is deliberate: the hook owns "approval state machine", the channel owns "IM platform mechanics". The same hook could target Slack or WeCom tomorrow without changing its logic — only the channel implementation.
 
 ## Candidate hooks (not planned)
 
@@ -161,12 +161,12 @@ Hooks consume Channels — a hook that needs to talk to the outside world (send 
 
 Put differently: **Channels are the "where do I talk to humans" plumbing, Hooks are the "when do I have to talk to humans" policy**. Production human-in-the-loop workflows need both.
 
-## Current state (v0.8.4)
+## Current state (v0.9.4)
 
 Snapshot of what shipped and what is still ahead:
 
 - ✅ `HookRegistry`, `HookContext`, `HookResult` primitives wired into both ReAct and DAG
-- ✅ `PreToolUseHook` / `PostToolUseHook` / `SessionStartHook` abstract bases
+- ✅ `PreToolUseHook` / `PostToolUseHook` abstract bases
 - ✅ `FeishuGateHook` — complete, including `ConfirmationRequest` table, polling loop, timeout/expire, and callback-driven state flips
 - ✅ Feishu channel callback endpoint that decodes `card.action.trigger` and updates the pending row
 - ✅ Agent-level hook declarations: `agent.model_config_json.hooks.class_hooks` resolves to an instantiated `HookRegistry` on every ReAct/DAG session

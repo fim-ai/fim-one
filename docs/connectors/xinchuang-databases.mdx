@@ -4,17 +4,18 @@ icon: "database"
 description: "Connect FIM One to domestic Chinese databases: KingbaseES, DM8, and HighGo."
 ---
 
-FIM One's Database Connector speaks the PostgreSQL, MySQL, and Oracle
-wire protocols out of the box. That means three of the four most
-common Xinchuang (信创 — domestically-produced software) databases work
-with zero extra glue; only DM8 (达梦) needs a vendor driver.
+FIM One's Database Connector ships five drivers: PostgreSQL, MySQL,
+KingbaseES, HighGo, and DM8. KingbaseES and HighGo speak the PostgreSQL
+wire protocol, so two of the three supported Xinchuang (信创 —
+domestically-produced software) databases work with zero extra glue;
+only DM8 (达梦) needs a vendor driver.
 
 This guide walks through connecting each one.
 
 <Info>
   Looking for the driver architecture? See
   [`src/fim_one/core/tool/connector/database/drivers/`](https://github.com/fim-ai/fim-one/tree/master/src/fim_one/core/tool/connector/database/drivers).
-  Adding a fifth driver is ~60 lines when the wire protocol is Postgres-compatible.
+  Adding another driver is ~60 lines when the wire protocol is Postgres-compatible.
 </Info>
 
 ## Support matrix
@@ -24,7 +25,6 @@ This guide walks through connecting each one.
 | KingbaseES     | 人大金仓 / Kingbase     | PostgreSQL wire protocol | `asyncpg` (ships with `[postgres]`) | Production-ready |
 | HighGo         | 瀚高 / HighGo          | PostgreSQL wire protocol | `asyncpg` (ships with `[postgres]`) | Production-ready |
 | DM8            | 达梦 / DaMeng          | Native DM protocol       | `dmPython` (vendor wheel)      | Production-ready |
-| GBase          | 南大通用 / GBase        | ODBC / Native            | —                              | Not planned |
 
 ## 1. KingbaseES (人大金仓)
 
@@ -96,8 +96,7 @@ uv run python scripts/test_xinchuang_dbs.py \
 ## 3. DM8 (达梦)
 
 DM8 is **not** PostgreSQL-compatible — it has its own wire protocol
-and catalog views (`ALL_TABLES`, `ALL_TAB_COLUMNS`, ...) that are
-Oracle-style. FIM One ships a dedicated `DM8Driver` that wraps the
+and its own catalog views (`ALL_TABLES`, `ALL_TAB_COLUMNS`, ...). FIM One ships a dedicated `DM8Driver` that wraps the
 official Python client.
 
 ### Prerequisite: install `dmPython`
@@ -172,4 +171,4 @@ meta-tool with `list_tables` / `discover` / `query` subcommands.
 
 - [Database configuration](/configuration/database) — backend storage for FIM One itself
 - [Environment variables](/configuration/environment-variables) — `DATABASE_TOOL_MODE`, `CREDENTIAL_ENCRYPTION_KEY`
-- [Roadmap](/roadmap) — planned work; GBase and other enterprise drivers are not on it
+- [Roadmap](/roadmap) — planned work; no further database drivers are on it

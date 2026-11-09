@@ -96,13 +96,13 @@ The builder reads the current settings, writes a system prompt, attaches the con
 
 ## How it works
 
-Under the hood, both builders share the same infrastructure as regular agents:
+Under the hood, the builders share the same infrastructure as regular agents:
 
 | Builder mode | Mechanism |
 |-------------|-----------|
 | **Quick suggestions** | A single LLM inference call generates the full configuration as structured JSON |
 | **Advanced builder** | A ReAct agent loop: Reason → call a builder tool → observe the result → decide next step |
 
-The advanced builder is a full ReAct agent that happens to have a restricted toolset — only the 9 Connector or 6 Agent builder tools, no web or computation tools. It reads the current state of the target resource, plans what needs to change, calls the appropriate tools, and verifies the result before declaring it done.
+The advanced builder is a full ReAct agent that happens to have a restricted toolset — the 9 Connector or 6 Agent builder tools (the Connector builder also gets web search and fetch, to read API docs) and no code execution. A third builder with its own tool set configures database connectors: connection test, table listing, schema annotation and sample queries. It reads the current state of the target resource, plans what needs to change, calls the appropriate tools, and verifies the result before declaring it done.
 
 This means the advanced builder can handle ambiguity: if the OpenAPI import creates 30 actions but only 5 are relevant, you can tell it "keep only the order-related endpoints" and it will delete the rest.

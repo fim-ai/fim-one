@@ -32,7 +32,7 @@ Global enterprises run a sprawl of systems that don't talk to each other — ERP
 | Mode           | What it is                                              | Access                  |
 | -------------- | ------------------------------------------------------- | ----------------------- |
 | **Standalone** | General-purpose AI assistant — search, code, KB         | Portal                  |
-| **Copilot**    | AI embedded in a host system's UI                       | iframe / widget / embed |
+| **Copilot**    | AI embedded in a host system's UI                       | API (embed planned)     |
 | **Hub**        | Central AI orchestration across all connected systems   | Portal / API            |
 
 ```mermaid
@@ -131,12 +131,12 @@ cd frontend && pnpm install && cd ..
 - **Agent harness** — Production-grade execution environment: ContextGuard for 5-layer token-budget management, progressive-disclosure meta-tools to keep the tool surface tractable, and self-reflection loops to counter goal drift.
 - **Hook System** — Deterministic enforcement that runs outside the LLM loop. First shipped: `FeishuGateHook` gates sensitive tool calls behind a human approval card posted to a Feishu group. Extensible to audit logging, read-only-mode guards, and rate limits (v0.9).
 - **Content guardrails** — Three-layer safety: tool-permission hooks (actions), credential / SSRF / MCP-auth checks (protocols), and content guardrails (input/output text). Default jailbreak-phrase detector aborts the turn before the LLM is invoked, saving tokens and surfacing a clear blocked notice in chat. Output guardrails optional via `FIM_GUARDRAILS_OUTPUT`.
-- **Auto-routing** — Classifies queries and routes to optimal mode (ReAct or DAG). Configurable via `AUTO_ROUTING`.
+- **Auto-routing** — Auto mode classifies each query and routes it to ReAct or DAG. Selectable per agent and per message; the default is ReAct.
 - **Extended thinking** — Chain-of-thought for OpenAI o-series, Gemini 2.5+, Claude.
 - **Prompt-cache observability** — Anthropic prompt-cache `read/create` token counts captured per turn, surfaced in the chat `done` payload and logged so operators can verify cache hits and detect relay stations that don't honor the discount.
 
 #### Workflow & Tools
-- **Visual workflow editor** — 12 node types, drag-and-drop canvas (React Flow v12), import/export as JSON.
+- **Visual workflow editor** — 9 node types, drag-and-drop canvas (React Flow v12), import/export as JSON. Optional module, off by default; an admin enables it under Admin → Settings → Modules.
 - **Smart file handling** — Uploaded files auto-inlined into context (small) or readable on-demand via `read_uploaded_file` tool. Intelligent document processing: PDFs, DOCX, and PPTX files get vision-aware processing with embedded image extraction when the model supports vision. Smart PDF mode extracts text from text-rich pages and renders scanned pages as images.
 - **Universal document conversion** — Built-in `convert_to_markdown` tool turns PDF / Word / Excel / PowerPoint / HTML / images / audio / Outlook `.msg` / EPUB / YouTube transcripts into clean Markdown via Microsoft MarkItDown. Vision-capable LLMs OCR embedded images and scanned pages — works with Claude, Gemini, Bedrock, and any LiteLLM-supported provider, no per-provider adapter code.
 - **Pluggable tools** — Python, Node.js, shell exec with optional Docker sandbox (`CODE_EXEC_BACKEND=docker`).
@@ -145,7 +145,7 @@ cd frontend && pnpm install && cd ..
 - **Tool artifacts** — Rich outputs (HTML previews, files) rendered in-chat.
 
 #### Messaging Channels (v0.8)
-- **Org-scoped IM bridge** — `BaseChannel` abstraction for outbound messaging across Slack, Microsoft Teams, Discord, Feishu (Lark), WeCom, and DingTalk. First shipping implementation is Feishu; Slack / Teams / WeCom / Email are next on the v0.9 roadmap.
+- **Org-scoped IM bridge** — `BaseChannel` abstraction for outbound messaging across Slack, Microsoft Teams, Discord, Feishu (Lark), WeCom, and DingTalk. First shipping implementation is Feishu; Slack / Teams / WeCom / Email are planned.
 - **Fernet-encrypted credentials** — App secrets and encrypt keys encrypted at rest; every inbound callback signature-verified.
 - **Interactive approval cards** — Channel-native `GateHook` (Feishu today, Slack/Teams next) posts an Approve / Reject card to your group when a sensitive tool call fires; the tool blocks until a group member taps a verdict. Human-in-the-loop approval without a custom workflow engine.
 - **Configurable approval routing per agent** — Three modes (Auto / Inline only / Channel only) with an approver-scope selector (initiator / agent owner / any org member). One audit path stamps `approver_user_id` and `decided_at` whether the verdict came from chat or from the channel. Auto mode falls back to inline if no channel is linked, so agents always get a real approval UX.
@@ -154,12 +154,12 @@ cd frontend && pnpm install && cd ..
 
 #### Platform
 - **Multi-tenant** — JWT auth, org isolation, admin panel with usage analytics and connector metrics. Multi-worker support via `WORKERS=N` with a Redis interrupt broker for cross-worker relay.
-- **Marketplace** — Publish and subscribe to agents, connectors, KBs, skills, workflows.
-- **Global skills (SOPs)** — Reusable operating procedures loaded for every user; progressive mode cuts tokens ~80%.
+- **Marketplace** — Publish and subscribe to agents, API connectors and MCP servers, plus skills and workflows when those modules are enabled. Knowledge bases and database connectors stay private to their owner.
+- **Global skills (SOPs)** — Reusable operating procedures loaded for every user; progressive mode cuts tokens ~80%. Optional module, off by default.
 - **Stripe billing & per-user quotas** — Optional Pro-plan upgrade via Stripe Checkout + Customer Portal. Quota chain (per-user override → plan tier → system default) with `0` for unlimited. Admin feature flag gates the entire pipeline; private deployments without Stripe stay clean.
 - **Evaluation Center** — Test-dataset management, parallel eval runs with LLM-graded judgments, per-case pass/fail/latency/token results viewer with auto-polling.
 - **Conversation recovery** — Synthetic `tool_result` rows persist after interrupted turns; clients auto-reconnect dropped SSE streams via `/chat/resume` with exponential backoff and a "Reconnecting…" indicator.
-- **6 languages** — EN, ZH, JA, KO, DE, FR. Translations are [fully automated](https://docs.fim.ai/quickstart#internationalization) — single glossary drives every LLM translation call (JSON, MDX, README), pre-commit hook refuses manual edits to generated locale files.
+- **6 languages** — EN, ZH, JA, KO, DE, FR. Translations are [fully automated](https://docs.fim.ai/contributing#i18n) — single glossary drives every LLM translation call (JSON, MDX, README), pre-commit hook refuses manual edits to generated locale files.
 - **First-run setup wizard**, dark/light theme, command palette, streaming SSE, DAG visualization.
 
 > Deep dive: [Architecture](https://docs.fim.ai/architecture/system-overview) · [Hook System](https://docs.fim.ai/architecture/hook-system) · [Channels](https://docs.fim.ai/configuration/channels/overview) · [Execution Modes](https://docs.fim.ai/concepts/execution-modes) · [Why FIM One](https://docs.fim.ai/why) · [Competitive Landscape](https://docs.fim.ai/strategy/competitive-landscape)
@@ -169,11 +169,11 @@ cd frontend && pnpm install && cd ..
 ```mermaid
 graph TB
     subgraph app["Application Layer"]
-        a["Portal · API · iframe · Feishu · Slack · WeCom · DingTalk · Teams · Email · Contract Systems · Custom Webhooks"]
+        a["Portal · API · Feishu · Slack · WeCom · Email · Custom Webhooks"]
     end
     subgraph mid["FIM One"]
         direction LR
-        m1["Connectors<br/>+ MCP Hub"] ~~~ m2["Orch Engine<br/>ReAct / DAG"] ~~~ m3["RAG /<br/>Knowledge"] ~~~ m5["Hook System<br/>+ Channels"] ~~~ m4["Auth /<br/>Admin"]
+        m1["Integrations<br/>API / DB / MCP"] ~~~ m2["Orch Engine<br/>ReAct / DAG"] ~~~ m3["RAG /<br/>Knowledge"] ~~~ m5["Hook System<br/>+ Channels"] ~~~ m4["Auth /<br/>Admin"]
     end
     subgraph biz["Business Systems"]
         b["ERP · CRM · OA · Finance · Databases · Contract Mgmt · Custom APIs"]
@@ -210,10 +210,10 @@ JINA_API_KEY=jina_...                       # unlocks web tools + RAG
 | Layer       | Technology                                                          |
 | ----------- | ------------------------------------------------------------------- |
 | Backend     | Python 3.11+, FastAPI, SQLAlchemy, Alembic, asyncio                 |
-| Frontend    | Next.js 14, React 18, Tailwind CSS, shadcn/ui, React Flow v12      |
+| Frontend    | Next.js 15, React 18, Tailwind CSS, shadcn/ui, React Flow v12      |
 | AI / RAG    | OpenAI-compatible LLMs, Jina AI (embed + search), LanceDB          |
 | Database    | SQLite (dev) / PostgreSQL (prod)                                    |
-| Messaging   | `BaseChannel` abstraction (Slack, Teams, Discord, Feishu/Lark, WeCom, DingTalk), Fernet-encrypted credentials, HMAC signature verification |
+| Messaging   | `BaseChannel` abstraction (Feishu/Lark shipped), Fernet-encrypted credentials, HMAC signature verification |
 | Infra       | Docker, uv, pnpm, SSE streaming                                    |
 
 ## Development
@@ -248,7 +248,7 @@ We welcome contributions of all kinds — code, docs, translations, bug reports,
 - [**Good First Issues**](https://github.com/fim-ai/fim-one/labels/good%20first%20issue) — curated for newcomers
 - [**Open Issues**](https://github.com/fim-ai/fim-one/issues) — bugs & feature requests
 
-**Security:** To report a vulnerability, please open a [GitHub issue](https://github.com/fim-ai/fim-one/issues) with the `[SECURITY]` tag. For sensitive disclosures, contact us via Discord DM.
+**Security:** Do not open a public issue for a sensitive vulnerability. Report it privately through [GitHub Security Advisories](https://github.com/fim-ai/fim-one/security/advisories/new) or email security@fim.ai. See [SECURITY.md](SECURITY.md).
 
 ## Activity
 

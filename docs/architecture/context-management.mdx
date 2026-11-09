@@ -30,7 +30,7 @@ The layers are numbered bottom-up because higher layers depend on lower ones. La
 
 ```mermaid
 flowchart TD
-    L5["Layer 5: Budget Configuration<br/><i>context_size - max_output</i>"]
+    L5["Layer 5: Budget Configuration<br/><i>(context_size - max_output) × 0.92</i>"]
     L4["Layer 4: DbMemory<br/><i>Load history, compact on load</i>"]
     L3["Layer 3: ContextGuard<br/><i>Per-iteration enforcement</i>"]
     L2["Layer 2: CompactUtils<br/><i>Estimation, truncation, LLM compact</i>"]
@@ -76,11 +76,11 @@ A floor of 4,000 tokens is enforced — if misconfigured values would produce a 
 
 `DbMemory` is the production memory implementation. It loads persisted conversation history from the database and compacts it to fit the token budget before the agent sees it.
 
-The design is **read-only by intention**. Persistence is handled by `chat.py` — the API layer that owns the full message lifecycle (including metadata, usage tracking, and image attachments). `DbMemory` only reads. Its `add_message()` and `clear()` methods are no-ops. This separation prevents double-writes and keeps the persistence logic in one place.
+The design is **read-only by intention**. Persistence is handled by `chat.py` — the API layer that owns the full message lifecycle (including metadata, usage tracking, and image attachments). `DbMemory` does not persist conversation turns: its `add_message()` and `clear()` methods are no-ops, and its only write is a synthetic `tool` result row for a tool call left dangling by an interrupted turn. This separation prevents double-writes and keeps the persistence logic in one place.
 
 On load, `DbMemory`:
 
-1. Queries all `user` and `assistant` messages for the conversation, ordered by creation time.
+1. Queries all `user`, `assistant` and `tool` messages for the conversation, ordered by creation time.
 2. Drops the trailing user message (the current query, which the agent will re-append).
 3. Reconstructs image attachments — user messages that included images store metadata (`file_id`, `mime_type`) in the database, and `DbMemory` rebuilds the base64 data-URLs from disk so the LLM can "see" images from earlier turns.
 4. Compacts: if a `compact_llm` was provided, uses `CompactUtils.llm_compact()`. Otherwise, falls back to `CompactUtils.smart_truncate()`. The whole stored conversation is the input here, so this is where the history most often exceeds the summarising model's window; it is then summarised in parts (see [Chunked compaction input](#chunked-compaction-input)).
@@ -105,10 +105,10 @@ The **hint system** is what makes ContextGuard context-aware rather than one-siz
 |------|---------|-----------|-------|
 | `react_iteration` | ReAct agent loop | Recent reasoning chain, current goal, critical data | Old redundant steps, failed retries, verbose tool outputs |
 | `planner_input` | DAG enriched query | User intent evolution, key decisions, constraints | Dialogue details, greetings, tool call mechanics |
-| `step_dependency` | DAG step context | Key data, numbers, conclusions | Reasoning process, failed attempts, verbose formatting |
+| `step_dependency` | Defined, no caller today | Key data, numbers, conclusions | Reasoning process, failed attempts, verbose formatting |
 | `general` | Default fallback | Key facts, decisions, tool results | Greetings, filler, redundant back-and-forth |
 
-Each hint maps to a carefully worded system prompt that tells the compaction LLM what to keep and what to discard. The prompts end with "Write in the same language as the conversation" — a detail that matters for CJK users whose summaries would otherwise default to English.
+Each hint maps to a carefully worded system prompt that tells the compaction LLM what to keep and what to discard. Each prompt instructs the LLM to write in the same language as the conversation — a detail that matters for CJK users whose summaries would otherwise default to English.
 
 If LLM compaction fails (network error, empty response, any exception), ContextGuard falls back to `smart_truncate` silently. The agent never sees the failure. This is a deliberate reliability choice: better to lose some context via heuristic truncation than to crash the iteration.
 
@@ -171,7 +171,7 @@ sequenceDiagram
     Chat->>Agent: run(query)
     Agent->>Agent: Assemble: system + history + pinned query
 
-    loop Each iteration (non-streaming)
+    loop Each iteration
         Agent->>CG: check_and_compact(messages, hint="react_iteration")
         CG->>CG: Truncate oversized, estimate, compact if needed
         CG-->>Agent: messages (within budget)
@@ -198,7 +198,7 @@ sequenceDiagram
     Chat->>Chat: Persist, emit compact SSE if compacted
 ```
 
-Tool iterations use non-streaming `chat()` for speed; answer synthesis uses streaming `stream_chat()` via `stream_answer()`. This two-phase split — fast tool loop followed by streaming synthesis — optimizes both latency and user experience. For full ReAct engine architecture including dual-mode execution and tool selection, see [ReAct Engine](/architecture/react-engine).
+Tool iterations run on the fast model when one is configured (non-streaming `chat()` in JSON mode, `stream_chat()` in native mode); the answer is streamed through `stream_answer()`. This two-phase split — tool loop followed by a streamed answer — optimizes both latency and user experience. For full ReAct engine architecture including dual-mode execution and tool selection, see [ReAct Engine](/architecture/react-engine).
 
 The key insight: **DbMemory handles the historical context problem (turns from previous requests), while ContextGuard handles the within-request growth problem (tool results accumulating during an agent loop).** They operate at different timescales and catch different failure modes.
 
@@ -224,7 +224,7 @@ flowchart TD
     I --> K
     J --> K
     K --> L{"Achieved?"}
-    L -->|No, low confidence| M["6. Replan: 500-char step summaries"]
+    L -->|No, recoverable| M["6. Replan: 500-char step summaries"]
     M --> F
     L -->|Yes| N["stream_synthesize → Final answer"]
 ```
@@ -239,7 +239,7 @@ flowchart TD
 
 **Phase 5 — Analysis.** Step results are formatted for the analyzer LLM with per-step truncation at 10K characters. This prevents a single step's verbose output from dominating the analysis context.
 
-**Phase 6 — Replanning.** When the analyzer determines the goal was not achieved and confidence is below the threshold, step results are truncated to just 500 characters each for the replanning context. Replanning needs to know *what happened* and *what went wrong*, not the full detail of every step's output. This aggressive truncation keeps the replan prompt compact enough for the planner to process efficiently.
+**Phase 6 — Replanning.** When the analyzer determines the goal was not achieved and does not judge it unreachable, step results are truncated to 500 characters each for the latest round (200 for older rounds) in the replanning context. Replanning needs to know *what happened* and *what went wrong*, not the full detail of every step's output. This aggressive truncation keeps the replan prompt compact enough for the planner to process efficiently.
 
 For the full DAG pipeline architecture including the LLM Call Map and re-planning logic, see [DAG Engine](/architecture/dag-engine).
 
@@ -265,7 +265,7 @@ FIM One uses heuristic token estimation rather than a real tokenizer. This is a 
 
 2. **Speed.** Heuristic estimation is a single pass over the string. Real tokenization involves vocabulary lookup, BPE merge operations, and special token handling. ContextGuard calls estimation on every iteration, sometimes multiple times — the speed difference matters.
 
-3. **Good enough.** The heuristic is tuned for mixed-language text (the ASCII/CJK split covers the two major cases). It can be 1.5-2x off for edge cases (heavily punctuated code, unusual Unicode), but context management is inherently approximate. Being 30% off on a 64K budget still leaves a comfortable margin.
+3. **Good enough.** The heuristic is tuned for mixed-language text (the ASCII/CJK split covers the two major cases). It can be 1.5-2x off for edge cases (heavily punctuated code, unusual Unicode), but context management is inherently approximate. Being 30% off on a ~59K budget still leaves a comfortable margin.
 
 The concrete heuristics:
 
@@ -284,7 +284,7 @@ Context management is designed to be invisible in the common case and minimally 
 
 **CompactDivider.** When `DbMemory` compacts history on load, the frontend renders a dashed divider with the text "Earlier context (N messages) was summarized by AI." This appears between the summary and the preserved recent messages, giving the user a visual cue that older context has been compressed without interrupting the conversation flow.
 
-**Token usage display.** The `done` card at the end of each response shows "X.Xk in / X.Xk out" — the total input and output tokens consumed. This includes tokens spent on compaction (the fast LLM calls for summarization). Users who monitor token consumption can see when compaction is adding overhead.
+**Token usage display.** The `done` card at the end of each response shows "X.Xk in / X.Xk out" — the total input and output tokens consumed. Tokens the fast LLM spends on compaction are not included in this figure.
 
 **Graceful error handling.** If context management fails entirely — a scenario that should not happen given the fallback chain, but could in theory — the error surfaces as agent error text in the response, not as a system crash. The conversation continues; the user can retry or rephrase.
 
