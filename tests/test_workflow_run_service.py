@@ -122,12 +122,13 @@ class _TokenSpendingExecutor:
 
 
 @pytest.fixture()
-async def world() -> AsyncIterator[World]:
+async def world(tmp_path: Path) -> AsyncIterator[World]:
     import fim_one.db.models  # noqa: F401
 
-    engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:", connect_args={"check_same_thread": False}
-    )
+    # A file, not ``:memory:``: the in-memory engine hands every session the
+    # same connection, and runs that overlap (a batch, a run started beside
+    # it) then commit into each other's statements.
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'world.db'}")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
