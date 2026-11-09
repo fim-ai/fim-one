@@ -18,6 +18,7 @@ from .types import ExecutionContext, NodeResult, NodeStatus, NodeType, WorkflowN
 from .variable_store import VariableStore
 
 if TYPE_CHECKING:
+    from fim_one.core.assembly.principal import CallContext
     from fim_one.core.tool.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -869,6 +870,24 @@ def _missing_identity(
     )
 
 
+def _node_call_context(node: WorkflowNodeDef, context: ExecutionContext) -> CallContext:
+    """The assembly-layer call context of a node in this run.
+
+    ``binding=None``: resources are judged by the run's own identity, as
+    they were before the assembly layer. The workflow becomes the binding
+    (and its author the subject) when nodes are folded into that layer.
+    """
+    from fim_one.core.assembly.principal import CallContext, provisional_principal
+
+    return CallContext(
+        principal=provisional_principal(context.user_id),
+        binding=None,
+        entry="workflow_node",
+        workflow_run_id=context.run_id,
+        node_id=node.id,
+    )
+
+
 async def _disabled_kb_names(kb_ids: list[str]) -> list[str]:
     """Return the names of the knowledge bases in *kb_ids* that are disabled."""
     if not kb_ids:
@@ -1027,7 +1046,7 @@ class ConnectorExecutor:
 
             # Load connector and action from DB
             async with create_session() as db:
-                from fim_one.db.models.connector import Connector, ConnectorAction
+                from fim_one.db.models.connector import ConnectorAction
                 from sqlalchemy import select
 
                 # Enforce visibility against the run's identity: a shared
@@ -1036,35 +1055,28 @@ class ConnectorExecutor:
                 # connectors the runner owns or has subscribed to are usable —
                 # not any connector that merely exists by id (tightened from
                 # existence-only to match chat assembly + agent binding).
-                from fim_one.web.visibility import resolve_visibility
-
-                _vis_clause, _, _ = await resolve_visibility(
-                    Connector, context.user_id, "connector", db
-                )
-                conn_stmt = select(Connector).where(
-                    Connector.id == connector_id, _vis_clause
-                )
-                conn_result = await db.execute(conn_stmt)
-                connector = conn_result.scalar_one_or_none()
-                if not connector:
-                    return NodeResult(
-                        node_id=node.id,
-                        status=NodeStatus.FAILED,
-                        error=(
-                            f"Connector '{connector_id}' not found or not "
-                            "accessible to you"
-                        ),
-                        duration_ms=_ms_since(t0),
-                    )
-
                 # A disabled connector is not callable (same rule as chat).
-                if not connector.is_active:
+                from fim_one.core.assembly.visibility import (
+                    ResourceKind,
+                    authorize_use,
+                )
+
+                _decision = await authorize_use(
+                    db, _node_call_context(node, context), ResourceKind.CONNECTOR, [connector_id]
+                )
+                # Not applied here yet: a database connector run by someone
+                # other than its owner is not refused as ``owner_only``; it
+                # goes on to the HTTP adapter below and fails there
+                # (registered in tests/assembly/matrix.py).
+                _usable = _decision.including("owner_only")
+                if not _usable:
                     return NodeResult(
                         node_id=node.id,
                         status=NodeStatus.FAILED,
-                        error=f"Connector '{connector.name}' is disabled",
+                        error=_decision.refused[connector_id].detail,
                         duration_ms=_ms_since(t0),
                     )
+                connector = _usable[0]
 
                 action_result = await db.execute(
                     select(ConnectorAction).where(
@@ -1473,7 +1485,6 @@ class MCPExecutor:
 
             # Load MCP server config from DB
             from fim_one.db import create_session
-            from fim_one.db.models.mcp_server import MCPServer
             from sqlalchemy import select
 
             async with create_session() as db:
@@ -1482,36 +1493,24 @@ class MCPExecutor:
                 # has subscribed to are usable — not any server that merely
                 # exists by id (previously existence-only, so a workflow
                 # referencing a foreign server_id could ride the owner's
-                # env/headers whenever allow_fallback was on).
-                from fim_one.web.visibility import resolve_visibility
-
-                _vis_clause, _, _ = await resolve_visibility(
-                    MCPServer, context.user_id, "mcp_server", db
+                # env/headers whenever allow_fallback was on). A disabled
+                # server is not callable.
+                from fim_one.core.assembly.visibility import (
+                    ResourceKind,
+                    authorize_use,
                 )
-                server_stmt = select(MCPServer).where(
-                    MCPServer.id == server_id, _vis_clause
-                )
-                result = await db.execute(server_stmt)
-                server = result.scalar_one_or_none()
 
-                if not server:
+                _decision = await authorize_use(
+                    db, _node_call_context(node, context), ResourceKind.MCP_SERVER, [server_id]
+                )
+                if not _decision.usable:
                     return NodeResult(
                         node_id=node.id,
                         status=NodeStatus.FAILED,
-                        error=(
-                            f"MCP server '{server_id}' not found or not "
-                            "accessible to you"
-                        ),
+                        error=_decision.refused[server_id].detail,
                         duration_ms=_ms_since(t0),
                     )
-
-                if not server.is_active:
-                    return NodeResult(
-                        node_id=node.id,
-                        status=NodeStatus.FAILED,
-                        error=f"MCP server '{server.name}' is disabled",
-                        duration_ms=_ms_since(t0),
-                    )
+                server = _decision.usable[0]
 
                 # Resolve per-user credentials vs server-level env/headers
                 effective_env: dict[str, str] | None = server.env

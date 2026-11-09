@@ -315,14 +315,14 @@ async def authorize_use(
         if options:
             stmt = stmt.options(*options)
         row = (await db.execute(stmt)).scalar_one_or_none()
-        rows = [row] if row is not None else []
+        # Keyed by the id asked for: the query matched on it.
+        decision._seen = {ids[0]: row} if row is not None else {}
     else:
         stmt = select(model).where(model.id.in_(ids), clause)
         if options:
             stmt = stmt.options(*options)
-        rows = list((await db.execute(stmt)).scalars().all())
+        decision._seen = {row.id: row for row in (await db.execute(stmt)).scalars().all()}
 
-    decision._seen = {row.id: row for row in rows}
     for rid in ids:
         seen = decision._seen.get(rid)
         if seen is None:
@@ -343,15 +343,18 @@ async def list_usable(
     *,
     options: Sequence[Any] = (),
     columns: Sequence[Any] | None = None,
+    where: Sequence[Any] = (),
 ) -> list[Any]:
     """Everything of *kind* this call may use (auto-discovery).
 
     Returns ORM rows, or ``Row`` tuples of *columns* when given. *columns*
-    is not available for connectors, whose rule reads the row.
+    is not available for connectors, whose rule reads the row. *where* adds
+    conditions of the caller's own (a tool that only offers published
+    workflows, say); they narrow the result and are not part of the rule.
     """
     model = _model_for(kind)
     clause = await _subject_clause(db, kind, ctx.subject_id)
-    conditions = [clause, model.is_active == True]  # noqa: E712
+    conditions = [clause, model.is_active == True, *where]  # noqa: E712
 
     if columns is not None:
         if kind is ResourceKind.CONNECTOR:

@@ -113,6 +113,25 @@ class TestCoreHasNoTopLevelWebImport:
         )
 
 
+class TestCoreDoesNotImportWebVisibility:
+    """The visibility rule lives in core.assembly; core must not reach back.
+
+    Function-level imports count here: ``fim_one.web.visibility`` is only a
+    re-export for the list pages under ``web/api``.
+    """
+
+    def test_no_import_of_web_visibility(self) -> None:
+        offenders: list[str] = []
+        for py in _core_py_files():
+            for module, _top in _collect_imports(py):
+                if module == "fim_one.web.visibility":
+                    offenders.append(str(py.relative_to(SRC)))
+        assert not offenders, (
+            "core modules must use fim_one.core.assembly.visibility, but these "
+            "import fim_one.web.visibility:\n  " + "\n  ".join(offenders)
+        )
+
+
 class TestDbModelsImportsWithoutWeb:
     """Importing fim_one.db.models must not transitively import fim_one.web."""
 

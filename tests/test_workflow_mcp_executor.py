@@ -103,7 +103,7 @@ def _passthrough_visibility(monkeypatch: pytest.MonkeyPatch) -> None:
         return _sa_true(), [], []
 
     monkeypatch.setattr(
-        "fim_one.web.visibility.resolve_visibility", _fake_resolve
+        "fim_one.core.assembly.visibility.resolve_visibility", _fake_resolve
     )
 
 

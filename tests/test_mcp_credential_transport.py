@@ -269,7 +269,7 @@ def _passthrough_visibility(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _fake_resolve(*args: Any, **kwargs: Any) -> tuple[Any, list[str], list[str]]:
         return _sa_true(), [], []
 
-    monkeypatch.setattr("fim_one.web.visibility.resolve_visibility", _fake_resolve)
+    monkeypatch.setattr("fim_one.core.assembly.visibility.resolve_visibility", _fake_resolve)
 
 
 def _node_session(server: Any, cred: Any, *, cred_raises: bool = False) -> AsyncMock:

@@ -362,6 +362,18 @@ class TestListUsable:
 
         assert [tuple(r) for r in rows] == [("skill-on", "skill-on")]
 
+    async def test_where_narrows_with_the_callers_own_conditions(
+        self, session: AsyncSession
+    ) -> None:
+        rows = await list_usable(
+            session,
+            _direct(OWNER),
+            ResourceKind.AGENT,
+            where=(Agent.visibility == "personal",),
+        )
+
+        assert [r.id for r in rows] == ["agent-private"]
+
     async def test_columns_is_refused_where_the_rule_reads_the_row(
         self, session: AsyncSession
     ) -> None:

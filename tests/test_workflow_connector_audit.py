@@ -93,7 +93,7 @@ async def test_connector_call_is_audited() -> None:
     with (
         patch("fim_one.db.create_session", return_value=_fake_db_cm(added)),
         patch(
-            "fim_one.web.visibility.resolve_visibility",
+            "fim_one.core.assembly.visibility.resolve_visibility",
             new=AsyncMock(return_value=(_sa_true(), [], [])),
         ),
         patch(
@@ -140,7 +140,7 @@ async def test_confirmation_required_action_fails_closed() -> None:
             return_value=_fake_db_cm(added, requires_confirmation=True),
         ),
         patch(
-            "fim_one.web.visibility.resolve_visibility",
+            "fim_one.core.assembly.visibility.resolve_visibility",
             new=AsyncMock(return_value=(_sa_true(), [], [])),
         ),
         patch(
@@ -188,7 +188,7 @@ async def test_connector_not_visible_to_runner_is_blocked() -> None:
     with (
         patch("fim_one.db.create_session", return_value=mock_cm),
         patch(
-            "fim_one.web.visibility.resolve_visibility",
+            "fim_one.core.assembly.visibility.resolve_visibility",
             new=AsyncMock(return_value=(_sa_true(), [], [])),
         ),
         patch(
