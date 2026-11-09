@@ -20,6 +20,7 @@ These tests lock that property in so it cannot silently regress:
 from __future__ import annotations
 
 import ast
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -192,13 +193,21 @@ ENTRY_POINT_GATE = (
     "decrypt_credential(",
     "decrypt_db_config(",
     "resolve_connector_credentials(",
+    "load_connector_credential(",
     "ConnectorCallLog(",
+    "ConnectorCredential",
     "MCPServerCredential",
+    # the fields of a personal MCP credential
+    "env_blob",
+    "headers_blob",
     "ConnectorToolAdapter(",
     "build_connector_meta_tool(",
     "build_database_meta_tool(",
     "build_mcp_meta_tool(",
 )
+# Reading the secrets stored on an MCP server row (``server.env``,
+# ``_srv.headers``): the row's owner may be someone else.
+MCP_SERVER_SECRET_READ = re.compile(r"\b\w*(?:server|srv|mcp)\w*\.(?:env|headers)\b", re.I)
 # The workflow's own env vars (not a connector or MCP credential) are
 # decrypted where the run identity is decided.
 ENTRY_POINT_EXCEPTIONS = frozenset({("core/workflow/run_service.py", "decrypt_credential(")})
@@ -244,6 +253,12 @@ class TestCredentialsAndCallRecordsLiveInTheAssemblyLayer:
             for needle in ENTRY_POINT_GATE
             for hit in _occurrences(needle, entry_points)
             if (hit.split(":", 1)[0], needle) not in ENTRY_POINT_EXCEPTIONS
+        ]
+        offenders += [
+            f"{py.relative_to(SRC)}:{lineno}: {match.group(0)}"
+            for py in entry_points
+            for lineno, line in _source_lines(py)
+            if (match := MCP_SERVER_SECRET_READ.search(line))
         ]
         assert not offenders, (
             "chat.py and core/workflow must go through fim_one.core.assembly "
