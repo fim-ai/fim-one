@@ -10,6 +10,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ## [Unreleased]
 
+## [v0.9.4] - 2026-11-09
+
 ### Added
 
 - **An agent stuck repeating refused calls stops and asks how to proceed.** After three rounds in a row in which every call was refused as a repeat, the run ends with the steps taken so far, instead of running until the iteration limit. `REACT_MAX_TURN_SECONDS` adds an optional time limit per run.

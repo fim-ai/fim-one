@@ -330,6 +330,11 @@ Tracked bugs that are reproducible in production but not yet fixed. Each entry n
 - [x] Linking a sign-in provider requires a full sign-in ([GHSA-x8r3-xjc7-ph3c](https://github.com/fim-ai/fim-one/security/advisories/GHSA-x8r3-xjc7-ph3c))
 - [x] API key scopes enforced on every route, default deny ([GHSA-j575-3grh-pvcw](https://github.com/fim-ai/fim-one/security/advisories/GHSA-j575-3grh-pvcw))
 
+### v0.9.4 (2026-11-09) — Tool and Approval Gating Patch
+- [x] Agent tools that post to instance-wide channels (notifications, email) stay off until the operator enables them
+- [x] Unassigned workflow approvals limited to the run's user; Feishu email matching only for trusted tenants
+- [x] A run stuck repeating refused calls stops and asks how to proceed; optional per-run time limit
+
 ## Planned Versions
 
 Replanned 2026-09-06. The kernel is built: ReAct engine, connectors,
@@ -338,7 +343,7 @@ finishing what is already in the codebase and keeping it correct, not opening
 new feature areas. Anything not listed below is not planned; see the closing
 note.
 
-### v0.9.4 — Finishing What Is In
+### v0.9.5 — Finishing What Is In
 
 **Goal**: close out the half-finished paths already in the tree.
 

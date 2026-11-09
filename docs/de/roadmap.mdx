@@ -330,6 +330,11 @@ Nachverfolgte Fehler, die in der Produktionsumgebung reproduzierbar, aber noch n
 - [x] Linking a sign-in provider requires a full sign-in ([GHSA-x8r3-xjc7-ph3c](https://github.com/fim-ai/fim-one/security/advisories/GHSA-x8r3-xjc7-ph3c))
 - [x] API key scopes enforced on every route, default deny ([GHSA-j575-3grh-pvcw](https://github.com/fim-ai/fim-one/security/advisories/GHSA-j575-3grh-pvcw))
 
+### v0.9.4 (2026-11-09) — Patch für Tool- und Genehmigungs-Gating
+- [x] Agent-Tools, die in instanzweiten Kanälen posten (Benachrichtigungen, E-Mail), bleiben deaktiviert, bis der Operator sie aktiviert
+- [x] Nicht zugewiesene Workflow-Genehmigungen sind auf den Benutzer des Laufs beschränkt; der Abgleich von Feishu-E-Mail-Adressen erfolgt nur für vertrauenswürdige Tenants
+- [x] Ein Lauf, der aufgrund wiederholter abgelehnter Aufrufe feststeckt, wird beendet und fragt, wie fortgefahren werden soll; optionales Zeitlimit pro Lauf
+
 ## Geplante Versionen
 
 Neu geplant am 2026-09-06. Der Kern ist fertiggestellt: ReAct-Engine, Konnektoren,
@@ -338,14 +343,14 @@ darum, das, was bereits in der Codebasis vorhanden ist, fertigzustellen und korr
 nicht darum, neue Funktionsbereiche zu eröffnen. Alles, was unten nicht aufgeführt ist, ist nicht
 geplant; siehe den abschließenden Hinweis.
 
-### v0.9.4 — Finishing What Is In
+### v0.9.5 — Die letzten offenen Punkte abschließen
 
-**Ziel**: die halbfertigen Pfade im Baum abschließen.
+**Ziel**: Die bereits im Code vorhandenen, halb fertigen Pfade abschließen.
 
-- [ ] Chunked compaction input and model-aware budgets on the main chat path, so any model mix stays within window
-- [ ] Verify Responses-bridge streaming usage numbers on the next LiteLLM upgrade (upstream mis-mapping suspected)
-- [ ] Retire the LiteLLM chat→responses bridge once the native GPT-5.x path has run a full release
-- [ ] Stripe billing go-live — nightly reconcile against Stripe for missed webhooks, full-stack regression tests, live price ID
+- [ ] Chunk-basierte Komprimierung der Eingaben und modellabhängige Budgets im Haupt-Chat-Pfad, damit jede Modellkombination innerhalb des Kontextfensters bleibt
+- [ ] Beim nächsten LiteLLM-Upgrade die Streaming-Nutzungszahlen der Responses-Bridge überprüfen (eine fehlerhafte Zuordnung im Upstream wird vermutet)
+- [ ] Die LiteLLM-Bridge von Chat zu Responses außer Betrieb nehmen, sobald der native GPT-5.x-Pfad einen vollständigen Release-Zyklus durchlaufen hat
+- [ ] Stripe-Abrechnung live schalten — nächtlicher Abgleich mit Stripe auf verpasste Webhooks, vollständige Regressionstests über den gesamten Stack und Live-Preis-ID
 
 ### Aus dem Pre-Replan-Plan v0.9 ausgeliefert
 
