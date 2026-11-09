@@ -120,3 +120,15 @@ async def test_a_delegates_call_is_recorded_under_the_delegate(
     async with factory() as s:
         (row,) = (await s.execute(select(ConnectorCallLog))).scalars().all()
     assert (row.entry, row.agent_id) == ("sub_agent", scene.carrier_agent_id)
+
+
+def test_an_agent_with_no_owner_is_still_named_on_its_call_records() -> None:
+    """The agent id was taken from the binding, and an agent whose ``user_id``
+    is empty has none: its calls were recorded with no agent."""
+    from fim_one.web.api import chat
+
+    ctx = chat._use_context("u-1", {"agent_id": "agent-1", "owner_user_id": None})
+
+    assert ctx.binding is None
+    assert ctx.agent_id == "agent-1"
+    assert chat._use_context("u-1", None).agent_id is None

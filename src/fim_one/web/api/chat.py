@@ -1190,10 +1190,13 @@ def _use_context(
     """
     binding: Binding | None = None
     owner_id = agent_cfg.get("owner_user_id") if agent_cfg else None
+    # Which agent the call is made through is a fact of its own: an agent
+    # with no owner still has an id, and call records carry it.
+    agent_id = str(agent_cfg.get("agent_id") or agent_cfg.get("id") or "") if agent_cfg else ""
     if agent_cfg and owner_id:
         binding = Binding(
             kind="agent",
-            id=str(agent_cfg.get("agent_id") or agent_cfg.get("id") or ""),
+            id=agent_id,
             owner_id=owner_id,
             org_id=agent_cfg.get("org_id"),
         )
@@ -1202,7 +1205,7 @@ def _use_context(
         binding=binding,
         entry=entry or ("chat" if agent_cfg else "chat_noagent"),
         conversation_id=conversation_id,
-        agent_id=(binding.id or None) if binding else None,
+        agent_id=agent_id or None,
     )
 
 
