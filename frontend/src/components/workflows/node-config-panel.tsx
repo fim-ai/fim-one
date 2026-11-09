@@ -83,7 +83,10 @@ export function NodeConfigPanel({ workflowId, node, allNodes, onUpdate, onDelete
   const nodeType = node.type as WorkflowNodeType
 
   return (
-    <div className="flex flex-col h-full border-l border-border/40 bg-background w-[300px]">
+    <div
+      data-testid="node-config-panel"
+      className="flex flex-col h-full border-l border-border/40 bg-background w-[300px]"
+    >
       <div className="flex items-center justify-between px-3 pt-3 pb-2 shrink-0 border-b border-border/40">
         <h3 className="text-xs font-semibold text-foreground">
           {t("configTitle")}

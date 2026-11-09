@@ -10,6 +10,18 @@ const compat = new FlatCompat({
 })
 
 const eslintConfig = [
+  // Generated files: build output (wherever a build put it), the type stub
+  // Next.js writes next to it, and test artifacts.
+  {
+    ignores: [
+      ".next/**",
+      ".next-build/**",
+      ".next-e2e/**",
+      "next-env.d.ts",
+      "playwright-report/**",
+      "test-results/**",
+    ],
+  },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
 ]
 

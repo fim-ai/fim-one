@@ -11,7 +11,11 @@ const nextConfig: NextConfig = {
   },
   // Use separate output dir for production builds so `next build`
   // doesn't nuke the dev server's .next/ directory mid-HMR.
-  distDir: process.env.NODE_ENV === "production" ? ".next-build" : ".next",
+  // The e2e smoke passes NEXT_DIST_DIR so it never shares a directory with a
+  // running dev server or a release build.
+  distDir:
+    process.env.NEXT_DIST_DIR ||
+    (process.env.NODE_ENV === "production" ? ".next-build" : ".next"),
   // Standalone output for Docker — produces a minimal self-contained server.
   // Set NEXT_OUTPUT=standalone in Dockerfile; unset locally to keep `next start` working.
   output: process.env.NEXT_OUTPUT === "standalone" ? "standalone" : undefined,
