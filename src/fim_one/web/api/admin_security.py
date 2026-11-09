@@ -6,7 +6,7 @@ import ipaddress
 import math
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -210,6 +210,33 @@ async def login_stats(
 # ---------------------------------------------------------------------------
 
 
+async def _commit_unless_self_lockout(db: AsyncSession, request: Request) -> None:
+    """Commit a rule change unless it would block the admin making it.
+
+    The middleware in ``web/ip_rules.py`` applies the active rules to every
+    API request, admin pages included; a change that blocks the caller's own
+    address could only be undone with ``IP_RULES_ENFORCED=false`` and a
+    restart. Checked against the same address the middleware sees.
+    """
+    from fim_one.web.ip_rules import is_client_allowed, parse_rules
+
+    await db.flush()
+    rows = await db.execute(
+        select(IpRule.ip_address, IpRule.rule_type).where(IpRule.is_active.is_(True))
+    )
+    allow, deny = parse_rules((r[0], r[1]) for r in rows.all())
+    client_ip = request.client.host if request.client else None
+    if not is_client_allowed(client_ip, allow, deny):
+        await db.rollback()
+        raise AppError(
+            "ip_rule_self_lockout",
+            status_code=409,
+            detail=f"This change would block your own address ({client_ip}).",
+            detail_args={"ip": client_ip or ""},
+        )
+    await db.commit()
+
+
 @router.get("/ip-rules", response_model=list[IpRuleResponse])
 async def list_ip_rules(
     current_user: User = Depends(get_current_admin),  # noqa: B008
@@ -226,6 +253,7 @@ async def list_ip_rules(
 @router.post("/ip-rules", response_model=IpRuleResponse, status_code=201)
 async def create_ip_rule(
     body: IpRuleCreateRequest,
+    request: Request,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> IpRuleResponse:
@@ -250,7 +278,7 @@ async def create_ip_rule(
         created_by_id=current_user.id,
     )
     db.add(rule)
-    await db.commit()
+    await _commit_unless_self_lockout(db, request)
     await db.refresh(rule)
 
     await write_audit(
@@ -269,6 +297,7 @@ async def create_ip_rule(
 async def toggle_ip_rule(
     rule_id: str,
     body: IpRuleToggleRequest,
+    request: Request,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> IpRuleResponse:
@@ -279,7 +308,7 @@ async def toggle_ip_rule(
         raise AppError("ip_rule_not_found", status_code=404)
 
     rule.is_active = body.is_active
-    await db.commit()
+    await _commit_unless_self_lockout(db, request)
 
     action = "ip_rule.enable" if body.is_active else "ip_rule.disable"
     await write_audit(
@@ -297,6 +326,7 @@ async def toggle_ip_rule(
 @router.delete("/ip-rules/{rule_id}", status_code=204)
 async def delete_ip_rule(
     rule_id: str,
+    request: Request,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> None:
@@ -308,7 +338,7 @@ async def delete_ip_rule(
 
     detail = f"{rule.rule_type} {rule.ip_address}"
     await db.delete(rule)
-    await db.commit()
+    await _commit_unless_self_lockout(db, request)
 
     await write_audit(
         db,
@@ -396,6 +426,7 @@ class IpRuleBatchImportResponse(BaseModel):
 @router.post("/ip-rules/batch-import", response_model=IpRuleBatchImportResponse)
 async def batch_import_ip_rules(
     body: IpRuleBatchImportRequest,
+    request: Request,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> IpRuleBatchImportResponse:
@@ -428,7 +459,7 @@ async def batch_import_ip_rules(
         added += 1
 
     if added > 0:
-        await db.commit()
+        await _commit_unless_self_lockout(db, request)
 
     await write_audit(
         db,

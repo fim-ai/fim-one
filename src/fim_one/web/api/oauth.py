@@ -440,6 +440,21 @@ async def _handle_login(
     # address would allow an attacker who changes their provider email to
     # overwrite another user's email address.
 
+    # 2FA: the provider sign-in replaces the password, not the second factor.
+    # Hand the browser a short-lived 2FA token instead of session tokens; the
+    # login page finishes with /api/auth/login/verify-2fa.
+    if user.totp_enabled:
+        from fim_one.web.api.auth import _create_2fa_temp_token
+
+        await db.commit()
+        return RedirectResponse(
+            url=(
+                f"{frontend_url}/auth/callback"
+                f"#requires_2fa=1&temp_token={_create_2fa_temp_token(user.id)}"
+            ),
+            status_code=302,
+        )
+
     # Issue JWT tokens
     jwt_access = create_access_token(user.id, user.email)
     jwt_refresh = create_refresh_token(user.id, user.email)

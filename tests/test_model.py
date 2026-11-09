@@ -669,6 +669,61 @@ class TestBuildRequestKwargs:
         assert "temperature" not in kwargs
         assert "thinking" not in kwargs
 
+    @pytest.mark.parametrize(
+        "model",
+        ["kimi-k2.6", "kimi-k2.7-code", "kimi-k3", "KIMI-K3", "moonshot/kimi-k2.6"],
+    )
+    def test_kimi_fixed_temperature_models_omit_temperature(self, model: str) -> None:
+        """Kimi rejects an explicit temperature for these families (issue #57)."""
+        llm = OpenAICompatibleLLM(
+            api_key="sk-test",
+            base_url="https://api.moonshot.ai/v1",
+            model=model,
+        )
+        msgs = [ChatMessage(role="user", content="hi")]
+        kwargs = llm._build_request_kwargs(
+            msgs,
+            tools=None,
+            temperature=None,
+            max_tokens=None,
+            stream=False,
+        )
+        assert "temperature" not in kwargs
+
+    def test_kimi_fixed_temperature_omits_explicit_per_call_value(self) -> None:
+        """The planner/classifier pass temperature=0.0 per call; drop that too."""
+        llm = OpenAICompatibleLLM(
+            api_key="sk-test",
+            base_url="https://api.moonshot.ai/v1",
+            model="kimi-k2.6",
+        )
+        msgs = [ChatMessage(role="user", content="hi")]
+        kwargs = llm._build_request_kwargs(
+            msgs,
+            tools=None,
+            temperature=0.0,
+            max_tokens=None,
+            stream=False,
+        )
+        assert "temperature" not in kwargs
+
+    def test_non_fixed_moonshot_model_keeps_temperature(self) -> None:
+        """Don't over-drop: ordinary Moonshot text models accept temperature."""
+        llm = OpenAICompatibleLLM(
+            api_key="sk-test",
+            base_url="https://api.moonshot.ai/v1",
+            model="moonshot-v1-8k",
+        )
+        msgs = [ChatMessage(role="user", content="hi")]
+        kwargs = llm._build_request_kwargs(
+            msgs,
+            tools=None,
+            temperature=None,
+            max_tokens=None,
+            stream=False,
+        )
+        assert kwargs["temperature"] == 0.7
+
     def test_claude_via_openai_proxy_left_untouched(self) -> None:
         """A Claude model reached through a generic openai/ proxy is the relay's
         translation problem — we must not inject adaptive thinking or drop temp."""

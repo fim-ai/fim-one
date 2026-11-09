@@ -377,6 +377,30 @@ def _is_openai_gpt5_family(model: str) -> bool:
     return bool(_OPENAI_GPT5_FAMILY_RE.match(model.lower()))
 
 
+# Kimi (Moonshot) models whose temperature is fixed by the provider.  The
+# model overview lists the K3 series and ``kimi-k2.7-code`` as fixed, and
+# ``kimi-k2.6`` as 1.0 when thinking is on, with "do not pass it explicitly";
+# a request carrying the framework's 0.7 default is rejected with a 400.
+# Only the documented families are matched: ``kimi-k2.5`` is no longer on the
+# overview, so it keeps the caller's value until its contract is documented.
+_KIMI_FIXED_TEMPERATURE_FRAGMENTS = (
+    "kimi-k2.6",
+    "kimi-k2-6",
+    "kimi_k2_6",
+    "kimi-k2.7",
+    "kimi-k2-7",
+    "kimi_k2_7",
+    "kimi-k3",
+    "kimi_k3",
+)
+
+
+def _is_kimi_fixed_temperature_model(model: str) -> bool:
+    """True for Kimi models that reject an explicit ``temperature``."""
+    lowered = model.lower()
+    return any(fragment in lowered for fragment in _KIMI_FIXED_TEMPERATURE_FRAGMENTS)
+
+
 _OPENAI_VERSION_RE = re.compile(r"gpt-(\d+)(?:\.(\d+))?")
 
 # Lowest effort accepted by models that cannot switch reasoning off.
@@ -1346,9 +1370,12 @@ class OpenAICompatibleLLM(BaseLLM):
             kwargs["response_format"] = response_format
 
         # Strict Anthropic models (Opus 4.7/4.8, Fable 5, Mythos 5) reject
-        # temperature/top_p/top_k outright (400) — drop the temperature we
-        # always set above, whether or not thinking is enabled.
-        if self._rejects_sampling_params():
+        # temperature/top_p/top_k outright (400), and Kimi's fixed-temperature
+        # families reject any explicit value — drop the temperature we always
+        # set above, whether or not thinking is enabled.
+        if self._rejects_sampling_params() or _is_kimi_fixed_temperature_model(
+            self._model
+        ):
             kwargs.pop("temperature", None)
 
         # GPT-5 and later on an OpenAI route: rename the token cap and drop a

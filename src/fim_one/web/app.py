@@ -383,6 +383,37 @@ def create_app() -> FastAPI:
             )
         return await call_next(request)
 
+    # -- IP allow/deny rules (admin Security → IP Rules) --------------------
+    # Registered after maintenance so it runs first: a blocked client never
+    # reaches any other middleware.
+    from fim_one.web.ip_rules import (
+        RuleCache,
+        enforcement_enabled,
+        is_client_allowed,
+        path_is_exempt,
+    )
+
+    _ip_rule_cache = RuleCache()
+
+    @app.middleware("http")
+    async def ip_rule_gate(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        if not enforcement_enabled() or path_is_exempt(request.url.path, request.method):
+            return await call_next(request)
+        allow, deny = await _ip_rule_cache.get()
+        client_ip = request.client.host if request.client else None
+        if not is_client_allowed(client_ip, allow, deny):
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "detail": "Access from this IP address is not allowed.",
+                    "error_code": "ip_not_allowed",
+                    "error_args": {},
+                },
+            )
+        return await call_next(request)
+
     # -- Exception handlers -------------------------------------------------
     @app.exception_handler(AppError)
     async def app_error_handler(
