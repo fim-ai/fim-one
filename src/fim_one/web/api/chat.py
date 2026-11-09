@@ -2519,11 +2519,13 @@ async def _connect_pending_mcp_servers(
                 # Only the caller's own values, never merged with the owner's.
                 _effective_env = _cred.env_blob
                 _effective_headers = _cred.headers_blob
-            elif _cred and _cred.env_blob:
-                _effective_env = _cred.env_blob
-                _effective_headers = (
-                    _cred.headers_blob if _cred.headers_blob else _srv.headers
-                )
+            elif _cred:
+                # Each field the caller saved replaces the server's; a field
+                # they left empty keeps the server-level value.
+                if _cred.env_blob:
+                    _effective_env = _cred.env_blob
+                if _cred.headers_blob:
+                    _effective_headers = _cred.headers_blob
             # else: use server-level env (current behavior)
 
             if _srv.transport == "stdio" and _srv.command:

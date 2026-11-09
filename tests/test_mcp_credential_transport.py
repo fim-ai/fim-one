@@ -216,7 +216,7 @@ class TestChatFallbackOff:
         client.connect_streamable_http.assert_not_awaited()
 
 
-class TestChatUnchangedPaths:
+class TestChatOwnerAndFallbackOn:
     async def test_owner_uses_server_credentials(self) -> None:
         client = await _chat_connect(_server(), None, user_id=OWNER)
 
@@ -241,6 +241,18 @@ class TestChatUnchangedPaths:
         client = await _chat_connect(_server(allow_fallback=True), _cred(env={"ANYTHING": "x"}))
 
         assert client.connect_streamable_http.await_args.kwargs["headers"] == OWNER_HEADERS
+
+    async def test_fallback_on_personal_headers_replace_owner_headers(self) -> None:
+        own = {"Authorization": "Bearer mine"}
+        client = await _chat_connect(_server(allow_fallback=True), _cred(headers=own))
+
+        assert client.connect_streamable_http.await_args.kwargs["headers"] == own
+
+    async def test_owner_personal_headers_replace_server_headers(self) -> None:
+        own = {"Authorization": "Bearer mine"}
+        client = await _chat_connect(_server(), _cred(headers=own), user_id=OWNER)
+
+        assert client.connect_streamable_http.await_args.kwargs["headers"] == own
 
     async def test_fallback_on_stdio_personal_env_replaces_owner_env(self) -> None:
         own = {"API_KEY": "mine"}

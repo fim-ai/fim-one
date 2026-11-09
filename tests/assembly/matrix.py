@@ -1195,16 +1195,6 @@ def _fallback_gate_on_no_auth(_entry: str, cell: Cell, so_far: Outcome) -> Outco
     return Outcome(exposed=False) if so_far.exposed and hidden else None
 
 
-def _personal_headers_ignored(_entry: str, cell: Cell, so_far: Outcome) -> Outcome | None:
-    if not (so_far.exposed and cell.has_personal):
-        return None
-    if cell.role == "owner":
-        return _replace(so_far, credential_source="owner")
-    if cell.allow_fallback:
-        return _replace(so_far, credential_source="owner_fallback")
-    return None  # fallback off: the user must bring their own, and it is used
-
-
 def _never_connected(_entry: str, _cell: Cell, so_far: Outcome) -> Outcome | None:
     return Outcome(exposed=False) if so_far.exposed else None
 
@@ -1347,19 +1337,6 @@ KNOWN_DEVIATIONS: tuple[Deviation, ...] = (
         ref="design §1.2 row 'chat-A / sub'; B6",
         removed_in="C1 phase 2",
         today=_fallback_gate_on_no_auth,
-    ),
-    Deviation(
-        name="chat-ignores-personal-headers",
-        entries=("chat_agent", "chat_noagent"),
-        resources=("mcp_http",),
-        what=(
-            "A personal credential holding only headers is not used unless the user "
-            "must bring their own: the owner, and anyone on a server with fallback "
-            "on, connects with the server's headers."
-        ),
-        ref="design §1.2 row 'MCP chat'; B2",
-        removed_in="C1 phase 2",
-        today=_personal_headers_ignored,
     ),
     Deviation(
         name="agent-mcp-never-connected",
