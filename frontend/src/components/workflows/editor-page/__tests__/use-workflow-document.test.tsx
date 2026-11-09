@@ -49,6 +49,8 @@ function canvasOf(prompt: string): WorkflowBlueprint {
   }
 }
 
+const noop = () => {}
+
 const REGION = { name: "region", type: "string" as const, default_value: "eu", description: "" }
 
 function workflowWith(blueprint: WorkflowBlueprint): WorkflowResponse {
@@ -66,7 +68,7 @@ async function mountDocument(stored: WorkflowBlueprint, extra: { readCanvas?: ()
     (props: { user: UserInfo | null }) =>
       useWorkflowDocument({
         workflowId: "wf1",
-        user: props.user,
+        userId: props.user?.id ?? null,
         blueprintRef,
         onBlueprintChanged,
         ...extra,
@@ -129,6 +131,57 @@ describe("useWorkflowDocument", () => {
     await act(() => vi.advanceTimersByTimeAsync(200))
     expect(api.update).toHaveBeenCalledTimes(1)
     expect(api.update.mock.calls[0][1].blueprint).toEqual(canvasOf("third"))
+  })
+
+  describe("loading", () => {
+    it("waits for a signed-in user", async () => {
+      api.get.mockResolvedValue(workflowWith(canvasOf("first")))
+      const blueprintRef: MutableRefObject<WorkflowBlueprint> = { current: emptyBlueprint() }
+      const { result, rerender } = renderHook(
+        (props: { userId: string | null }) =>
+          useWorkflowDocument({
+            workflowId: "wf1",
+            userId: props.userId,
+            blueprintRef,
+            onBlueprintChanged: noop,
+          }),
+        { initialProps: { userId: null as string | null } },
+      )
+      expect(api.get).not.toHaveBeenCalled()
+      rerender({ userId: "u1" })
+      await waitFor(() => expect(result.current.isLoadingWorkflow).toBe(false))
+      expect(api.get).toHaveBeenCalledTimes(1)
+    })
+
+    // The auth context replaces the user object when /me answers and when
+    // the session token is refreshed. The page used to reload the workflow
+    // each time, remounting the canvas and dropping what was not saved yet.
+    it("does not reload when the user object is replaced by one for the same user", async () => {
+      const { result, rerender, blueprintRef } = await mountDocument(canvasOf("first"))
+      act(() => result.current.changeBlueprint(canvasOf("unsaved edit")))
+      rerender({ user: { ...user, display_name: "Ada" } })
+      rerender({ user: { ...user, has_agent: true } })
+      expect(api.get).toHaveBeenCalledTimes(1)
+      expect(result.current.isLoadingWorkflow).toBe(false)
+      expect(blueprintRef.current).toEqual(canvasOf("unsaved edit"))
+      expect(result.current.isDirty).toBe(true)
+    })
+
+    it("goes back to the list when the workflow cannot be loaded", async () => {
+      api.get.mockRejectedValue(new Error("gone"))
+      const blueprintRef: MutableRefObject<WorkflowBlueprint> = { current: emptyBlueprint() }
+      const { result } = renderHook(() =>
+        useWorkflowDocument({
+          workflowId: "wf1",
+          userId: "u1",
+          blueprintRef,
+          onBlueprintChanged: noop,
+        }),
+      )
+      await waitFor(() => expect(result.current.isLoadingWorkflow).toBe(false))
+      expect(router.replace).toHaveBeenCalledWith("/workflows")
+      expect(toast.error).toHaveBeenCalledWith("workflowUpdateFailed")
+    })
   })
 
   describe("saving what is on the canvas", () => {

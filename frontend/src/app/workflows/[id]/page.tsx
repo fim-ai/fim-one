@@ -80,7 +80,7 @@ export default function WorkflowEditorPage() {
   const readCanvas = useCallback(() => editorRef.current?.getBlueprint() ?? null, [])
   const doc = useWorkflowDocument({
     workflowId,
-    user,
+    userId: user?.id ?? null,
     blueprintRef,
     onBlueprintChanged: validation.triggerValidation,
     readCanvas,
@@ -131,8 +131,9 @@ export default function WorkflowEditorPage() {
   }, [])
 
   // Load schedule status
+  const userId = user?.id ?? null
   useEffect(() => {
-    if (!user || !workflowId) return
+    if (!userId || !workflowId) return
     workflowApi
       .getSchedule(workflowId)
       .then((data) => {
@@ -142,7 +143,7 @@ export default function WorkflowEditorPage() {
         // No schedule configured — that's fine
         setScheduleActive(false)
       })
-  }, [user, workflowId])
+  }, [userId, workflowId])
 
   // Auto-open run panel when navigated with ?run=true
   const { openRunPanel } = run

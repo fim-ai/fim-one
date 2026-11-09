@@ -6,7 +6,6 @@ import { useTranslations } from "next-intl"
 
 import { workflowApi } from "@/lib/api"
 import { toastWorkflowError } from "@/lib/workflow-errors"
-import type { UserInfo } from "@/types/auth"
 import type { WorkflowBlueprint, WorkflowResponse, WorkflowVariable } from "@/types/workflow"
 import {
   blueprintOfImport,
@@ -23,8 +22,12 @@ const AUTO_SAVE_DELAY_MS = 5000
 
 interface WorkflowDocumentOptions {
   workflowId: string
-  /** The signed-in user; the workflow loads once there is one. */
-  user: UserInfo | null
+  /**
+   * Id of the signed-in user; the workflow loads once there is one. The id,
+   * not the user object: the object is replaced whenever the profile or the
+   * session token is refreshed, which must not reload the workflow.
+   */
+  userId: string | null
   /** The blueprint being edited; the editor and the validation read it too. */
   blueprintRef: MutableRefObject<WorkflowBlueprint>
   /** Called when the blueprint was loaded or changed, to validate it again. */
@@ -45,7 +48,7 @@ interface WorkflowDocumentOptions {
  */
 export function useWorkflowDocument({
   workflowId,
-  user,
+  userId,
   blueprintRef,
   onBlueprintChanged,
   readCanvas,
@@ -82,7 +85,7 @@ export function useWorkflowDocument({
 
   // Load workflow
   useEffect(() => {
-    if (!user || !workflowId) return
+    if (!userId || !workflowId) return
     let cancelled = false
     setIsLoadingWorkflow(true)
     workflowApi
@@ -108,7 +111,7 @@ export function useWorkflowDocument({
     return () => {
       cancelled = true
     }
-  }, [user, workflowId, router, t, onBlueprintChanged, blueprintRef])
+  }, [userId, workflowId, router, t, onBlueprintChanged, blueprintRef])
 
   // Dirty state beforeunload guard
   useEffect(() => {
