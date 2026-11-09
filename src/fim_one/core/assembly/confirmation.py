@@ -26,6 +26,11 @@ other: assigned to one user (``assignee``) or, unassigned, to the user the
 run belongs to (``initiator``). An assignee must be an active user who
 shares an organization with the run (:func:`validate_assignee`).
 
+A tool call in a chat with no agent has no agent policy, only the tool's
+own flag: a flagged action is confirmed inline by the person chatting
+(N2). The hook is built per turn with the conversation so the card reaches
+that chat.
+
 Who may decide is fixed when the request is created and written on the row
 (``eligible_scope``, ``eligible_user_id``, ``org_id``); changing the agent's
 settings afterwards does not move a request in flight. :meth:`may_decide`
@@ -244,6 +249,9 @@ class ConfirmationService:
                 mode=mode,
                 channel_label=str(getattr(channel_row, "name", "") or ""),
                 approver_scope=spec.eligible_scope,
+                # The inline listener routes a request with no agent by its
+                # conversation.
+                conversation_id=spec.conversation_id or "",
             )
 
         agent_id = spec.agent_id
@@ -643,12 +651,13 @@ class ApprovalGateHook(PreToolUseHook):
 
     Per call:
 
-    1. Load the agent named by ``context.agent_id``.
+    1. Load the agent named by ``context.agent_id``, if there is one.
     2. Nothing to do unless the action is flagged as requiring confirmation
        or the agent requires it for every call (:func:`confirmation_required`).
     3. Ask through :class:`ConfirmationService`, with the agent's
        ``confirmation_mode`` as the delivery, its ``approval_channel_id`` as
        the channel and its ``confirmation_approver_scope`` as who may decide.
+       With no agent: inline, decided by the user chatting.
     4. Wait. Approved: the tool runs. Rejected, expired or undeliverable:
        the call is blocked and the reason is returned to the model.
     """
@@ -669,9 +678,13 @@ class ApprovalGateHook(PreToolUseHook):
         poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
         requires_confirmation_fn: RequiresConfirmationFn | None = None,
         callback_base_url: str | None = None,
+        conversation_id: str | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._service = ConfirmationService(session_factory)
+        # The chat the hook serves, for routing a card the agent loop's
+        # context does not place.
+        self._conversation_id = conversation_id
         self._timeout_seconds = timeout_seconds
         self._poll_interval_seconds = poll_interval_seconds
         self._requires_confirmation_fn = requires_confirmation_fn or _default_requires_confirmation
@@ -686,37 +699,39 @@ class ApprovalGateHook(PreToolUseHook):
         return True
 
     async def execute(self, context: HookContext) -> HookResult:
-        # No agent means a chat with no agent bound: there is no per-agent
-        # confirmation policy to apply, and the gate steps aside.
-        if not context.agent_id:
-            return HookResult(
-                allow=True,
-                side_effects=["approval_gate: no agent context, skipping gate"],
-            )
-
-        async with self._session_factory() as session:
-            agent_row = await self._load_agent(session, context.agent_id)
-        if agent_row is None:
-            return HookResult(
-                allow=False,
-                error=(f"Tool requires confirmation but agent {context.agent_id!r} was not found."),
-                side_effects=["approval_gate: agent not found"],
-            )
-
         try:
             action_requires = await self._requires_confirmation_fn(context)
         except Exception:  # pragma: no cover - defensive
             logger.exception("requires_confirmation_fn raised; skipping gate")
             return HookResult()
 
-        if not confirmation_required(
-            tool_flag=action_requires,
-            agent_require_all=bool(getattr(agent_row, "require_confirmation_for_all", False)),
-        ):
-            return HookResult()
+        # No agent means a chat with no agent bound: there is no per-agent
+        # policy, so only the tool's own flag counts, and the person
+        # chatting confirms inline.
+        if not context.agent_id:
+            if not action_requires:
+                return HookResult()
+            spec = self._spec_without_agent(context)
+        else:
+            async with self._session_factory() as session:
+                agent_row = await self._load_agent(session, context.agent_id)
+            if agent_row is None:
+                return HookResult(
+                    allow=False,
+                    error=(
+                        f"Tool requires confirmation but agent {context.agent_id!r} was not found."
+                    ),
+                    side_effects=["approval_gate: agent not found"],
+                )
+            if not confirmation_required(
+                tool_flag=action_requires,
+                agent_require_all=bool(getattr(agent_row, "require_confirmation_for_all", False)),
+            ):
+                return HookResult()
+            spec = self._spec_for(context, agent_row)
 
         try:
-            row = await self._service.request(self._spec_for(context, agent_row))
+            row = await self._service.request(spec)
         except AssemblyRefusal as refusal:
             return HookResult(
                 allow=False,
@@ -726,6 +741,40 @@ class ApprovalGateHook(PreToolUseHook):
 
         outcome = await self._service.wait(row.id, poll_seconds=self._poll_interval_seconds)
         return self._result_for(str(row.id), outcome, mode=str(row.mode))
+
+    def _spec_without_agent(self, context: HookContext) -> ConfirmationSpec:
+        """A flagged action in a chat with no agent: the person chatting confirms."""
+        metadata = context.metadata or {}
+        tool_call_id = metadata.get("tool_call_id")
+        return ConfirmationSpec(
+            kind="confirmation",
+            initiator=provisional_principal(context.user_id or ""),
+            binding=None,
+            org_id=None,
+            title="FIM One — Approval Required",
+            description="\n".join(self._summary_lines()),
+            payload={
+                "tool_name": context.tool_name,
+                "tool_args": context.tool_args or {},
+            },
+            eligible_scope="initiator",
+            eligible_user_id=context.user_id,
+            delivery="inline_only",
+            channel_id=None,
+            timeout_seconds=self._timeout_seconds,
+            conversation_id=context.conversation_id or self._conversation_id,
+            tool_call_id=str(tool_call_id) if tool_call_id else None,
+        )
+
+    def _summary_lines(self) -> list[str]:
+        lines = [
+            "**FIM One is requesting approval to run a sensitive tool.**",
+            "",
+            "Approve only if you expect this action right now.",
+        ]
+        if self._callback_base_url:
+            lines.append(f"\nPortal: {self._callback_base_url}")
+        return lines
 
     def _spec_for(self, context: HookContext, agent_row: Any) -> ConfirmationSpec:
         metadata = context.metadata or {}
@@ -748,14 +797,6 @@ class ApprovalGateHook(PreToolUseHook):
             cast(Delivery, mode) if mode in ("inline_only", "channel_only") else "auto"
         )
 
-        summary_lines = [
-            "**FIM One is requesting approval to run a sensitive tool.**",
-            "",
-            "Approve only if you expect this action right now.",
-        ]
-        if self._callback_base_url:
-            summary_lines.append(f"\nPortal: {self._callback_base_url}")
-
         tool_call_id = metadata.get("tool_call_id")
         return ConfirmationSpec(
             kind="confirmation",
@@ -768,7 +809,7 @@ class ApprovalGateHook(PreToolUseHook):
             ),
             org_id=org_id,
             title="FIM One — Approval Required",
-            description="\n".join(summary_lines),
+            description="\n".join(self._summary_lines()),
             payload={
                 "tool_name": context.tool_name,
                 "tool_args": context.tool_args or {},
@@ -780,7 +821,7 @@ class ApprovalGateHook(PreToolUseHook):
             delivery=delivery,
             channel_id=getattr(agent_row, "approval_channel_id", None),
             timeout_seconds=self._timeout_seconds,
-            conversation_id=context.conversation_id,
+            conversation_id=context.conversation_id or self._conversation_id,
             agent_id=context.agent_id,
             tool_call_id=str(tool_call_id) if tool_call_id else None,
         )
@@ -819,6 +860,7 @@ def create_approval_gate_hook(
     poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
     requires_confirmation_fn: RequiresConfirmationFn | None = None,
     callback_base_url: str | None = None,
+    conversation_id: str | None = None,
 ) -> ApprovalGateHook:
     """A configured :class:`ApprovalGateHook`."""
     return ApprovalGateHook(
@@ -827,4 +869,5 @@ def create_approval_gate_hook(
         poll_interval_seconds=poll_interval_seconds,
         requires_confirmation_fn=requires_confirmation_fn,
         callback_base_url=callback_base_url,
+        conversation_id=conversation_id,
     )

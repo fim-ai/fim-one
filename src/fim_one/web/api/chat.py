@@ -3543,7 +3543,7 @@ async def react_endpoint(
                 model_config_json=(agent_cfg or {}).get("model_config_json")
             )
             _hook_registry = await build_hook_registry_for_agent(
-                _agent_shim_ns, _create_hook_session
+                _agent_shim_ns, _create_hook_session, conversation_id=conversation_id
             )
 
             agent = ReActAgent(
@@ -4747,7 +4747,7 @@ async def dag_endpoint(
                     model_config_json=(agent_cfg or {}).get("model_config_json")
                 )
                 _hook_registry_dag = await build_hook_registry_for_agent(
-                    _agent_shim_ns_dag, _create_hook_session_dag
+                    _agent_shim_ns_dag, _create_hook_session_dag, conversation_id=conversation_id
                 )
 
                 agent = ReActAgent(

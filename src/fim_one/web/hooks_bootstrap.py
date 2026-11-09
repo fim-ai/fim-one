@@ -69,10 +69,12 @@ HookFactoryFn = Callable[..., Any]
 # ---------------------------------------------------------------------------
 
 
-def _build_approval_gate(session_factory: SessionFactory, **_: Any) -> Hook:
+def _build_approval_gate(
+    session_factory: SessionFactory, *, conversation_id: str | None = None, **_: Any
+) -> Hook:
     """Wrap :func:`create_approval_gate_hook` into a core ``Hook`` instance."""
     class_hook: ApprovalGateHook = create_approval_gate_hook(
-        session_factory=session_factory
+        session_factory=session_factory, conversation_id=conversation_id
     )
     return class_hook.as_hook()
 
@@ -98,6 +100,8 @@ _HOOK_FACTORIES: dict[str, Callable[..., Hook]] = {
 async def build_hook_registry_for_agent(
     agent: _AgentLike,
     session_factory: SessionFactory,
+    *,
+    conversation_id: str | None = None,
 ) -> HookRegistry:
     """Instantiate hooks declared on *agent* and return a ready registry.
 
@@ -116,6 +120,8 @@ async def build_hook_registry_for_agent(
             :class:`AsyncSession`.  Each hook uses this to run DB
             operations in its own transaction — critically, independent
             of the web request's short-lived session.
+        conversation_id: The chat the registry serves. The approval gate
+            routes an inline card by it when the turn has no agent.
 
     Returns:
         A fully-populated :class:`HookRegistry` ready to be handed to
@@ -130,7 +136,9 @@ async def build_hook_registry_for_agent(
     # unused attachment is ~one dict lookup per tool call. This removes
     # the requirement that users hand-edit ``model_config_json.hooks``.
     try:
-        default_gate = _build_approval_gate(session_factory=session_factory)
+        default_gate = _build_approval_gate(
+            session_factory=session_factory, conversation_id=conversation_id
+        )
         registry.register(default_gate)
         logger.debug("Auto-registered approval_gate hook for agent")
     except Exception:  # pragma: no cover - defensive
@@ -200,7 +208,7 @@ async def build_hook_registry_for_agent(
             continue
 
         try:
-            hook = factory(session_factory=session_factory)
+            hook = factory(session_factory=session_factory, conversation_id=conversation_id)
         except Exception:  # pragma: no cover - defensive
             logger.exception(
                 "Failed to instantiate hook %r — skipping", name

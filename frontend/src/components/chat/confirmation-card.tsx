@@ -12,8 +12,12 @@
  *     "tool_name": "<string>",
  *     "arguments": <object>,
  *     "timeout_at": "<ISO8601 UTC>",
- *     "agent_id": "<uuid>"
+ *     "agent_id": "<uuid>"      // "" in a chat with no agent
  *   }
+ *
+ * The card does not depend on an agent: a chat with no agent asks the
+ * person chatting the same way, and the backend decides who may answer
+ * from the request itself.
  *
  * State machine: pending -> submitting -> {approved|rejected|error|expired}.
  */
@@ -55,7 +59,8 @@ export interface ConfirmationCardProps {
   arguments: Record<string, unknown>
   /** ISO8601 UTC timestamp of when the request expires. */
   timeoutAt: string
-  agentId: string
+  /** The agent the request was raised under; empty in a chat with no agent. */
+  agentId?: string
   /**
    * Routing mode. `inline` shows Approve/Reject buttons in the portal;
    * `channel` renders a read-only status card directing the operator to
@@ -95,12 +100,10 @@ export function ConfirmationCard({
   toolName,
   arguments: args,
   timeoutAt,
-  agentId: _agentId,
   mode = "inline",
   channelLabel = "",
   approverScope = "",
 }: ConfirmationCardProps) {
-  void _agentId // reserved for future multi-agent display
   const isChannelMode = mode === "channel"
   const t = useTranslations("playground")
   const tError = useTranslations("errors")

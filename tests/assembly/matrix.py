@@ -1246,15 +1246,6 @@ KNOWN_DEVIATIONS: tuple[Deviation, ...] = (
         today=_agent_entry_unchecked,
     ),
     Deviation(
-        name="noagent-no-confirmation",
-        entries=("chat_noagent",),
-        resources=API_CONNECTORS,
-        what="An action flagged 'requires confirmation' runs without asking anyone.",
-        ref="N2; design §1.3 row 'chat-0'; B9; 待拍板 4",
-        removed_in="C1 phase 3",
-        today=_not_confirmed,
-    ),
-    Deviation(
         name="connector-node-cannot-confirm",
         entries=("wf_connector_node",),
         resources=API_CONNECTORS,

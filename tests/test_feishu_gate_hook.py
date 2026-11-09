@@ -354,23 +354,26 @@ class TestGateFlow:
             assert row2.channel_id is None
 
     @pytest.mark.asyncio
-    async def test_missing_agent_id_skips_gate(
+    async def test_missing_agent_id_gates_only_flagged_tools(
         self,
         session_factory: async_sessionmaker[AsyncSession],
+        seed: dict[str, Any],
     ) -> None:
-        # Bound-agent-less sessions (pure model chat, quick tasks) have no
-        # per-agent confirmation policy to enforce, so the gate must let
-        # the tool through instead of hard-blocking with a cryptic error.
+        # A chat with no agent has no per-agent policy: a tool that is not
+        # flagged passes without a request, and a flagged one is confirmed
+        # inline by the user chatting (tests/test_noagent_confirmation.py).
         hook = create_feishu_gate_hook(session_factory=session_factory)
         ctx = HookContext(
             hook_point=HookPoint.PRE_TOOL_USE,
             tool_name="x__y",
-            metadata={"requires_confirmation": True},
+            user_id=seed["user_id"],
+            metadata={"requires_confirmation": False},
         )
         result = await hook.execute(ctx)
         assert result.allow is True
         assert result.error is None
-        assert any("no agent context" in s for s in result.side_effects)
+        async with session_factory() as db:
+            assert (await db.execute(select(ConfirmationRequest))).scalars().all() == []
 
     @pytest.mark.asyncio
     async def test_send_failure_blocks(
