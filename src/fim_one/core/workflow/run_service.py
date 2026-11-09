@@ -29,7 +29,7 @@ import logging
 import time
 import uuid
 import weakref
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -459,16 +459,18 @@ class WorkflowRunService:
         *acquire_slot* is off: a batch item waits for one, any other run is
         refused when none is free.
         *single_flight* refuses while another run of the workflow is pending
-        or running. *record_refusal* writes a failed ``WorkflowRun`` when a
-        check refuses, for entry points with nobody to tell (schedules).
+        or running; that is decided before a slot is taken, so a refused
+        request costs the principal nothing. *record_refusal* writes a failed
+        ``WorkflowRun`` when a check refuses, for entry points with nobody
+        to tell (schedules).
         """
         inputs = inputs or {}
         try:
             principal, parsed = authorized or await self.authorize(workflow, caller_id, mode)
             if single_flight:
-                # Early answer that costs the caller no slot. Requests that
-                # arrive together all pass it; the check that decides is
-                # made with the insert, in _create_run_record.
+                # Early answer without taking the workflow's lock. Requests
+                # that arrive together all pass it; the check that decides
+                # is made with the insert, in _insert_single_flight_run.
                 await self._refuse_if_running(workflow.id)
         except RunRefusedError as exc:
             if record_refusal:
@@ -476,18 +478,23 @@ class WorkflowRunService:
             raise
 
         run_id = str(uuid.uuid4())
-        if acquire_slot and mode in QUEUED_MODES:
-            await self.rate_limiter.acquire_when_free(principal.user_id, run_id)
-        elif acquire_slot:
-            allowed, rate_error = await self.rate_limiter.acquire(principal.user_id, run_id)
-            if not allowed:
-                raise RunRefusedError("workflow_rate_limited", 429, rate_error)
-
+        fields = self._run_fields(run_id, workflow, principal, mode, inputs)
         record_created = False
         try:
-            await self._create_run_record(
-                run_id, workflow, principal, mode, inputs, single_flight=single_flight
-            )
+            if single_flight:
+                await self._insert_single_flight_run(
+                    workflow.id,
+                    fields,
+                    take_slot=(
+                        (lambda: self._acquire_slot(principal.user_id, run_id, mode))
+                        if acquire_slot
+                        else None
+                    ),
+                )
+            else:
+                if acquire_slot:
+                    await self._acquire_slot(principal.user_id, run_id, mode)
+                await self._insert_run(**fields)
             record_created = True
 
             from fim_one.db import create_session
@@ -532,6 +539,8 @@ class WorkflowRunService:
             return started
         except BaseException:
             if acquire_slot:
+                # Also reached when no slot was taken (refused, or lost the
+                # single-flight race); releasing is then a no-op.
                 await asyncio.shield(
                     self.rate_limiter.record_run_end(principal.user_id, run_id)
                 )
@@ -672,17 +681,16 @@ class WorkflowRunService:
             db.add(WorkflowRun(**fields))
             await db.commit()
 
-    async def _create_run_record(
-        self,
+    @staticmethod
+    def _run_fields(
         run_id: str,
         workflow: Any,
         principal: Principal,
         mode: RunMode,
         inputs: dict[str, Any],
-        *,
-        single_flight: bool = False,
-    ) -> None:
-        fields: dict[str, Any] = {
+    ) -> dict[str, Any]:
+        """Column values of the ``WorkflowRun`` record for a run that starts."""
+        return {
             "id": run_id,
             "workflow_id": workflow.id,
             "user_id": principal.user_id,
@@ -692,16 +700,34 @@ class WorkflowRunService:
             "mode": mode.value,
             "started_at": datetime.now(UTC),
         }
-        if single_flight:
-            await self._insert_single_flight_run(workflow.id, fields)
-        else:
-            await self._insert_run(**fields)
 
-    async def _insert_single_flight_run(self, workflow_id: str, fields: dict[str, Any]) -> None:
+    async def _acquire_slot(self, user_id: str, run_id: str, mode: RunMode) -> None:
+        """Take one of the user's concurrent-run slots for *run_id*.
+
+        A batch item waits for one; any other run is refused when none is
+        free or the user is over the runs-per-minute limit.
+        """
+        if mode in QUEUED_MODES:
+            await self.rate_limiter.acquire_when_free(user_id, run_id)
+            return
+        allowed, rate_error = await self.rate_limiter.acquire(user_id, run_id)
+        if not allowed:
+            raise RunRefusedError("workflow_rate_limited", 429, rate_error)
+
+    async def _insert_single_flight_run(
+        self,
+        workflow_id: str,
+        fields: dict[str, Any],
+        *,
+        take_slot: Callable[[], Awaitable[None]] | None,
+    ) -> None:
         """Insert a run record unless the workflow already has a run in flight.
 
         The check and the insert are one step, so of several requests that
-        arrive together exactly one gets a run. Two things make it one step:
+        arrive together exactly one gets a run. The others are refused with
+        ``workflow_already_running`` before *take_slot* is called: only the
+        request that will run takes a concurrent-run slot and counts
+        against runs-per-minute. Two things make it one step:
 
         - a row lock on the workflow, held for the transaction that checks
           and inserts. It serialises the requests across server processes
@@ -727,6 +753,8 @@ class WorkflowRunService:
                 .with_for_update(key_share=True)
             )
             await self._refuse_if_running(workflow_id, db)
+            if take_slot is not None:
+                await take_slot()
             db.add(WorkflowRun(**fields))
             await db.commit()
 

@@ -266,6 +266,41 @@ async def test_concurrent_triggers_start_exactly_one_run(rig: Rig) -> None:
 
 
 @pytest.mark.asyncio
+async def test_losing_requests_cost_the_author_nothing(rig: Rig) -> None:
+    """With the limits every instance has (3 concurrent, 10 per minute), each
+    request that loses the race is refused as ``workflow_already_running``,
+    not as rate-limited, and only the run that started holds a slot and
+    counts against the author's runs-per-minute."""
+    service = rs.WorkflowRunService(engine_factory=_HeldEngine)
+    limiter = service.rate_limiter
+    assert (limiter.max_concurrent_runs, limiter.max_runs_per_minute) == (3, 10)
+    async with rig.factory() as s:
+        wf = await s.get(Workflow, rig.wf_id)
+        assert wf is not None
+        author = wf.user_id
+
+    with patch.object(rs, "_default_service", service):
+        requests = [asyncio.create_task(rig.trigger()) for _ in range(REQUESTS)]
+
+        async def _losers_answered() -> bool:
+            return sum(t.done() for t in requests) == REQUESTS - 1
+
+        await _until(_losers_answered)
+        assert _HeldEngine.started == 1
+        assert len(limiter._active_runs[author]) == 1
+        assert len(limiter._run_timestamps[author]) == 1
+
+        _HeldEngine.release.set()
+        responses = await asyncio.wait_for(asyncio.gather(*requests), timeout=10)
+
+    assert sorted(r.status_code for r in responses) == [200] + [429] * (REQUESTS - 1)
+    refusals = [r.json()["error_code"] for r in responses if r.status_code == 429]
+    assert refusals == ["workflow_already_running"] * (REQUESTS - 1)
+    assert limiter._active_runs[author] == set()
+    assert len(limiter._run_timestamps[author]) == 1
+
+
+@pytest.mark.asyncio
 async def test_next_trigger_runs_once_the_first_has_finished(rig: Rig) -> None:
     _HeldEngine.release.set()
     first = await rig.trigger()
