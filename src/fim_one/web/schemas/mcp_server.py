@@ -82,6 +82,8 @@ class MCPMyCredentialStatus(BaseModel):
     has_credentials: bool
     env_keys: list[str] = []  # kept for backwards compat
     env: dict[str, str] = {}  # full env dict for editing
+    header_keys: list[str] = []  # header names (SSE / streamable HTTP servers)
+    headers: dict[str, str] = {}  # full headers dict for editing
 
 
 class MCPMyCredentialUpsert(BaseModel):

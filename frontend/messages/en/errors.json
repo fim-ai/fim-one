@@ -91,6 +91,8 @@
   "oauth_provider_not_configured": "OAuth provider \"{provider}\" is not configured.",
   "oauth_bind_credentials_required": "Credentials required for OAuth binding.",
 
+  "mcp_credential_needs_env": "This MCP server reads environment variables. Enter your credentials as environment variables.",
+  "mcp_credential_needs_headers": "This MCP server reads request headers. Enter your credentials as request headers.",
   "mcp_server_not_found": "MCP server not found.",
 
   "session_expired": "Session expired, please log in again.",
