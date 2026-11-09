@@ -326,8 +326,13 @@ def _approval_blueprint() -> dict:
 
 
 @pytest.fixture()
-async def sched_db():  # type: ignore[no-untyped-def]
-    """In-memory DB wired in as ``fim_one.db.create_session``."""
+async def sched_db(tmp_path):  # type: ignore[no-untyped-def]
+    """File DB wired in as ``fim_one.db.create_session``.
+
+    A file, not ``:memory:``: the in-memory engine hands every session the
+    same connection, so the node's polling session closing (a rollback) could
+    discard the test's not-yet-committed decision.
+    """
     import uuid
     from contextlib import asynccontextmanager
 
@@ -339,7 +344,7 @@ async def sched_db():  # type: ignore[no-untyped-def]
     from fim_one.db.models.workflow import Workflow
 
     engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:", connect_args={"check_same_thread": False}
+        f"sqlite+aiosqlite:///{tmp_path / 'sched.db'}"
     )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
