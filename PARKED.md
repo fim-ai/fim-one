@@ -310,6 +310,20 @@ Extensions to shipped subsystems. None has a requester.
   backlog section on the roadmap for a while without anyone hitting the
   matching scenario. **Trigger**: a report where the numbers came back wrong
   and the cause traces to clipped evidence.
+- **Group-procurement platform asks** — a November 2026 group-level tender
+  (not bid on) asked for an "Agent Harness + MCP hub + AI gateway" platform.
+  The harness part that applies to every user shipped as the stall breaker
+  and `REACT_MAX_TURN_SECONDS`. The rest is parked: asset reuse counts
+  (references and calls per agent, Skill, MCP server and KB, rolled up by
+  organization); one MCP hub screen (service list, scheduled health probe,
+  bound credentials, who may call, call audit, OpenAPI import); gateway
+  tokens issued per organization or department with TPM/RPM limits and a
+  monthly cost report per organization; asset bundles exported across
+  organizations or environments without credentials (overlaps the Market
+  Package System above); a load-test report for non-inference endpoints
+  (pages under 3 s, queries under 5 s, reports under 8 s); and a per-instance
+  pricing form with no seat count. **Trigger**: a group customer or tender
+  we intend to bid on that scores these items.
 
 ---
 
