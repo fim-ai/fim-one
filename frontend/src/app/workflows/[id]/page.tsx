@@ -84,7 +84,7 @@ export default function WorkflowEditorPage() {
     onBlueprintChanged: validation.triggerValidation,
     readCanvas,
   })
-  const { workflow, setWorkflow, isLoadingWorkflow, setIsDirty } = doc
+  const { workflow, setWorkflow, isLoadingWorkflow, discardChanges } = doc
   const run = useWorkflowRun(workflow?.id ?? null)
   const publishing = useWorkflowPublishing(workflow, setWorkflow)
 
@@ -315,7 +315,7 @@ export default function WorkflowEditorPage() {
               className="px-6"
               onClick={() => {
                 panels.set("unsaved", false)
-                setIsDirty(false)
+                discardChanges()
                 if (pendingNavigationRef.current) {
                   router.push(pendingNavigationRef.current)
                 }

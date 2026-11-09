@@ -53,16 +53,30 @@ function canvasOf(prompt: string): WorkflowBlueprint {
 
 const noop = () => {}
 
+type Doc = ReturnType<typeof useWorkflowDocument>
+
 const REGION = { name: "region", type: "string" as const, default_value: "eu", description: "" }
 
-function workflowWith(blueprint: WorkflowBlueprint): WorkflowResponse {
-  return { id: "wf1", name: "Flow", description: null, icon: null, status: "draft", blueprint } as WorkflowResponse
+function workflowWith(blueprint: WorkflowBlueprint, name = "Flow"): WorkflowResponse {
+  return { id: "wf1", name, description: null, icon: null, status: "draft", blueprint } as WorkflowResponse
+}
+
+/** A promise resolved by hand, to hold a request in flight. */
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
 }
 
 async function mountDocument(stored: WorkflowBlueprint, extra: { readCanvas?: () => WorkflowBlueprint | null } = {}) {
   api.get.mockResolvedValue(workflowWith(stored))
-  api.update.mockImplementation(async (_id: string, body: { blueprint?: WorkflowBlueprint }) =>
-    workflowWith(body.blueprint ?? stored),
+  api.update.mockImplementation(
+    async (_id: string, body: { blueprint?: WorkflowBlueprint; name?: string }) =>
+      workflowWith(body.blueprint ?? stored, body.name),
   )
   const blueprintRef: MutableRefObject<WorkflowBlueprint> = { current: emptyBlueprint() }
   const onBlueprintChanged = vi.fn()
@@ -169,6 +183,30 @@ describe("useWorkflowDocument", () => {
       expect(result.current.isDirty).toBe(true)
     })
 
+    it("does not reload when the caller passes a new callback", async () => {
+      api.get.mockResolvedValue(workflowWith(canvasOf("first")))
+      const blueprintRef: MutableRefObject<WorkflowBlueprint> = { current: emptyBlueprint() }
+      const calls: string[] = []
+      const { result, rerender } = renderHook(
+        (props: { tag: string }) =>
+          useWorkflowDocument({
+            workflowId: "wf1",
+            userId: "u1",
+            blueprintRef,
+            // A new function on every render, as an inline callback would be.
+            onBlueprintChanged: () => calls.push(props.tag),
+          }),
+        { initialProps: { tag: "first" } },
+      )
+      await waitFor(() => expect(result.current.isLoadingWorkflow).toBe(false))
+      rerender({ tag: "second" })
+      rerender({ tag: "third" })
+      expect(api.get).toHaveBeenCalledTimes(1)
+      // And the callback used is the latest one.
+      act(() => result.current.changeBlueprint(canvasOf("edited")))
+      expect(calls).toEqual(["first", "third"])
+    })
+
     it("goes back to the list when the workflow cannot be loaded", async () => {
       api.get.mockRejectedValue(new Error("gone"))
       const blueprintRef: MutableRefObject<WorkflowBlueprint> = { current: emptyBlueprint() }
@@ -183,6 +221,231 @@ describe("useWorkflowDocument", () => {
       await waitFor(() => expect(result.current.isLoadingWorkflow).toBe(false))
       expect(router.replace).toHaveBeenCalledWith("/workflows")
       expect(toast.error).toHaveBeenCalledWith("workflowUpdateFailed")
+    })
+  })
+
+  describe("a save records what it sent", () => {
+    // Save used to mark as saved whatever the document was when the answer
+    // came back. An edit made while the request was in flight was then shown
+    // as saved, and never sent unless another edit followed.
+    it("an edit made while a save is in flight stays unsaved and is saved after the pause", async () => {
+      const canvas = { current: canvasOf("second") }
+      const { result } = await mountDocument(canvasOf("first"), { readCanvas: () => canvas.current })
+      vi.useFakeTimers()
+      act(() => result.current.changeBlueprint(canvasOf("second")))
+      const put = deferred<WorkflowResponse>()
+      api.update.mockReturnValueOnce(put.promise)
+      let saving!: Promise<void>
+      act(() => {
+        saving = result.current.save()
+      })
+      canvas.current = canvasOf("third")
+      act(() => result.current.changeBlueprint(canvasOf("third")))
+      await act(async () => {
+        put.resolve(workflowWith(canvasOf("second")))
+        await saving
+      })
+      expect(result.current.isDirty).toBe(true)
+      expect(api.update).toHaveBeenCalledTimes(1)
+
+      await act(() => vi.advanceTimersByTimeAsync(5000))
+      expect(api.update).toHaveBeenCalledTimes(2)
+      expect(api.update.mock.calls[1][1].blueprint).toEqual(canvasOf("third"))
+      expect(result.current.isDirty).toBe(false)
+    })
+
+    it("an import that lands while a save is in flight is saved afterwards", async () => {
+      const canvas = { current: canvasOf("second") }
+      const { result, blueprintRef } = await mountDocument(canvasOf("first"), {
+        readCanvas: () => canvas.current,
+      })
+      vi.useFakeTimers()
+      act(() => result.current.changeBlueprint(canvasOf("second")))
+      const put = deferred<WorkflowResponse>()
+      api.update.mockReturnValueOnce(put.promise)
+      await act(() => vi.advanceTimersByTimeAsync(5000)) // the automatic save is now in flight
+      expect(api.update).toHaveBeenCalledTimes(1)
+
+      act(() => result.current.importFromText(JSON.stringify({ blueprint: canvasOf("imported") })))
+      canvas.current = canvasOf("imported")
+      await act(async () => {
+        put.resolve(workflowWith(canvasOf("second")))
+      })
+      expect(result.current.isDirty).toBe(true)
+      // The canvas, started over from the import, makes its first report.
+      act(() => result.current.changeBlueprint(canvasOf("imported")))
+      await act(() => vi.advanceTimersByTimeAsync(5000))
+      expect(api.update).toHaveBeenCalledTimes(2)
+      expect(api.update.mock.calls[1][1].blueprint).toEqual(canvasOf("imported"))
+      expect(blueprintRef.current).toEqual(canvasOf("imported"))
+      expect(result.current.isDirty).toBe(false)
+    })
+
+    it("a failed save leaves the document unsaved", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      act(() => result.current.changeBlueprint(canvasOf("second")))
+      api.update.mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      await act(() => result.current.save())
+      expect(result.current.isDirty).toBe(true)
+      expect(toast.error).toHaveBeenLastCalledWith("workflowUpdateFailed")
+    })
+
+    it("going back to the stored state by hand is not unsaved, and saves nothing", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      vi.useFakeTimers()
+      act(() => result.current.changeBlueprint(canvasOf("second")))
+      act(() => result.current.changeBlueprint(canvasOf("first")))
+      expect(result.current.isDirty).toBe(false)
+      await act(() => vi.advanceTimersByTimeAsync(6000))
+      expect(api.update).not.toHaveBeenCalled()
+    })
+  })
+
+  describe("name, description and icon are edits like any other", () => {
+    // The automatic save ran the save function captured at the last canvas
+    // change, which carried the name of that moment: move a step, rename
+    // within five seconds, and the save sent the old name and put it back
+    // in the toolbar. A rename on its own never saved itself at all.
+    it("a rename made after the last canvas edit is what the automatic save sends", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      vi.useFakeTimers()
+      act(() => result.current.changeBlueprint(canvasOf("second")))
+      act(() => result.current.changeName("Renamed"))
+      expect(result.current.workflow?.name).toBe("Renamed")
+      await act(() => vi.advanceTimersByTimeAsync(5100))
+      expect(api.update).toHaveBeenCalledTimes(1)
+      expect(api.update.mock.calls[0][1].name).toBe("Renamed")
+      expect(result.current.workflow?.name).toBe("Renamed")
+      expect(result.current.isDirty).toBe(false)
+    })
+
+    it.each([
+      ["a rename", (doc: Doc) => doc.changeName("Renamed"), { name: "Renamed" }],
+      ["a new description", (doc: Doc) => doc.changeDescription("what it does"), { description: "what it does" }],
+      ["a new icon", (doc: Doc) => doc.changeIcon("🧪"), { icon: "🧪" }],
+    ])("%s on its own marks the workflow unsaved and saves itself after the pause", async (_what, edit, sent) => {
+      const { result } = await mountDocument(canvasOf("first"))
+      vi.useFakeTimers()
+      act(() => edit(result.current))
+      expect(result.current.isDirty).toBe(true)
+      await act(() => vi.advanceTimersByTimeAsync(4900))
+      expect(api.update).not.toHaveBeenCalled()
+      await act(() => vi.advanceTimersByTimeAsync(200))
+      expect(api.update).toHaveBeenCalledTimes(1)
+      expect(api.update.mock.calls[0][1]).toMatchObject(sent)
+      expect(result.current.isDirty).toBe(false)
+    })
+
+    it("a rename made while a save is in flight is kept and saved next", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      vi.useFakeTimers()
+      act(() => result.current.changeBlueprint(canvasOf("second")))
+      const put = deferred<WorkflowResponse>()
+      api.update.mockReturnValueOnce(put.promise)
+      let saving!: Promise<void>
+      act(() => {
+        saving = result.current.save()
+      })
+      act(() => result.current.changeName("Renamed"))
+      await act(async () => {
+        put.resolve(workflowWith(canvasOf("second"), "Flow"))
+        await saving
+      })
+      // The answer carries the old name; the toolbar keeps the new one.
+      expect(result.current.workflow?.name).toBe("Renamed")
+      expect(result.current.isDirty).toBe(true)
+      await act(() => vi.advanceTimersByTimeAsync(5000))
+      expect(api.update.mock.calls[1][1].name).toBe("Renamed")
+      expect(result.current.isDirty).toBe(false)
+    })
+
+    it("a status change does not put back a name being edited", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      act(() => result.current.changeName("Renamed"))
+      api.update.mockResolvedValueOnce({ ...workflowWith(canvasOf("first"), "Flow"), status: "active" })
+      await act(() => result.current.changeStatus("active"))
+      expect(result.current.workflow?.status).toBe("active")
+      expect(result.current.workflow?.name).toBe("Renamed")
+      expect(result.current.isDirty).toBe(true)
+    })
+  })
+
+  describe("one way of saving", () => {
+    // The Save button did not cancel the pending automatic save (Cmd+S did),
+    // and a manual save started while an automatic one was in flight was
+    // treated as automatic: no "Saving...", errors swallowed.
+    it("a manual save takes the place of the pending automatic one", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      vi.useFakeTimers()
+      act(() => result.current.changeBlueprint(canvasOf("second")))
+      await act(() => result.current.save())
+      expect(api.update).toHaveBeenCalledTimes(1)
+      await act(() => vi.advanceTimersByTimeAsync(10000))
+      expect(api.update).toHaveBeenCalledTimes(1)
+    })
+
+    it("a manual save during an automatic one shows Saving, waits its turn and reports its own failure", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      vi.useFakeTimers()
+      act(() => result.current.changeBlueprint(canvasOf("second")))
+      const auto = deferred<WorkflowResponse>()
+      api.update.mockReturnValueOnce(auto.promise)
+      await act(() => vi.advanceTimersByTimeAsync(5000))
+      expect(api.update).toHaveBeenCalledTimes(1)
+      expect(result.current.isSaving).toBe(false) // automatic saves are silent
+
+      api.update.mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      let manual!: Promise<void>
+      act(() => {
+        manual = result.current.save()
+      })
+      expect(result.current.isSaving).toBe(true)
+      expect(api.update).toHaveBeenCalledTimes(1) // one request at a time
+      await act(async () => {
+        auto.resolve(workflowWith(canvasOf("second")))
+        await manual
+      })
+      expect(api.update).toHaveBeenCalledTimes(2)
+      expect(result.current.isSaving).toBe(false)
+      expect(toast.error).toHaveBeenLastCalledWith("workflowUpdateFailed")
+    })
+
+    it("an automatic save that fails stays silent", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      vi.useFakeTimers()
+      act(() => result.current.changeBlueprint(canvasOf("second")))
+      api.update.mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      await act(() => vi.advanceTimersByTimeAsync(5000))
+      expect(api.update).toHaveBeenCalledTimes(1)
+      expect(toast.error).not.toHaveBeenCalled()
+      expect(result.current.isDirty).toBe(true)
+    })
+
+    it("duplicating saves unsaved edits first, and stays when that save fails", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      api.duplicate.mockResolvedValue({ id: "wf2" })
+      act(() => result.current.changeBlueprint(canvasOf("second")))
+      await act(() => result.current.duplicate())
+      expect(api.update.mock.calls[0][1].blueprint).toEqual(canvasOf("second"))
+      expect(api.duplicate).toHaveBeenCalledTimes(1)
+      expect(router.push).toHaveBeenCalledWith("/workflows/wf2")
+
+      act(() => result.current.changeBlueprint(canvasOf("third")))
+      api.update.mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      await act(() => result.current.duplicate())
+      expect(api.duplicate).toHaveBeenCalledTimes(1)
+      expect(router.push).toHaveBeenCalledTimes(1)
+    })
+
+    it("nothing is saved after the edits were discarded or the workflow deleted", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      vi.useFakeTimers()
+      act(() => result.current.changeBlueprint(canvasOf("second")))
+      act(() => result.current.discardChanges())
+      expect(result.current.isDirty).toBe(false)
+      await act(() => vi.advanceTimersByTimeAsync(10000))
+      await act(() => result.current.save())
+      expect(api.update).not.toHaveBeenCalled()
     })
   })
 
