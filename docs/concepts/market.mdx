@@ -9,6 +9,8 @@ The Market is FIM One's built-in resource marketplace. It organizes shared resou
 - **Solutions** -- high-level resources that deliver end-to-end capabilities: Agents, Skills, and Workflows.
 - **Components** -- building blocks that Solutions depend on: Connectors and MCP Servers.
 
+Skills and Workflows are optional modules, off by default. They appear in the Market only after an administrator enables them under Admin → Settings → Modules.
+
 You browse by scope (your Organization or the Global Market), find what you need, subscribe, and start using it -- all without leaving FIM One.
 
 <Info>
@@ -33,7 +35,7 @@ Components are the integrations and tool services that Solutions are built from.
 
 | Resource | Category | What you get |
 |---|---|---|
-| **Connector** | Component | API/database integration available as agent tools |
+| **Connector** | Component | API integration available as agent tools (database connectors cannot be published) |
 | **MCP Server** | Component | Third-party tool service loaded into sessions |
 
 <Tip>
@@ -44,7 +46,7 @@ Knowledge Bases never appear in the Market and are never subscribed. An Agent th
 
 The Market has a scope selector at the top of the page. The UI and subscription flow are identical in both scopes -- only the visibility of resources changes.
 
-- **Organization** -- resources shared within your team or company. Publishing here does not require review.
+- **Organization** -- resources shared within your team or company. Publishing here does not require review unless the organization has turned review on for that resource type.
 - **Global Market** -- resources from the entire FIM One community. Publishing here requires admin approval.
 
 Switch between scopes at any time to explore what is available.
@@ -79,14 +81,14 @@ flowchart LR
 
 | Target | Who can see it | Review required? |
 |---|---|---|
-| **Organization** | All members of your org | No (org-level trust) |
+| **Organization** | All members of your org | No by default; an org can require review per resource type |
 | **Global Market** | All authenticated users | Yes -- admin approval required |
 
 Publishing to the Global Market always goes through a review gate. Admins can approve, reject (with a note), or leave the resource pending. Rejected resources can be revised and resubmitted.
 
 ## What About Credentials?
 
-When you subscribe to a resource that requires credentials (API keys, OAuth tokens, database passwords), the onboarding wizard collects them during subscription. Credentials are stored securely and scoped to your account -- no one else can see them.
+When you subscribe to a resource that requires credentials (API keys, OAuth tokens), the onboarding wizard collects them during subscription. Credentials are stored securely and scoped to your account -- no one else can see them.
 
 You can update or rotate credentials at any time from the resource's settings page.
 
@@ -94,7 +96,7 @@ You can update or rotate credentials at any time from the resource's settings pa
 
 Under the hood, the Market is implemented as a **shadow organization** -- an invisible system org that holds no members. Resources published to the Global Market are set to `visibility: "org"` within this shadow org, which allows the existing visibility system to include them naturally.
 
-This means the Market requires **zero special-case code** in the tool assembly pipeline. The same three-tier visibility filter (own -> org-shared -> subscribed) that loads personal and org resources also loads Market resources. When you subscribe, a subscription record is created, and the resource appears in your visibility filter automatically.
+This means the Market requires **zero special-case code** in the tool assembly pipeline. The same visibility filter (own, or subscribed and still shared) that loads personal and org resources also loads Market resources. When you subscribe, a subscription record is created, and the resource appears in your visibility filter automatically.
 
 For Solutions that bundle dependencies (e.g., an Agent with bound Connectors and Knowledge Bases), the subscription process resolves and provisions those dependencies so everything works out of the box.
 

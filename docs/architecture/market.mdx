@@ -24,6 +24,8 @@ Solutions are things that **do work for you**. A user subscribes to a Solution a
 | **Skill** | A global SOP (Standard Operating Procedure) that can orchestrate multiple agents via `call_agent` |
 | **Workflow** | A DAG-based automation flow with visual editing and deterministic execution |
 
+Skills and Workflows are optional modules, off by default. While a module is off its resources are absent from the Market and cannot be subscribed to.
+
 Solutions may depend on other resources. An Agent might require a specific Connector for its API calls and a Knowledge Base for its retrieval pipeline. The Market handles these dependencies automatically during subscription (see [Dependency resolution](#dependency-resolution) below).
 
 ### Components
@@ -32,7 +34,7 @@ Components are **reusable building blocks** for developers. They provide capabil
 
 | Resource Type | What It Does |
 |---|---|
-| **Connector** | An API or database integration adapter definition |
+| **Connector** | An API integration adapter definition (database connectors cannot be published) |
 | **MCP Server** | A tool service configuration using the Model Context Protocol |
 
 Components are simpler to subscribe to — they have no internal dependencies, only credential requirements.
@@ -96,25 +98,20 @@ Because the Market is just an organization with special rules, any feature built
 
 Nobody holds membership in the Market org. Users do not "join" the Market — they subscribe to individual resources. This means `MARKET_ORG_ID` is never present in a user's `user_org_ids` list, and the org-membership visibility condition is naturally skipped for Market resources.
 
-Instead, subscribed Market resources flow through the `subscribed_ids` path in `build_visibility_filter()`:
+Instead, subscribed Market resources flow through the `subscribed_ids` path in `build_visibility_filter()`, the same path org-shared resources take:
 
 ```mermaid
 flowchart LR
     subgraph Filter["build_visibility_filter()"]
         C1["user_id == me<br/>(own resources)"]
-        C2["visibility == 'org'<br/>AND org_id IN my_orgs<br/>AND approved"]
-        C3["id IN subscribed_ids"]
+        C2["id IN subscribed_ids<br/>AND visibility == 'org'<br/>AND publish_status is unset or approved"]
     end
 
     C1 -->|OR| Result["Visible"]
     C2 -->|OR| Result
-    C3 -->|OR| Result
-
-    Note1["Market resources<br/>skip C2 (not a member)<br/>match C3 (subscribed)"]
-    Note1 -.-> C3
 ```
 
-This three-condition OR clause is the entire visibility model. Personal resources, org-shared resources, and Market-subscribed resources are resolved in one query, with no branching logic for different resource origins.
+This two-condition OR clause is the entire visibility model. Org membership alone grants nothing: org-shared and Market resources both reach a user through a subscription, and the share state is re-read on every query, so a subscription stops working as soon as the owner unpublishes the resource or it is awaiting or refused by review.
 
 ### Scope-based browsing
 
@@ -178,7 +175,7 @@ Components (Connectors and MCP Servers) have a simpler flow — no dependency an
 Credentials follow a **hybrid model** that balances convenience with flexibility:
 
 - **Offered during subscription.** When a connection-type dependency requires credentials, the onboarding wizard presents the credential form immediately.
-- **Skippable.** The user can choose "Skip, configure later." The resource is subscribed but tools requiring those credentials return a "please configure your credentials" message when invoked.
+- **Skippable.** The user can choose "Skip, configure later." The resource is subscribed, but the tools that need those credentials stay out of the agent's toolset until the user configures them (or the publisher allows fallback).
 - **Deferred configuration.** Users can configure or update credentials at any time from their settings page.
 
 This is the same `allow_fallback` mechanism used in organizations. If the publisher has enabled fallback and set a default credential, subscribers can use the resource immediately without providing their own key. If fallback is disabled, each subscriber must bring their own.
@@ -189,7 +186,7 @@ When using a Market resource with credential fallback enabled, your API requests
 
 ### Unsubscribing
 
-Unsubscribing removes the `ResourceSubscription` record. The resource disappears from the user's visibility filter and is no longer loaded into tool sets. For Solutions with auto-subscribed dependencies, the dependent resources (KBs, Skills) are cleaned up as well. User-configured credentials for the resource are removed.
+Unsubscribing removes the `ResourceSubscription` record. The resource disappears from the user's visibility filter and is no longer loaded into tool sets. For Solutions, dependencies that were subscribed automatically (Skills, Connectors, MCP Servers) are removed as well when no other subscribed Solution needs them, along with the credentials saved for those Connectors and MCP Servers. Unsubscribing from a Connector or MCP Server directly removes the user's credential for it.
 
 ## Dependency resolution
 
@@ -208,9 +205,8 @@ When a Solution is published or subscribed to, the system analyzes its dependenc
 
 **Connectors** and **MCP Servers** referenced by a Solution are connection-type dependencies. They require credentials to function.
 
-- **On subscription:** listed as requirements in the onboarding wizard. The user is prompted to configure credentials (or skip).
-- **Smart matching:** if the user already has a compatible Connector (same type, same base URL), the system offers to reuse it instead of creating a new subscription.
-- **On unsubscription:** the subscription is removed, but user-created credentials are preserved (the user may use the same Connector elsewhere).
+- **On subscription:** subscribed together with the Solution and listed as requirements in the onboarding wizard. The user is prompted to configure credentials (or skip).
+- **On unsubscription:** a Connector or MCP Server that was subscribed automatically with the Solution is removed with it, credentials included, unless another subscribed Solution still needs it. One the user subscribed to on their own is left in place with its credentials.
 
 ```mermaid
 flowchart TD
@@ -222,11 +218,9 @@ flowchart TD
 
     CT --> AS["Auto-subscribe<br/>(silent, read-only)"]
 
-    CN --> SM{"User already has<br/>compatible resource?"}
-    SM -->|Yes| RE["Offer reuse"]
-    SM -->|No| OB["Onboarding wizard<br/>(credential collection)"]
+    CN --> OB["Onboarding wizard<br/>(credential collection)"]
     OB --> SK{"Skip?"}
-    SK -->|Yes| DEF["Deferred config<br/>(tools show 'please configure')"]
+    SK -->|Yes| DEF["Deferred config<br/>(tools hidden until configured)"]
     SK -->|No| CONF["Credentials saved<br/>(ready to use)"]
 ```
 
@@ -271,7 +265,7 @@ When an approved resource is edited by its author, `check_edit_revert()` automat
 
 ### The shadow org
 
-The Market organization has a well-known fixed ID (`00000000-0000-0000-0000-000000000001`) and slug (`market`). It is created by `ensure_market_org()` during platform initialization — typically on the first admin user's login. The function is idempotent; calling it multiple times is safe.
+The Market organization has a well-known fixed ID (`00000000-0000-0000-0000-000000000001`) and slug (`market`). It is created by `ensure_market_org()` during platform initialization, when the first user (the administrator) registers. The function is idempotent; calling it multiple times is safe.
 
 ### ResourceSubscription
 
@@ -293,7 +287,7 @@ The `resolve_visibility()` function performs two lookups in a single call:
 1. Fetches the user's org memberships (`user_org_ids`)
 2. Fetches the user's subscriptions (`subscribed_ids`)
 
-These are passed to `build_visibility_filter()`, which produces a single SQL WHERE clause combining all three visibility tiers (own, org-shared, subscribed). This function is used everywhere resources are queried — agent lists, connector dropdowns, skill injection, auto-discovery mode — ensuring consistent visibility across the entire platform.
+These are passed to `build_visibility_filter()`, which produces a single SQL WHERE clause combining the two visibility conditions (own, or subscribed and still shared). This function is used everywhere resources are queried — agent lists, connector dropdowns, skill injection, auto-discovery mode — ensuring consistent visibility across the entire platform.
 
 ### Credential encryption
 
