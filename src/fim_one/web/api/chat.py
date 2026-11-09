@@ -50,7 +50,7 @@ import logging
 import os
 import time
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Sequence
 from contextlib import suppress
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -69,6 +69,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.core.agent import ReActAgent
 from fim_one.core.agent.react import FINISH_SIGNAL_ENABLED
+from fim_one.core.assembly.principal import (
+    Binding,
+    CallContext,
+    Entry,
+    provisional_principal,
+)
+from fim_one.core.assembly.visibility import ResourceKind, authorize_use, list_usable
 from fim_one.core.agent.workspace import AgentWorkspace
 from fim_one.core.agent.guardrail import (
     InputGuardrailResult,
@@ -1163,6 +1170,37 @@ def _run_failed_payload(exc: BaseException, elapsed: float) -> dict[str, Any]:
     }
 
 
+def _use_context(
+    user_id: str | None,
+    agent_cfg: dict[str, Any] | None,
+    *,
+    conversation_id: str | None = None,
+    entry: Entry | None = None,
+) -> CallContext:
+    """The assembly-layer context of a resource lookup made for a chat turn.
+
+    The caller is the principal. A resource reached through an agent is
+    judged by the agent owner's view (the binding is a delegation); with no
+    agent, or an agent config that names no owner, by the caller's own.
+    """
+    binding: Binding | None = None
+    owner_id = agent_cfg.get("owner_user_id") if agent_cfg else None
+    if agent_cfg and owner_id:
+        binding = Binding(
+            kind="agent",
+            id=str(agent_cfg.get("agent_id") or agent_cfg.get("id") or ""),
+            owner_id=owner_id,
+            org_id=agent_cfg.get("org_id"),
+        )
+    return CallContext(
+        principal=provisional_principal(user_id or ""),
+        binding=binding,
+        entry=entry or ("chat" if agent_cfg else "chat_noagent"),
+        conversation_id=conversation_id,
+        agent_id=(binding.id or None) if binding else None,
+    )
+
+
 async def _resolve_agent_config(
     agent_id: str | None,
     conversation_id: str | None,
@@ -1196,14 +1234,20 @@ async def _resolve_agent_config(
         return None
 
     async with create_session() as session:
-        stmt = sa_select(Agent).where(Agent.id == resolved_id)
         if user_id:
-            from fim_one.web.visibility import resolve_visibility as _agent_vis
-
-            _vis_filter, _, _ = await _agent_vis(Agent, user_id, "agent", session)
-            stmt = stmt.where(_vis_filter)
-        agent_result = await session.execute(stmt)
-        agent = agent_result.scalar_one_or_none()
+            _agent_decision = await authorize_use(
+                session,
+                _use_context(user_id, None, entry="chat"),
+                ResourceKind.AGENT,
+                [resolved_id],
+            )
+            # Not applied here yet: a switched-off agent still answers
+            # (registered in tests/assembly/matrix.py).
+            _agents = _agent_decision.including("resource_inactive")
+            agent = _agents[0] if _agents else None
+        else:
+            agent_result = await session.execute(sa_select(Agent).where(Agent.id == resolved_id))
+            agent = agent_result.scalar_one_or_none()
         if agent is None:
             return None
         return {
@@ -1542,21 +1586,28 @@ async def _resolve_bound_kb_owner_map(
     """
     from fim_one.db import create_session as _kb_cs
     from fim_one.db.models.knowledge_base import KnowledgeBase as _KBModel
-    from fim_one.web.visibility import resolve_visibility as _kb_resolve
 
     kb_owner_map: dict[str, str] = {}
     async with _kb_cs() as _kb_db:
-        _kb_stmt = sa_select(_KBModel.id, _KBModel.user_id).where(
-            _KBModel.id.in_(kb_ids),
-            # A disabled KB is out of service for every agent bound to it.
-            _KBModel.is_active == True,  # noqa: E712
-        )
         if agent_owner_id:
-            _kb_vis, _, _ = await _kb_resolve(
-                _KBModel, agent_owner_id, "knowledge_base", _kb_db
+            # The agent owner is the subject; the KB rule reads nothing of
+            # the caller. A disabled KB is out of service for every agent
+            # bound to it.
+            _kb_decision = await authorize_use(
+                _kb_db,
+                _use_context(agent_owner_id, None, entry="chat"),
+                ResourceKind.KNOWLEDGE_BASE,
+                kb_ids,
             )
-            _kb_stmt = _kb_stmt.where(_kb_vis)
-        _kb_result = await _kb_db.execute(_kb_stmt)
+            for _kb in _kb_decision.usable:
+                kb_owner_map[_kb.id] = _kb.user_id
+            return kb_owner_map
+        _kb_result = await _kb_db.execute(
+            sa_select(_KBModel.id, _KBModel.user_id).where(
+                _KBModel.id.in_(kb_ids),
+                _KBModel.is_active == True,  # noqa: E712
+            )
+        )
         for row in _kb_result.all():
             kb_owner_map[row[0]] = row[1]
     return kb_owner_map
@@ -1729,38 +1780,43 @@ async def _resolve_tools(
                     DatabaseSchema as DatabaseSchemaModel,
                 )
 
-                # Use visibility filter so org-shared and Market-installed
-                # connectors are accessible, not just owner-owned ones.
-                from fim_one.web.visibility import resolve_visibility as _conn_resolve
-
+                # Judged by the agent owner's view (own + subscribed), so
+                # org-shared and Market-installed connectors are accessible,
+                # not just owner-owned ones. A connector its owner switched
+                # off must not stay callable through agents that still
+                # reference it.
                 _conn_user_id = (
                     (agent_cfg.get("owner_user_id") or user_id) if agent_cfg else user_id
                 )
-                if _conn_user_id:
-                    _conn_vis, _, _ = await _conn_resolve(
-                        ConnectorModel, _conn_user_id, "connector", session
-                    )
-                else:
-                    _conn_vis = ConnectorModel.user_id == user_id
-
-                stmt = (
-                    select(ConnectorModel)
-                    .options(
-                        selectinload(ConnectorModel.actions),
-                        selectinload(ConnectorModel.database_schemas).selectinload(
-                            DatabaseSchemaModel.columns
-                        ),
-                    )
-                    .where(
-                        ConnectorModel.id.in_(connector_ids),
-                        _conn_vis,
-                        # A connector its owner switched off must not stay
-                        # callable through agents that still reference it.
-                        ConnectorModel.is_active == True,  # noqa: E712
-                    )
+                _conn_options = (
+                    selectinload(ConnectorModel.actions),
+                    selectinload(ConnectorModel.database_schemas).selectinload(
+                        DatabaseSchemaModel.columns
+                    ),
                 )
-                result = await session.execute(stmt)
-                connectors = result.scalars().all()
+                connectors: Sequence[Any]
+                if _conn_user_id:
+                    _conn_decision = await authorize_use(
+                        session,
+                        _use_context(user_id, agent_cfg, conversation_id=conversation_id),
+                        ResourceKind.CONNECTOR,
+                        connector_ids,
+                        options=_conn_options,
+                    )
+                    # ``owner_only`` is enforced by the database branch
+                    # below (db_raw_sql_tool_allowed), as before.
+                    connectors = _conn_decision.including("owner_only")
+                else:
+                    result = await session.execute(
+                        select(ConnectorModel)
+                        .options(*_conn_options)
+                        .where(
+                            ConnectorModel.id.in_(connector_ids),
+                            ConnectorModel.user_id == user_id,
+                            ConnectorModel.is_active == True,  # noqa: E712
+                        )
+                    )
+                    connectors = result.scalars().all()
 
                 api_tool_count = 0
                 db_tool_count = 0
@@ -1969,23 +2025,19 @@ async def _resolve_tools(
             from fim_one.db.models.database_schema import (
                 DatabaseSchema as DatabaseSchemaModel,
             )
-            from fim_one.web.visibility import resolve_visibility
 
             async with create_session() as _ad_session:
-                _ad_vis, _, _ = await resolve_visibility(
-                    ConnectorModel, user_id, "connector", _ad_session
-                )
-                _ad_result = await _ad_session.execute(
-                    select(ConnectorModel)
-                    .where(_ad_vis, ConnectorModel.is_active == True)  # noqa: E712
-                    .options(
+                _ad_connectors = await list_usable(
+                    _ad_session,
+                    _use_context(user_id, None, conversation_id=conversation_id),
+                    ResourceKind.CONNECTOR,
+                    options=(
                         selectinload(ConnectorModel.actions),
                         selectinload(ConnectorModel.database_schemas).selectinload(
                             DatabaseSchemaModel.columns
                         ),
-                    )
+                    ),
                 )
-                _ad_connectors = _ad_result.scalars().unique().all()
 
             if _ad_connectors:
                 # API connectors — use progressive mode (single meta-tool)
@@ -2233,14 +2285,11 @@ async def _resolve_tools(
     # happens inside the SSE generator (same coroutine) to avoid the anyio
     # cancel-scope cross-task RuntimeError on disconnect_all().
     try:
-        from sqlalchemy import false as _sa_false
-        from sqlalchemy import true as _true
-
         from fim_one.db import create_session as _create_session
-        from fim_one.db.models.mcp_server import MCPServer as _MCPServerModel
 
         # Determine which MCP servers to load based on agent config
         _agent_mcp_ids = agent_cfg.get("mcp_server_ids") if agent_cfg else None
+        _user_servers: Sequence[Any] = ()
 
         if agent_cfg and not _agent_mcp_ids:
             # Agent exists but has no MCP servers selected — skip
@@ -2256,42 +2305,26 @@ async def _resolve_tools(
                     # reference must be re-checked at use time. Credentials
                     # still resolve against the CALLER via _mcp_user_id +
                     # the allow_fallback gate at connect time.
-                    from fim_one.web.visibility import (
-                        resolve_visibility as _resolve_vis_agent,
-                    )
-
                     _mcp_owner_id = (
                         agent_cfg.get("owner_user_id") or user_id
                         if agent_cfg
                         else user_id
                     )
                     if _mcp_owner_id:
-                        _owner_vis, _, _ = await _resolve_vis_agent(
-                            _MCPServerModel, _mcp_owner_id, "mcp_server", _mcp_db
+                        _mcp_decision = await authorize_use(
+                            _mcp_db,
+                            _use_context(user_id, agent_cfg, conversation_id=conversation_id),
+                            ResourceKind.MCP_SERVER,
+                            _agent_mcp_ids,
                         )
-                    else:
-                        _owner_vis = _sa_false()
-                    _stmt = sa_select(_MCPServerModel).where(
-                        _MCPServerModel.id.in_(_agent_mcp_ids),
-                        _owner_vis,
-                        _MCPServerModel.is_active == _true(),
-                    )
-                else:
+                        _user_servers = _mcp_decision.usable
+                elif user_id:
                     # No-agent mode: load all visible active MCP servers
-                    from fim_one.web.visibility import resolve_visibility as _resolve_vis
-
-                    if user_id:
-                        _vis_filter, _, _ = await _resolve_vis(
-                            _MCPServerModel, user_id, "mcp_server", _mcp_db
-                        )
-                    else:
-                        _vis_filter = _sa_false()
-                    _stmt = sa_select(_MCPServerModel).where(
-                        _vis_filter,
-                        _MCPServerModel.is_active == _true(),
+                    _user_servers = await list_usable(
+                        _mcp_db,
+                        _use_context(user_id, None, conversation_id=conversation_id),
+                        ResourceKind.MCP_SERVER,
                     )
-                _result = await _mcp_db.execute(_stmt)
-                _user_servers = _result.scalars().all()
 
             if _user_servers:
                 tools._pending_mcp_servers = list(_user_servers)  # type: ignore[attr-defined]
@@ -2310,18 +2343,14 @@ async def _resolve_tools(
         try:
             from fim_one.db import create_session as _cs_agents
             from fim_one.db.models.agent import Agent as AgentModel
-            from fim_one.web.visibility import resolve_visibility as _rv_agents
 
             async with _cs_agents() as _cat_db:
-                _cat_vis, _, _ = await _rv_agents(AgentModel, user_id, "agent", _cat_db)
-                _cat_result = await _cat_db.execute(
-                    sa_select(AgentModel).where(
-                        _cat_vis,
-                        AgentModel.is_active == True,  # noqa: E712
-                        AgentModel.is_builder == False,  # noqa: E712
-                    )
+                _visible_agents = await list_usable(
+                    _cat_db,
+                    _use_context(user_id, None, conversation_id=conversation_id),
+                    ResourceKind.AGENT,
+                    where=(AgentModel.is_builder == False,),  # noqa: E712
                 )
-                _visible_agents = _cat_result.scalars().all()
 
             if _visible_agents:
                 _agent_catalog = [
@@ -2661,20 +2690,15 @@ async def _resolve_user_skill_ids(user_id: str) -> list[str]:
         SETTING_FEATURE_SKILLS,
         is_feature_enabled,
     )
-    from fim_one.web.visibility import resolve_visibility
 
     try:
         async with create_session() as session:
             if not await is_feature_enabled(session, SETTING_FEATURE_SKILLS):
                 return []
-            vis_filter, _, _ = await resolve_visibility(Skill, user_id, "skill", session)
-            result = await session.execute(
-                sa_select(Skill.id).where(
-                    vis_filter,
-                    Skill.is_active == True,  # noqa: E712
-                )
+            rows = await list_usable(
+                session, _use_context(user_id, None), ResourceKind.SKILL, columns=(Skill.id,)
             )
-            return list(result.scalars().all())
+            return [row[0] for row in rows]
     except Exception:
         logger.warning("Failed to resolve user skill IDs", exc_info=True)
         return []
@@ -2696,24 +2720,20 @@ async def _resolve_user_workflow_ids(user_id: str) -> list[str]:
         SETTING_FEATURE_WORKFLOWS,
         is_feature_enabled,
     )
-    from fim_one.web.visibility import resolve_visibility
 
     try:
         async with create_session() as session:
             if not await is_feature_enabled(session, SETTING_FEATURE_WORKFLOWS):
                 return []
-            vis_filter, _, _ = await resolve_visibility(
-                Workflow, user_id, "workflow", session
-            )
-            result = await session.execute(
-                sa_select(Workflow.id, Workflow.blueprint).where(
-                    vis_filter,
-                    Workflow.is_active == True,  # noqa: E712
-                    Workflow.status == "active",
-                )
+            rows = await list_usable(
+                session,
+                _use_context(user_id, None),
+                ResourceKind.WORKFLOW,
+                columns=(Workflow.id, Workflow.blueprint),
+                where=(Workflow.status == "active",),
             )
             ids: list[str] = []
-            for wid, blueprint in result.all():
+            for wid, blueprint in rows:
                 nodes = (blueprint or {}).get("nodes") or []
                 if any(
                     node_type_of(n or {}) == NodeType.HUMAN_INTERVENTION
