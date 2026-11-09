@@ -111,6 +111,9 @@ export function useWorkflowDocument({
   // restore). The canvas keeps its own node state once mounted, so the page
   // keys the editor on this to have it start over from the new blueprint.
   const [canvasRevision, setCanvasRevision] = useState(0)
+  // A blueprint read from an import file, waiting for the user to confirm
+  // that it may replace what is on the canvas.
+  const [pendingImport, setPendingImport] = useState<WorkflowBlueprint | null>(null)
   // nodeId -> node type of the blueprint in use, for the panels that name
   // steps (run panel, run history, statistics). State rather than read off
   // the ref, so those panels follow the canvas; replaced only when a node
@@ -453,7 +456,28 @@ export function useWorkflowDocument({
     }
   }, [t, tError])
 
-  /** Replace the blueprint being edited with the one in an exported file's text. */
+  /** Replace the blueprint being edited with an imported one. */
+  const applyImport = useCallback(
+    (blueprint: WorkflowBlueprint) => {
+      blueprintRef.current = blueprint
+      trackNodeTypes(blueprint)
+      setWorkflow((prev) => (prev ? { ...prev, blueprint } : prev))
+      // The canvas starts over from the imported blueprint. The import is an
+      // edit: unsaved now, saved after the pause; a save still in flight
+      // records what it sent, not this.
+      setCanvasRevision((n) => n + 1)
+      noteEdit()
+      toast.success(t("workflowImported"))
+    },
+    [t, blueprintRef, trackNodeTypes, setWorkflow, noteEdit],
+  )
+
+  /**
+   * Take the text of an exported file. An import replaces the whole canvas,
+   * clears undo and is saved over the stored workflow a few seconds later,
+   * so when there is anything to lose (steps on the canvas, or unsaved
+   * edits) it waits in `pendingImport` for `confirmImport`.
+   */
   const importFromText = useCallback(
     (text: string) => {
       let data: unknown
@@ -473,18 +497,23 @@ export function useWorkflowDocument({
         toast.error(t("importInvalidBlueprint"))
         return
       }
-      blueprintRef.current = blueprint
-      trackNodeTypes(blueprint)
-      setWorkflow((prev) => (prev ? { ...prev, blueprint } : prev))
-      // The canvas starts over from the imported blueprint. The import is an
-      // edit: unsaved now, saved after the pause; a save still in flight
-      // records what it sent, not this.
-      setCanvasRevision((n) => n + 1)
-      noteEdit()
-      toast.success(t("workflowImported"))
+      const onCanvas = readCanvasRef.current?.() ?? blueprintRef.current
+      if (onCanvas.nodes.length > 0 || isUnsaved()) {
+        setPendingImport(blueprint)
+        return
+      }
+      applyImport(blueprint)
     },
-    [t, blueprintRef, trackNodeTypes, setWorkflow, noteEdit],
+    [t, blueprintRef, isUnsaved, applyImport],
   )
+
+  /** The user agreed to replace the canvas with the file picked. */
+  const confirmImport = useCallback(() => {
+    if (pendingImport) applyImport(pendingImport)
+    setPendingImport(null)
+  }, [pendingImport, applyImport])
+
+  const cancelImport = useCallback(() => setPendingImport(null), [])
 
   const importFromFile = useCallback(() => {
     const input = document.createElement("input")
@@ -620,6 +649,9 @@ export function useWorkflowDocument({
     exportToFile,
     importFromFile,
     importFromText,
+    hasPendingImport: pendingImport !== null,
+    confirmImport,
+    cancelImport,
     duplicate,
     deleteWorkflow,
     discardChanges,

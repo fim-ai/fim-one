@@ -13,6 +13,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { PublishDialog } from "@/components/shared/publish-dialog"
 import { useAuth } from "@/contexts/auth-context"
 import { workflowApi } from "@/lib/api"
@@ -326,6 +336,27 @@ export default function WorkflowEditorPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Import replaces the canvas: ask first when there is something on it */}
+      <AlertDialog
+        open={doc.hasPendingImport}
+        onOpenChange={(open) => {
+          if (!open) doc.cancelImport()
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("importReplaceTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("importReplaceDescription")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{tc("cancel")}</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={doc.confirmImport}>
+              {t("importReplaceConfirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Publish Confirmation */}
       <PublishDialog

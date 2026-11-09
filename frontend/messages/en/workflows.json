@@ -30,6 +30,9 @@
   "importInvalidBlueprint": "Workflow blueprint is invalid",
   "workflowImported": "Workflow imported",
   "workflowImportFailed": "Failed to import workflow",
+  "importReplaceTitle": "Replace this workflow?",
+  "importReplaceDescription": "Everything on the canvas is replaced by the content of the file. Undo history is cleared, and the change is saved automatically after a few seconds.",
+  "importReplaceConfirm": "Replace",
   "importUnresolvedWarning": "Workflow imported with {count} unresolved reference(s). Some nodes may reference agents, connectors, or knowledge bases that don't exist in this environment.",
 
   "publishDialogTitle": "Publish workflow?",

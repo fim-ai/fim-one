@@ -267,6 +267,7 @@ describe("useWorkflowDocument", () => {
       expect(api.update).toHaveBeenCalledTimes(1)
 
       act(() => result.current.importFromText(JSON.stringify({ blueprint: canvasOf("imported") })))
+      act(() => result.current.confirmImport())
       canvas.current = canvasOf("imported")
       await act(async () => {
         put.resolve(workflowWith(canvasOf("second")))
@@ -534,6 +535,7 @@ describe("useWorkflowDocument", () => {
       const imported = canvasOf("x")
       imported.nodes = imported.nodes.filter((n) => n.id !== "llm_1")
       act(() => result.current.importFromText(JSON.stringify({ blueprint: imported })))
+      act(() => result.current.confirmImport())
       expect(result.current.nodeTypeMap).toEqual({ start_1: "start", end_1: "end" })
     })
   })
@@ -739,6 +741,7 @@ describe("useWorkflowDocument", () => {
       const before = result.current.canvasRevision
       const imported = { ...canvasOf("imported"), variables: [REGION] }
       act(() => result.current.importFromText(JSON.stringify({ format: "x", workflow: { blueprint: imported } })))
+      act(() => result.current.confirmImport())
       expect(result.current.canvasRevision).toBe(before + 1)
       expect(blueprintRef.current).toEqual(imported)
       expect(result.current.workflow?.blueprint).toEqual(imported)
@@ -750,9 +753,61 @@ describe("useWorkflowDocument", () => {
       expect(blueprintRef.current.variables).toEqual([REGION])
     })
 
+    // Import replaces the canvas, clears undo and is saved over the stored
+    // workflow a few seconds later: with something on the canvas it asks first.
+    it("asks before replacing a canvas that has steps, and does nothing until confirmed", async () => {
+      const { result, blueprintRef } = await mountDocument(canvasOf("first"))
+      const before = result.current.canvasRevision
+      act(() => result.current.importFromText(JSON.stringify({ blueprint: canvasOf("imported") })))
+      expect(result.current.hasPendingImport).toBe(true)
+      expect(blueprintRef.current).toEqual(canvasOf("first"))
+      expect(result.current.canvasRevision).toBe(before)
+      expect(result.current.isDirty).toBe(false)
+      expect(toast.success).not.toHaveBeenCalled()
+
+      act(() => result.current.confirmImport())
+      expect(result.current.hasPendingImport).toBe(false)
+      expect(blueprintRef.current).toEqual(canvasOf("imported"))
+      expect(result.current.canvasRevision).toBe(before + 1)
+      expect(result.current.isDirty).toBe(true)
+    })
+
+    it("leaves everything as it was when the question is answered with Cancel", async () => {
+      const { result, blueprintRef } = await mountDocument(canvasOf("first"))
+      vi.useFakeTimers()
+      const before = result.current.canvasRevision
+      act(() => result.current.importFromText(JSON.stringify({ blueprint: canvasOf("imported") })))
+      act(() => result.current.cancelImport())
+      expect(result.current.hasPendingImport).toBe(false)
+      expect(blueprintRef.current).toEqual(canvasOf("first"))
+      expect(result.current.canvasRevision).toBe(before)
+      // Confirming later does nothing: there is no file waiting any more.
+      act(() => result.current.confirmImport())
+      expect(blueprintRef.current).toEqual(canvasOf("first"))
+      await act(() => vi.advanceTimersByTimeAsync(10000))
+      expect(api.update).not.toHaveBeenCalled()
+    })
+
+    it("asks by what is on the canvas now, not by its last report", async () => {
+      const empty = emptyBlueprint()
+      // Stored empty, but a step was just dropped and not reported yet.
+      const { result } = await mountDocument(empty, { readCanvas: () => canvasOf("just dropped") })
+      act(() => result.current.importFromText(JSON.stringify({ blueprint: canvasOf("imported") })))
+      expect(result.current.hasPendingImport).toBe(true)
+    })
+
+    it("imports straight away into an empty, saved canvas", async () => {
+      const { result, blueprintRef } = await mountDocument(emptyBlueprint())
+      act(() => result.current.importFromText(JSON.stringify({ blueprint: canvasOf("imported") })))
+      expect(result.current.hasPendingImport).toBe(false)
+      expect(blueprintRef.current).toEqual(canvasOf("imported"))
+      expect(toast.success).toHaveBeenCalledWith("workflowImported")
+    })
+
     it("accepts a bare { blueprint } file", async () => {
       const { result, blueprintRef } = await mountDocument(canvasOf("first"))
       act(() => result.current.importFromText(JSON.stringify({ blueprint: canvasOf("bare") })))
+      act(() => result.current.confirmImport())
       expect(blueprintRef.current).toEqual(canvasOf("bare"))
     })
 
@@ -766,6 +821,7 @@ describe("useWorkflowDocument", () => {
       act(() => result.current.importFromText(text))
       expect(toast.error).toHaveBeenCalledWith(message)
       expect(toast.success).not.toHaveBeenCalled()
+      expect(result.current.hasPendingImport).toBe(false)
       expect(result.current.canvasRevision).toBe(before)
       expect(blueprintRef.current).toEqual(canvasOf("first"))
       expect(result.current.isDirty).toBe(false)

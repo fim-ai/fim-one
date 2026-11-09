@@ -538,6 +538,21 @@ test("restoring a version and importing a file replace what is on the canvas", a
     await page.getByRole("menuitem", { name: "Import", exact: true }).click()
     await (await chooser).setFiles(file)
 
+    // There are steps on the canvas: the editor asks before replacing them.
+    const question = page.getByRole("alertdialog")
+    await expect(question).toContainText("Replace this workflow?")
+    await expect(nodeOfType(page, "llm")).toHaveCount(1)
+    await question.getByRole("button", { name: "Cancel" }).click()
+    await expect(question).toHaveCount(0)
+    await expect(nodeOfType(page, "llm")).toHaveCount(1)
+    await expect(page.getByText("Unsaved changes")).toHaveCount(0)
+
+    await page.getByTestId("workflow-more-menu").click()
+    const again = page.waitForEvent("filechooser")
+    await page.getByRole("menuitem", { name: "Import", exact: true }).click()
+    await (await again).setFiles(file)
+    await page.getByRole("alertdialog").getByRole("button", { name: "Replace" }).click()
+
     await expect(page.getByText("Workflow imported")).toBeVisible()
     await expect(nodeOfType(page, "agent")).toHaveCount(1)
     await expect(nodeOfType(page, "llm")).toHaveCount(0)
