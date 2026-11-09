@@ -31,7 +31,7 @@ curl -H "Authorization: Bearer fim_your_api_key_here" \
 
 ### Using JWT Token
 
-For SSE streaming endpoints (`/api/react` and `/api/dag`), you can pass the token in the request body instead:
+The SSE streaming endpoints (`/api/react`, `/api/dag` and `/api/auto`) read the token from the request body, not from the `Authorization` header. The value can be a JWT access token or an API key:
 
 ```json
 {
@@ -46,7 +46,7 @@ See [Authentication](/api/authentication) for detailed setup instructions.
 
 ### Success Response
 
-All successful API responses follow this structure:
+Most endpoints that return a single resource or an acknowledgement wrap it in this structure (list endpoints and the sign-in endpoints return their payload directly):
 
 ```json
 {
@@ -61,13 +61,13 @@ All successful API responses follow this structure:
 
 ### Error Response
 
-Error responses include an error code and human-readable message:
+Error responses carry a human-readable `detail`, a machine-readable `error_code` (`null` for a few generic errors), and `error_args` with values for the message:
 
 ```json
 {
-  "success": false,
-  "error": "conversation_not_found",
-  "message": "The conversation does not exist or has been deleted"
+  "detail": "Conversation not found",
+  "error_code": "conversation_not_found",
+  "error_args": {}
 }
 ```
 
@@ -90,37 +90,42 @@ List endpoints return paginated results:
 
 ## Streaming (Server-Sent Events)
 
-Chat endpoints (`POST /api/react` and `POST /api/dag`) return Server-Sent Events for real-time streaming. Each event has a `type` field indicating its content:
+Chat endpoints (`POST /api/react`, `POST /api/dag` and `POST /api/auto`) return Server-Sent Events for real-time streaming. Each event has a `type` field indicating its content:
 
 | Event Type | Description |
 |-----------|-------------|
 | `step` | ReAct reasoning step (tool calls, thinking). For models with extended thinking (Claude, o-series, DeepSeek-R1), includes real-time `thinking_delta` content during tool-decision phases |
+| `step_title` | Short generated label for a ReAct iteration (`iteration`, `title`) |
 | `step_progress` | DAG step progress (started/iteration/completed). May include `thinking_delta` content when the underlying agent streams reasoning tokens |
-| `phase` | Pipeline phase transition (planning/executing/analyzing) |
+| `phase` | Pipeline phase transition (selecting_tools/planning/executing/analyzing) |
 | `compact` | Context compaction occurred |
 | `answer` | Streamed answer text (start/delta/done) |
+| `error` | Structured terminator, sent when the monthly token quota runs out mid-answer (`code: "QUOTA_EXCEEDED"`) or the run fails. Followed by `end` |
+| `guardrail_tripwired` | A content guardrail blocked the turn (`kind`, `guardrail_name`, `reason`) |
 | `done` | Final result payload |
-| `suggestions` | Suggested follow-up questions |
-| `title` | Auto-generated conversation title |
+| `post_processing` | Marker between `done` and `end` while follow-up suggestions are generated |
+| `suggestions` | Suggested follow-up questions (`{"items": [...]}`) |
 | `end` | Stream terminator (always last) |
+
+The conversation title is generated in the background after `end`; read it from `GET /api/conversations/{id}`.
 
 ### Example SSE Stream
 
 ```
 event: step
-data: {"type": "tool_call", "tool": "search", "input": "Paris weather"}
+data: {"cursor": 0, "data": {"type": "iteration", "status": "start", "iteration": 1, "tool_name": "web_search", "tool_args": {"query": "Paris weather"}}}
 
 event: answer
-data: {"type": "delta", "text": "Based on current data, "}
+data: {"cursor": 3, "data": {"status": "delta", "content": "Based on current data, "}}
 
 event: answer
-data: {"type": "delta", "text": "Paris has pleasant weather."}
+data: {"cursor": 4, "data": {"status": "delta", "content": "Paris has pleasant weather."}}
 
 event: done
-data: {"answer": "Based on current data, Paris has pleasant weather.", "tokens": 128}
+data: {"cursor": 6, "data": {"answer": "Based on current data, Paris has pleasant weather.", "iterations": 2, "elapsed": 4.2, "usage": {"prompt_tokens": 96, "completion_tokens": 32, "total_tokens": 128}}}
 
 event: suggestions
-data: ["What about tomorrow's forecast?", "Compare with other European cities"]
+data: {"cursor": 8, "data": {"items": ["What about tomorrow's forecast?", "Compare with other European cities"]}}
 
 event: end
 data: {}
@@ -128,7 +133,7 @@ data: {}
 
 ### Cursor-based resume
 
-Every SSE event carries a monotonic `cursor` integer scoped to the conversation. Clients should track the highest cursor seen. When the connection drops mid-turn (network error, proxy timeout, server restart), the client can re-subscribe without re-running the agent:
+Every persisted SSE event is sent as `{"cursor": <int>, "data": {...}}`; the cursor increases monotonically within the assistant turn. Clients should track the highest cursor seen. When the connection drops mid-turn (network error, proxy timeout, server restart), the client can re-subscribe without re-running the agent:
 
 ```http
 POST /api/chat/resume
@@ -186,14 +191,18 @@ All timestamps are in ISO 8601 format with UTC timezone:
 
 Common error codes and their meanings:
 
-| Error Code | HTTP Status | Meaning |
+| `error_code` | HTTP Status | Meaning |
 |-----------|-------------|---------|
-| `unauthorized` | 401 | Invalid or missing authentication |
-| `forbidden` | 403 | User lacks permission for this resource |
-| `not_found` | 404 | Resource does not exist |
-| `bad_request` | 400 | Invalid request parameters |
-| `rate_limit_exceeded` | 429 | Too many requests (planned) |
-| `internal_error` | 500 | Server error |
+| `authentication_required` | 401 | A streaming endpoint was called without a token in the body |
+| `token_expired` / `invalid_token` | 401 | The JWT in a streaming request has expired or is malformed |
+| `invalid_credentials` | 401 | Wrong email or password at sign-in |
+| `api_key_scope_denied` | 403 | The API key's scopes do not allow this request |
+| `ip_not_allowed` | 403 | The client address is refused by the instance's IP rules |
+| `subscription_required` | 402 | The instance is paid-only and the user has no plan |
+| `token_quota_exceeded` | 429 | The user's monthly token quota is used up |
+| `2fa_too_many_attempts` | 429 | Five incorrect two-factor codes within 15 minutes |
+
+Errors raised by the authentication layer for a bad `Authorization` header (`Invalid token`, `Token has expired`, `Invalid API key`, `API key is disabled`) return `401` with `error_code: null`; rely on the status code and `detail` for those. Request validation failures return `422`.
 
 ## API Playground
 
@@ -218,7 +227,7 @@ While FIM One API is fully REST-based, SDKs are available (or coming soon) in po
 
 ## Versioning
 
-The current API version is `v0.8.0`. Version is not included in the URL path; breaking changes will be signaled through major version bumps and a migration period.
+The API carries the application version, reported by `GET /api/version`. Version is not included in the URL path; breaking changes will be signaled through major version bumps and a migration period.
 
 ## Support
 
