@@ -438,6 +438,26 @@ describe("useWorkflowDocument", () => {
       expect(router.push).toHaveBeenCalledTimes(1)
     })
 
+    it("knows about an edit the canvas has not reported yet when asked whether leaving loses anything", async () => {
+      const canvas = { current: canvasOf("first") }
+      const { result } = await mountDocument(canvasOf("first"), { readCanvas: () => canvas.current })
+      expect(result.current.hasUnsavedChanges()).toBe(false)
+      canvas.current = canvasOf("typed an instant ago")
+      expect(result.current.isDirty).toBe(false) // the page has not heard of it
+      let unsaved = false
+      act(() => {
+        unsaved = result.current.hasUnsavedChanges()
+      })
+      expect(unsaved).toBe(true)
+      expect(result.current.isDirty).toBe(true)
+      await act(() => result.current.save())
+      expect(result.current.hasUnsavedChanges()).toBe(false)
+      // Once the edits are given up, leaving loses nothing more.
+      canvas.current = canvasOf("another edit")
+      act(() => result.current.discardChanges())
+      expect(result.current.hasUnsavedChanges()).toBe(false)
+    })
+
     it("nothing is saved after the edits were discarded or the workflow deleted", async () => {
       const { result } = await mountDocument(canvasOf("first"))
       vi.useFakeTimers()

@@ -564,3 +564,36 @@ test("restoring a version and importing a file replace what is on the canvas", a
     expect(stored.nodes.map((n) => n.id).sort()).toEqual(["agent_9", "end_1", "start_1"])
   })
 })
+
+test("leaving the editor with unsaved changes asks first", async ({ page, request }) => {
+  const workflowId = await createLinearWorkflow(request, seeded.session, "Leaving workflow", "stored prompt")
+  await page.goto(`/workflows/${workflowId}`)
+  await expect(canvasNodes(page)).toHaveCount(3)
+
+  // Nothing to lose yet: the link is followed. Come back.
+  await page.getByRole("link", { name: "Back to Workflows" }).click()
+  await page.waitForURL(/\/workflows$/)
+  await page.goto(`/workflows/${workflowId}`)
+  await expect(canvasNodes(page)).toHaveCount(3)
+
+  const panel = await openConfig(page, "llm")
+  const prompt = panel.getByPlaceholder(PROMPT_HINT)
+  await prompt.fill("typed and not saved")
+
+  // Straight after typing, before the editor has even marked it unsaved.
+  await page.getByRole("link", { name: "Back to Workflows" }).click()
+  const question = page.getByRole("dialog").filter({ hasText: "Leaving this page will discard them" })
+  await expect(question).toBeVisible()
+  await question.getByRole("button", { name: "Stay" }).click()
+  await expect(question).toHaveCount(0)
+  expect(new URL(page.url()).pathname).toBe(`/workflows/${workflowId}`)
+  await expect(prompt).toHaveValue("typed and not saved")
+
+  // A sidebar link asks too; this time leave.
+  await page.locator('a[href="/agents"]').first().click()
+  await expect(question).toBeVisible()
+  await question.getByRole("button", { name: "Discard & Leave" }).click()
+  await page.waitForURL(/\/agents$/)
+  const stored = await fetchBlueprint(request, seeded.session, workflowId)
+  expect(stored.nodes.find((n) => n.type === "llm")?.data.prompt_template).toBe("stored prompt")
+})

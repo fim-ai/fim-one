@@ -569,6 +569,22 @@ export function useWorkflowDocument({
     }
   }, [router, t, tError, cancelAutoSave, noteEdit])
 
+  /**
+   * Whether anything would be lost by leaving right now. Reads the canvas
+   * first: an edit of the last instant has not been reported yet and the
+   * `isDirty` a page rendered with does not know about it.
+   */
+  const hasUnsavedChanges = useCallback((): boolean => {
+    if (suspendedRef.current) return false
+    const canvas = readCanvasRef.current?.()
+    if (canvas) {
+      blueprintRef.current = withVariablesOf(canvas, blueprintRef.current)
+      trackNodeTypes(blueprintRef.current)
+      noteEdit()
+    }
+    return isUnsaved()
+  }, [blueprintRef, trackNodeTypes, noteEdit, isUnsaved])
+
   /** Give up the unsaved edits: nothing is saved from here on (the page is being left). */
   const discardChanges = useCallback(() => {
     suspendedRef.current = true
@@ -654,6 +670,7 @@ export function useWorkflowDocument({
     cancelImport,
     duplicate,
     deleteWorkflow,
+    hasUnsavedChanges,
     discardChanges,
     beginRestore,
     cancelRestore,

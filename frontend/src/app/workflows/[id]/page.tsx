@@ -42,6 +42,7 @@ import { ApiKeyDialog } from "@/components/workflows/api-key-dialog"
 import { ScheduleDialog } from "@/components/workflows/schedule-dialog"
 import { BatchRunDialog } from "@/components/workflows/batch-run-dialog"
 import { emptyBlueprint, startVariablesOf } from "@/components/workflows/editor-page/blueprint-derived"
+import { useLeaveGuard } from "@/components/workflows/editor-page/use-leave-guard"
 import { useOpenPanels } from "@/components/workflows/editor-page/use-open-panels"
 import { useWorkflowDocument } from "@/components/workflows/editor-page/use-workflow-document"
 import { useWorkflowPublishing } from "@/components/workflows/editor-page/use-workflow-publishing"
@@ -56,7 +57,6 @@ import { usePageTitle } from "@/hooks/use-page-title"
 /** The dialogs and side sheets the toolbar opens. */
 type EditorPanel =
   | "delete"
-  | "unsaved"
   | "envVars"
   | "runHistory"
   | "versionHistory"
@@ -79,7 +79,6 @@ export default function WorkflowEditorPage() {
   const workflowId = params.id as string
 
   const editorRef = useRef<WorkflowEditorHandle>(null)
-  const pendingNavigationRef = useRef<string | null>(null)
   // The blueprint being edited. The canvas writes it, saving reads it.
   const blueprintRef = useRef<WorkflowBlueprint>(emptyBlueprint())
 
@@ -97,6 +96,8 @@ export default function WorkflowEditorPage() {
   const { workflow, setWorkflow, isLoadingWorkflow, discardChanges } = doc
   const run = useWorkflowRun(workflow?.id ?? null)
   const publishing = useWorkflowPublishing(workflow, setWorkflow)
+  // With unsaved changes, a link to another page asks before it is followed.
+  const leaveGuard = useLeaveGuard(doc.hasUnsavedChanges)
 
   usePageTitle(workflow?.name)
 
@@ -308,7 +309,12 @@ export default function WorkflowEditorPage() {
       </Dialog>
 
       {/* Unsaved changes guard */}
-      <Dialog open={panels.isOpen("unsaved")} onOpenChange={panels.setter("unsaved")}>
+      <Dialog
+        open={leaveGuard.pendingHref !== null}
+        onOpenChange={(open) => {
+          if (!open) leaveGuard.stay()
+        }}
+      >
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>{t("unsavedChangesTitle")}</DialogTitle>
@@ -317,18 +323,17 @@ export default function WorkflowEditorPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="ghost" className="px-6" onClick={() => panels.set("unsaved", false)}>
+            <Button variant="ghost" className="px-6" onClick={leaveGuard.stay}>
               {t("stay")}
             </Button>
             <Button
               variant="destructive"
               className="px-6"
               onClick={() => {
-                panels.set("unsaved", false)
+                const destination = leaveGuard.pendingHref
+                leaveGuard.stay()
                 discardChanges()
-                if (pendingNavigationRef.current) {
-                  router.push(pendingNavigationRef.current)
-                }
+                if (destination) router.push(destination)
               }}
             >
               {t("discardAndLeave")}
