@@ -798,3 +798,52 @@ class TestApprovalChannelBinding:
                         outsider.id, db, approval_channel_id=channel_id
                     )
                 assert exc.value.error_code == "approval_channel_denied"
+
+
+class TestPersonalAgentWithForeignKeysEnforced:
+    """The row of a personal agent's request names no organization.
+
+    PostgreSQL always enforces foreign keys and the application's SQLite
+    engine switches them on; the in-memory engines of the tests above do
+    not, which hid an empty-string ``org_id`` that no database in use
+    would accept.
+    """
+
+    @pytest.mark.asyncio
+    async def test_inline_request_is_recorded_and_decided(self) -> None:
+        from sqlalchemy import event
+
+        eng = create_async_engine("sqlite+aiosqlite:///:memory:")
+
+        @event.listens_for(eng.sync_engine, "connect")
+        def _enforce_foreign_keys(dbapi_conn: Any, _record: Any) -> None:
+            dbapi_conn.execute("PRAGMA foreign_keys=ON")
+
+        async with eng.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        factory = async_sessionmaker(eng, expire_on_commit=False)
+        user_id = str(uuid.uuid4())
+        async with factory() as db:
+            db.add(User(id=user_id, username="erin", email="erin@test.com"))
+            await db.commit()
+        await _seed_agent(
+            factory,
+            user_id=user_id,
+            org_id=None,
+            agent_id="agent-personal-fk",
+            confirmation_mode="inline_only",
+        )
+
+        hook = create_feishu_gate_hook(
+            session_factory=factory, timeout_seconds=5, poll_interval_seconds=0.02
+        )
+        ctx = _make_context(org_id=None, user_id=user_id, agent_id="agent-personal-fk")
+        with _decide_on_create(factory, "approved"):
+            result = await hook.execute(ctx)
+
+        assert result.allow is True
+        async with factory() as db:
+            row = (await db.execute(select(ConfirmationRequest))).scalar_one()
+            assert row.org_id is None
+            assert row.status == "approved"
+        await eng.dispose()

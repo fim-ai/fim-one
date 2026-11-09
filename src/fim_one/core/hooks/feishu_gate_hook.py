@@ -468,14 +468,10 @@ class FeishuGateHook(PreToolUseHook):
         elif scope == "agent_owner":
             approver_user_id = getattr(agent_row, "user_id", None)
 
-        # ``ConfirmationRequest.org_id`` is NOT NULL in the schema; fall
-        # back to an empty string is NOT acceptable in prod, but for
-        # personal-agent inline flows the migration keeps the column
-        # nullable-at-ORM level via the existing default.  If org_id is
-        # truly missing, use the agent's user_id namespace as a safe
-        # sentinel — callers loading the row can still dispatch by
-        # ``user_id``.
-        effective_org = org_id or getattr(agent_row, "org_id", None) or ""
+        # A personal agent has no organization: the column is a nullable
+        # foreign key, so that is NULL, never an empty string (which names
+        # no organization and fails the constraint).
+        effective_org = org_id or getattr(agent_row, "org_id", None) or None
 
         row = ConfirmationRequest(
             id=confirmation_id,
