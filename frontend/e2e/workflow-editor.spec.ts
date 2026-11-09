@@ -145,6 +145,14 @@ test("build, save, reload and run a workflow that uses every offered node type",
     await panel.getByRole("button", { name: "Insert variable reference" }).click()
     await insertVariable(page, `{{${ids.start}.topic}}`)
     await expect(prompt).toHaveValue(`Write about {{${ids.start}.topic}}`)
+
+    // Sections every step shares: the note, Advanced, Notes.
+    await panel.getByPlaceholder("Add a note...").fill("drafts the text")
+    await panel.getByRole("button", { name: "Advanced" }).click()
+    await panel.getByRole("spinbutton").nth(2).fill("2")
+    await panel.getByRole("button", { name: "Notes" }).click()
+    await panel.getByPlaceholder("Add a comment or annotation for this node...").fill("smoke comment")
+    await expect(nodeOfType(page, "llm")).toContainText("drafts the text")
   })
 
   let conditionHandle = ""
@@ -178,6 +186,12 @@ test("build, save, reload and run a workflow that uses every offered node type",
   })
 
   await test.step("configure Connector", async () => {
+    let connectorListCalls = 0
+    page.on("request", (req) => {
+      if (req.method() === "GET" && new URL(req.url()).pathname === "/api/connectors") {
+        connectorListCalls += 1
+      }
+    })
     const panel = await openConfig(page, "connector")
     await panel.getByRole("combobox").nth(0).click()
     await page.getByRole("option", { name: seeded.connectorName }).click()
@@ -186,6 +200,9 @@ test("build, save, reload and run a workflow that uses every offered node type",
     await panel.getByRole("button", { name: "Add parameter" }).click()
     await panel.getByPlaceholder("Key").fill("q")
     await panel.getByPlaceholder("Value").fill(`{{${ids.start}.topic}}`)
+    // The list is loaded when the form opens, not on every keystroke
+    // (twice under React's development double-mount).
+    expect(connectorListCalls).toBeLessThanOrEqual(2)
   })
 
   await test.step("configure MCP Tool", async () => {
@@ -251,6 +268,9 @@ test("build, save, reload and run a workflow that uses every offered node type",
     await expect(llm.getByPlaceholder(PROMPT_HINT)).toHaveValue(
       `Write about {{${ids.start}.topic}}`,
     )
+    await expect(llm.getByPlaceholder("Add a note...")).toHaveValue("drafts the text")
+    const llmData = saved.nodes.find((n) => n.type === "llm")?.data
+    expect(llmData).toMatchObject({ note: "drafts the text", comment: "smoke comment", retry_count: 2 })
     const connector = await openConfig(page, "connector")
     await expect(connector.getByRole("combobox").nth(0)).toContainText(seeded.connectorName)
     await expect(connector.getByRole("combobox").nth(1)).toContainText(seeded.actionName)
