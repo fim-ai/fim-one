@@ -138,6 +138,30 @@ def _database_credential(principal: Principal, conn: Any) -> ResolvedCredential:
     )
 
 
+# Where a connector's secret lived before credentials had a table of their
+# own. A save through the connector API moves it to the default credential
+# row; a row written by a path that does not (or not yet re-saved) still
+# carries it here.
+_AUTH_CONFIG_SECRET_KEYS = (
+    "default_token",
+    "default_api_key",
+    "default_username",
+    "default_password",
+)
+
+
+def _secrets_left_in_auth_config(conn: Any) -> dict[str, Any]:
+    """The owner's secret fields still stored in ``conn.auth_config``.
+
+    They are the owner's stored credential like the default row is, and are
+    handed out under the same rule. The tool adapter does not read them.
+    """
+    config = getattr(conn, "auth_config", None)
+    if not isinstance(config, dict):
+        return {}
+    return {key: config[key] for key in _AUTH_CONFIG_SECRET_KEYS if config.get(key)}
+
+
 async def _connector_credential(
     db: AsyncSession, principal: Principal, conn: Any
 ) -> ResolvedCredential:
@@ -171,6 +195,8 @@ async def _connector_credential(
         return ResolvedCredential(source=CredentialSource.PERSONAL, connector=personal)
     if not may_borrow:
         raise _credential_required("Connector", conn)
+    if personal is None:
+        stored = {**_secrets_left_in_auth_config(conn), **(stored or {})}
     if not stored:
         # Nothing usable is stored: the request goes out bare.
         return ResolvedCredential(source=CredentialSource.NONE, connector={})

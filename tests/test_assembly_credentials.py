@@ -161,6 +161,53 @@ class TestApiConnector:
         )
 
 
+class TestSecretLeftInAuthConfig:
+    """A connector row may still carry the owner's secret in ``auth_config``."""
+
+    def _legacy(self, *, allow_fallback: bool) -> SimpleNamespace:
+        conn = _connector(allow_fallback=allow_fallback)
+        conn.auth_config = {"token_prefix": "Bearer", "default_token": "in-config"}
+        return conn
+
+    async def test_it_is_the_owners_stored_credential(self, session: AsyncSession) -> None:
+        got = await resolve_credential(
+            session, provisional_principal(OWNER), self._legacy(allow_fallback=False)
+        )
+
+        assert got.source is CredentialSource.OWNER
+        assert got.connector == {"default_token": "in-config"}
+
+    async def test_it_is_lent_only_when_fallback_is_on(self, session: AsyncSession) -> None:
+        got = await resolve_credential(
+            session, provisional_principal(OTHER), self._legacy(allow_fallback=True)
+        )
+        assert got.source is CredentialSource.OWNER_FALLBACK
+        assert got.connector == {"default_token": "in-config"}
+
+        refusal = await _refusal(session, OTHER, self._legacy(allow_fallback=False))
+        assert refusal.error_code == "credential_required"
+
+    async def test_the_default_row_wins_over_it(self, session: AsyncSession) -> None:
+        await _store(session, None, {"default_token": "in-row"})
+
+        got = await resolve_credential(
+            session, provisional_principal(OWNER), self._legacy(allow_fallback=False)
+        )
+
+        assert got.connector == {"default_token": "in-row"}
+
+    async def test_it_does_not_fill_in_for_a_users_own_credential(
+        self, session: AsyncSession
+    ) -> None:
+        await _store(session, OTHER, {"token": "mine"})
+
+        got = await resolve_credential(
+            session, provisional_principal(OTHER), self._legacy(allow_fallback=True)
+        )
+
+        assert got.connector == {"token": "mine"}
+
+
 class TestConnectorThatTakesNoCredential:
     """B6: such a connector was hidden from a non-owner unless fallback was on."""
 

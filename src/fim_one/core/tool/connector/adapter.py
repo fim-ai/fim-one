@@ -296,17 +296,16 @@ class ConnectorToolAdapter(BaseTool):
     def _inject_auth(self, headers: dict[str, str]) -> None:
         """Inject authentication into request headers.
 
-        Priority: per-user credentials > default credentials in auth_config.
+        The secret comes only from ``auth_credentials``, which whoever built
+        this tool resolved for the caller (``core/assembly/credentials``).
+        ``auth_config`` supplies the non-secret settings: token prefix,
+        header name.
         """
         creds = self._auth_credentials
         cfg = self._auth_config
 
         if self._auth_type == "bearer":
-            token = (
-                creds.get("default_token")
-                or creds.get("token")
-                or cfg.get("default_token", "")
-            )
+            token = creds.get("default_token") or creds.get("token")
             if token:
                 prefix = cfg.get("token_prefix", "Bearer")
                 headers["Authorization"] = f"{prefix} {token}"
@@ -317,24 +316,12 @@ class ConnectorToolAdapter(BaseTool):
                 )
         elif self._auth_type == "api_key":
             header_name = cfg.get("header_name", "X-API-Key")
-            key = (
-                creds.get("default_api_key")
-                or creds.get("api_key")
-                or cfg.get("default_api_key", "")
-            )
+            key = creds.get("default_api_key") or creds.get("api_key")
             if key:
                 headers[header_name] = key
         elif self._auth_type == "basic":
-            username = (
-                creds.get("default_username")
-                or creds.get("username")
-                or cfg.get("default_username", "")
-            )
-            password = (
-                creds.get("default_password")
-                or creds.get("password")
-                or cfg.get("default_password", "")
-            )
+            username = creds.get("default_username") or creds.get("username") or ""
+            password = creds.get("default_password") or creds.get("password") or ""
             if username or password:
                 encoded = base64.b64encode(f"{username}:{password}".encode()).decode()
                 headers["Authorization"] = f"Basic {encoded}"
