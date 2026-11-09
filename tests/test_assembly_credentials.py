@@ -397,17 +397,22 @@ class TestMcpServer:
 
 
 class TestMcpServerThatStoresNothing:
-    """B6: a server with no env and no headers was gated by the fallback switch."""
+    """No env and no headers stored is not "takes no credential".
+
+    The server's URL and command arguments are the owner's too and can carry
+    a token, so the fallback switch gates the server whatever it stores.
+    """
 
     def _bare(self, *, allow_fallback: bool) -> SimpleNamespace:
         server = _mcp(transport="stdio", allow_fallback=allow_fallback)
         server.env, server.headers = None, {}
         return server
 
-    @pytest.mark.parametrize("allow_fallback", [True, False])
-    @pytest.mark.parametrize("user_id", [OWNER, OTHER])
-    async def test_anyone_who_may_use_it_opens_it_with_nothing(
-        self, session: AsyncSession, allow_fallback: bool, user_id: str
+    @pytest.mark.parametrize(
+        ("user_id", "allow_fallback"), [(OWNER, True), (OWNER, False), (OTHER, True)]
+    )
+    async def test_the_owner_and_those_lent_to_open_it_with_nothing(
+        self, session: AsyncSession, user_id: str, allow_fallback: bool
     ) -> None:
         got = await resolve_credential(
             session, provisional_principal(user_id), self._bare(allow_fallback=allow_fallback)
@@ -415,6 +420,15 @@ class TestMcpServerThatStoresNothing:
 
         assert got.source is CredentialSource.NONE
         assert (got.env, got.headers) == (None, None)
+
+    @pytest.mark.parametrize("user_id", [OTHER, ""])
+    async def test_someone_else_is_still_refused_when_fallback_is_off(
+        self, session: AsyncSession, user_id: str
+    ) -> None:
+        """It was opened to them with no credential at all (source ``none``)."""
+        refusal = await _refusal(session, user_id, self._bare(allow_fallback=False))
+
+        assert refusal.error_code == "credential_required"
 
     async def test_a_key_the_user_brought_is_still_used(self, session: AsyncSession) -> None:
         await _save_mcp(session, OTHER, env={"API_KEY": "mine"})

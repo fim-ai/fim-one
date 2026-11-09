@@ -3,10 +3,9 @@
 One rule for API connectors and MCP servers, from every entry point (chat
 with or without an agent, sub-agents, workflow nodes):
 
-1. A resource that takes no credential (a connector whose auth type is
-   ``none``; an MCP server with no ``env`` and no ``headers`` stored) is
-   called with none. ``allow_fallback`` has nothing to gate there: there is
-   nothing of the owner's to borrow.
+1. A connector whose owner declared that it takes no credential (auth type
+   ``none``) is called with none. ``allow_fallback`` has nothing to gate
+   there: there is nothing of the owner's to borrow.
 2. The acting user's own credential, when they saved one that the resource
    can use, is used alone: it is never mixed with the owner's.
 3. The resource's owner uses the credential stored on the resource.
@@ -14,8 +13,13 @@ with or without an agent, sub-agents, workflow nodes):
    ``allow_fallback`` on.
 5. Otherwise the call is refused with ``credential_required``.
 
-For an MCP server step 2 comes first: a server that stores nothing may
-still be one every user brings their own key to.
+Step 1 has no MCP counterpart. An MCP server has no "takes no credential"
+declaration, and an empty ``env`` and ``headers`` does not amount to one:
+the URL and the command arguments are the owner's as well. So with
+``allow_fallback`` off, a non-owner connects to an MCP server with a
+credential of their own or not at all, whatever the server stores. A server
+that stores nothing is opened with nothing by its owner and by those the
+owner lends to (source ``none``).
 
 "That the resource can use" matters for MCP servers. A server row carries
 the owner's ``env`` (read by a stdio server) and ``headers`` (sent to an SSE
@@ -276,18 +280,20 @@ async def _mcp_credential(
             env=dict(personal.env_blob) if personal.env_blob else None,
             headers=dict(personal.headers_blob) if personal.headers_blob else None,
         )
-    if not server.env and not server.headers:
-        # Nothing is stored on the server: there is nothing of the owner's
-        # to borrow, so the fallback switch has nothing to gate.
-        return ResolvedCredential(source=CredentialSource.NONE)
     if must_bring_own_credential(server, principal.user_id):
         # The credential must supply what the transport reads. One that does
-        # not supplies nothing, and the owner's must not fill the gap.
+        # not supplies nothing, and the owner's must not fill the gap. This
+        # holds whatever the server stores: "no env, no headers" does not
+        # mean the owner lends nothing (the URL and the command arguments
+        # are the owner's too, and can carry a token).
         raise _credential_required(
             "MCP server",
             server,
             "environment variables" if server.transport == "stdio" else "HTTP headers",
         )
+    if not server.env and not server.headers:
+        # The owner, or anyone the owner lends to, and nothing is stored.
+        return ResolvedCredential(source=CredentialSource.NONE)
     return ResolvedCredential(
         source=(
             CredentialSource.OWNER
