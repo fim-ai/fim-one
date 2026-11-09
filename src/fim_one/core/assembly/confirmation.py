@@ -21,6 +21,11 @@ which platform it is. Only the explicitly bound channel is considered: an
 approval never borrows the completion-notification channel or some other
 channel of the organization.
 
+A workflow approval (``kind="workflow_approval"``) is a request like any
+other: assigned to one user (``assignee``) or, unassigned, to the user the
+run belongs to (``initiator``). An assignee must be an active user who
+shares an organization with the run (:func:`validate_assignee`).
+
 Who may decide is fixed when the request is created and written on the row
 (``eligible_scope``, ``eligible_user_id``, ``org_id``); changing the agent's
 settings afterwards does not move a request in flight. :meth:`may_decide`
@@ -48,13 +53,14 @@ from fim_one.core.hooks.base import PreToolUseHook
 from fim_one.core.hooks.inline_confirmation import emit_inline_confirmation
 
 from .errors import (
+    APPROVAL_ASSIGNEE_NOT_IN_ORG,
     CONFIRMATION_ALREADY_DECIDED,
     CONFIRMATION_FORBIDDEN,
     CONFIRMATION_NOT_FOUND,
     CONFIRMATION_UNDELIVERABLE,
     AssemblyRefusal,
 )
-from .principal import Binding, Principal, provisional_principal
+from .principal import Binding, Principal, provisional_principal, user_org_ids
 
 __all__ = [
     "DEFAULT_POLL_INTERVAL_SECONDS",
@@ -68,6 +74,7 @@ __all__ = [
     "confirmation_required",
     "create_approval_gate_hook",
     "record_decision",
+    "validate_assignee",
 ]
 
 logger = logging.getLogger(__name__)
@@ -157,6 +164,15 @@ class ConfirmationService:
         the request cannot be put before anyone: ``channel_only`` with no
         usable channel, a channel with no target chat, or a failed send.
         """
+        if spec.eligible_scope == "assignee":
+            async with self._session_factory() as session:
+                await validate_assignee(
+                    session,
+                    assignee=spec.eligible_user_id,
+                    initiator=spec.initiator,
+                    org_id=spec.org_id,
+                )
+
         channel_row: Any = None
         carrier: ApprovalCarrier | None = None
         if spec.delivery != "inline_only":
@@ -300,6 +316,19 @@ class ConfirmationService:
                 await self._mark_expired(confirmation_id)
                 return "expired"
             await asyncio.sleep(poll_seconds)
+
+    async def get(self, confirmation_id: str) -> Any:
+        """The ``ConfirmationRequest`` row, or ``None``."""
+        from sqlalchemy import select
+
+        from fim_one.db.models.channel import ConfirmationRequest
+
+        async with self._session_factory() as session:
+            return (
+                await session.execute(
+                    select(ConfirmationRequest).where(ConfirmationRequest.id == confirmation_id)
+                )
+            ).scalar_one_or_none()
 
     async def _mark_expired(self, confirmation_id: str) -> None:
         from sqlalchemy import update
@@ -456,6 +485,49 @@ class ConfirmationService:
             stmt = stmt.where(ConfirmationRequest.kind == kind)
         result = await db.execute(stmt.order_by(ConfirmationRequest.created_at.desc()))
         return list(result.scalars().all())
+
+
+async def validate_assignee(
+    db: Any,
+    *,
+    assignee: str | None,
+    initiator: Principal,
+    org_id: str | None,
+) -> None:
+    """Refuse an assignee who is not an active user in the run's organization.
+
+    With the workflow in an organization (*org_id*), the assignee must be a
+    member of it. A workflow with no organization is personal: the assignee
+    must share an organization with the user the run belongs to, and a user
+    in no organization can assign only to themself. Raises
+    :class:`AssemblyRefusal` ``approval_assignee_not_in_org`` (400).
+    """
+    from sqlalchemy import select
+
+    from fim_one.db.models.user import User
+
+    def refuse(reason: str) -> AssemblyRefusal:
+        return AssemblyRefusal(
+            APPROVAL_ASSIGNEE_NOT_IN_ORG,
+            400,
+            f"Approval assignee {assignee!r} {reason}",
+            {"assignee": assignee or ""},
+        )
+
+    if not assignee:
+        raise refuse("is empty")
+    active = (await db.execute(select(User.is_active).where(User.id == assignee))).scalar()
+    if not active:
+        raise refuse("is not an active user")
+    assignee_orgs = set(await user_org_ids(db, assignee))
+    if org_id:
+        if org_id not in assignee_orgs:
+            raise refuse("is not a member of the workflow's organization")
+    elif initiator.org_ids:
+        if not assignee_orgs & initiator.org_ids:
+            raise refuse("shares no organization with the user running the workflow")
+    elif assignee != initiator.user_id:
+        raise refuse("cannot be assigned by a user outside any organization")
 
 
 def _already_decided(status: str) -> AssemblyRefusal:

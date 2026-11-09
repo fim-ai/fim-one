@@ -1156,11 +1156,13 @@ class ConnectorExecutor:
                 duration_ms=_ms_since(t0),
             )
 class HumanInterventionExecutor:
-    """Pause workflow execution and wait for external human approval.
+    """Pause workflow execution and wait for a human's approval.
 
-    Creates a ``WorkflowApproval`` record, then polls the database for a
-    status change.  Supports timeout-based expiration and configurable
-    polling intervals.
+    Asks :class:`~fim_one.core.assembly.confirmation.ConfirmationService`
+    for a ``kind="workflow_approval"`` request and polls it until it is
+    decided or its time is up. An assigned approval belongs to its
+    assignee, who must be an active user in the run's organization; an
+    unassigned one belongs to the user the run is attributed to.
 
     Node data shape::
 
@@ -1254,27 +1256,66 @@ class HumanInterventionExecutor:
                 duration_ms=_ms_since(t0),
             )
 
-        # Create approval record
-        import uuid as _uuid
+        from fim_one.core.assembly.confirmation import ConfirmationService, ConfirmationSpec
+        from fim_one.core.assembly.errors import AssemblyRefusal
+        from fim_one.core.assembly.principal import AuthMethod, Binding, resolve_principal
 
-        approval_id = str(_uuid.uuid4())
-
+        # The run's identity and the workflow it belongs to. (The entry the
+        # run came through is not known here until the engine passes a
+        # CallContext; the auth method is nominal.)
         async with db_session_factory() as db:
-            from fim_one.db.models.workflow import WorkflowApproval
+            from sqlalchemy import select
 
-            approval = WorkflowApproval(
-                id=approval_id,
-                workflow_run_id=context.run_id,
-                node_id=node.id,
-                title=title,
-                description=description,
-                assignee=assignee if assignee else None,
-                status="pending",
-                timeout_hours=timeout_hours,
+            from fim_one.db.models.workflow import Workflow
+
+            initiator = await resolve_principal(
+                db, user_id=context.user_id, auth=AuthMethod.SESSION
             )
-            db.add(approval)
-            await db.commit()
+            workflow = (
+                await db.execute(
+                    select(Workflow.user_id, Workflow.org_id).where(
+                        Workflow.id == context.workflow_id
+                    )
+                )
+            ).one_or_none()
+        binding = (
+            Binding(
+                kind="workflow",
+                id=context.workflow_id,
+                owner_id=workflow[0],
+                org_id=workflow[1],
+            )
+            if workflow is not None
+            else None
+        )
 
+        service = ConfirmationService(db_session_factory)
+        spec = ConfirmationSpec(
+            kind="workflow_approval",
+            initiator=initiator,
+            binding=binding,
+            org_id=binding.org_id if binding is not None else None,
+            title=title,
+            description=description,
+            payload={"timeout_hours": timeout_hours, "assignee": assignee or None},
+            eligible_scope="assignee" if assignee else "initiator",
+            eligible_user_id=assignee or initiator.user_id,
+            delivery="inline_only",
+            channel_id=None,
+            timeout_seconds=timeout_hours * 3600,
+            workflow_run_id=context.run_id,
+            node_id=node.id,
+        )
+        try:
+            request = await service.request(spec)
+        except AssemblyRefusal as refusal:
+            return NodeResult(
+                node_id=node.id,
+                status=NodeStatus.FAILED,
+                error=refusal.detail,
+                duration_ms=_ms_since(t0),
+            )
+        approval_id = str(request.id)
         logger.info(
             "HumanIntervention node %s created approval %s (timeout=%.1fh)",
             node.id,
@@ -1282,98 +1323,50 @@ class HumanInterventionExecutor:
             timeout_hours,
         )
 
-        # Poll for approval status change
-        timeout_seconds = timeout_hours * 3600
-        start_wait = time.time()
+        outcome = await service.wait(approval_id, poll_seconds=poll_interval)
+        record = await service.get(approval_id)
+        if record is None:
+            return NodeResult(
+                node_id=node.id,
+                status=NodeStatus.FAILED,
+                error="Approval record not found (deleted externally?)",
+                duration_ms=_ms_since(t0),
+            )
 
-        while True:
-            elapsed = time.time() - start_wait
+        if outcome == "approve":
+            output = {
+                "status": "approved",
+                "approval_id": approval_id,
+                "decision_by": record.decided_by_user_id,
+                "decision_note": record.decision_note,
+            }
+            # Same names as the headless path above, so downstream
+            # references behave identically with and without a DB.
+            output_variable = node.data.get("output_variable", "approval_result")
+            await _store_output(node, store, output)
+            if isinstance(output_variable, str) and output_variable:
+                await store.set(output_variable, output)
+            return NodeResult(
+                node_id=node.id,
+                status=NodeStatus.COMPLETED,
+                output=output,
+                duration_ms=_ms_since(t0),
+            )
 
-            # Check timeout
-            if elapsed >= timeout_seconds:
-                # Mark as expired in DB
-                async with db_session_factory() as db:
-                    from fim_one.db.models.workflow import WorkflowApproval
-                    from sqlalchemy import select
+        if outcome == "reject":
+            return NodeResult(
+                node_id=node.id,
+                status=NodeStatus.FAILED,
+                error=f"Approval rejected: {record.decision_note or 'No reason given'}",
+                duration_ms=_ms_since(t0),
+            )
 
-                    result = await db.execute(
-                        select(WorkflowApproval).where(
-                            WorkflowApproval.id == approval_id
-                        )
-                    )
-                    record = result.scalar_one_or_none()
-                    if record and record.status == "pending":
-                        from datetime import datetime, timezone
-
-                        record.status = "expired"
-                        record.resolved_at = datetime.now(timezone.utc)
-                        await db.commit()
-
-                return NodeResult(
-                    node_id=node.id,
-                    status=NodeStatus.FAILED,
-                    error=f"Approval timed out after {timeout_hours}h",
-                    duration_ms=_ms_since(t0),
-                )
-
-            # Poll DB for status change
-            async with db_session_factory() as db:
-                from fim_one.db.models.workflow import WorkflowApproval
-                from sqlalchemy import select
-
-                result = await db.execute(
-                    select(WorkflowApproval).where(
-                        WorkflowApproval.id == approval_id
-                    )
-                )
-                record = result.scalar_one_or_none()
-
-            if record is None:
-                return NodeResult(
-                    node_id=node.id,
-                    status=NodeStatus.FAILED,
-                    error="Approval record not found (deleted externally?)",
-                    duration_ms=_ms_since(t0),
-                )
-
-            if record.status == "approved":
-                output = {
-                    "status": "approved",
-                    "approval_id": approval_id,
-                    "decision_by": record.decision_by,
-                    "decision_note": record.decision_note,
-                }
-                # Same names as the headless path above, so downstream
-                # references behave identically with and without a DB.
-                output_variable = node.data.get("output_variable", "approval_result")
-                await _store_output(node, store, output)
-                if isinstance(output_variable, str) and output_variable:
-                    await store.set(output_variable, output)
-                return NodeResult(
-                    node_id=node.id,
-                    status=NodeStatus.COMPLETED,
-                    output=output,
-                    duration_ms=_ms_since(t0),
-                )
-
-            if record.status == "rejected":
-                return NodeResult(
-                    node_id=node.id,
-                    status=NodeStatus.FAILED,
-                    error=f"Approval rejected: {record.decision_note or 'No reason given'}",
-                    duration_ms=_ms_since(t0),
-                )
-
-            if record.status == "expired":
-                return NodeResult(
-                    node_id=node.id,
-                    status=NodeStatus.FAILED,
-                    error=f"Approval expired after {timeout_hours}h",
-                    duration_ms=_ms_since(t0),
-                )
-
-            # Still pending -- wait and poll again
-            await asyncio.sleep(poll_interval)
+        return NodeResult(
+            node_id=node.id,
+            status=NodeStatus.FAILED,
+            error=f"Approval timed out after {timeout_hours}h",
+            duration_ms=_ms_since(t0),
+        )
 
 
 class MCPExecutor:

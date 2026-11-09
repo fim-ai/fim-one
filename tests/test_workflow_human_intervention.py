@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import asyncio
-import time
 import uuid
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+import fim_one.db.models  # noqa: F401
 from fim_one.core.workflow.nodes import HumanInterventionExecutor
 from fim_one.core.workflow.types import (
     ExecutionContext,
@@ -20,7 +22,11 @@ from fim_one.core.workflow.types import (
     WorkflowNodeDef,
 )
 from fim_one.core.workflow.variable_store import VariableStore
-
+from fim_one.db.base import Base
+from fim_one.db.models.channel import ConfirmationRequest
+from fim_one.db.models.organization import Organization, OrgMembership
+from fim_one.db.models.user import User
+from fim_one.db.models.workflow import Workflow, WorkflowRun
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -41,77 +47,96 @@ def _make_node(data: dict[str, Any] | None = None) -> WorkflowNodeDef:
     )
 
 
-class FakeApprovalRecord:
-    """Minimal mock of a WorkflowApproval ORM row."""
-
-    def __init__(
-        self,
-        *,
-        approval_id: str = "",
-        status: str = "pending",
-        decision_by: str | None = None,
-        decision_note: str | None = None,
-    ) -> None:
-        self.id = approval_id or str(uuid.uuid4())
-        self.workflow_run_id = "run-1"
-        self.node_id = "human-1"
-        self.title = "Review"
-        self.description = None
-        self.assignee = None
-        self.status = status
-        self.decision_by = decision_by
-        self.decision_note = decision_note
-        self.timeout_hours = 24.0
-        self.created_at = datetime.now(timezone.utc)
-        self.resolved_at = None
-        self.updated_at = None
+@pytest.fixture()
+async def factory(tmp_path: Path) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    """A real database: the executor asks the confirmation service, which polls it."""
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'hi.db'}")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    yield maker
+    await engine.dispose()
 
 
-class FakeDBSession:
-    """Minimal async DB session mock for testing the executor."""
-
-    def __init__(self) -> None:
-        self.added: list[Any] = []
-        self.committed = False
-        self._query_results: list[Any] = []  # queue of results
-        self._poll_count = 0
-
-    def set_query_results(self, results: list[Any]) -> None:
-        """Set the sequence of results returned by execute().scalar_one_or_none()."""
-        self._query_results = list(results)
-
-    def add(self, obj: Any) -> None:
-        self.added.append(obj)
-
-    async def commit(self) -> None:
-        self.committed = True
-
-    async def execute(self, stmt: Any) -> Any:
-        self._poll_count += 1
-        mock_result = MagicMock()
-        if self._query_results:
-            record = self._query_results.pop(0)
-        else:
-            record = None
-        mock_result.scalar_one_or_none.return_value = record
-        return mock_result
+@pytest.fixture()
+async def world(factory: async_sessionmaker[AsyncSession]) -> dict[str, str]:
+    """A runner and a colleague in one organization, a workflow and a run."""
+    runner, colleague, outsider, org = (str(uuid.uuid4()) for _ in range(4))
+    async with factory() as db:
+        for uid, name in ((runner, "runner"), (colleague, "colleague"), (outsider, "outsider")):
+            db.add(User(id=uid, username=name, email=f"{name}-{uid[:6]}@x.io"))
+        db.add(Organization(id=org, name="Org", slug=f"org-{org[:6]}", owner_id=runner))
+        await db.flush()
+        for uid in (runner, colleague):
+            db.add(OrgMembership(id=str(uuid.uuid4()), org_id=org, user_id=uid, role="member"))
+        wf = Workflow(
+            id="wf-1", user_id=runner, org_id=org, name="wf", blueprint={"nodes": [], "edges": []}
+        )
+        db.add(wf)
+        await db.flush()
+        db.add(
+            WorkflowRun(
+                id="run-1",
+                workflow_id="wf-1",
+                user_id=runner,
+                blueprint_snapshot={"nodes": [], "edges": []},
+                status="running",
+            )
+        )
+        await db.commit()
+    return {"runner": runner, "colleague": colleague, "outsider": outsider, "org": org}
 
 
 @asynccontextmanager
-async def fake_db_session_factory():
-    """Yield a fresh FakeDBSession."""
-    yield FakeDBSession()
+async def _opens(factory: async_sessionmaker[AsyncSession]) -> AsyncIterator[AsyncSession]:
+    async with factory() as s:
+        yield s
 
 
 def _make_context(
-    db_session_factory: Any = None,
+    factory: async_sessionmaker[AsyncSession] | None, user_id: str = "user-1"
 ) -> ExecutionContext:
     return ExecutionContext(
         run_id="run-1",
-        user_id="user-1",
+        user_id=user_id,
         workflow_id="wf-1",
-        db_session_factory=db_session_factory,
+        db_session_factory=(lambda: _opens(factory)) if factory is not None else None,
     )
+
+
+async def _pending_approval(
+    factory: async_sessionmaker[AsyncSession], *, attempts: int = 100
+) -> ConfirmationRequest:
+    for _ in range(attempts):
+        async with factory() as db:
+            row = (
+                await db.execute(
+                    select(ConfirmationRequest).where(
+                        ConfirmationRequest.kind == "workflow_approval"
+                    )
+                )
+            ).scalar_one_or_none()
+        if row is not None:
+            return row
+        await asyncio.sleep(0.02)
+    raise AssertionError("no approval was created")
+
+
+async def _decide(
+    factory: async_sessionmaker[AsyncSession],
+    row_id: str,
+    *,
+    status: str,
+    by: str | None = None,
+    note: str | None = None,
+) -> None:
+    async with factory() as db:
+        row = await db.get(ConfirmationRequest, row_id)
+        assert row is not None
+        row.status = status
+        row.decided_by_user_id = by
+        row.decision_note = note
+        await db.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +150,7 @@ async def test_missing_db_session_factory_auto_approves() -> None:
     executor = HumanInterventionExecutor()
     node = _make_node()
     store = VariableStore()
-    ctx = _make_context(db_session_factory=None)
+    ctx = _make_context(None)
 
     result = await executor.execute(node, store, ctx)
 
@@ -135,42 +160,15 @@ async def test_missing_db_session_factory_auto_approves() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test: approval record is created on execution
+# Test: approval request is created on execution
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_approval_record_created() -> None:
-    """Executor should create a WorkflowApproval record and poll for it."""
-    created_records: list[Any] = []
-
-    # Track what gets added to the session
-    class TrackingSession:
-        def __init__(self) -> None:
-            self.added: list[Any] = []
-
-        def add(self, obj: Any) -> None:
-            self.added.append(obj)
-            created_records.append(obj)
-
-        async def commit(self) -> None:
-            pass
-
-        async def execute(self, stmt: Any) -> Any:
-            # Return an approved record on first poll
-            mock_result = MagicMock()
-            record = FakeApprovalRecord(
-                status="approved",
-                decision_by="reviewer-1",
-                decision_note="LGTM",
-            )
-            mock_result.scalar_one_or_none.return_value = record
-            return mock_result
-
-    @asynccontextmanager
-    async def session_factory():
-        yield TrackingSession()
-
+async def test_approval_record_created(
+    factory: async_sessionmaker[AsyncSession], world: dict[str, str]
+) -> None:
+    """The executor records a workflow approval for the run and waits on it."""
     executor = HumanInterventionExecutor()
     node = _make_node({
         "title": "Review content",
@@ -179,23 +177,30 @@ async def test_approval_record_created() -> None:
         "poll_interval_seconds": 0.05,
     })
     store = VariableStore()
-    ctx = _make_context(db_session_factory=session_factory)
+    ctx = _make_context(factory, world["runner"])
+    task = asyncio.create_task(executor.execute(node, store, ctx))
 
-    result = await executor.execute(node, store, ctx)
-
-    # A record was created
-    assert len(created_records) == 1
-    created = created_records[0]
+    created = await _pending_approval(factory)
     assert created.title == "Review content"
     assert created.description == "Check output quality"
     assert created.status == "pending"
     assert created.workflow_run_id == "run-1"
     assert created.node_id == "human-1"
+    assert created.user_id == world["runner"]
+    # Unassigned: the run's user decides.
+    assert (created.eligible_scope, created.eligible_user_id) == ("initiator", world["runner"])
+    assert created.mode == "inline" and created.channel_id is None
+    assert created.payload == {"timeout_hours": 1.0, "assignee": None}
 
-    # Result should be completed (approval was found)
+    await _decide(factory, created.id, status="approved", by="reviewer-1", note="LGTM")
+    result = await task
+
     assert result.status == NodeStatus.COMPLETED
     assert result.output["status"] == "approved"
+    assert result.output["approval_id"] == created.id
     assert result.output["decision_by"] == "reviewer-1"
+    assert result.output["decision_note"] == "LGTM"
+    assert await store.get("approval_result") == result.output
 
 
 # ---------------------------------------------------------------------------
@@ -204,56 +209,30 @@ async def test_approval_record_created() -> None:
 
 
 @pytest.mark.asyncio
-async def test_polling_detects_approval() -> None:
+async def test_polling_detects_approval(
+    factory: async_sessionmaker[AsyncSession], world: dict[str, str]
+) -> None:
     """Executor should poll until it finds an approved status."""
-    poll_count = 0
-
-    class PollSession:
-        def add(self, obj: Any) -> None:
-            pass
-
-        async def commit(self) -> None:
-            pass
-
-        async def execute(self, stmt: Any) -> Any:
-            nonlocal poll_count
-            poll_count += 1
-            mock_result = MagicMock()
-            # First 2 polls return pending, third returns approved
-            if poll_count <= 2:
-                record = FakeApprovalRecord(status="pending")
-            else:
-                record = FakeApprovalRecord(
-                    status="approved",
-                    decision_by="mgr-1",
-                    decision_note="Approved!",
-                )
-            mock_result.scalar_one_or_none.return_value = record
-            return mock_result
-
-    @asynccontextmanager
-    async def session_factory():
-        yield PollSession()
-
     executor = HumanInterventionExecutor()
     node = _make_node({
         "title": "Quick approval",
         "timeout_hours": 1,
         "poll_interval_seconds": 0.05,
+        "output_variable": "approval_result",
     })
     store = VariableStore()
-    ctx = _make_context(db_session_factory=session_factory)
+    ctx = _make_context(factory, world["runner"])
+    task = asyncio.create_task(executor.execute(node, store, ctx))
 
-    result = await executor.execute(node, store, ctx)
+    created = await _pending_approval(factory)
+    await asyncio.sleep(0.15)  # a few polls while still pending
+    assert not task.done()
+    await _decide(factory, created.id, status="approved", by="mgr-1", note="Approved!")
+    result = await task
 
     assert result.status == NodeStatus.COMPLETED
-    assert result.output["status"] == "approved"
-    # Should have polled at least 3 times (2 pending + 1 approved)
-    assert poll_count >= 3
-
-    # Check variable store was updated
-    stored = await store.get("human-1.output")
-    assert stored["status"] == "approved"
+    assert result.output["decision_by"] == "mgr-1"
+    assert result.output["decision_note"] == "Approved!"
 
 
 # ---------------------------------------------------------------------------
@@ -262,50 +241,22 @@ async def test_polling_detects_approval() -> None:
 
 
 @pytest.mark.asyncio
-async def test_polling_detects_rejection() -> None:
+async def test_polling_detects_rejection(
+    factory: async_sessionmaker[AsyncSession], world: dict[str, str]
+) -> None:
     """Executor should fail the node when approval is rejected."""
-    poll_count = 0
-
-    class RejectSession:
-        def add(self, obj: Any) -> None:
-            pass
-
-        async def commit(self) -> None:
-            pass
-
-        async def execute(self, stmt: Any) -> Any:
-            nonlocal poll_count
-            poll_count += 1
-            mock_result = MagicMock()
-            if poll_count <= 1:
-                record = FakeApprovalRecord(status="pending")
-            else:
-                record = FakeApprovalRecord(
-                    status="rejected",
-                    decision_by="mgr-1",
-                    decision_note="Content not appropriate",
-                )
-            mock_result.scalar_one_or_none.return_value = record
-            return mock_result
-
-    @asynccontextmanager
-    async def session_factory():
-        yield RejectSession()
-
     executor = HumanInterventionExecutor()
-    node = _make_node({
-        "title": "Review",
-        "timeout_hours": 1,
-        "poll_interval_seconds": 0.05,
-    })
+    node = _make_node({"title": "Reject me", "timeout_hours": 1, "poll_interval_seconds": 0.05})
     store = VariableStore()
-    ctx = _make_context(db_session_factory=session_factory)
+    ctx = _make_context(factory, world["runner"])
+    task = asyncio.create_task(executor.execute(node, store, ctx))
 
-    result = await executor.execute(node, store, ctx)
+    created = await _pending_approval(factory)
+    await _decide(factory, created.id, status="rejected", by="reviewer", note="Not good enough")
+    result = await task
 
     assert result.status == NodeStatus.FAILED
-    assert "rejected" in (result.error or "").lower()
-    assert "Content not appropriate" in (result.error or "")
+    assert "Approval rejected: Not good enough" in (result.error or "")
 
 
 # ---------------------------------------------------------------------------
@@ -314,43 +265,25 @@ async def test_polling_detects_rejection() -> None:
 
 
 @pytest.mark.asyncio
-async def test_timeout_expires_approval() -> None:
+async def test_timeout_expires_approval(
+    factory: async_sessionmaker[AsyncSession], world: dict[str, str]
+) -> None:
     """Executor should mark approval as expired when timeout is reached."""
-    expired_records: list[Any] = []
-
-    class TimeoutSession:
-        def add(self, obj: Any) -> None:
-            pass
-
-        async def commit(self) -> None:
-            pass
-
-        async def execute(self, stmt: Any) -> Any:
-            mock_result = MagicMock()
-            record = FakeApprovalRecord(status="pending")
-            # Track records that get modified
-            expired_records.append(record)
-            mock_result.scalar_one_or_none.return_value = record
-            return mock_result
-
-    @asynccontextmanager
-    async def session_factory():
-        yield TimeoutSession()
-
     executor = HumanInterventionExecutor()
-    # Use an extremely short timeout (0.0001 hours ~ 0.36 seconds)
     node = _make_node({
         "title": "Will timeout",
-        "timeout_hours": 0.0001,
-        "poll_interval_seconds": 0.05,
+        "timeout_hours": 0.00001,  # ~0.04 s
+        "poll_interval_seconds": 0.02,
     })
     store = VariableStore()
-    ctx = _make_context(db_session_factory=session_factory)
-
-    result = await executor.execute(node, store, ctx)
+    result = await executor.execute(node, store, _make_context(factory, world["runner"]))
 
     assert result.status == NodeStatus.FAILED
     assert "timed out" in (result.error or "").lower()
+    async with factory() as db:
+        row = (await db.execute(select(ConfirmationRequest))).scalar_one()
+    assert row.status == "expired"
+    assert row.responded_at is not None
 
 
 # ---------------------------------------------------------------------------
@@ -359,45 +292,25 @@ async def test_timeout_expires_approval() -> None:
 
 
 @pytest.mark.asyncio
-async def test_deleted_approval_record() -> None:
+async def test_deleted_approval_record(
+    factory: async_sessionmaker[AsyncSession], world: dict[str, str]
+) -> None:
     """If the approval record vanishes, executor should fail gracefully."""
-    poll_count = 0
-
-    class DeletedSession:
-        def add(self, obj: Any) -> None:
-            pass
-
-        async def commit(self) -> None:
-            pass
-
-        async def execute(self, stmt: Any) -> Any:
-            nonlocal poll_count
-            poll_count += 1
-            mock_result = MagicMock()
-            if poll_count <= 1:
-                # First poll returns pending
-                mock_result.scalar_one_or_none.return_value = FakeApprovalRecord(
-                    status="pending"
-                )
-            else:
-                # Second poll: record is gone
-                mock_result.scalar_one_or_none.return_value = None
-            return mock_result
-
-    @asynccontextmanager
-    async def session_factory():
-        yield DeletedSession()
-
     executor = HumanInterventionExecutor()
-    node = _make_node({
-        "title": "Vanishing approval",
-        "timeout_hours": 1,
-        "poll_interval_seconds": 0.05,
-    })
+    node = _make_node(
+        {"title": "Vanishing approval", "timeout_hours": 1, "poll_interval_seconds": 0.05}
+    )
     store = VariableStore()
-    ctx = _make_context(db_session_factory=session_factory)
+    ctx = _make_context(factory, world["runner"])
+    task = asyncio.create_task(executor.execute(node, store, ctx))
 
-    result = await executor.execute(node, store, ctx)
+    created = await _pending_approval(factory)
+    async with factory() as db:
+        row = await db.get(ConfirmationRequest, created.id)
+        assert row is not None
+        await db.delete(row)
+        await db.commit()
+    result = await task
 
     assert result.status == NodeStatus.FAILED
     assert "not found" in (result.error or "").lower()
@@ -409,27 +322,10 @@ async def test_deleted_approval_record() -> None:
 
 
 @pytest.mark.asyncio
-async def test_variable_interpolation() -> None:
+async def test_variable_interpolation(
+    factory: async_sessionmaker[AsyncSession], world: dict[str, str]
+) -> None:
     """Node data templates should be interpolated from the variable store."""
-    created_records: list[Any] = []
-
-    class InterpolationSession:
-        def add(self, obj: Any) -> None:
-            created_records.append(obj)
-
-        async def commit(self) -> None:
-            pass
-
-        async def execute(self, stmt: Any) -> Any:
-            mock_result = MagicMock()
-            record = FakeApprovalRecord(status="approved", decision_by="boss")
-            mock_result.scalar_one_or_none.return_value = record
-            return mock_result
-
-    @asynccontextmanager
-    async def session_factory():
-        yield InterpolationSession()
-
     executor = HumanInterventionExecutor()
     node = _make_node({
         "title": "Review by {{manager_name}}",
@@ -441,17 +337,42 @@ async def test_variable_interpolation() -> None:
     store = VariableStore()
     await store.set("manager_name", "Alice")
     await store.set("content_type", "marketing")
-    await store.set("manager_id", "user-alice-123")
-    ctx = _make_context(db_session_factory=session_factory)
+    await store.set("manager_id", world["colleague"])
+    ctx = _make_context(factory, world["runner"])
+    task = asyncio.create_task(executor.execute(node, store, ctx))
 
-    result = await executor.execute(node, store, ctx)
-
-    assert result.status == NodeStatus.COMPLETED
-    assert len(created_records) == 1
-    record = created_records[0]
+    record = await _pending_approval(factory)
     assert record.title == "Review by Alice"
     assert record.description == "Check marketing content"
-    assert record.assignee == "user-alice-123"
+    # Assigned: the colleague decides, not the runner.
+    assert (record.eligible_scope, record.eligible_user_id) == ("assignee", world["colleague"])
+    assert record.payload["assignee"] == world["colleague"]
+    await _decide(factory, record.id, status="approved", by="boss")
+    result = await task
+    assert result.status == NodeStatus.COMPLETED
+
+
+# ---------------------------------------------------------------------------
+# Test: an assignee outside the run's organization fails the node (B13)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_assignee_outside_the_organization_fails_the_node(
+    factory: async_sessionmaker[AsyncSession], world: dict[str, str]
+) -> None:
+    """The interpolated assignee is checked against the run's organization."""
+    executor = HumanInterventionExecutor()
+    node = _make_node({"title": "Sign-off", "assignee": "{{who}}", "timeout_hours": 1})
+    store = VariableStore()
+    await store.set("who", world["outsider"])
+
+    result = await executor.execute(node, store, _make_context(factory, world["runner"]))
+
+    assert result.status == NodeStatus.FAILED
+    assert "not a member of the workflow's organization" in (result.error or "")
+    async with factory() as db:
+        assert (await db.execute(select(ConfirmationRequest))).scalars().all() == []
 
 
 # ---------------------------------------------------------------------------

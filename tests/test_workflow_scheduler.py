@@ -391,7 +391,8 @@ class TestScheduledRunGates:
         """
         from sqlalchemy import select
 
-        from fim_one.db.models.workflow import WorkflowApproval, WorkflowRun
+        from fim_one.db.models.channel import ConfirmationRequest
+        from fim_one.db.models.workflow import WorkflowRun
 
         factory, wf = sched_db
         task = asyncio.create_task(_run_scheduled(wf))
@@ -400,12 +401,15 @@ class TestScheduledRunGates:
         for _ in range(100):
             await asyncio.sleep(0.05)
             async with factory() as s:
-                approval = (await s.execute(select(WorkflowApproval))).scalar_one_or_none()
+                approval = (await s.execute(select(ConfirmationRequest))).scalar_one_or_none()
             if approval is not None:
                 break
         assert approval is not None, "no approval was created"
         assert approval.status == "pending"
+        assert approval.kind == "workflow_approval"
         assert approval.title == "Approve the scheduled step"
+        # A scheduled run is the author's: the author decides.
+        assert (approval.eligible_scope, approval.eligible_user_id) == ("initiator", wf.user_id)
 
         await asyncio.sleep(1.3)  # past max_run_duration_seconds
         async with factory() as s:
@@ -415,7 +419,7 @@ class TestScheduledRunGates:
         assert run.user_id == wf.user_id
 
         async with factory() as s:
-            row = await s.get(WorkflowApproval, approval.id)
+            row = await s.get(ConfirmationRequest, approval.id)
             assert row is not None
             row.status = "rejected"
             row.decision_note = "not tonight"
@@ -433,7 +437,8 @@ class TestScheduledRunGates:
         """S10: the plan gate applies to scheduled runs too."""
         from sqlalchemy import select
 
-        from fim_one.db.models.workflow import WorkflowApproval, WorkflowRun
+        from fim_one.db.models.channel import ConfirmationRequest
+        from fim_one.db.models.workflow import WorkflowRun
 
         factory, wf = sched_db
         with patch(
@@ -444,7 +449,7 @@ class TestScheduledRunGates:
 
         async with factory() as s:
             run = (await s.execute(select(WorkflowRun))).scalar_one()
-            approvals = (await s.execute(select(WorkflowApproval))).scalars().all()
+            approvals = (await s.execute(select(ConfirmationRequest))).scalars().all()
         assert run.status == "failed"
         assert run.error == "subscription_required"
         assert approvals == []
