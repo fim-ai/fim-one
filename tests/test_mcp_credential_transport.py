@@ -155,6 +155,7 @@ async def _chat_connect(
             principal=provisional_principal(user_id or ""), binding=None, entry="chat"
         ),
         register=MagicMock(),
+        list_tools=lambda: [],
     )
     client = _client()
     with (

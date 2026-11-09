@@ -11,7 +11,7 @@ leaves out a resource the user may not call, and wires the call record
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from typing import TYPE_CHECKING, Any, Literal
 
 from .calls import call_recorder
@@ -260,6 +260,7 @@ async def mcp_tools(
     *,
     mode: ToolMode,
     strict: bool = False,
+    taken: Collection[str] = (),
 ) -> tuple[list[BaseTool], MCPClient | None]:
     """Connect to *servers* and return their tools with the client that holds them.
 
@@ -269,6 +270,11 @@ async def mcp_tools(
     this one server or nothing. Whenever it raises, cancellation included,
     it first closes what it had opened. The caller disconnects the returned
     client (``disconnect_all``) when the run ends.
+
+    *taken* are the tool names the caller already has. A tool whose name is
+    among them, or equals one from an earlier server, is left out with a
+    warning (the first holder of a name keeps it), and so is a server whose
+    name repeats an earlier one's: every tool returned can be registered.
 
     Must be awaited in the coroutine that will also disconnect: the stdio
     client enters an anyio cancel scope that has to be left by the task
@@ -281,7 +287,10 @@ async def mcp_tools(
 
     client = MCPClient()
     try:
-        return await _open_mcp_servers(client, ctx, servers, mode=mode, strict=strict), client
+        tools = await _open_mcp_servers(
+            client, ctx, servers, mode=mode, strict=strict, taken=set(taken)
+        )
+        return tools, client
     except BaseException:
         # Nobody else holds the client yet, so nobody else can close it. That
         # includes cancellation: a workflow step that times out while a
@@ -300,6 +309,7 @@ async def _open_mcp_servers(
     *,
     mode: ToolMode,
     strict: bool,
+    taken: set[str],
 ) -> list[BaseTool]:
     from fim_one.core.mcp import build_mcp_meta_tool
     from fim_one.db import create_session
@@ -308,6 +318,15 @@ async def _open_mcp_servers(
     record = call_recorder(ctx, kind="mcp", credential_source=sources)
     connected: dict[str, list[Any]] = {}
     for server in servers:
+        if server.name in connected:
+            # The client and the meta-tool key a server by name: a second one
+            # would replace the first under it.
+            logger.warning(
+                "Skipping MCP server %r (%s): another server of that name is connected",
+                server.name,
+                server.id,
+            )
+            continue
         try:
             async with create_session() as db:
                 credential = await resolve_credential(db, ctx.principal, server)
@@ -326,19 +345,43 @@ async def _open_mcp_servers(
             else:
                 logger.warning("Failed to connect user MCP server %r", server.name, exc_info=True)
 
-    loaded = sum(len(adapters) for adapters in connected.values())
     if mode == "progressive":
-        if not connected:
+        meta_tool = build_mcp_meta_tool(connected) if connected else None
+        if meta_tool is not None and meta_tool.name in taken:
+            logger.warning(
+                "Skipping the %r tool for %d MCP server(s): a tool of that name is registered",
+                meta_tool.name,
+                len(connected),
+            )
+            meta_tool = None
+        if meta_tool is None:
+            for name in connected:
+                await client.disconnect(name)
             return []
         logger.info(
             "Loaded MCPServerMetaTool (progressive): %d servers, %d tools consolidated into 1 tool",
             len(connected),
-            loaded,
+            sum(len(adapters) for adapters in connected.values()),
         )
-        return [build_mcp_meta_tool(connected)]
+        return [meta_tool]
 
-    logger.info("Loaded %d tools from %d user MCP servers", loaded, len(servers))
-    return [tool for adapters in connected.values() for tool in adapters]
+    tools: list[BaseTool] = []
+    for name, adapters in connected.items():
+        usable = [adapter for adapter in adapters if adapter.name not in taken]
+        if len(usable) < len(adapters):
+            logger.warning(
+                "Skipping %d tool(s) of MCP server %r whose names are already registered: %s",
+                len(adapters) - len(usable),
+                name,
+                sorted(adapter.name for adapter in adapters if adapter.name in taken),
+            )
+        if not usable:
+            await client.disconnect(name)
+            continue
+        taken.update(adapter.name for adapter in usable)
+        tools.extend(usable)
+    logger.info("Loaded %d tools from %d user MCP servers", len(tools), len(servers))
+    return tools
 
 
 async def kb_binding(db: AsyncSession, ctx: CallContext, kb_ids: Sequence[str]) -> dict[str, str]:

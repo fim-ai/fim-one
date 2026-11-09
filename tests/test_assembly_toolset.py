@@ -241,10 +241,15 @@ class _FakeMCPClient:
         self.connects: dict[str, dict[str, Any]] = {}
         self.fail: set[str] = set()
         self.before_connect: dict[str, Callable[[], Awaitable[None]]] = {}
+        self.tool_names: dict[str, list[str]] = {}
+        self.dropped: list[str] = []
         self.disconnected = 0
 
     async def disconnect_all(self) -> None:
         self.disconnected += 1
+
+    async def disconnect(self, name: str) -> None:
+        self.dropped.append(name)
 
     async def _connect(self, name: str, **kwargs: Any) -> list[Any]:
         from fim_one.core.mcp.adapter import MCPToolAdapter
@@ -261,9 +266,10 @@ class _FakeMCPClient:
         return [
             MCPToolAdapter(
                 server_name=name,
-                tool_def={"name": "echo", "description": "echo"},
+                tool_def={"name": tool, "description": tool},
                 call_fn=_call,
             )
+            for tool in self.tool_names.get(name, ["echo"])
         ]
 
     async def connect_stdio(self, *, name: str, **kwargs: Any) -> list[Any]:
@@ -460,3 +466,70 @@ class TestMcpToolsCloseWhatTheyOpenedWhenCancelled:
             )
 
         assert mcp_world.disconnected == 1
+
+
+class TestMcpToolNameCollisions:
+    """One clashing name leaves that tool out; it does not cost the rest.
+
+    Registering the returned tools raised on the first duplicate name, which
+    ended the chat turn with the client still open and nobody holding it.
+    """
+
+    async def test_a_name_the_caller_already_has_is_left_out(
+        self, mcp_world: _FakeMCPClient
+    ) -> None:
+        mcp_world.tool_names["files"] = ["echo", "read"]
+
+        tools, client = await mcp_tools(
+            _ctx(OWNER),
+            [_mcp_server("files", transport="sse", allow_fallback=True)],
+            mode="legacy",
+            taken=["files__echo", "web_search"],
+        )
+
+        assert [t.name for t in tools] == ["files__read"]
+        assert client is mcp_world and mcp_world.dropped == []
+
+    async def test_two_servers_whose_tools_sanitise_to_one_name_keep_the_first(
+        self, mcp_world: _FakeMCPClient
+    ) -> None:
+        tools, _ = await mcp_tools(
+            _ctx(OWNER),
+            [
+                _mcp_server("a.b", transport="sse", allow_fallback=True),
+                _mcp_server("a_b", transport="sse", allow_fallback=True),
+            ],
+            mode="legacy",
+        )
+
+        assert [t.name for t in tools] == ["a_b__echo"]
+        assert cast(Any, tools[0])._server_name == "a.b"
+        # The second server offers nothing that can be registered.
+        assert mcp_world.dropped == ["a_b"]
+
+    @pytest.mark.parametrize("mode", ["legacy", "progressive"])
+    async def test_two_servers_of_the_same_name_keep_the_first(
+        self, mcp_world: _FakeMCPClient, mode: Any
+    ) -> None:
+        first = _mcp_server("dup", transport="sse", allow_fallback=True)
+        second = _mcp_server("dup", transport="streamable_http", allow_fallback=True)
+        second.id = "dup-2"
+
+        tools, _ = await mcp_tools(_ctx(OWNER), [first, second], mode=mode)
+
+        assert len(tools) == 1
+        # Only the first was connected: the second would have replaced it.
+        assert mcp_world.connects["dup"]["url"] == first.url
+
+    async def test_progressive_gives_way_to_a_registered_tool_called_mcp(
+        self, mcp_world: _FakeMCPClient
+    ) -> None:
+        tools, client = await mcp_tools(
+            _ctx(OWNER),
+            [_mcp_server("files", transport="sse", allow_fallback=True)],
+            mode="progressive",
+            taken=["mcp"],
+        )
+
+        assert tools == [] and client is mcp_world
+        assert mcp_world.dropped == ["files"]

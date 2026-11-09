@@ -2188,13 +2188,21 @@ async def _connect_pending_mcp_servers(
 
     # Whose credential each server is opened with, and which servers the
     # caller may not open at all, is decided in core/assembly.
+    # A tool whose name is already registered is left out there, so that one
+    # clashing name does not cost the turn.
     _mcp_tools, _mcp_client = await mcp_tools(
         getattr(tools, "_mcp_call_context", None) or _use_context(None, None),
         pending,
         mode=get_mcp_tool_mode(agent_cfg),
+        taken=[_t.name for _t in tools.list_tools()],
     )
     for _mcp_tool in _mcp_tools:
-        tools.register(_mcp_tool)
+        try:
+            tools.register(_mcp_tool)
+        except Exception:
+            # From here the client is ours to hand back: nothing may raise
+            # before the caller holds it and can disconnect it.
+            logger.warning("Failed to register MCP tool %r", _mcp_tool.name, exc_info=True)
     return _mcp_client
 
 
