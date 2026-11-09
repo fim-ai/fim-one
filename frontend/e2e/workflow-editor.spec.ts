@@ -10,6 +10,7 @@ import {
   configPanel,
   connect,
   createEmptyWorkflow,
+  createLinearWorkflow,
   fetchBlueprint,
   nodeId,
   nodeOfType,
@@ -318,8 +319,17 @@ test("build, save, reload and run a workflow that uses every offered node type",
     const sheet = page.getByRole("dialog")
     await expect(sheet.getByText("Run History")).toBeVisible()
     await expect(sheet.getByText("Completed").first()).toBeVisible()
-    await page.keyboard.press("Escape")
+
+    // Replay the run on the canvas, then clear it.
+    await sheet.getByText("Completed").first().click()
+    await sheet.getByRole("button", { name: "View on Canvas" }).click()
     await expect(sheet).toHaveCount(0)
+    await expect(page.getByText("Viewing past run")).toBeVisible()
+    await page.getByRole("button", { name: "Clear" }).click()
+    await expect(page.getByText("Viewing past run")).toHaveCount(0)
+    // A replay is not an edit.
+    await page.waitForTimeout(500)
+    await expect(page.getByText("Unsaved changes")).toHaveCount(0)
   })
 
   // --- Export / duplicate --------------------------------------------------
@@ -343,5 +353,84 @@ test("build, save, reload and run a workflow that uses every offered node type",
     await expect(canvasNodes(page)).toHaveCount(OFFERED.length)
     await expect(canvasEdges(page)).toHaveCount(7)
     for (const type of OFFERED) await expect(nodeOfType(page, type)).toHaveCount(1)
+  })
+})
+
+test("canvas editing: copy, paste, undo, redo, delete, search and the context menu", async ({
+  page,
+  request,
+}) => {
+  const workflowId = await createLinearWorkflow(request, seeded.session, "Editing workflow")
+  await page.goto(`/workflows/${workflowId}`)
+  await expect(canvasNodes(page)).toHaveCount(3)
+  await expect(canvasEdges(page)).toHaveCount(2)
+  // Undo steps are recorded 300 ms after a change.
+  const settle = () => page.waitForTimeout(450)
+  await settle()
+
+  await test.step("copy and paste a node with the keyboard", async () => {
+    await nodeOfType(page, "llm").click()
+    await expect(configPanel(page)).toBeVisible()
+    await page.keyboard.press("Control+c")
+    await page.keyboard.press("Control+v")
+    await expect(nodeOfType(page, "llm")).toHaveCount(2)
+    await settle()
+  })
+
+  await test.step("undo and redo", async () => {
+    await page.keyboard.press("Control+z")
+    await expect(nodeOfType(page, "llm")).toHaveCount(1)
+    await page.keyboard.press("Control+Shift+z")
+    await expect(nodeOfType(page, "llm")).toHaveCount(2)
+    await settle()
+  })
+
+  await test.step("delete the selection with the keyboard; Start cannot be deleted", async () => {
+    await nodeOfType(page, "llm").last().click()
+    await page.keyboard.press("Escape")
+    await expect(configPanel(page)).toHaveCount(0)
+    await nodeOfType(page, "llm").last().click()
+    await page.keyboard.press("Backspace")
+    await expect(nodeOfType(page, "llm")).toHaveCount(1)
+    await settle()
+
+    await nodeOfType(page, "start").click()
+    await page.keyboard.press("Backspace")
+    await expect(page.getByText("Cannot delete the Start node")).toBeVisible()
+    await expect(canvasNodes(page)).toHaveCount(3)
+  })
+
+  await test.step("find on canvas", async () => {
+    await page.keyboard.press("Control+f")
+    const find = page.getByPlaceholder("Search nodes...").last()
+    await find.fill("say")
+    await expect(page.getByText("1 of 1")).toBeVisible()
+    await find.fill("nothing-matches-this")
+    await expect(page.getByText("No results")).toBeVisible()
+    await find.press("Escape")
+    await expect(page.getByText("No results")).toHaveCount(0)
+  })
+
+  await test.step("context menu: delete a node, then undo brings it back with its edges", async () => {
+    await nodeOfType(page, "llm").click({ button: "right" })
+    await page.getByRole("button", { name: "Delete", exact: true }).click()
+    await expect(nodeOfType(page, "llm")).toHaveCount(0)
+    await expect(canvasEdges(page)).toHaveCount(0)
+    await settle()
+    await page.keyboard.press("Control+z")
+    await expect(nodeOfType(page, "llm")).toHaveCount(1)
+    await expect(canvasEdges(page)).toHaveCount(2)
+  })
+
+  await test.step("context menu on the canvas: select all, then copy and paste the selection", async () => {
+    await page.locator(".react-flow__pane").click({ button: "right", position: { x: 40, y: 500 } })
+    await page.getByRole("button", { name: "Select All" }).click()
+    await expect(page.locator(".react-flow__node.selected")).toHaveCount(3)
+    await page.keyboard.press("Control+c")
+    await page.keyboard.press("Control+v")
+    // Start and End are singletons: only the LLM step is pasted.
+    await expect(canvasNodes(page)).toHaveCount(4)
+    await expect(nodeOfType(page, "llm")).toHaveCount(2)
+    await expect(nodeOfType(page, "start")).toHaveCount(1)
   })
 })

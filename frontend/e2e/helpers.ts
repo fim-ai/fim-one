@@ -133,6 +133,53 @@ export async function createEmptyWorkflow(
   return created.data.id
 }
 
+/** Create a saved Start -> LLM -> End workflow and return its id. */
+export async function createLinearWorkflow(
+  request: APIRequestContext,
+  session: Session,
+  name: string,
+  prompt = "Say {{start_1.topic}}",
+): Promise<string> {
+  const created = await api<{ data: { id: string } }>(
+    request,
+    "POST",
+    "/api/workflows",
+    session.accessToken,
+    {
+      name,
+      blueprint: {
+        schema_version: 2,
+        nodes: [
+          {
+            id: "start_1",
+            type: "start",
+            position: { x: 100, y: 200 },
+            data: { variables: [{ name: "topic", type: "string", required: false }] },
+          },
+          {
+            id: "llm_1",
+            type: "llm",
+            position: { x: 420, y: 200 },
+            data: { prompt_template: prompt, output_variable: "llm_result", temperature: 0.7 },
+          },
+          {
+            id: "end_1",
+            type: "end",
+            position: { x: 740, y: 200 },
+            data: { output_mapping: { out: "{{llm_1.llm_result}}" } },
+          },
+        ],
+        edges: [
+          { id: "e1", source: "start_1", target: "llm_1", sourceHandle: "source", targetHandle: "target" },
+          { id: "e2", source: "llm_1", target: "end_1", sourceHandle: "source", targetHandle: "target" },
+        ],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    },
+  )
+  return created.data.id
+}
+
 export interface StoredBlueprint {
   nodes: Array<{ id: string; type: string; data: Record<string, unknown> }>
   edges: Array<{ source: string; target: string; sourceHandle?: string | null }>
