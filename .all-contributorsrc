@@ -91,6 +91,18 @@
         "test",
         "code"
       ]
+    },
+    {
+      "login": "ryangoho",
+      "name": "Ryan Goh",
+      "avatar_url": "https://avatars.githubusercontent.com/u/320067612?v=4",
+      "profile": "https://github.com/ryangoho",
+      "contributions": [
+        "bug",
+        "doc",
+        "test",
+        "code"
+      ]
     }
   ],
   "skipCi": true

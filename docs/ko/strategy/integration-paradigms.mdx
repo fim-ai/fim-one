@@ -77,7 +77,7 @@ JSON-RPC over stdio or SSE. 구조화된 도구 검색(`tools/list`)과 호출(`
 
 ## AI 접근성 스펙트럼
 
-모든 시스템이 AI에 동등하게 접근 가능한 것은 아니며, 모든 작업이 동등하게 단순한 것도 아닙니다. 이 두 가지 차원이 서로 다른 통합 접근 방식이 가치를 창출하는 위치를 정의합니다.
+모든 시스템에 AI가 동일하게 쉽게 접근할 수 있는 것은 아니며, 모든 작업이 동일하게 단순한 것도 아닙니다. 이 두 가지 차원이 서로 다른 통합 접근 방식이 가치를 창출하는 지점을 결정합니다.
 
 ```mermaid
 quadrantChart
@@ -97,17 +97,17 @@ quadrantChart
     Kingdee ERP: [0.72, 0.28]
     Legacy OA: [0.85, 0.18]
     FIM One:::highlight: [0.65, 0.78]
-    classDef highlight color: #D97706, radius: 12, stroke-color: #B45309, stroke-width: 2px
+    classDef highlight color: #0066FF, radius: 12, stroke-color: #0052CC, stroke-width: 2px
 ```
 
 **차트 읽기:**
 
-- **좌하단 (Personal Copilot + Skills)**: 단순한 작업을 수행하는 AI 네이티브 플랫폼. DingTalk, Feishu, WeCom이 여기에 집중되어 있습니다 — 자체 CLI + Skills를 제공하여 단일 플랫폼 AI 통합을 셀프서비스로 만듭니다. OpenClaw 및 Claude Code with Skills와 같은 Personal copilot이 이 영역을 차지합니다. FIM One은 여기서 거의 가치를 추가하지 않습니다 — 플랫폼이 이미 작업을 완료했기 때문입니다.
-- **좌상단 (Multi-Tool Copilot)**: 크로스 시스템 요구사항이 있는 AI 네이티브 플랫폼. Claude Code에서 여러 Skills(`dingtalk` + `feishu` + `wechat`)를 설치하는 사용자는 다중 플랫폼 조정을 시도할 수 있지만, 거버넌스, 오케스트레이션 계획, 통합 자격증명 관리가 부족합니다.
-- **우하단 (Point Connector)**: 단순한 브릿지가 필요한 레거시 시스템. Kingdee ERP 또는 레거시 OA 시스템에 대한 단일 Connector — FIM One은 단일 시스템 작업에서도 유용합니다. 이러한 시스템은 CLI가 없고 API가 제한적이거나 없기 때문입니다.
-- **우상단 (Enterprise Hub)**: 크로스 시스템 오케스트레이션 요구사항이 있는 레거시 또는 API 제한 시스템. 이것이 FIM One의 최적 영역입니다. 레거시 관리 시스템 전체에서 계약을 쿼리하고, ERP 수금과 상관관계를 지정하고, DingTalk를 통해 수금 공지를 보내기 — 이는 DAG 계획, 다중 Connector 조정, 자격증명 보관, 감사 추적, 인적 확인 게이트가 필요합니다. 어떤 personal copilot, CLI, Skills 파일도 여기에 도달할 수 없습니다.
+- **왼쪽 아래(개인 코파일럿 + Skills)**: 간단한 작업을 제공하는 AI 네이티브 플랫폼입니다. DingTalk, Feishu, WeCom이 이 영역에 모여 있습니다. 자체 CLI + Skills를 제공하므로 단일 플랫폼 AI 통합을 셀프 서비스로 수행할 수 있습니다. OpenClaw 및 Skills를 사용하는 Claude Code와 같은 개인 코파일럿도 이 영역에 속합니다. FIM One은 이 영역에서 큰 가치를 더하지 못합니다. 플랫폼이 이미 필요한 작업을 완료했기 때문입니다.
+- **왼쪽 위(멀티 도구 코파일럿)**: 여러 시스템을 아우르는 요구 사항이 있는 AI 네이티브 플랫폼입니다. Claude Code에 여러 Skills(`dingtalk` + `feishu` + `wechat`)를 설치하면 여러 플랫폼 간 조정을 시도할 수 있지만, 거버넌스, 오케스트레이션 계획, 통합 자격 증명 관리가 부족합니다.
+- **오른쪽 아래(포인트 커넥터)**: 간단한 브리지가 필요한 레거시 시스템입니다. Kingdee ERP 또는 레거시 OA 시스템에 단일 Connector를 연결하는 경우처럼, FIM One은 단일 시스템 작업에서도 어댑터로 유용합니다. 이러한 시스템에는 CLI가 없고 API가 제한적이거나 아예 없기 때문입니다.
+- **오른쪽 위(엔터프라이즈 허브)**: 여러 시스템에 걸친 오케스트레이션 요구 사항이 있는 레거시 시스템 또는 API가 제한된 시스템입니다. 이 영역이 FIM One의 핵심 강점입니다. 레거시 관리 시스템에서 계약을 조회하고, ERP의 미수금과 대조하며, DingTalk를 통해 수금 안내를 보내려면 DAG 계획, 여러 커넥터의 조정, 자격 증명 보관소, 감사 추적, 사람의 확인 게이트가 필요합니다. 개인 코파일럿도, CLI도, Skills 파일도 이 영역에 도달할 수 없습니다.
 
-FIM One의 가치는 우상단으로 이동할수록 증가합니다: 도달하기 어려운 시스템과 더 복잡한 오케스트레이션 요구사항의 조합. 자체 CLI + Skills를 제공하는 플랫폼은 반대쪽 모서리를 차지합니다 — 접근하기 쉽고 단순한 작업 — 그리고 FIM One이 추구해서는 안 되는 시장을 나타냅니다.
+오른쪽 위로 이동할수록 FIM One의 가치는 커집니다. 접근하기 어려운 시스템과 더 복잡한 오케스트레이션 요구 사항이 결합되기 때문입니다. 자체 CLI + Skills를 제공하는 플랫폼은 그 반대편 모서리, 즉 접근하기 쉽고 작업이 단순한 영역을 차지하며, FIM One이 추구해서는 안 되는 시장을 나타냅니다.
 
 ## 개인용 Copilot vs 엔터프라이즈 Hub
 

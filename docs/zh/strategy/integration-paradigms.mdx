@@ -75,9 +75,9 @@ JSON-RPC over stdio or SSE。结构化工具发现（`tools/list`）和调用（
 
 关键观察：`npx skills add` 正在成为 AI 工具集成的事实上的分发渠道，完全绕过了 MCP。这些平台选择了快速上市而非协议标准化。AI IDE 生态系统（Cursor、Claude Code、Windsurf）已经理解 Skills 文件，因此这些平台无需实现协议服务器就能获得即时的 AI 集成。
 
-## AI 可访问性谱系
+## AI 可达性光谱
 
-并非所有系统对 AI 的可访问性都相同，也并非所有任务的复杂度都一样。这两个维度定义了不同集成方法创造价值的位置。
+并非所有系统都同样容易被 AI 触达，也并非所有任务都同样简单。这两个维度决定了不同集成方式能够创造价值的领域。
 
 ```mermaid
 quadrantChart
@@ -97,17 +97,17 @@ quadrantChart
     Kingdee ERP: [0.72, 0.28]
     Legacy OA: [0.85, 0.18]
     FIM One:::highlight: [0.65, 0.78]
-    classDef highlight color: #D97706, radius: 12, stroke-color: #B45309, stroke-width: 2px
+    classDef highlight color: #0066FF, radius: 12, stroke-color: #0052CC, stroke-width: 2px
 ```
 
 **图表解读：**
 
-- **左下角（个人副驾驶 + 技能）**：具有简单操作的 AI 原生平台。DingTalk、Feishu 和 WeCom 聚集在这里——它们提供自己的 CLI + 技能，使单平台 AI 集成成为自助服务。OpenClaw 和 Claude Code with Skills 等个人副驾驶占据这个区域。FIM One 在这里增加的价值很少——平台已经完成了这项工作。
-- **左上角（多工具副驾驶）**：具有跨系统需求的 AI 原生平台。用户在 Claude Code 中安装多个技能（`dingtalk` + `feishu` + `wechat`）可以尝试多平台协调，但缺乏治理、编排规划和统一的凭证管理。
-- **右下角（点连接器）**：需要简单桥接的遗留系统。单个连接器连接到金蝶 ERP 或遗留 OA 系统——FIM One 在这里作为适配器很有用，即使是单系统操作，因为这些系统没有 CLI，API 有限或没有。
-- **右上角（企业枢纽）**：具有跨系统编排需求的遗留或 API 受限系统。这是 FIM One 的优势所在。跨遗留管理系统查询合同、与 ERP 应收账款关联，以及通过 DingTalk 发送催收通知——这需要 DAG 规划、多连接器协调、凭证保管库、审计跟踪和人工确认门。没有个人副驾驶、没有 CLI、没有技能文件能够到达这里。
+- **左下角（个人 Copilot + Skills）**：操作简单的 AI 原生平台。DingTalk、Feishu 和 WeCom 聚集在这里——它们自带 CLI + Skills，让单平台 AI 集成可以自助完成。OpenClaw 和 Claude Code 等搭配 Skills 的个人 Copilot 也处于这一区域。FIM One 在这里几乎无法增加价值——平台已经完成了相关工作。
+- **左上角（多工具 Copilot）**：有跨系统需求的 AI 原生平台。在 Claude Code 中安装多个 Skills（`dingtalk` + `feishu` + `wechat`）的用户可以尝试进行多平台协同，但缺少治理、编排规划和统一的凭证管理。
+- **右下角（单点连接器）**：需要简单桥接的传统系统。为金蝶 ERP 或传统 OA 系统配置单个连接器时，即使只是执行单系统操作，FIM One 也能作为适配器发挥作用，因为这些系统没有 CLI，API 也有限或根本没有 API。
+- **右上角（企业中枢）**：需要跨系统编排、但属于传统系统或 API 受限的系统。这正是 FIM One 的优势领域。查询传统管理系统中的合同，与 ERP 中的应收款进行关联，再通过 DingTalk 发送催收通知——这需要 DAG 规划、多连接器协同、凭证保管、审计轨迹以及人工确认闸门。个人 Copilot、CLI 或 Skills 文件都无法触达这里。
 
-当你向右上角移动时，FIM One 的价值会增加：难以访问的系统结合更复杂的编排需求。提供自己的 CLI + 技能的平台占据相反的角落——易于访问、简单操作——代表 FIM One 不应该追求的市场。
+越接近右上角，FIM One 的价值越高：系统越难触达，编排需求也越复杂。自带 CLI + Skills 的平台位于相反的一角——易于触达、操作简单——这代表了 FIM One 不应追逐的市场。
 
 ## 个人 Copilot vs 企业中心
 
