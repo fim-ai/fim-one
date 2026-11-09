@@ -154,30 +154,32 @@ FIM One从`LLM_BASE_URL`解析提供商（加上配置时的显式提供商字�
 
 ### ReAct 智能体
 
-| 变量 | 必需 | 默认值 | 描述 |
+| 变量 | 必填 | 默认值 | 描述 |
 |---|---|---|---|
-| `REACT_MAX_ITERATIONS` | 否 | `20` | 每个 ReAct 请求的最大工具调用迭代次数。值越高越彻底，但速度越慢且成本越高 |
-| `REACT_MAX_TURN_TOKENS` | 否 | `0` | 紧急断路器：单个 ReAct 轮次的最大累积令牌数（所有迭代的提示词 + 完成）。默认 `0` = 无限制。**这不是用于日常令牌控制的**——请使用按用户的 `token_quota`。这是针对极端场景（如智能体陷入无限工具调用循环）的最后防线。触发此限制会中止任务执行，浪费已消耗的所有令牌并返回不完整结果。除非有特定的失控智能体问题需要处理，否则保持为 `0` |
-| `REACT_TOOL_SELECTION_THRESHOLD` | 否 | `12` | 当注册工具总数超过此阈值时，轻量级 LLM 调用会在每个请求前选择最相关的子集 |
-| `REACT_TOOL_SELECTION_MAX` | 否 | `6` | 智能选择后保留的最大工具数（仅当工具数超过 `REACT_TOOL_SELECTION_THRESHOLD` 时有效） |
-| `REACT_SELF_REFLECTION_INTERVAL` | 否 | `6` | 每 N 次工具调用后注入一次自反思提示词，帮助智能体纠正方向并避免循环 |
-| `REACT_TOOL_OBS_TRUNCATION` | 否 | `8000` | 合成最终答案时每个工具观察的最大字符数。较高的值保留更多结构化数据（JSON、表格），但消耗更多令牌 |
-| `REACT_TOOL_RESULT_BUDGET` | 否 | `40000` | 单个会话中所有工具结果的聚合令牌预算。当工具结果令牌总数超过此上限时，新结果会被截断并附加通知。防止大型 API 响应（例如 5 个连接器调用各返回 8K）导致的上下文膨胀。设为 `0` 禁用此上限 |
-| `REACT_COMPLETION_CHECK_SKIP_CHARS` | 否 | `800` | 当智能体的最终答案超过此字符数时，跳过答案后完成度检查 LLM 调用。长详细答案不需要"我是否遗漏了什么？"验证往返。设置较低值可更激进地跳过；设置为非常大的值可始终运行检查 |
-| `REACT_CYCLE_DETECTION_THRESHOLD` | 否 | `2` | 当同一工具连续以相同参数调用此次数时，会注入确定性警告，告诉智能体尝试不同方法。与依赖 LLM 发现循环的自反思不同，这是基于哈希的检查，无法被绕过。也适用于 DAG 步骤 |
-| `REACT_COMPLETION_CHECK_MIN_TOOLS` | 否 | `3` | 完成度检查清单启动前的最小工具调用次数。简单任务（1-2 次工具调用）跳过验证以避免不必要的延迟。设为 `1` 可始终启用验证。也适用于 DAG 步骤 |
-| `REACT_TURN_PROFILE_ENABLED` | 否 | `true` | 发出按轮次阶段级别的计时日志（`memory_load`、`compact`、`tool_schema_build`、`llm_first_token`、`llm_total`、`tool_exec`）。每轮一行结构化日志。设为 `false` 禁用分析（零开销） |
-| `REACT_PLAN_TOOL_ENABLED` | 否 | `true` | 注册 `update_plan` 待办工具，使智能体在多步任务期间记录和维护计划检查清单。对于 DAG 步骤智能体和无工具的智能体自动跳过 |
-| `REACT_PLAN_REMINDER_INTERVAL` | 否 | `3` | 在注入陈旧计划提醒前，未调用 `update_plan` 的工具轮次数（嵌入完整检查清单），使计划在上下文压缩中保留 |
-| `REACT_PLAN_REPEAT_THRESHOLD` | 否 | `4` | 连续轮次调用同一工具（使用不同参数）的次数，之后提醒告诉智能体改变方法而不是重复无效调用。完全重复的调用由循环检测单独处理 |
-| `REACT_PLAN_NUDGE_AFTER` | 否 | `5` | 未记录计划的工具轮次数，之后一次性推动建议记录计划。仅在计划工具启用时适用 |
-| `REACT_FINISH_SIGNAL` | 否 | `true` | 聊天路径上的 FINAL 优先应答：智能体在 `finish` 信号上结束工具循环，然后将答案作为真正令牌流式传输的轮次写入。设为 `false` 恢复内联循环答案与缓冲重放 |
-| `REACT_MAX_CONTINUATIONS` | 否 | `3` | 当模型答案被提供商的输出令牌限制截断时的最大续接轮次（`finish_reason=length`）。截断的段落被拼接成一个无缝答案，既在智能体循环中也在流式合成中 |
-| `REACT_BACKGROUND_TOOLS_ENABLED` | 否 | `true` | 在慢速工具（沙箱 python/shell/node 执行）上提供 `run_in_background` 选项。智能体立即获得任务 id 并继续工作；工具完成时结果作为 `<task_notification>` 消息到达 |
-| `REACT_BG_WAIT_TIMEOUT` | 否 | `300` | 智能体想要最终确定答案时等待仍在运行的后台工具的最大秒数。窗口内未完成的任务被取消并显示明确的超时通知 |
-| `DAG_CHECKPOINT_EVIDENCE_CHARS` | 否 | `4000` | DAG 崩溃恢复检查点文件（`data/dag_checkpoints/`）中每步的证据上限。步骤摘要完整存储 |
-| `DAG_CHECKPOINT_MAX_AGE_HOURS` | 否 | `24` | 超过此时间的 DAG 检查点在加载时被忽略，因此陈旧的崩溃遗留物永远不会恢复到新运行中 |
-| `LLM_RATE_LIMIT_PER_USER` | 否 | `true` | 使用按用户键控的速率限制桶而不是单个进程全局桶。防止一个嘈杂用户在同一工作进程上饿死所有其他用户。底层速率硬编码为每个桶每分钟 60 个请求和 100K 个令牌——此设置仅控制桶是共享（全局）还是分区（按用户）。设为 `false` 恢复到旧版全局桶（不推荐） |
+| `REACT_MAX_ITERATIONS` | 否 | `20` | 每个 ReAct 请求的最大工具调用迭代次数。值越高，结果越全面，但速度越慢、成本越高 |
+| `REACT_MAX_TURN_TOKENS` | 否 | `0` | 紧急断路器：单次 ReAct 轮次中所有迭代累计使用的最大 token 数（提示词和补全内容）。默认值 `0` = 不限。**这不是用于控制每日 token 用量的设置**——每日控制请使用每用户的 `token_quota`。这是针对智能体陷入无限工具调用循环等极端场景的最后一道安全阀。达到此限制会中止执行中的任务，浪费截至当时已消耗的所有 token，并返回不完整的结果。除非需要遏制特定的失控智能体问题，否则请保持为 `0` |
+| `REACT_TOOL_SELECTION_THRESHOLD` | 否 | `12` | 当已注册工具总数超过此阈值时，在每个请求之前通过一次轻量级 LLM 调用选择最相关的工具子集 |
+| `REACT_TOOL_SELECTION_MAX` | 否 | `6` | 智能选择后保留的最大工具数（仅当工具数超过 `REACT_TOOL_SELECTION_THRESHOLD` 时生效） |
+| `REACT_SELF_REFLECTION_INTERVAL` | 否 | `6` | 每调用 N 次工具后注入一次自我反思提示词，帮助智能体纠正方向并避免循环 |
+| `REACT_TOOL_OBS_TRUNCATION` | 否 | `8000` | 合成最终答案时每条工具观察结果的最大字符数。值越高，保留的结构化数据（JSON、表格）越多，但会消耗更多 token |
+| `REACT_TOOL_RESULT_BUDGET` | 否 | `40000` | 单个会话中所有工具结果的总 token 预算。当工具结果 token 总数超过此上限时，新结果会被截断并附带提示。用于防止大型 API 响应导致上下文膨胀（例如，5 次连接器调用各返回 8K 内容）。设置为 `0` 可禁用此上限 |
+| `REACT_COMPLETION_CHECK_SKIP_CHARS` | 否 | `800` | 当智能体的最终答案超过此字符数时，跳过答案后的完成检查 LLM 调用。详细的长答案不需要“我是否遗漏了什么？”这样的验证往返。设置得更低可更积极地跳过检查；设置为非常大的值则始终执行检查 |
+| `REACT_CYCLE_DETECTION_THRESHOLD` | 否 | `2` | 当同一工具以完全相同的参数连续调用达到此次数时，注入一条确定性警告，告知智能体尝试不同的方法。与依赖 LLM 发现循环的自我反思不同，这是基于哈希的检查，无法绕过。也适用于 DAG 步骤 |
+| `REACT_STALL_ROUNDS` | 否 | `3` | 当重复防护机制连续这么多轮拒绝智能体发起的每次工具调用时，结束运行。答案会列出已执行的步骤，并询问用户如何继续。设置为 `0` 可禁用 |
+| `REACT_MAX_TURN_SECONDS` | 否 | `0` | 单次智能体运行的墙上时钟时间限制（以秒为单位），在迭代之间检查。达到限制后，运行会以已执行步骤的摘要结束。单次工具调用则由 `REACT_TOOL_TIMEOUT` 另行限制。`0` = 不限 |
+| `REACT_COMPLETION_CHECK_MIN_TOOLS` | 否 | `3` | 完成检查清单触发前所需的最少工具调用次数。简单任务（1-2 次工具调用）会跳过验证，以避免不必要的延迟。设置为 `1` 可始终启用验证。也适用于 DAG 步骤 |
+| `REACT_TURN_PROFILE_ENABLED` | 否 | `true` | 输出每轮各阶段的耗时日志（`memory_load`、`compact`、`tool_schema_build`、`llm_first_token`、`llm_total`、`tool_exec`）。每轮输出一行结构化日志。设置为 `false` 可完全禁用性能分析（零开销） |
+| `REACT_PLAN_TOOL_ENABLED` | 否 | `true` | 注册 `update_plan` todo 工具，使智能体在多步骤任务期间记录并维护计划清单。DAG 步骤智能体和没有工具的智能体会自动跳过此项 |
+| `REACT_PLAN_REMINDER_INTERVAL` | 否 | `3` | 在重新注入过时计划提醒（包含完整清单）之前，允许经过的、未调用 `update_plan` 的工具轮数，使计划在上下文压缩后仍能保留 |
+| `REACT_PLAN_REPEAT_THRESHOLD` | 否 | `4` | 在提醒智能体改变方法而不是重复无效调用之前，连续调用同一工具（但参数不同）的轮数。完全重复的调用由循环检测单独处理 |
+| `REACT_PLAN_NUDGE_AFTER` | 否 | `5` | 在一次性提示建议记录计划之前，允许经过的、未记录计划的工具轮数。仅在启用计划工具时生效 |
+| `REACT_FINISH_SIGNAL` | 否 | `true` | 聊天路径上的优先完成回答：智能体收到 `finish` 信号后结束工具循环，然后以真正的 token 流式传输轮次写入答案。设置为 `false` 可恢复内联循环回答并使用缓冲重放 |
+| `REACT_MAX_CONTINUATIONS` | 否 | `3` | 当模型的答案因提供商的输出 token 限制而被截断，并报告为 `finish_reason=length` 时，允许的最大继续轮数。截断的片段会拼接成一个连贯的答案，这同时适用于智能体循环和流式合成 |
+| `REACT_BACKGROUND_TOOLS_ENABLED` | 否 | `true` | 为慢速工具（沙箱中的 python/shell/node 执行）提供 `run_in_background` 选项。智能体会立即获得任务 ID 并继续工作；工具完成后，结果会以 `<task_notification>` 消息到达 |
+| `REACT_BG_WAIT_TIMEOUT` | 否 | `300` | 当智能体准备完成答案时，等待仍在运行的后台工具的最长秒数。未在此时间窗口内完成的任务会被取消，并附带明确的超时通知 |
+| `DAG_CHECKPOINT_EVIDENCE_CHARS` | 否 | `4000` | DAG 崩溃恢复检查点文件（`data/dag_checkpoints/`）中每个步骤的证据上限。步骤摘要会完整存储 |
+| `DAG_CHECKPOINT_MAX_AGE_HOURS` | 否 | `24` | 加载时会忽略早于此时长的 DAG 检查点，因此过时的崩溃残留不会在新运行中恢复 |
+| `LLM_RATE_LIMIT_PER_USER` | 否 | `true` | 使用按用户分组的速率限制桶，而不是单个进程级全局桶。这样可防止同一工作进程中的某个高频用户耗尽所有其他用户的资源。底层速率硬编码为每个桶每分钟 60 个请求和 100K 个 token——此设置仅控制桶是共享的（全局）还是分区的（按用户）。设置为 `false` 可恢复旧版全局桶（不建议） |
 
 ### DAG 规划器
 

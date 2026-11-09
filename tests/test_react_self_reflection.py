@@ -53,7 +53,7 @@ class TestSelfReflectionJsonMode:
     async def test_no_reflection_for_short_runs(self) -> None:
         """When tool calls < 6, no reflection message should be injected."""
         # 3 tool calls then a final answer = 4 LLM calls total.
-        responses = [react_tool_call() for _ in range(3)]
+        responses = [react_tool_call("echo", {"text": f"t{i}"}) for i in range(3)]
         responses.append(react_final_answer())
 
         llm = FakeLLM(responses)
@@ -74,7 +74,7 @@ class TestSelfReflectionJsonMode:
 
     async def test_no_reflection_at_5_tool_calls(self) -> None:
         """Exactly 5 tool calls (just under threshold) should not trigger reflection."""
-        responses = [react_tool_call() for _ in range(5)]
+        responses = [react_tool_call("echo", {"text": f"t{i}"}) for i in range(5)]
         responses.append(react_final_answer())
 
         llm = FakeLLM(responses)
@@ -93,7 +93,7 @@ class TestSelfReflectionJsonMode:
     async def test_reflection_injected_at_iteration_6(self) -> None:
         """After exactly 6 tool calls, one self-reflection message should appear."""
         # 6 tool calls then a final answer = 7 LLM calls total.
-        responses = [react_tool_call() for _ in range(6)]
+        responses = [react_tool_call("echo", {"text": f"t{i}"}) for i in range(6)]
         responses.append(react_final_answer())
 
         llm = FakeLLM(responses)
@@ -118,7 +118,7 @@ class TestSelfReflectionJsonMode:
 
     async def test_reflection_injected_at_iteration_12(self) -> None:
         """After 12 tool calls, two self-reflection messages should appear."""
-        responses = [react_tool_call() for _ in range(12)]
+        responses = [react_tool_call("echo", {"text": f"t{i}"}) for i in range(12)]
         responses.append(react_final_answer())
 
         llm = FakeLLM(responses)
@@ -141,7 +141,7 @@ class TestSelfReflectionJsonMode:
     async def test_reflection_contains_original_goal(self) -> None:
         """The injected reflection message should contain the original query text."""
         original_query = "analyze the quarterly revenue report for Q3"
-        responses = [react_tool_call() for _ in range(6)]
+        responses = [react_tool_call("echo", {"text": f"t{i}"}) for i in range(6)]
         responses.append(react_final_answer())
 
         llm = FakeLLM(responses)
@@ -169,10 +169,10 @@ class TestSelfReflectionJsonMode:
         With max_iterations=6, the 6th tool call occurs at iteration 6
         (the last allowed), so the reflection is skipped.
         """
-        # All 6 iterations are tool calls; the agent hits the max_iterations
-        # limit and produces a timeout answer.  The FakeLLM reuses the last
-        # response, so it keeps returning tool calls.
-        llm = FakeLLM([react_tool_call()])
+        # All 6 iterations are tool calls (distinct args, so the cycle
+        # guard stays out of it); the agent hits the max_iterations limit
+        # and produces a timeout answer.
+        llm = FakeLLM([react_tool_call("echo", {"text": f"t{i}"}) for i in range(6)])
         registry = ToolRegistry()
         registry.register(EchoTool())
         agent = ReActAgent(llm=llm, tools=registry, max_iterations=6)
@@ -202,7 +202,7 @@ class TestSelfReflectionNativeMode:
     async def test_no_reflection_for_short_runs_native(self) -> None:
         """When tool calls < 6, no reflection message should be injected."""
         responses = [
-            tool_call("echo", {"text": "ok"}, call_id=f"c{i}") for i in range(3)
+            tool_call("echo", {"text": f"t{i}"}, call_id=f"c{i}") for i in range(3)
         ]
         responses.append(answer("done"))
 
@@ -224,7 +224,7 @@ class TestSelfReflectionNativeMode:
     async def test_reflection_injected_at_iteration_6_native(self) -> None:
         """After 6 tool-call rounds, one reflection should appear in native mode."""
         responses = [
-            tool_call("echo", {"text": "ok"}, call_id=f"c{i}") for i in range(6)
+            tool_call("echo", {"text": f"t{i}"}, call_id=f"c{i}") for i in range(6)
         ]
         responses.append(answer("done"))
 
@@ -246,7 +246,7 @@ class TestSelfReflectionNativeMode:
     async def test_reflection_injected_at_iteration_12_native(self) -> None:
         """After 12 tool-call rounds, two reflections should appear in native mode."""
         responses = [
-            tool_call("echo", {"text": "ok"}, call_id=f"c{i}") for i in range(12)
+            tool_call("echo", {"text": f"t{i}"}, call_id=f"c{i}") for i in range(12)
         ]
         responses.append(answer("done"))
 
@@ -269,7 +269,7 @@ class TestSelfReflectionNativeMode:
         """The injected reflection in native mode should contain the original query."""
         original_query = "deploy the production build to staging environment"
         responses = [
-            tool_call("echo", {"text": "ok"}, call_id=f"c{i}") for i in range(6)
+            tool_call("echo", {"text": f"t{i}"}, call_id=f"c{i}") for i in range(6)
         ]
         responses.append(answer("done"))
 

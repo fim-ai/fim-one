@@ -144,6 +144,22 @@ _CYCLE_BLOCKED_TEMPLATE = (
     "already have."
 )
 
+# Stall breaker: once the cycle guard has refused every call the model made
+# for this many consecutive rounds, the run stops and hands back what it has.
+# The refusal tells the model to change course; a model that keeps issuing
+# refused calls is not going to, and without this the only bound left is
+# max_iterations.  Set to 0 to disable.
+_STALL_ROUNDS = int(os.getenv("REACT_STALL_ROUNDS", "3"))
+
+# Wall-clock limit for a single run() comes from REACT_MAX_TURN_SECONDS
+# (read per agent, like REACT_MAX_TURN_TOKENS) and is checked between
+# iterations; a tool call in flight is bounded by REACT_TOOL_TIMEOUT.
+
+
+def _now() -> float:
+    """Monotonic clock for the run limit (a seam so tests can drive it)."""
+    return time.monotonic()
+
 # Endpoint-level near-duplicate guard: the exact-args guard above is blind
 # to a model that tweaks a query parameter each round (pagination thrash:
 # one observed run re-fetched the same 100-item endpoint ~50 times with
@@ -513,6 +529,7 @@ class ReActAgent:
         agent_directive: str | None = None,
         pinned_tools: list[str] | None = None,
         max_turn_tokens: int = int(os.getenv("REACT_MAX_TURN_TOKENS", "0")),
+        max_turn_seconds: float | None = None,
         completion_check: bool = True,
         agent_id: str | None = None,
         org_id: str | None = None,
@@ -543,6 +560,11 @@ class ReActAgent:
         self._session_started = False
         self._workspace = workspace
         self._max_turn_tokens = max_turn_tokens
+        self._max_turn_seconds = (
+            float(os.getenv("REACT_MAX_TURN_SECONDS", "0"))
+            if max_turn_seconds is None
+            else max_turn_seconds
+        )
         self._completion_check = completion_check
         # Finish-signal handoff (see the constants block).  Default off:
         # callers that consume ``run()`` directly (DAG steps, call_agent,
@@ -1740,6 +1762,8 @@ class ReActAgent:
             else None
         )
 
+        run_started = _now()
+        stalled_rounds = 0  # Consecutive rounds where every call was refused
         for iteration in range(1, self._max_iterations + 1):
             logger.debug("ReAct iteration %d", iteration)
 
@@ -1751,29 +1775,18 @@ class ReActAgent:
                 profiler.add("memory_load", _initial_memory_load)
                 profiler.add("tool_schema_build", _initial_schema_build)
 
-            # --- Per-turn token budget check ---
-            if self._max_turn_tokens > 0:
-                current_usage = usage_tracker.get_summary()
-                if current_usage.total_tokens >= self._max_turn_tokens:
-                    logger.warning(
-                        "ReAct token budget exhausted: %d >= %d after %d iterations",
-                        current_usage.total_tokens,
-                        self._max_turn_tokens,
-                        iteration - 1,
-                    )
-                    answer = (
-                        f"I've reached the token budget ({self._max_turn_tokens:,} tokens) "
-                        f"after {iteration - 1} iterations. Here is what I have so far:\n"
-                        + self._summarise_steps(steps)
-                    )
-                    await self._save_to_memory(query, answer)
-                    return AgentResult(
-                        answer=answer,
-                        steps=steps,
-                        iterations=iteration - 1,
-                        usage=usage_tracker.get_summary(),
-                        messages=messages,
-                    )
+            # --- Run limits: token budget, wall clock, stall ---
+            stop_reason = self._run_limit_reason(
+                usage_tracker, run_started, stalled_rounds,
+            )
+            if stop_reason is not None:
+                return await self._stop_for_limit(
+                    stop_reason, query, steps, iteration - 1,
+                    usage_tracker, messages,
+                )
+            # Any round that is not entirely refused calls ends the streak;
+            # the tool-call path below re-raises it from prior_stalled.
+            prior_stalled, stalled_rounds = stalled_rounds, 0
 
             # Signal thinking start before LLM call.
             if on_iteration is not None:
@@ -2019,6 +2032,8 @@ class ReActAgent:
                 cycle_tracker,
             )
 
+            if cycle_blocked:
+                stalled_rounds = prior_stalled + 1
             if cycle_blocked:
                 step = StepResult(action=action, error=cycle_message)
             else:
@@ -2272,6 +2287,8 @@ class ReActAgent:
         tool_choice: str | None = "auto" if tools_payload else None
         _initial_schema_build = time.perf_counter() - _schema_start
 
+        run_started = _now()
+        stalled_rounds = 0  # Consecutive rounds where every call was refused
         for iteration in range(1, self._max_iterations + 1):
             logger.debug("Native ReAct iteration %d", iteration)
 
@@ -2282,29 +2299,18 @@ class ReActAgent:
                 profiler.add("memory_load", _initial_memory_load)
                 profiler.add("tool_schema_build", _initial_schema_build)
 
-            # --- Per-turn token budget check ---
-            if self._max_turn_tokens > 0:
-                current_usage = usage_tracker.get_summary()
-                if current_usage.total_tokens >= self._max_turn_tokens:
-                    logger.warning(
-                        "Native ReAct token budget exhausted: %d >= %d after %d iterations",
-                        current_usage.total_tokens,
-                        self._max_turn_tokens,
-                        iteration - 1,
-                    )
-                    answer = (
-                        f"I've reached the token budget ({self._max_turn_tokens:,} tokens) "
-                        f"after {iteration - 1} iterations. Here is what I have so far:\n"
-                        + self._summarise_steps(steps)
-                    )
-                    await self._save_to_memory(query, answer)
-                    return AgentResult(
-                        answer=answer,
-                        steps=steps,
-                        iterations=iteration - 1,
-                        usage=usage_tracker.get_summary(),
-                        messages=messages,
-                    )
+            # --- Run limits: token budget, wall clock, stall ---
+            stop_reason = self._run_limit_reason(
+                usage_tracker, run_started, stalled_rounds,
+            )
+            if stop_reason is not None:
+                return await self._stop_for_limit(
+                    stop_reason, query, steps, iteration - 1,
+                    usage_tracker, messages,
+                )
+            # Any round that is not entirely refused calls ends the streak;
+            # the tool-call path below re-raises it from prior_stalled.
+            prior_stalled, stalled_rounds = stalled_rounds, 0
 
             # Signal thinking start before LLM call.
             if on_iteration is not None:
@@ -2553,6 +2559,8 @@ class ReActAgent:
                         blocked_call_ids.add(tc.id)
                     elif cycle_message is not None:
                         cycle_warnings.append(cycle_message)
+                if exec_calls and len(blocked_call_ids) == len(exec_calls):
+                    stalled_rounds = prior_stalled + 1
 
                 _tool_start = time.perf_counter()
                 tool_results = await self._execute_native_tool_calls(
@@ -4134,6 +4142,87 @@ class ReActAgent:
         # estimate (assume 32k default budget).
         target_budget = int(32000 * target_ratio)
         return CompactUtils.smart_truncate(messages, target_budget)
+
+    def _run_limit_reason(
+        self,
+        usage_tracker: UsageTracker,
+        run_started: float,
+        stalled_rounds: int,
+    ) -> str | None:
+        """Return why the run must stop now, or ``None`` to keep going.
+
+        Checked at the top of each iteration, where the message list is
+        consistent (every tool_use already has its result).
+
+        Args:
+            usage_tracker: Token usage accumulated by this run.
+            run_started: ``_now()`` when the loop began.
+            stalled_rounds: Consecutive rounds in which the cycle guard
+                refused every call the model made.
+
+        Returns:
+            A sentence fragment naming the limit, or ``None``.
+        """
+        if self._max_turn_tokens > 0:
+            used = usage_tracker.get_summary().total_tokens
+            if used >= self._max_turn_tokens:
+                return (
+                    f"I've reached the token budget "
+                    f"({used:,} of {self._max_turn_tokens:,} tokens used)."
+                )
+        if self._max_turn_seconds > 0:
+            elapsed = _now() - run_started
+            if elapsed >= self._max_turn_seconds:
+                return (
+                    f"I've reached the time limit "
+                    f"({elapsed:.0f}s of {self._max_turn_seconds:.0f}s)."
+                )
+        if _STALL_ROUNDS > 0 and stalled_rounds >= _STALL_ROUNDS:
+            return (
+                f"Every call I made in my last {stalled_rounds} rounds was "
+                "refused as a repeat, so I was making no progress. "
+                "Please tell me how to proceed."
+            )
+        return None
+
+    async def _stop_for_limit(
+        self,
+        reason: str,
+        query: str,
+        steps: list[StepResult],
+        iterations: int,
+        usage_tracker: UsageTracker,
+        messages: list[ChatMessage],
+    ) -> AgentResult:
+        """End the run on a limit with what has been gathered so far.
+
+        Args:
+            reason: Sentence naming the limit, from ``_run_limit_reason``.
+            query: The user query, saved to memory with the answer.
+            steps: Steps completed before the stop.
+            iterations: Iterations completed before the stop.
+            usage_tracker: Token usage accumulated by this run.
+            messages: The run's message list, returned for synthesis.
+
+        Returns:
+            An ``AgentResult`` whose answer states the reason and lists
+            the steps taken.
+        """
+        logger.warning(
+            "ReAct run stopped after %d iterations: %s", iterations, reason,
+        )
+        answer = (
+            f"{reason} Stopped after {iterations} iterations. "
+            "Here is what I have so far:\n" + self._summarise_steps(steps)
+        )
+        await self._save_to_memory(query, answer)
+        return AgentResult(
+            answer=answer,
+            steps=steps,
+            iterations=iterations,
+            usage=usage_tracker.get_summary(),
+            messages=messages,
+        )
 
     @staticmethod
     def _summarise_steps(steps: list[StepResult]) -> str:

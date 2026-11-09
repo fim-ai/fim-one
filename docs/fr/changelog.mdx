@@ -10,6 +10,10 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [Unreleased]
 
+### Ajouté
+
+- **Un agent bloqué dans une répétition d’appels refusés s’arrête et demande comment procéder.** Après trois tours consécutifs au cours desquels chaque appel a été refusé comme répétition, l’exécution se termine avec les étapes effectuées jusque-là, au lieu de continuer jusqu’à la limite d’itérations. `REACT_MAX_TURN_SECONDS` ajoute une limite de temps facultative par exécution.
+
 ### Corrigé
 
 - **Les modèles Kimi qui fixent `temperature` n'en reçoivent plus.** `kimi-k2.6`, `kimi-k2.7-code` et la série K3 rejettent toute valeur explicite, de sorte que la valeur par défaut 0.7 faisait échouer leur première requête ; le paramètre est maintenant omis pour ces familles, y compris les remplacements par appel comme `temperature=0.0` du planificateur.

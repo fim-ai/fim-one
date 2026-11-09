@@ -10,6 +10,10 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ## [Unveröffentlicht]
 
+### Hinzugefügt
+
+- **Ein Agent, der in abgelehnten wiederholten Aufrufen feststeckt, hält an und fragt, wie er fortfahren soll.** Nach drei aufeinanderfolgenden Runden, in denen jeder Aufruf als Wiederholung abgelehnt wurde, endet die Ausführung mit den bis dahin ausgeführten Schritten, anstatt bis zum Iterationslimit weiterzulaufen. `REACT_MAX_TURN_SECONDS` fügt ein optionales Zeitlimit pro Ausführung hinzu.
+
 ### Behoben
 
 - **Kimi-Modelle, die `temperature` festlegen, erhalten keinen mehr.** `kimi-k2.6`, `kimi-k2.7-code` und die K3-Serie lehnen jeden expliziten Wert ab, daher führte der Standardwert 0,7 zu einem Fehler bei der ersten Anfrage; der Parameter wird jetzt für diese Familien weggelassen, einschließlich Überschreibungen pro Aufruf wie `temperature=0.0` des Planers.

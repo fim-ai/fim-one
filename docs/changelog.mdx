@@ -10,6 +10,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ## [Unreleased]
 
+### Added
+
+- **An agent stuck repeating refused calls stops and asks how to proceed.** After three rounds in a row in which every call was refused as a repeat, the run ends with the steps taken so far, instead of running until the iteration limit. `REACT_MAX_TURN_SECONDS` adds an optional time limit per run.
+
 ### Fixed
 
 - **Kimi models that fix `temperature` no longer receive one.** `kimi-k2.6`, `kimi-k2.7-code` and the K3 series reject any explicit value, so the default 0.7 made their first request fail; the parameter is now omitted for those families, including per-call overrides such as the planner's `temperature=0.0`.

@@ -118,6 +118,7 @@ from ..deps import (
     get_max_concurrency,
     get_model_registry_with_group,
     get_react_max_iterations,
+    get_react_max_turn_seconds,
     get_react_max_turn_tokens,
     get_tools,
 )
@@ -3876,6 +3877,7 @@ async def react_endpoint(
                 agent_directive=agent_instructions,
                 pinned_tools=_pinned,
                 max_turn_tokens=get_react_max_turn_tokens(),
+                max_turn_seconds=get_react_max_turn_seconds(),
                 hook_registry=_hook_registry,
                 agent_id=(agent_cfg or {}).get("agent_id"),
                 org_id=(agent_cfg or {}).get("org_id"),

@@ -232,6 +232,11 @@ def get_react_max_turn_tokens() -> int:
     return int(os.environ.get("REACT_MAX_TURN_TOKENS", "0"))
 
 
+def get_react_max_turn_seconds() -> float:
+    """Wall-clock limit per ReAct run (env: REACT_MAX_TURN_SECONDS). 0 = unlimited."""
+    return float(os.environ.get("REACT_MAX_TURN_SECONDS", "0"))
+
+
 # NOTE: No static SYSTEM_PROMPT_RESERVE is subtracted here.
 # ContextGuard.check_and_compact() estimates ALL messages (including the
 # system prompt) dynamically, so a fixed reserve would double-count it.
