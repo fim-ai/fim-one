@@ -272,6 +272,37 @@ class TestPinnedBudgetWarning:
 
         assert any("pinned messages consume" in r.message for r in caplog.records)
 
+    @pytest.mark.asyncio
+    async def test_overflow_keeps_the_query_and_the_newest_interrupt(self):
+        """Pinned messages are the turn's query, then interrupts in arrival
+        order.  Over half the budget, only the interrupts in between give up
+        their pin; the query is not the one summarised away."""
+        fake_llm = _make_fake_llm("Summary.")
+        guard = ContextGuard(compact_llm=fake_llm, default_budget=50)
+
+        query = _msg("user", "QUERY " + "X" * 2000, pinned=True)
+        first_interrupt = _msg("user", "FIRST " + "Y" * 2000, pinned=True)
+        last_interrupt = _msg("user", "LAST " + "Z" * 2000, pinned=True)
+        messages = [
+            _msg("system", "S"),
+            query,
+            _msg("assistant", "A1"),
+            first_interrupt,
+            _msg("assistant", "A2"),
+            last_interrupt,
+            _msg("assistant", "A3"),
+            _msg("user", "Q3"),
+            _msg("assistant", "A4"),
+            _msg("user", "Q4"),
+            _msg("assistant", "A5"),
+        ]
+
+        result = await guard._llm_compact_with_hint(messages, 100, "general")
+
+        pinned = [m.content for m in result if m.pinned]
+        assert pinned == [query.content, last_interrupt.content]
+        assert first_interrupt.pinned is False
+
 
 # ---------------------------------------------------------------------------
 # 7. model_hint agent gets context_guard (bug fix verification)

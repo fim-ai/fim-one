@@ -331,27 +331,30 @@ class ContextGuard:
             compactable, keep_recent,
         )
 
-        # Unpin oldest inject messages if pinned tokens exceed 50% of budget.
+        # Pinned messages are the user's query for this turn followed by any
+        # interrupts sent while the agent was working.  When they take more
+        # than half the budget, keep the query and the newest interrupt and
+        # unpin the interrupts in between so they are summarised with the
+        # rest of the history.
         pinned_tokens = CompactUtils.estimate_messages_tokens(pinned_msgs)
         if pinned_tokens > budget * 0.5 and len(pinned_msgs) > 1:
+            overflow = list(pinned_msgs[1:-1])
             logger.warning(
                 "ContextGuard: pinned messages consume %d tokens "
-                "(%.0f%% of budget %d) — unpinning oldest inject messages",
+                "(%.0f%% of budget %d) — unpinning %d older interrupt(s)",
                 pinned_tokens,
-                pinned_tokens / budget * 0.5 * 100,
+                pinned_tokens / budget * 100,
                 budget,
+                len(overflow),
             )
-            # Keep only the most recent pinned message (the current user
-            # query).  Move older pinned messages into compactable so
-            # they can be summarised instead of silently exceeding budget.
-            overflow = list(pinned_msgs[:-1])
-            pinned_msgs = pinned_msgs[-1:]
-            for msg in overflow:
-                msg.pinned = False
-            compactable = overflow + compactable
-            old_messages, recent_messages = self._split_on_tool_boundary(
-                compactable, keep_recent,
-            )
+            if overflow:
+                pinned_msgs = [pinned_msgs[0], pinned_msgs[-1]]
+                for msg in overflow:
+                    msg.pinned = False
+                compactable = overflow + compactable
+                old_messages, recent_messages = self._split_on_tool_boundary(
+                    compactable, keep_recent,
+                )
 
         # Summarise the old turns.  The history is cut into parts when it
         # does not fit the summariser's own window (the fast model is often
