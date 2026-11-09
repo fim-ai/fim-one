@@ -309,3 +309,63 @@ class TestCredentialsAndCallRecordsLiveInTheAssemblyLayer:
             "a database connector's config is decrypted by resolve_credential(), "
             "which gives it to the owner only:\n  " + "\n  ".join(offenders)
         )
+
+
+# ---------------------------------------------------------------------------
+# Confirmation and approval: one service (C1 phase 3)
+# ---------------------------------------------------------------------------
+
+# needle -> the files (relative to src/fim_one) that may contain it.
+CONFIRMATION_GATE: dict[str, frozenset[str]] = {
+    # The gate is ApprovalGateHook; the old name lives on only as a re-export.
+    "FeishuGateHook": frozenset({"core/hooks/feishu_gate_hook.py", "core/hooks/__init__.py"}),
+    # Requests are written by the service alone (the model defines the class).
+    "ConfirmationRequest(": frozenset({"core/assembly/confirmation.py", "db/models/channel.py"}),
+    # workflow_approvals is no longer written; the table waits for T10 P5.
+    "WorkflowApproval(": frozenset({"db/models/workflow.py"}),
+    # The two former copies of "who may decide".
+    "user_may_decide": frozenset(),
+    "_get_decidable_approval": frozenset(),
+}
+# The service asks whether a channel can carry approvals, never which platform it is.
+PLATFORM_CHECK = re.compile(r"isinstance\(.*FeishuChannel")
+
+
+class TestConfirmationsHaveOneService:
+    """Asking, waiting and deciding live in ``core/assembly/confirmation.py``.
+
+    The approval gate, the portal endpoints, the Feishu callback, the
+    Approval Playground, ``ask_user_question`` and the workflow approval
+    step all go through ``ConfirmationService``; none writes a request row
+    or decides who may answer on its own.
+    """
+
+    def test_one_writer_and_one_decider(self) -> None:
+        files = [py for py in sorted(SRC.rglob("*.py")) if "migrations" not in py.parts]
+        offenders = [
+            hit
+            for needle, allowed in CONFIRMATION_GATE.items()
+            for hit in _occurrences(needle, files)
+            if hit.split(":", 1)[0] not in allowed
+        ]
+        assert not offenders, (
+            "confirmation requests are created and decided by "
+            "core/assembly/confirmation.py:\n  " + "\n  ".join(offenders)
+        )
+
+    def test_the_assembly_layer_does_not_name_a_platform(self) -> None:
+        offenders = [
+            f"{py.relative_to(SRC)}:{lineno}: {line.strip()}"
+            for py in sorted((CORE / "assembly").rglob("*.py"))
+            for lineno, line in _source_lines(py)
+            if PLATFORM_CHECK.search(line)
+        ]
+        assert not offenders, (
+            "the assembly layer asks for ApprovalCarrier, not for a channel class:\n  "
+            + "\n  ".join(offenders)
+        )
+
+    def test_the_gate_is_registered_under_its_new_key_and_its_old_one(self) -> None:
+        from fim_one.web.hooks_bootstrap import HOOK_FACTORIES
+
+        assert HOOK_FACTORIES["approval_gate"] is HOOK_FACTORIES["feishu_gate"]
