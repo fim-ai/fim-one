@@ -124,22 +124,23 @@ async def _validate_binding_ownership(
 ) -> None:
     """Verify the user can *access* every referenced connector / KB / MCP server.
 
-    Access means visibility — the user owns the resource OR has an explicit
-    subscription to it (org-shared and Market-installed resources are surfaced
-    via subscriptions). This is the same model chat assembly and the resource
-    lists already use, so a subscribed connector can be bound to an agent
-    rather than 403-ing as "not owned".
+    Access is what the agent could use at run time, judged for the user
+    saving it (``use_clause_for``, the clause the use-time rule starts from):
+    the user owns the resource, or holds a subscription to one that is still
+    shared, so a subscribed connector can be bound rather than 403-ing as
+    "not owned". A knowledge base cannot be shared, so it must be the user's
+    own; one that is not would be dropped from the agent on every run.
 
-    Raises HTTP 403 if any referenced resource is not visible to the user.
+    Raises HTTP 403 if any referenced resource is not accessible to the user.
     """
-    from fim_one.web.visibility import resolve_visibility
+    from fim_one.core.assembly.visibility import ResourceKind, use_clause_for
 
-    async def _assert_visible(
-        model: Any, resource_type: str, ids: list[str] | None, err_code: str
+    async def _assert_usable(
+        model: Any, kind: ResourceKind, ids: list[str] | None, err_code: str
     ) -> None:
         if not ids:
             return
-        clause, _, _ = await resolve_visibility(model, user_id, resource_type, db)
+        clause = await use_clause_for(db, kind, user_id)
         result = await db.execute(
             select(func.count())
             .select_from(model)
@@ -148,14 +149,14 @@ async def _validate_binding_ownership(
         if result.scalar_one() != len(set(ids)):
             raise AppError(err_code, status_code=403)
 
-    await _assert_visible(
-        Connector, "connector", connector_ids, "connector_ownership_denied"
+    await _assert_usable(
+        Connector, ResourceKind.CONNECTOR, connector_ids, "connector_ownership_denied"
     )
-    await _assert_visible(
-        KnowledgeBase, "knowledge_base", kb_ids, "kb_ownership_denied"
+    await _assert_usable(
+        KnowledgeBase, ResourceKind.KNOWLEDGE_BASE, kb_ids, "kb_ownership_denied"
     )
-    await _assert_visible(
-        MCPServer, "mcp_server", mcp_server_ids, "mcp_server_ownership_denied"
+    await _assert_usable(
+        MCPServer, ResourceKind.MCP_SERVER, mcp_server_ids, "mcp_server_ownership_denied"
     )
 
     # An approval channel posts tool arguments into its chat, so it may only
