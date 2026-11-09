@@ -2,18 +2,21 @@ import { existsSync } from "node:fs"
 import { readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 
-import { expect, test, type Page } from "@playwright/test"
+import { expect, test, type Page, type Request } from "@playwright/test"
 
 import {
   KB_FACT,
   addNode,
+  asHistoryStep,
   canvasEdges,
   canvasNodes,
+  canvasReported,
   configPanel,
   connect,
   createEmptyWorkflow,
   createLinearWorkflow,
   fetchBlueprint,
+  historyRecorded,
   nodeId,
   nodeOfType,
   openConfig,
@@ -95,12 +98,36 @@ async function chooseMenuItem(page: Page, name: string): Promise<void> {
   await expect(page.getByRole("menu")).toHaveCount(0)
 }
 
+const isSaveRequest = (req: Request): boolean =>
+  req.method() === "PUT" && /\/api\/workflows\/[^/]+$/.test(new URL(req.url()).pathname)
+
+/**
+ * Click Save and wait for the save that click caused.
+ *
+ * An automatic save may be in flight when the button is pressed; its answer
+ * is not the one to wait for. Only requests issued after the click count:
+ * the editor sends saves one at a time, so once "Saving..." is over the
+ * last of those is the click's own (it may have waited its turn).
+ */
 async function saveWorkflow(page: Page): Promise<void> {
-  const saved = page.waitForResponse(
-    (res) => res.request().method() === "PUT" && /\/api\/workflows\/[^/]+$/.test(new URL(res.url()).pathname),
-  )
-  await page.getByRole("button", { name: "Save", exact: true }).click()
-  expect((await saved).status()).toBe(200)
+  const button = page.getByRole("button", { name: "Save", exact: true })
+  await expect(button).toBeEnabled()
+  const issued: Request[] = []
+  const record = (req: Request) => {
+    if (isSaveRequest(req)) issued.push(req)
+  }
+  page.on("request", record)
+  try {
+    await button.click()
+    await expect.poll(() => issued.length, { message: "the click issued a save" }).toBeGreaterThan(0)
+    // The button reads "Saving..." and is disabled while the click's save waits or runs.
+    await expect(button).toBeEnabled()
+    const response = await issued[issued.length - 1].response()
+    expect(response?.status()).toBe(200)
+    await expect(page.getByText("Unsaved changes")).toHaveCount(0)
+  } finally {
+    page.off("request", record)
+  }
 }
 
 test("a new blank workflow opens in the editor with Start and End", async ({ page }) => {
@@ -294,7 +321,7 @@ test("build, save, reload and run a workflow that uses every offered node type",
     // Opening settings without editing changes nothing: no unsaved marker,
     // and what is stored stays as it was.
     await page.locator(".react-flow__pane").click({ position: { x: 20, y: 20 } })
-    await page.waitForTimeout(500)
+    await canvasReported(page)
     await expect(page.getByText("Unsaved changes")).toHaveCount(0)
     expect(await fetchBlueprint(request, seeded.session, workflowId)).toEqual(saved)
   })
@@ -347,7 +374,7 @@ test("build, save, reload and run a workflow that uses every offered node type",
     await page.getByRole("button", { name: "Clear" }).click()
     await expect(page.getByText("Viewing past run")).toHaveCount(0)
     // A replay is not an edit.
-    await page.waitForTimeout(500)
+    await canvasReported(page)
     await expect(page.getByText("Unsaved changes")).toHaveCount(0)
   })
 
@@ -383,17 +410,19 @@ test("canvas editing: copy, paste, undo, redo, delete, search and the context me
   await page.goto(`/workflows/${workflowId}`)
   await expect(canvasNodes(page)).toHaveCount(3)
   await expect(canvasEdges(page)).toHaveCount(2)
-  // Undo steps are recorded 300 ms after a change.
-  const settle = () => page.waitForTimeout(450)
-  await settle()
+  // Undo history records the canvas a moment after each change; the steps
+  // below wait for that record instead of for a fixed time.
+  await historyRecorded(page)
 
   await test.step("copy and paste a node with the keyboard", async () => {
     await nodeOfType(page, "llm").click()
     await expect(configPanel(page)).toBeVisible()
-    await page.keyboard.press("Control+c")
-    await page.keyboard.press("Control+v")
-    await expect(nodeOfType(page, "llm")).toHaveCount(2)
-    await settle()
+    await historyRecorded(page)
+    await asHistoryStep(page, async () => {
+      await page.keyboard.press("Control+c")
+      await page.keyboard.press("Control+v")
+      await expect(nodeOfType(page, "llm")).toHaveCount(2)
+    })
   })
 
   await test.step("undo and redo", async () => {
@@ -401,7 +430,7 @@ test("canvas editing: copy, paste, undo, redo, delete, search and the context me
     await expect(nodeOfType(page, "llm")).toHaveCount(1)
     await page.keyboard.press("Control+Shift+z")
     await expect(nodeOfType(page, "llm")).toHaveCount(2)
-    await settle()
+    await historyRecorded(page)
   })
 
   await test.step("delete the selection with the keyboard; Start cannot be deleted", async () => {
@@ -411,7 +440,7 @@ test("canvas editing: copy, paste, undo, redo, delete, search and the context me
     await nodeOfType(page, "llm").last().click()
     await page.keyboard.press("Backspace")
     await expect(nodeOfType(page, "llm")).toHaveCount(1)
-    await settle()
+    await historyRecorded(page)
 
     await nodeOfType(page, "start").click()
     await page.keyboard.press("Backspace")
@@ -431,11 +460,13 @@ test("canvas editing: copy, paste, undo, redo, delete, search and the context me
   })
 
   await test.step("context menu: delete a node, then undo brings it back with its edges", async () => {
-    await nodeOfType(page, "llm").click({ button: "right" })
-    await page.getByRole("button", { name: "Delete", exact: true }).click()
-    await expect(nodeOfType(page, "llm")).toHaveCount(0)
-    await expect(canvasEdges(page)).toHaveCount(0)
-    await settle()
+    await historyRecorded(page)
+    await asHistoryStep(page, async () => {
+      await nodeOfType(page, "llm").click({ button: "right" })
+      await page.getByRole("button", { name: "Delete", exact: true }).click()
+      await expect(nodeOfType(page, "llm")).toHaveCount(0)
+      await expect(canvasEdges(page)).toHaveCount(0)
+    })
     await page.keyboard.press("Control+z")
     await expect(nodeOfType(page, "llm")).toHaveCount(1)
     await expect(canvasEdges(page)).toHaveCount(2)
@@ -463,7 +494,7 @@ test("workflow variables survive opening and editing the canvas", async ({ page,
   await expect(canvasNodes(page)).toHaveCount(3)
 
   // Opening is not an edit.
-  await page.waitForTimeout(800)
+  await canvasReported(page)
   await expect(page.getByText("Unsaved changes")).toHaveCount(0)
 
   const panel = await openConfig(page, "llm")

@@ -265,6 +265,42 @@ export async function connect(
   await expect(canvasEdges(page)).toHaveCount(before + 1)
 }
 
+/** The canvas element; it carries the editor's "settled" state as data attributes. */
+export const canvasState = (page: Page): Locator => page.getByTestId("workflow-canvas")
+
+/**
+ * Wait until the canvas has handed its current state to the page. It does so
+ * a moment after the last change; until then the page cannot know whether
+ * the workflow is unsaved.
+ */
+export async function canvasReported(page: Page): Promise<void> {
+  const state = canvasState(page)
+  await expect(state).not.toHaveAttribute("data-sync-reports", "0")
+  await expect(state).toHaveAttribute("data-sync-pending", "false")
+}
+
+/** Wait until undo history has recorded the canvas as it is (it does so a moment after a change). */
+export async function historyRecorded(page: Page): Promise<void> {
+  const state = canvasState(page)
+  await expect(state).not.toHaveAttribute("data-history-revision", "0")
+  await expect(state).toHaveAttribute("data-history-pending", "false")
+}
+
+/** Do something to the canvas and wait until undo history holds the result as a step of its own. */
+export async function asHistoryStep(page: Page, action: () => Promise<void>): Promise<void> {
+  const state = canvasState(page)
+  const revision = async () => Number(await state.getAttribute("data-history-revision"))
+  const before = await revision()
+  await action()
+  await expect
+    .poll(
+      async () =>
+        (await revision()) > before && (await state.getAttribute("data-history-pending")) === "false",
+      { message: "undo history recorded the change" },
+    )
+    .toBe(true)
+}
+
 /** Select a node and wait for its settings panel. */
 export async function openConfig(page: Page, type: string): Promise<Locator> {
   await nodeOfType(page, type).click()

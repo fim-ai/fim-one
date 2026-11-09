@@ -27,7 +27,10 @@ export function useCanvasHistory({
   initialNodes,
   initialEdges,
 }: CanvasHistoryOptions) {
-  const { pushState, undo, redo, canUndo, canRedo } = useWorkflowHistory(initialNodes, initialEdges)
+  const { pushState, undo, redo, canUndo, canRedo, revision, pending } = useWorkflowHistory(
+    initialNodes,
+    initialEdges,
+  )
 
   // Track whether we are currently restoring from history to avoid re-pushing
   const isRestoringRef = useRef(false)
@@ -58,5 +61,5 @@ export function useCanvasHistory({
     setEdges(toSafeEdges(snapshot.edges))
   }, [redo, setNodes, setEdges])
 
-  return { undo: handleUndo, redo: handleRedo, canUndo, canRedo }
+  return { undo: handleUndo, redo: handleRedo, canUndo, canRedo, revision, pending }
 }

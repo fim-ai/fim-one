@@ -16,6 +16,11 @@ import { defineConfig, devices } from "@playwright/test"
  *   E2E_WEB_MODE   `build` (default) or `dev` (next dev, quicker to start,
  *                  compiles pages on first visit)
  *   E2E_API_PORT / E2E_WEB_PORT / E2E_STUB_PORT   default 8765 / 3765 / 8766
+ *
+ * None of the three servers is ever reused: if something already listens on
+ * one of the ports, Playwright stops with "... is already used" instead of
+ * testing against a process it did not start (another checkout's app, a
+ * stale stub, a backend on someone's real database).
  */
 
 const repoRoot = path.resolve(__dirname, "..")
@@ -67,7 +72,7 @@ export default defineConfig({
       command: "node e2e/stubs/server.mjs",
       url: `${stubUrl}/health`,
       env: { E2E_STUB_PORT: String(stubPort) },
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 30_000,
     },
     {
@@ -93,7 +98,7 @@ export default defineConfig({
           : `pnpm exec next build && pnpm exec next start --hostname 127.0.0.1 --port ${webPort}`,
       url: `${webUrl}/login`,
       env: webEnv,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 600_000,
     },
   ],

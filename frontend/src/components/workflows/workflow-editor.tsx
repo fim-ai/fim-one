@@ -211,7 +211,8 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
     rfInstanceRef,
     onNodeAdded: addRecentNode,
   })
-  const getBlueprint = useBlueprintSync(nodes, edges, blueprint.viewport, onBlueprintChange)
+  const sync = useBlueprintSync(nodes, edges, blueprint.viewport, onBlueprintChange)
+  const getBlueprint = sync.serialize
 
   const showShortcuts = useCallback(() => setShortcutsDialogOpen(true), [])
   const clearSelection = useCallback(() => {
@@ -331,7 +332,17 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
       <NodePalette existingNodeTypes={existingNodeTypes} recentNodes={recentNodes} />
 
       {/* Center: React Flow canvas */}
-      <div className="flex-1 min-w-0 relative" ref={reactFlowWrapper}>
+      <div
+        className="flex-1 min-w-0 relative"
+        ref={reactFlowWrapper}
+        // For tests: whether the canvas has handed its last change to the
+        // page and to undo history (both follow a change after a pause).
+        data-testid="workflow-canvas"
+        data-sync-pending={sync.pending}
+        data-sync-reports={sync.reports}
+        data-history-pending={history.pending}
+        data-history-revision={history.revision}
+      >
         <ReactFlow
           nodes={displayNodes}
           edges={displayEdges}

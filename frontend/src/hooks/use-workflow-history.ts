@@ -27,10 +27,16 @@ export function useWorkflowHistory(initialNodes: Node[], initialEdges: Edge[]) {
   // Reactive booleans for the UI
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
+  // How many times the stack changed, and whether a change is waiting out
+  // the debounce. Exposed so a test can wait for "recorded" instead of
+  // sleeping longer than the debounce.
+  const [revision, setRevision] = useState(0)
+  const [pending, setPending] = useState(false)
 
   const updateFlags = useCallback(() => {
     setCanUndo(pointerRef.current > 0)
     setCanRedo(pointerRef.current < historyRef.current.length - 1)
+    setRevision((n) => n + 1)
   }, [])
 
   /**
@@ -42,8 +48,11 @@ export function useWorkflowHistory(initialNodes: Node[], initialEdges: Edge[]) {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current)
       }
+      setPending(true)
 
       debounceTimerRef.current = setTimeout(() => {
+        debounceTimerRef.current = null
+        setPending(false)
         const snapshot: HistorySnapshot = {
           nodes: structuredClone(nodes),
           edges: structuredClone(edges),
@@ -81,6 +90,7 @@ export function useWorkflowHistory(initialNodes: Node[], initialEdges: Edge[]) {
       clearTimeout(debounceTimerRef.current)
       debounceTimerRef.current = null
     }
+    setPending(false)
 
     if (pointerRef.current <= 0) return null
     pointerRef.current -= 1
@@ -117,6 +127,7 @@ export function useWorkflowHistory(initialNodes: Node[], initialEdges: Edge[]) {
         clearTimeout(debounceTimerRef.current)
         debounceTimerRef.current = null
       }
+      setPending(false)
       historyRef.current = [
         { nodes: structuredClone(nodes), edges: structuredClone(edges) },
       ]
@@ -132,6 +143,8 @@ export function useWorkflowHistory(initialNodes: Node[], initialEdges: Edge[]) {
     redo,
     canUndo,
     canRedo,
+    revision,
+    pending,
     resetHistory,
   }
 }
