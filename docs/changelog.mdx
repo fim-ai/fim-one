@@ -15,6 +15,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **Human Intervention workflow steps are off unless the operator enables them.** An approval step waits inside the server process, so a restart loses the wait and the run. With `WORKFLOW_HUMAN_INTERVENTION_ENABLED` unset, the editor no longer offers the step (shown as Human Review), templates built on it are not listed, and saving, importing, duplicating or restoring a workflow that contains one is refused with `human_intervention_disabled`, naming the steps to remove. A workflow saved earlier with the step still opens, with the step marked, so it can be removed; until then every way of running it is refused before it starts. Set `WORKFLOW_HUMAN_INTERVENTION_ENABLED=true` to keep the previous behaviour.
 - **Batch workflow runs count toward your concurrent-run limit.** Batch items ran outside the limit of 3 concurrent runs per user, so one batch could run 10 at a time on top of it. Each item now takes a slot from the same limit and waits for one instead of failing, and a batch leaves one slot free, so runs you start by hand still start while a batch is in progress. A batch may therefore run fewer items at once than its "Max Parallel" setting. Submitting a batch counts as one start against the runs-per-minute limit.
 
+### Fixed
+
+- **A workflow trigger key starts one run at a time, also when requests arrive together.** Trigger requests that arrived at the same moment could each start a run of the same workflow. Exactly one now runs and the others get `429 workflow_already_running`.
+
 ## [v0.9.4] - 2026-11-09
 
 ### Added

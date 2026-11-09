@@ -28,6 +28,7 @@ import asyncio
 import logging
 import time
 import uuid
+import weakref
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -363,6 +364,11 @@ class WorkflowRunService:
         # Runs executing in this process, by run id, so any entry point's run
         # can be cancelled (the engine stops; the run is persisted cancelled).
         self._active_runs: dict[str, StartedRun] = {}
+        # One lock per workflow with a single-flight start in progress; an
+        # entry goes away once nobody holds or waits for its lock.
+        self._single_flight_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = (
+            weakref.WeakValueDictionary()
+        )
 
     def cancel_run(self, run_id: str) -> bool:
         """Signal a run executing in this process to stop; False if not here."""
@@ -460,6 +466,9 @@ class WorkflowRunService:
         try:
             principal, parsed = authorized or await self.authorize(workflow, caller_id, mode)
             if single_flight:
+                # Early answer that costs the caller no slot. Requests that
+                # arrive together all pass it; the check that decides is
+                # made with the insert, in _create_run_record.
                 await self._refuse_if_running(workflow.id)
         except RunRefusedError as exc:
             if record_refusal:
@@ -476,7 +485,9 @@ class WorkflowRunService:
 
         record_created = False
         try:
-            await self._create_run_record(run_id, workflow, principal, mode, inputs)
+            await self._create_run_record(
+                run_id, workflow, principal, mode, inputs, single_flight=single_flight
+            )
             record_created = True
 
             from fim_one.db import create_session
@@ -627,21 +638,25 @@ class WorkflowRunService:
 
         return WorkflowEngine(**kwargs)
 
-    async def _refuse_if_running(self, workflow_id: str) -> None:
+    async def _refuse_if_running(self, workflow_id: str, db: Any = None) -> None:
+        """Refuse when the workflow has a pending or running run.
+
+        With *db*, the check runs in that session (and its transaction).
+        """
         from sqlalchemy import func, select
 
         from fim_one.db import create_session
         from fim_one.db.models import WorkflowRun
 
-        async with create_session() as db:
-            running = (
-                await db.execute(
-                    select(func.count()).where(
-                        WorkflowRun.workflow_id == workflow_id,
-                        WorkflowRun.status.in_(["pending", "running"]),
-                    )
-                )
-            ).scalar_one()
+        query = select(func.count()).where(
+            WorkflowRun.workflow_id == workflow_id,
+            WorkflowRun.status.in_(["pending", "running"]),
+        )
+        if db is not None:
+            running = (await db.execute(query)).scalar_one()
+        else:
+            async with create_session() as own:
+                running = (await own.execute(query)).scalar_one()
         if running > 0:
             raise RunRefusedError(
                 "workflow_already_running",
@@ -664,17 +679,56 @@ class WorkflowRunService:
         principal: Principal,
         mode: RunMode,
         inputs: dict[str, Any],
+        *,
+        single_flight: bool = False,
     ) -> None:
-        await self._insert_run(
-            id=run_id,
-            workflow_id=workflow.id,
-            user_id=principal.user_id,
-            blueprint_snapshot=workflow.blueprint,
-            inputs=inputs,
-            status="running",
-            mode=mode.value,
-            started_at=datetime.now(UTC),
-        )
+        fields: dict[str, Any] = {
+            "id": run_id,
+            "workflow_id": workflow.id,
+            "user_id": principal.user_id,
+            "blueprint_snapshot": workflow.blueprint,
+            "inputs": inputs,
+            "status": "running",
+            "mode": mode.value,
+            "started_at": datetime.now(UTC),
+        }
+        if single_flight:
+            await self._insert_single_flight_run(workflow.id, fields)
+        else:
+            await self._insert_run(**fields)
+
+    async def _insert_single_flight_run(self, workflow_id: str, fields: dict[str, Any]) -> None:
+        """Insert a run record unless the workflow already has a run in flight.
+
+        The check and the insert are one step, so of several requests that
+        arrive together exactly one gets a run. Two things make it one step:
+
+        - a row lock on the workflow, held for the transaction that checks
+          and inserts. It serialises the requests across server processes
+          on PostgreSQL. SQLite has no row locks and ignores it;
+        - a per-workflow lock in this process, which covers SQLite as long
+          as one process serves the instance.
+        """
+        from sqlalchemy import select
+
+        from fim_one.db import create_session
+        from fim_one.db.models import Workflow, WorkflowRun
+
+        lock = self._single_flight_locks.get(workflow_id)
+        if lock is None:
+            lock = self._single_flight_locks[workflow_id] = asyncio.Lock()
+        async with lock, create_session() as db:
+            # NO KEY UPDATE: does not block the foreign-key check of other
+            # runs being inserted for this workflow, only other holders of
+            # this same lock.
+            await db.execute(
+                select(Workflow.id)
+                .where(Workflow.id == workflow_id)
+                .with_for_update(key_share=True)
+            )
+            await self._refuse_if_running(workflow_id, db)
+            db.add(WorkflowRun(**fields))
+            await db.commit()
 
     async def _mark_failed(self, run_id: str, error: str) -> None:
         await self._persist(
