@@ -1485,7 +1485,6 @@ class MCPExecutor:
 
             # Load MCP server config from DB
             from fim_one.db import create_session
-            from sqlalchemy import select
 
             async with create_session() as db:
                 # Enforce visibility against the run's identity, mirroring the
@@ -1493,8 +1492,8 @@ class MCPExecutor:
                 # has subscribed to are usable — not any server that merely
                 # exists by id (previously existence-only, so a workflow
                 # referencing a foreign server_id could ride the owner's
-                # env/headers whenever allow_fallback was on). A disabled
-                # server is not callable.
+                # env/headers whenever fallback was on). A disabled server is
+                # not callable.
                 from fim_one.core.assembly.visibility import (
                     ResourceKind,
                     authorize_use,
@@ -1512,139 +1511,20 @@ class MCPExecutor:
                     )
                 server = _decision.usable[0]
 
-                # Resolve per-user credentials vs server-level env/headers
-                effective_env: dict[str, str] | None = server.env
-                effective_headers: dict[str, str] | None = server.headers
+            # Whose credential the server is opened with, or why the runner
+            # may not open it, is decided in core/assembly.
+            from fim_one.core.assembly.errors import AssemblyRefusal
+            from fim_one.core.assembly.toolset import ToolsetError, mcp_tools
 
-                from fim_one.core.assembly.credentials import (
-                    must_bring_own_credential,
-                    personal_credential_fits,
+            try:
+                tools, mcp_client = await mcp_tools(
+                    _node_call_context(node, context), [server], mode="legacy", strict=True
                 )
-
-                # allow_fallback=False and the runner is not the owner:
-                # connect with the runner's own credential or not at all.
-                own_only = must_bring_own_credential(server, context.user_id)
-                own_env: dict[str, str] = {}
-                own_headers: dict[str, str] = {}
-                try:
-                    from fim_one.db.models.mcp_server_credential import (
-                        MCPServerCredential,
-                    )
-
-                    cred_result = await db.execute(
-                        select(MCPServerCredential).where(
-                            MCPServerCredential.server_id == server_id,
-                            MCPServerCredential.user_id == context.user_id,
-                        )
-                    )
-                    cred = cred_result.scalar_one_or_none()
-                    if cred:
-                        own_env = dict(cred.env_blob) if cred.env_blob else {}
-                        own_headers = (
-                            dict(cred.headers_blob) if cred.headers_blob else {}
-                        )
-                except Exception:
-                    # Not knowing whether the runner saved a credential is
-                    # not the same as knowing they did not: the server's own
-                    # values are not used in its place.
-                    logger.warning(
-                        "Failed to load MCP credentials for user %s, server %s",
-                        context.user_id,
-                        server_id,
-                        exc_info=True,
-                    )
-                    return NodeResult(
-                        node_id=node.id,
-                        status=NodeStatus.FAILED,
-                        error=(
-                            f"The credentials for MCP server '{server.name}' could "
-                            "not be loaded. Try again shortly."
-                        ),
-                        duration_ms=_ms_since(t0),
-                    )
-
-                if own_only:
-                    # The credential must supply what the transport reads
-                    # (stdio: env; SSE / HTTP: headers). An env-only
-                    # credential on an HTTP server supplies nothing, and the
-                    # owner's headers must not fill the gap.
-                    if not personal_credential_fits(
-                        server.transport, own_env, own_headers
-                    ):
-                        _needs = (
-                            "environment variables"
-                            if server.transport == "stdio"
-                            else "HTTP headers"
-                        )
-                        return NodeResult(
-                            node_id=node.id,
-                            status=NodeStatus.FAILED,
-                            error=(
-                                f"MCP server '{server.name}' requires your own "
-                                "credentials (fallback to the owner's is "
-                                f"disabled). Save your own {_needs} for it "
-                                "to use it in a workflow."
-                            ),
-                            duration_ms=_ms_since(t0),
-                        )
-                    # Only the runner's own values, never merged with the
-                    # owner's.
-                    effective_env = own_env or None
-                    effective_headers = own_headers or None
-                else:
-                    # What the runner saved replaces the server's values; it
-                    # is not laid over them key by key (same as chat).
-                    if own_env:
-                        effective_env = own_env
-                    if own_headers:
-                        effective_headers = own_headers
-
-            # Connect to MCP server and discover tools
-            from fim_one.core.mcp import MCPClient
-
-            mcp_client = MCPClient()
-
-            tools: list[Any] = []
-            if server.transport == "stdio" and server.command:
-                from fim_one.core.security import is_stdio_allowed
-
-                if not is_stdio_allowed():
-                    return NodeResult(
-                        node_id=node.id,
-                        status=NodeStatus.FAILED,
-                        error=(
-                            "STDIO MCP transport is disabled. "
-                            "Set ALLOW_STDIO_MCP=true to enable."
-                        ),
-                        duration_ms=_ms_since(t0),
-                    )
-                tools = await mcp_client.connect_stdio(
-                    name=server.name,
-                    command=server.command,
-                    args=server.args or [],
-                    env=effective_env,
-                    working_dir=server.working_dir,
-                )
-            elif server.transport == "sse" and server.url:
-                tools = await mcp_client.connect_sse(
-                    name=server.name,
-                    url=server.url,
-                    headers=effective_headers,
-                )
-            elif server.transport == "streamable_http" and server.url:
-                tools = await mcp_client.connect_streamable_http(
-                    name=server.name,
-                    url=server.url,
-                    headers=effective_headers,
-                )
-            else:
+            except (AssemblyRefusal, ToolsetError) as refused:
                 return NodeResult(
                     node_id=node.id,
                     status=NodeStatus.FAILED,
-                    error=(
-                        f"MCP server '{server.name}' has unsupported or "
-                        f"misconfigured transport: {server.transport}"
-                    ),
+                    error=refused.detail,
                     duration_ms=_ms_since(t0),
                 )
 

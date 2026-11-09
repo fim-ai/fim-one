@@ -12,8 +12,14 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import fim_one.db.models  # noqa: F401
+from fim_one.core.assembly.errors import AssemblyRefusal
 from fim_one.core.assembly.principal import CallContext, provisional_principal
-from fim_one.core.assembly.toolset import connector_tools, database_tools, mcp_tools
+from fim_one.core.assembly.toolset import (
+    ToolsetError,
+    connector_tools,
+    database_tools,
+    mcp_tools,
+)
 from fim_one.core.security.encryption import encrypt_credential, encrypt_db_config
 from fim_one.db.base import Base
 from fim_one.db.models.connector_credential import ConnectorCredential
@@ -219,6 +225,10 @@ class _FakeMCPClient:
     def __init__(self) -> None:
         self.connects: dict[str, dict[str, Any]] = {}
         self.fail: set[str] = set()
+        self.disconnected = 0
+
+    async def disconnect_all(self) -> None:
+        self.disconnected += 1
 
     async def _connect(self, name: str, **kwargs: Any) -> list[Any]:
         from fim_one.core.mcp.adapter import MCPToolAdapter
@@ -330,3 +340,55 @@ class TestMcpTools:
 
         assert tools == [] and client is mcp_world
         assert mcp_world.connects == {}
+
+
+class TestMcpToolsStrict:
+    """For a caller that needs this one server or nothing (a workflow MCP step)."""
+
+    async def test_a_refusal_is_raised_and_nothing_stays_open(
+        self, mcp_world: _FakeMCPClient
+    ) -> None:
+        with pytest.raises(AssemblyRefusal) as caught:
+            await mcp_tools(
+                _ctx(OTHER),
+                [_mcp_server("closed", transport="sse", allow_fallback=False)],
+                mode="legacy",
+                strict=True,
+            )
+
+        assert caught.value.error_code == "credential_required"
+        assert mcp_world.connects == {} and mcp_world.disconnected == 1
+
+    async def test_a_server_that_cannot_be_opened_says_why(self, mcp_world: _FakeMCPClient) -> None:
+        with (
+            patch("fim_one.core.security.is_stdio_allowed", lambda: False),
+            pytest.raises(ToolsetError, match="STDIO MCP transport is disabled"),
+        ):
+            await mcp_tools(
+                _ctx(OWNER),
+                [_mcp_server("files", transport="stdio", allow_fallback=True)],
+                mode="legacy",
+                strict=True,
+            )
+        with pytest.raises(ToolsetError, match="unsupported or misconfigured transport: carrier"):
+            await mcp_tools(
+                _ctx(OWNER),
+                [_mcp_server("odd", transport="carrier", allow_fallback=True)],
+                mode="legacy",
+                strict=True,
+            )
+
+        assert mcp_world.disconnected == 2
+
+    async def test_a_connection_error_propagates(self, mcp_world: _FakeMCPClient) -> None:
+        mcp_world.fail.add("down")
+
+        with pytest.raises(ConnectionError):
+            await mcp_tools(
+                _ctx(OWNER),
+                [_mcp_server("down", transport="sse", allow_fallback=True)],
+                mode="legacy",
+                strict=True,
+            )
+
+        assert mcp_world.disconnected == 1

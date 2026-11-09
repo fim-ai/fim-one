@@ -28,7 +28,14 @@ if TYPE_CHECKING:
     from .credentials import ResolvedCredential
     from .principal import CallContext
 
-__all__ = ["ToolMode", "connector_tools", "database_tools", "kb_binding", "mcp_tools"]
+__all__ = [
+    "ToolMode",
+    "ToolsetError",
+    "connector_tools",
+    "database_tools",
+    "kb_binding",
+    "mcp_tools",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -192,16 +199,29 @@ async def database_tools(
     return tools
 
 
+class ToolsetError(Exception):
+    """A resource could not be turned into tools, for a reason that is not a rule.
+
+    Raised only to a caller that asked for failures (``strict``); ``detail``
+    is the text to show whoever started the run.
+    """
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+        self.detail = detail
+
+
 async def _connect_mcp_server(
     client: MCPClient, server: Any, credential: ResolvedCredential
-) -> list[Any] | None:
-    """Open *server* with *credential*; ``None`` when it cannot be connected."""
+) -> list[Any]:
+    """Open *server* with *credential* and return its tools."""
     if server.transport == "stdio" and server.command:
         from fim_one.core.security import is_stdio_allowed
 
         if not is_stdio_allowed():
-            logger.warning("STDIO MCP disabled by ALLOW_STDIO_MCP=false, skipping %r", server.name)
-            return None
+            raise ToolsetError(
+                "STDIO MCP transport is disabled. Set ALLOW_STDIO_MCP=true to enable."
+            )
         return list(
             await client.connect_stdio(
                 name=server.name,
@@ -221,7 +241,9 @@ async def _connect_mcp_server(
                 name=server.name, url=server.url, headers=credential.headers
             )
         )
-    return None
+    raise ToolsetError(
+        f"MCP server '{server.name}' has unsupported or misconfigured transport: {server.transport}"
+    )
 
 
 async def mcp_tools(
@@ -229,12 +251,16 @@ async def mcp_tools(
     servers: Sequence[Any],
     *,
     mode: ToolMode,
+    strict: bool = False,
 ) -> tuple[list[BaseTool], MCPClient | None]:
     """Connect to *servers* and return their tools with the client that holds them.
 
     A server the acting user has no credential for, or that cannot be
-    connected, is left out. The caller disconnects the client
-    (``disconnect_all``) when the run ends.
+    connected, is left out. With *strict* it raises instead (the refusal, a
+    :class:`ToolsetError`, or the connection error), after closing what it
+    had opened: for a caller that needs this one server or nothing. The
+    caller disconnects the returned client (``disconnect_all``) when the
+    run ends.
 
     Must be awaited in the coroutine that will also disconnect: the stdio
     client enters an anyio cancel scope that has to be left by the task
@@ -252,15 +278,17 @@ async def mcp_tools(
         try:
             async with create_session() as db:
                 credential = await resolve_credential(db, ctx.principal, server)
-            adapters = await _connect_mcp_server(client, server, credential)
-        except AssemblyRefusal as refusal:
-            logger.info("Skipping MCP server %r: %s", server.name, refusal.error_code)
-            continue
-        except Exception:
-            logger.warning("Failed to connect user MCP server %r", server.name, exc_info=True)
-            continue
-        if adapters is not None:
-            connected[server.name] = adapters
+            connected[server.name] = await _connect_mcp_server(client, server, credential)
+        except Exception as exc:
+            if strict:
+                await client.disconnect_all()
+                raise
+            if isinstance(exc, AssemblyRefusal):
+                logger.info("Skipping MCP server %r: %s", server.name, exc.error_code)
+            elif isinstance(exc, ToolsetError):
+                logger.warning("Skipping MCP server %r: %s", server.name, exc.detail)
+            else:
+                logger.warning("Failed to connect user MCP server %r", server.name, exc_info=True)
 
     loaded = sum(len(adapters) for adapters in connected.values())
     if mode == "progressive":
