@@ -507,11 +507,11 @@ Background cleanup task that automatically purges old workflow runs. Per-workflo
 
 ### Channel Confirmation Request Expiry
 
-Background sweeper that marks stale pending approval requests (produced by channel hooks like `FeishuGateHook` or the Approval Playground) as expired. Ensures a click days later on a forgotten card doesn't flip agent state that has already been torn down.
+Background sweeper that marks pending approval requests (chat confirmations, workflow approvals, Approval Playground cards) as expired once their own deadline has passed, so a click days later on a forgotten card doesn't flip agent state that has already been torn down. The TTL applies only to requests recorded before the deadline column existed.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `CHANNEL_CONFIRMATION_TTL_MINUTES` | No | `1440` | Pending confirmations older than this are auto-expired (default: 24 hours) |
+| `CHANNEL_CONFIRMATION_TTL_MINUTES` | No | `1440` | Pending confirmations with no recorded deadline older than this are auto-expired (default: 24 hours) |
 | `CHANNEL_CONFIRMATION_SWEEP_INTERVAL_SECONDS` | No | `600` | How often the expiry sweeper runs (default: every 10 minutes) |
 
 ---

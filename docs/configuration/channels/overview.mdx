@@ -27,24 +27,24 @@ FIM One mirrors this mapping one-to-one:
 
 An agent can only use a channel inside its own organization. For a draft or personal agent, which has no organization of its own, that means an organization its owner is a member of. Saving an agent with a channel from any other organization is refused (`approval_channel_denied`), and at run time such a binding is treated as no channel at all.
 
-This constraint applies uniformly: both `FeishuGateHook` (approval routing) and completion notifications (agent-configured channel) respect the same org-identity boundary.
+This constraint applies uniformly: both the approval gate (`ApprovalGateHook`, approval routing) and completion notifications (agent-configured channel) respect the same org-identity boundary.
 
 ## Supported platforms
 
 | Platform | Status | Inbound | Outbound | Approval card |
 |---|---|---|---|---|
-| [Feishu (Lark)](./feishu) | GA | Card callbacks only | Yes | Yes (`feishu_gate` hook) |
+| [Feishu (Lark)](./feishu) | GA | Card callbacks only | Yes | Yes (`approval_gate` hook) |
 | Slack | Planned | — | — | — |
 | DingTalk | Planned | — | — | — |
 
 ## How Channels interact with Hooks
 
-The `feishu_gate` hook is the primary consumer of a Feishu channel. When an agent is about to call a tool marked `requires_confirmation: true` (or any tool, when the agent is set to confirm all), and the agent's approval mode routes to a channel, the hook:
+The `approval_gate` hook (`feishu_gate` in agent settings saved earlier) is the primary consumer of a Feishu channel. When an agent is about to call a tool marked `requires_confirmation: true` (or any tool, when the agent is set to confirm all), and the agent's approval mode routes to a channel, the hook:
 
 1. Resolves the agent's **Approval channel**. Only the channel bound explicitly on the agent is used; the hook never borrows the notification channel or another channel in the organization. With none bound, **Auto** mode shows the approval in the portal chat and **Channel only** refuses the call.
 2. Renders an interactive approval card with the tool name and arguments.
 3. Posts the card to the configured group chat (`chat_id`).
-4. Suspends the tool call until a permitted approver taps **Approve** or **Reject**.
+4. Suspends the tool call until a permitted approver taps **Approve** or **Reject**. Who is permitted is fixed when the request is created (the approver scope at that moment); the click must arrive through the channel that delivered the card, and the clicker's Feishu account must be linked to a FIM One account.
 5. Resumes (or aborts) the tool based on the verdict, and streams the decision back over SSE.
 
 The hook is attached to every agent automatically. Configure it in the agent editor's **Approval** section: the mode (Auto / Inline only / Channel only), the approver scope, and the approval channel.

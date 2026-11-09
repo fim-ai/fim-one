@@ -160,7 +160,7 @@ flowchart LR
         A3["Agent C"]
     end
     Admin -->|"configure once"| Ch
-    A1 -. "uses via feishu_gate hook" .-> Ch
+    A1 -. "uses via approval_gate hook" .-> Ch
     A2 -. "uses for notifications" .-> Ch
     A3 -. "uses for approval cards" .-> Ch
 ```

@@ -129,7 +129,7 @@ cd frontend && pnpm install && cd ..
 - **Concurrent execution** — Independent steps run in parallel via asyncio; auto re-plan up to 3 rounds.
 - **ReAct agent** — Structured reasoning-and-acting loop with automatic error recovery.
 - **Agent harness** — Production-grade execution environment: ContextGuard for 5-layer token-budget management, progressive-disclosure meta-tools to keep the tool surface tractable, and self-reflection loops to counter goal drift.
-- **Hook System** — Deterministic enforcement that runs outside the LLM loop. First shipped: `FeishuGateHook` gates sensitive tool calls behind a human approval card posted to a Feishu group. Extensible to audit logging, read-only-mode guards, and rate limits (v0.9).
+- **Hook System** — Deterministic enforcement that runs outside the LLM loop. First shipped: `ApprovalGateHook` gates sensitive tool calls behind a human approval card in the chat or in a Feishu group. Extensible to audit logging, read-only-mode guards, and rate limits (v0.9).
 - **Content guardrails** — Three-layer safety: tool-permission hooks (actions), credential / SSRF / MCP-auth checks (protocols), and content guardrails (input/output text). Default jailbreak-phrase detector aborts the turn before the LLM is invoked, saving tokens and surfacing a clear blocked notice in chat. Output guardrails optional via `FIM_GUARDRAILS_OUTPUT`.
 - **Auto-routing** — Auto mode classifies each query and routes it to ReAct or DAG. Selectable per agent and per message; the default is ReAct.
 - **Extended thinking** — Chain-of-thought for OpenAI o-series, Gemini 2.5+, Claude.

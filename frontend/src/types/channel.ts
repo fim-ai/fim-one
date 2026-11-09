@@ -82,7 +82,7 @@ export interface ChannelTestResponse {
 }
 
 /**
- * Hook Playground — exercises the real FeishuGateHook round-trip from the UI.
+ * Hook Playground — exercises the real approval-gate round-trip from the UI.
  *
  * Unlike `/test` (which sends a preview card with a sentinel id whose button
  * clicks are no-ops), `test-approval` creates a genuine `ConfirmationRequest`

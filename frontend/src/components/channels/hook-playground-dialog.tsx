@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * Hook Playground — exercise the real FeishuGateHook round-trip from the UI.
+ * Hook Playground — exercise the real approval-gate round-trip from the UI.
  *
  * This is not a mock.  Pressing "Send Approval" creates a genuine
  * ``ConfirmationRequest`` DB row and ships a production-grade card to the
