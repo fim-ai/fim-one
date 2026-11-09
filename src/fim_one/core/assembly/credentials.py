@@ -20,8 +20,8 @@ Database connectors are a separate case: their tools run raw SQL on the
 owner's database account with no per-caller scoping, so only the owner gets
 the connection config (``owner_only``).
 
-A connector lookup that fails is refused with ``credential_unavailable``; it
-never falls through to the owner's credential.
+A lookup that fails is refused with ``credential_unavailable``; it never
+falls through to the owner's credential.
 """
 
 from __future__ import annotations
@@ -210,9 +210,7 @@ async def _mcp_credential(
 
     from fim_one.db.models.mcp_server_credential import MCPServerCredential
 
-    own_only = must_bring_own_credential(server, principal.user_id)
     personal: Any = None
-    lookup_failed = False
     if principal.user_id:
         try:
             personal = (
@@ -223,14 +221,13 @@ async def _mcp_credential(
                     )
                 )
             ).scalar_one_or_none()
-        except Exception:
-            lookup_failed = True
+        except Exception as exc:
+            # Not knowing whether the caller saved a credential is not the
+            # same as knowing they did not: the owner's is not used instead.
             logger.warning(
-                "Failed to resolve MCP credentials for server %r%s",
-                _name(server),
-                "" if own_only else ", using server-level env",
-                exc_info=True,
+                "Failed to load credentials for MCP server %r", _name(server), exc_info=True
             )
+            raise _credential_unavailable("MCP server", server) from exc
 
     if personal is not None and personal_credential_fits(
         server.transport, personal.env_blob, personal.headers_blob
@@ -241,12 +238,9 @@ async def _mcp_credential(
             env=dict(personal.env_blob) if personal.env_blob else None,
             headers=dict(personal.headers_blob) if personal.headers_blob else None,
         )
-    if own_only:
+    if must_bring_own_credential(server, principal.user_id):
         # The credential must supply what the transport reads. One that does
-        # not supplies nothing, and the owner's must not fill the gap. A
-        # failed lookup is treated as no credential.
-        if lookup_failed:
-            raise _credential_unavailable("MCP server", server)
+        # not supplies nothing, and the owner's must not fill the gap.
         raise _credential_required(
             "MCP server",
             server,

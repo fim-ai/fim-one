@@ -297,3 +297,24 @@ class TestMcpServer:
         refusal = await _refusal(session, "", _mcp(transport="stdio", allow_fallback=False))
 
         assert refusal.error_code == "credential_required"
+
+    @pytest.mark.parametrize("allow_fallback", [True, False])
+    @pytest.mark.parametrize("user_id", [OWNER, OTHER])
+    async def test_a_failed_lookup_is_refused_not_downgraded(
+        self, allow_fallback: bool, user_id: str
+    ) -> None:
+        """B4: the error used to fall through to the server's own credentials."""
+        broken = AsyncMock()
+        broken.execute = AsyncMock(side_effect=RuntimeError("db down"))
+
+        with pytest.raises(AssemblyRefusal) as caught:
+            await resolve_credential(
+                broken,
+                provisional_principal(user_id),
+                _mcp(transport="streamable_http", allow_fallback=allow_fallback),
+            )
+
+        assert (caught.value.error_code, caught.value.status_code) == (
+            "credential_unavailable",
+            503,
+        )

@@ -230,10 +230,11 @@ class TestChatOwnerAndFallbackOn:
 
         assert client.connect_streamable_http.await_args.kwargs["headers"] == OWNER_HEADERS
 
-    async def test_owner_survives_a_failed_lookup(self) -> None:
+    async def test_a_failed_lookup_refuses_the_owner_too(self) -> None:
+        """Their saved credential, if any, would have replaced the server's."""
         client = await _chat_connect(_server(), None, user_id=OWNER, lookup_raises=True)
 
-        assert client.connect_streamable_http.await_args.kwargs["headers"] == OWNER_HEADERS
+        client.connect_streamable_http.assert_not_awaited()
 
     async def test_fallback_on_without_credential_uses_the_owners(self) -> None:
         client = await _chat_connect(_server(allow_fallback=True), None)
@@ -265,10 +266,11 @@ class TestChatOwnerAndFallbackOn:
 
         assert client.connect_stdio.await_args.kwargs["env"] == own
 
-    async def test_fallback_on_survives_a_failed_lookup(self) -> None:
+    async def test_fallback_on_does_not_cover_a_failed_lookup(self) -> None:
+        """The lookup error fell through to the owner's credentials (B4)."""
         client = await _chat_connect(_server(allow_fallback=True), None, lookup_raises=True)
 
-        assert client.connect_streamable_http.await_args.kwargs["headers"] == OWNER_HEADERS
+        client.connect_streamable_http.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -402,6 +404,20 @@ class TestWorkflowNodeUnchangedPaths:
             "Authorization": "Bearer other",
             "X-Tenant": "owner-tenant",
         }
+
+    async def test_fallback_on_does_not_cover_a_failed_lookup(self) -> None:
+        """The node connected with the owner's credentials after the error (B4)."""
+        result, client = await _run_node(_server(allow_fallback=True), None, cred_raises=True)
+
+        assert result.status == NodeStatus.FAILED
+        assert "could not be loaded" in (result.error or "")
+        client.connect_streamable_http.assert_not_awaited()
+
+    async def test_a_failed_lookup_fails_the_node_for_the_owner_too(self) -> None:
+        result, client = await _run_node(_server(), None, user_id=OWNER, cred_raises=True)
+
+        assert result.status == NodeStatus.FAILED
+        client.connect_streamable_http.assert_not_awaited()
 
     async def test_fallback_on_without_credential_uses_the_owners(self) -> None:
         result, client = await _run_node(_server(allow_fallback=True), None)

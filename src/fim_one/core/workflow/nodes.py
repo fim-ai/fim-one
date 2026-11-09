@@ -1544,14 +1544,23 @@ class MCPExecutor:
                             dict(cred.headers_blob) if cred.headers_blob else {}
                         )
                 except Exception:
-                    # A failed lookup counts as no credential: the gate below
-                    # then refuses a runner who must bring their own.
-                    own_env, own_headers = {}, {}
+                    # Not knowing whether the runner saved a credential is
+                    # not the same as knowing they did not: the server's own
+                    # values are not used in its place.
                     logger.warning(
                         "Failed to load MCP credentials for user %s, server %s",
                         context.user_id,
                         server_id,
                         exc_info=True,
+                    )
+                    return NodeResult(
+                        node_id=node.id,
+                        status=NodeStatus.FAILED,
+                        error=(
+                            f"The credentials for MCP server '{server.name}' could "
+                            "not be loaded. Try again shortly."
+                        ),
+                        duration_ms=_ms_since(t0),
                     )
 
                 if own_only:
