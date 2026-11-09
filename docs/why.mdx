@@ -40,14 +40,14 @@ What you provide:
 
 What FIM One delivers:
 - AI that understands and orchestrates across **all** your systems
-- Every operation audited, every write gated by human confirmation
+- Every connector call audited, sensitive actions gated by human confirmation
 - Your data stays in your systems — FIM One provides the intelligence layer, not a data lake
 
 ## Two Modes, One Platform
 
 | Mode | What it is | Start here |
 |------|-----------|------------|
-| **Copilot** | AI embedded inside one system — works alongside users in their existing UI | Prove value fast: embed a "Finance Copilot" in your ERP |
+| **Copilot** | AI embedded inside one system — works alongside users in their existing UI (through the API today; a drop-in embed is planned) | Prove value fast: embed a "Finance Copilot" in your ERP |
 | **Hub** | Central AI portal connecting all systems — cross-system orchestration | Scale value: connect ERP + CRM + OA + Lark in one place |
 
 **Land and Expand**: Start with a Copilot in one system. Users see immediate value without learning a new tool. When the ROI is proven, scale it to the cross-system agent platform — a central portal where every system you already run meets AI through one agent core. The Copilot keeps running; the platform adds cross-system intelligence.
@@ -97,10 +97,10 @@ The **Governance Layer** is what makes this enterprise-ready:
 | Capability | What it does |
 |-----------|-------------|
 | **Audit logging** | Every tool call recorded — who, what, when, result |
-| **Human confirmation** | Write operations require explicit user approval before execution |
+| **Human confirmation** | Actions marked as requiring confirmation (or every tool call, when the agent is set to confirm all) wait for explicit approval before execution |
 | **Circuit breaker** | If a system goes down, FIM One stops retrying immediately instead of burning tokens |
-| **Credential encryption** | AES-GCM encryption at rest, per-user credential isolation |
-| **Read-only enforcement** | Default to read-only; write operations explicitly gated |
+| **Credential encryption** | Fernet encryption at rest, per-user credential isolation |
+| **Read-only enforcement** | Database connectors default to read-only; the owner must switch writes on |
 
 The agent doesn't know or care whether it's talking to SAP, a PostgreSQL database, or a custom REST API. Connectors are standardized bridges — adding a new system requires only connector configuration, not code changes.
 

@@ -1,10 +1,10 @@
 ---
 title: "Feishu (Lark) Channel"
 icon: "comment-dots"
-description: "Wire FIM One to a Feishu app for outbound messages, inbound replies, and interactive approval cards."
+description: "Wire FIM One to a Feishu app for outbound messages and interactive approval cards."
 ---
 
-A Feishu Channel gives agents in one org a single hotline into a Feishu group: outbound notifications, inbound replies, and interactive Approve / Reject cards (via the `feishu_gate` hook).
+A Feishu Channel gives agents in one org a single hotline into a Feishu group: outbound notifications and interactive Approve / Reject cards (via the `feishu_gate` hook).
 
 This guide walks through the end-to-end setup. It assumes FIM One is reachable at a stable HTTPS origin — call this `API_BASE_URL` (e.g. `https://one.yourdomain.com`).
 
@@ -36,10 +36,9 @@ Open **Event Subscriptions**, but **don't fill in the Request URL yet** — you 
 
 Subscribe the following events:
 
-- `im.message.receive_v1` — inbound messages from users
 - `card.action.trigger` — Approve / Reject button clicks
 
-Under the same page, optionally set a **Verification Token** and **Encrypt Key**. FIM One supports both modes and will use whichever is provided.
+Under the same page, set an **Encrypt Key** (required: FIM One rejects a Feishu channel without one, and uses it to verify and decrypt callbacks) and optionally a **Verification Token**.
 
 ## 4. Add the Channel in FIM One
 
@@ -53,7 +52,7 @@ Under the same page, optionally set a **Verification Token** and **Encrypt Key**
    | **App ID** | From step 1 (`cli_xxxxxxxxxxxxxxxx`) |
    | **App Secret** | From step 1 |
    | **Verification Token** | (Optional) From step 3 |
-   | **Encrypt Key** | (Optional) From step 3 |
+   | **Encrypt Key** | Required. From step 3 |
 
 4. Click **Browse chats** — FIM One calls Feishu with your credentials and lists every group the bot is currently a member of.
 
@@ -88,10 +87,10 @@ If it doesn't:
 To gate tool calls behind group approval:
 
 1. On the tool / connector action, flip **Requires confirmation** on.
-2. On the agent, add `feishu_gate` under **Hooks → Class hooks**.
-3. Ensure the agent's org has exactly one **active** Feishu channel — the hook routes to it automatically.
+2. In the agent editor's **Approval** section, pick this channel as the **Approval channel** and set the mode to **Auto** or **Channel only**. The gate is attached to every agent automatically; no hook configuration is needed.
+3. Set the **Approver scope** (initiator, agent owner, or any org member). Approvers must have linked their Feishu account to their FIM One user, otherwise their click is ignored.
 
-When the agent tries to run a gated tool, an interactive card posts to the group with **Approve** / **Reject**. The tool waits (SSE stream pauses) until a member taps one; the verdict streams back and the agent either completes or aborts.
+When the agent tries to run a gated tool, an interactive card posts to the group with **Approve** / **Reject**. The tool waits (SSE stream pauses) until a permitted approver taps one; the verdict streams back and the agent either completes or aborts.
 
 ## Troubleshooting
 

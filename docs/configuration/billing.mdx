@@ -216,7 +216,8 @@ Step 4 is the instance-wide cap for **No subscriptions**. Under **Paid only**, a
 - Pre-flight check at chat-call entry: cheapest path, blocks requests the user can't afford to start.
 - During streaming, the running token count is re-evaluated on every chunk. Crossing the cap closes the stream with a **structured terminator frame**, not a network error.
 - The frontend interprets the terminator and surfaces `<QuotaExceededDialog>` with a deep link to `/settings?tab=billing`.
-- Non-streaming responses return HTTP `402` with body `{ code: "QUOTA_EXCEEDED", reset_at, upgrade_url }`.
+- A request made when the quota is already used up is refused before any stream starts: HTTP `429` with `error_code` `token_quota_exceeded`. Under **Paid only**, a user with no plan gets HTTP `402` with `error_code` `subscription_required`.
+- The same pre-flight check guards the other endpoints that call a model: AI-assisted agent and connector create and refine, connector action generation, database chat and schema annotation, knowledge-base chat, starting an eval run, and every way of starting a workflow. Tokens used by workflow runs are recorded against the quota; tokens used by the AI builders, knowledge-base and database chat, and eval runs are not counted yet.
 
 ### Billing-disabled fallback
 

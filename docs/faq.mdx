@@ -125,7 +125,7 @@ description: "Frequently asked questions about FIM One — setup, features, lice
     | KingbaseES | Supported |
     | Highgo | Supported |
 
-    Each database connector auto-generates three tools: `list_tables`, `describe_table`, and `query`. Schema introspection, AI-powered annotation, and read-only query execution are included by default.
+    Database connectors are exposed to the agent through one `database` tool with `list_tables`, `discover`, and `query` operations (`DATABASE_TOOL_MODE=legacy` restores three tools per connector). Schema introspection and AI-powered annotation are included, and queries are read-only by default. A database connector is private to its owner and cannot be shared.
   </Accordion>
 
   <Accordion title="Can multiple users share the same instance?">
@@ -153,7 +153,7 @@ description: "Frequently asked questions about FIM One — setup, features, lice
     | **Concurrency** | Sequential (one tool at a time) | Concurrent (independent steps run simultaneously via asyncio) |
     | **Re-planning** | N/A | Up to 3 rounds of automatic re-planning if goals are not met |
 
-    **Auto mode** (the default) uses a fast LLM classifier to analyze each incoming query and routes it to the optimal engine automatically. You can also manually select the mode via the three-way toggle in the chat UI (Auto / Standard / Planner).
+    Chat and new agents start in **Standard** (ReAct) mode. **Auto mode** uses a fast LLM classifier to analyze each incoming query and routes it to the optimal engine automatically. Select the mode via the three-way toggle in the chat UI (Auto / Standard / Planner).
 
     For a deep dive, see [Execution Modes](/concepts/execution-modes).
   </Accordion>
@@ -173,15 +173,14 @@ description: "Frequently asked questions about FIM One — setup, features, lice
   </Accordion>
 
   <Accordion title="Can I embed FIM One into my existing system?">
-    Yes. FIM One's **Copilot mode** is specifically designed for embedding into host systems. You can integrate it via:
+    Yes, through the API. FIM One's **Copilot mode** means putting the agent inside a host system's UI:
 
-    - **iframe** — Embed the FIM One chat interface directly into any web page.
-    - **Widget** — A lightweight chat widget that overlays on your existing UI.
-    - **API** — Use the FastAPI backend directly for fully custom integrations.
+    - **API** — Call the FastAPI backend (`POST /api/react`, `/api/dag`, `/api/auto`, streamed over SSE) from your own page or widget. This is what works today.
+    - **iframe / Widget** — A drop-in embed snippet is planned and not shipped yet.
 
     In Copilot mode, the AI works alongside users in their familiar interface — querying data, generating reports, and orchestrating actions without forcing users to switch applications.
 
-    See [Execution Modes](/concepts/execution-modes) for configuration details on Standalone, Copilot, and Hub delivery modes.
+    See [Execution Modes](/concepts/execution-modes) for the Standalone, Copilot, and Hub delivery modes, and the [API Overview](/api/overview) for the streaming endpoints.
   </Accordion>
 
   <Accordion title="How does the translation system work?">

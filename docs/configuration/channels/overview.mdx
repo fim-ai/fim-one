@@ -7,7 +7,7 @@ description: "Connect FIM One to external messaging platforms for notifications,
 A **Channel** is a bridge between FIM One and an external messaging platform — Feishu (Lark), Slack, DingTalk, Teams, and so on. Channels let an agent:
 
 - **Send outbound messages** (status updates, artifacts, reports).
-- **Receive inbound messages** (a user asks a question in a group chat; the agent answers).
+- **Receive card callbacks** (a person taps Approve or Reject on a card). Answering questions asked in a group chat is not implemented.
 - **Gate sensitive tool calls** behind a human approval, delivered as an interactive card.
 
 Channels are scoped to an **organization**, not an individual user. Any org admin can create, edit, and disable them.
@@ -25,7 +25,7 @@ FIM One mirrors this mapping one-to-one:
 | **Org member** | A person inside that tenant who can approve, receive notifications, or react to cards |
 | **Agent (org-published)** | The AI worker acting on behalf of the organization |
 
-Personal agents (unpublished, owned by a single user) intentionally have no access to channels. A personal agent sending a message to an org's channel would be impersonating the organization — an audit hazard and a governance violation. Publishing an agent to an organization is how that agent earns the right to speak on the organization's behalf through its channels.
+An agent can only use a channel inside its own organization. For a draft or personal agent, which has no organization of its own, that means an organization its owner is a member of. Saving an agent with a channel from any other organization is refused (`approval_channel_denied`), and at run time such a binding is treated as no channel at all.
 
 This constraint applies uniformly: both `FeishuGateHook` (approval routing) and completion notifications (agent-configured channel) respect the same org-identity boundary.
 
@@ -33,21 +33,21 @@ This constraint applies uniformly: both `FeishuGateHook` (approval routing) and 
 
 | Platform | Status | Inbound | Outbound | Approval card |
 |---|---|---|---|---|
-| [Feishu (Lark)](./feishu) | GA | Yes | Yes | Yes (`feishu_gate` hook) |
+| [Feishu (Lark)](./feishu) | GA | Card callbacks only | Yes | Yes (`feishu_gate` hook) |
 | Slack | Planned | — | — | — |
 | DingTalk | Planned | — | — | — |
 
 ## How Channels interact with Hooks
 
-The `feishu_gate` hook is the primary consumer of a Feishu channel. When an agent is about to call a tool marked `requires_confirmation: true`, the hook:
+The `feishu_gate` hook is the primary consumer of a Feishu channel. When an agent is about to call a tool marked `requires_confirmation: true` (or any tool, when the agent is set to confirm all), and the agent's approval mode routes to a channel, the hook:
 
-1. Resolves the org's active Feishu channel.
+1. Resolves the agent's **Approval channel**. Only the channel bound explicitly on the agent is used; the hook never borrows the notification channel or another channel in the organization. With none bound, **Auto** mode shows the approval in the portal chat and **Channel only** refuses the call.
 2. Renders an interactive approval card with the tool name and arguments.
 3. Posts the card to the configured group chat (`chat_id`).
-4. Suspends the tool call until a group member taps **Approve** or **Reject**.
+4. Suspends the tool call until a permitted approver taps **Approve** or **Reject**.
 5. Resumes (or aborts) the tool based on the verdict, and streams the decision back over SSE.
 
-Attach the hook on an agent via `model_config_json.hooks.class_hooks = ["feishu_gate"]`, or toggle it in the agent editor.
+The hook is attached to every agent automatically. Configure it in the agent editor's **Approval** section: the mode (Auto / Inline only / Channel only), the approver scope, and the approval channel.
 
 ## Creating a Channel
 
@@ -62,6 +62,6 @@ Each channel type has its own credential shape and event-subscription dance — 
 
 ## Security notes
 
-- App secrets and encrypt keys are **encrypted at rest** using the backend's `FERNET_SECRET_KEY`.
-- The callback endpoint (`/api/channels/{id}/callback`) **verifies every signature** against the stored `encrypt_key` / `verification_token` before acting on the event.
-- Only members of the target group chat can approve or reject an approval card — FIM One does not grant extra authority beyond what the messaging platform already gives them.
+- App secrets and encrypt keys are **encrypted at rest** with the key derived from `CREDENTIAL_ENCRYPTION_KEY`.
+- The callback endpoint (`/api/channels/{id}/callback`) **verifies every signature** against the stored `encrypt_key` before acting on the event. A push without a signature (Feishu's URL verification handshake) is accepted only when its encrypted envelope opens with the channel's Encrypt Key and its token matches the Verification Token when one is set; an unsigned, unencrypted body is refused.
+- A card click counts only when the clicker's Feishu account is linked to a FIM One user whom the agent's approver scope allows (the initiator, the agent owner, or any org member). Other members of the group can see the card but cannot decide it.

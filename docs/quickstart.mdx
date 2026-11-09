@@ -35,7 +35,7 @@ docker compose down           # stop
 docker compose logs -f        # view logs
 ```
 
-Data is persisted in Docker named volumes (`fim-data`, `fim-uploads`) and survives container restarts.
+Data is persisted in the bind-mounted `./data` and `./uploads` directories and in the `postgres_data` / `redis_data` named volumes, and survives container restarts.
 
 **Note:** Docker mode does not support hot reload. Code changes require rebuilding the image (`docker compose up --build -d`). For active development with live reload, use **Option B** below.
 
@@ -55,7 +55,7 @@ uv sync --all-extras
 cd frontend && pnpm install && cd ..
 
 # Launch (with hot reload)
-./start.sh
+./start.sh dev
 ```
 
 | Command          | What starts                                             | URL                                      |
@@ -100,6 +100,7 @@ For a complete list of all configuration options, see the [Environment Variables
 | Service | Purpose | Configured by |
 |---------|---------|---------------|
 | **fim-one** | API + Frontend | `.env` (your LLM keys, etc.) |
+| **PostgreSQL** | Application database | Auto-configured by compose (`POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB`) |
 | **Redis** | Cross-worker interrupt relay | Auto-configured by compose |
 
 ```bash
@@ -118,10 +119,10 @@ WORKERS=4   # number of Uvicorn worker processes
 ```
 
 Multi-worker requirements:
-- **PostgreSQL** — SQLite is single-writer and does not support concurrent writes. Set `DATABASE_URL` to a PostgreSQL connection string.
+- **PostgreSQL** — SQLite is single-writer and does not support concurrent writes. Docker Compose already runs PostgreSQL and points `DATABASE_URL` at it; on bare metal, set `DATABASE_URL` to a PostgreSQL connection string.
 - **Redis** — already included in Docker Compose (auto-configured). Handles cross-worker interrupt/inject relay.
 
-With `WORKERS=1` (default), no Redis or PostgreSQL is needed — SQLite works fine.
+With `WORKERS=1` (default) outside Docker Compose, no Redis or PostgreSQL is needed — SQLite works fine.
 
 #### Nginx Reverse Proxy
 
@@ -133,9 +134,11 @@ User → Nginx (443/HTTPS) → localhost:3000
 
 The API runs internally on port 8000 — Next.js proxies `/api/*` requests automatically. Only port 3000 needs to be exposed.
 
+Behind a reverse proxy, set `FORWARDED_ALLOW_IPS` to the proxy's address or network so FIM One sees the real client address. Without it every request appears to come from the proxy, which is what IP rules (admin Security → IP Rules) and login history would then record.
+
 #### Code Execution Sandbox
 
-If you use the code execution sandbox (`CODE_EXEC_BACKEND=docker`), mount the Docker socket:
+If you use the code execution sandbox (`CODE_EXEC_BACKEND=docker`), the container needs the Docker socket. The bundled `docker-compose.yml` already mounts it:
 
 ```yaml
 # docker-compose.yml
