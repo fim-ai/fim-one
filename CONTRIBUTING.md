@@ -249,6 +249,14 @@ pnpm dev
 # Run linter
 pnpm lint
 
+# Unit tests
+pnpm test
+
+# Workflow editor smoke (Playwright). Starts its own backend on a throwaway
+# SQLite database, a stub model and the app; needs no API key.
+pnpm exec playwright install chromium   # once
+pnpm e2e
+
 # Production build (must pass before submitting PR)
 pnpm build
 ```
