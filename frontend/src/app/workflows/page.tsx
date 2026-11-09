@@ -35,6 +35,7 @@ import { TemplateGalleryDialog } from "@/components/workflows/template-gallery-d
 import { Skeleton } from "@/components/ui/skeleton"
 import { useScopeFilter } from "@/hooks/use-scope-filter"
 import { useModuleGuard } from "@/lib/module-flags"
+import { toastWorkflowError } from "@/lib/workflow-errors"
 import { ScopeFilter } from "@/components/shared/scope-filter"
 import { ListPagination, PAGE_SIZE } from "@/components/shared/list-pagination"
 import { StaggerOnce, StaggerItem } from "@/components/ui/fade-in"
@@ -42,6 +43,7 @@ import type { WorkflowResponse } from "@/types/workflow"
 
 function WorkflowsPageInner() {
   const t = useTranslations("workflows")
+  const tError = useTranslations("errors")
   const to = useTranslations("organizations")
   const tc = useTranslations("common")
   const { user, isLoading: authLoading } = useAuth()
@@ -217,8 +219,8 @@ function WorkflowsPageInner() {
       const duplicated = await workflowApi.duplicate(id)
       setWorkflows((prev) => [duplicated, ...prev])
       toast.success(t("workflowDuplicated"))
-    } catch {
-      toast.error(t("workflowDuplicateFailed"))
+    } catch (err) {
+      toastWorkflowError(err, t("workflowDuplicateFailed"), tError, t)
     }
   }
 
@@ -246,8 +248,8 @@ function WorkflowsPageInner() {
       } else {
         toast.success(t("workflowImported"))
       }
-    } catch {
-      toast.error(t("workflowImportFailed"))
+    } catch (err) {
+      toastWorkflowError(err, t("workflowImportFailed"), tError, t)
     }
     // Reset file input
     if (fileInputRef.current) fileInputRef.current.value = ""

@@ -138,7 +138,10 @@ class WorkflowBatchRunRequest(BaseModel):
         default=3,
         ge=1,
         le=10,
-        description="Maximum number of concurrent workflow executions (1-10).",
+        description=(
+            "Maximum number of concurrent workflow executions (1-10). Items also "
+            "count toward the caller's concurrent-run limit, which may be lower."
+        ),
     )
 
 
@@ -199,6 +202,9 @@ class WorkflowDryRunResponse(BaseModel):
 
     valid: bool
     errors: list[str] = Field(default_factory=list)
+    # Why a real run would be refused, when it would be (the code that run
+    # would answer with); ``None`` when ``valid``.
+    error_code: str | None = None
     warnings: list[BlueprintWarningItem] = Field(default_factory=list)
     node_count: int = 0
     edge_count: int = 0

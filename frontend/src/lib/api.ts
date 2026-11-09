@@ -1104,6 +1104,7 @@ export const workflowApi = {
       edge_count: number
       warnings: Array<{ node_id: string | null; code: string; message: string }>
       error?: string
+      field_errors?: Array<{ loc: string; node_id: string | null; message: string }>
     }>>("/api/workflows/validate", {
       method: "POST",
       body: JSON.stringify({ blueprint }),

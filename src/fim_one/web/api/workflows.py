@@ -332,7 +332,7 @@ def normalize_blueprint(raw: Any) -> dict[str, Any]:
     from fim_one.core.workflow.blueprint_v2 import BlueprintSchemaError, normalize_for_save
 
     try:
-        return normalize_for_save(raw)
+        blueprint = normalize_for_save(raw)
     except BlueprintSchemaError as exc:
         raise AppError(
             "blueprint_schema_invalid",
@@ -340,6 +340,52 @@ def normalize_blueprint(raw: Any) -> dict[str, Any]:
             detail="The workflow blueprint has invalid fields",
             detail_args={"errors": exc.errors},
         ) from None
+    ensure_nodes_enabled(blueprint)
+    return blueprint
+
+
+def ensure_nodes_enabled(blueprint: Any) -> None:
+    """Refuse to store a blueprint that contains a switched-off node type.
+
+    Called for every blueprint that is about to be written, including the
+    copies made by fork, version restore and create-from-template, which
+    do not pass through :func:`normalize_blueprint`. Answers 422
+    ``human_intervention_disabled``; ``error_args.errors`` lists
+    ``{loc, node_id, label, message}`` per node (the shape
+    ``blueprint_schema_invalid`` uses) and ``error_args.nodes`` their labels.
+    """
+    from fim_one.core.workflow.node_gates import (
+        HUMAN_INTERVENTION_DISABLED,
+        disabled_node_errors,
+    )
+
+    errors = disabled_node_errors(blueprint)
+    if errors:
+        nodes = ", ".join(str(e["label"]) for e in errors)
+        raise AppError(
+            HUMAN_INTERVENTION_DISABLED,
+            status_code=422,
+            detail=(
+                "Human Intervention steps are switched off on this instance. "
+                f"Remove these steps to continue: {nodes}"
+            ),
+            detail_args={"errors": errors, "nodes": nodes},
+        )
+
+
+def _disabled_node_items(blueprint: Any) -> list[BlueprintWarningItem]:
+    """One validation item per switched-off node in *blueprint*."""
+    from fim_one.core.workflow.node_gates import (
+        HUMAN_INTERVENTION_DISABLED,
+        disabled_node_errors,
+    )
+
+    return [
+        BlueprintWarningItem(
+            node_id=e["node_id"], code=HUMAN_INTERVENTION_DISABLED, message=e["message"]
+        )
+        for e in disabled_node_errors(blueprint)
+    ]
 
 
 def _refused(exc: Any) -> AppError:
@@ -561,9 +607,11 @@ async def list_workflow_templates(
     current_user: User = Depends(get_current_user),  # noqa: B008
 ) -> ApiResponse:
     """Return all built-in workflow templates (not stored in DB)."""
+    from fim_one.core.workflow.node_gates import disabled_node_errors
     from fim_one.core.workflow.templates import list_templates
 
-    templates = list_templates()
+    # Templates built on a switched-off node type are not offered.
+    templates = [t for t in list_templates() if not disabled_node_errors(t["blueprint"])]
     return ApiResponse(
         data=[WorkflowTemplateResponse(**t).model_dump() for t in templates]
     )
@@ -583,6 +631,7 @@ async def create_workflow_from_template(
         raise AppError("template_not_found", status_code=404)
 
     blueprint = template["blueprint"]
+    ensure_nodes_enabled(blueprint)
     input_schema, output_schema = _extract_schemas_from_blueprint(blueprint)
 
     wf = Workflow(
@@ -999,6 +1048,7 @@ async def fork_workflow(
     source = await _get_accessible_workflow(workflow_id, current_user.id, db)
     if source.user_id != current_user.id:
         raise AppError("fork_denied", status_code=403, detail="Only the owner can fork this resource")
+    ensure_nodes_enabled(source.blueprint)
 
     fork_name = (body.name if body and body.name else f"{source.name} (Copy)")[:200]
 
@@ -1205,22 +1255,31 @@ async def validate_blueprint_endpoint(
             "field_errors": exc.errors,
             "warnings": [],
         })
+    # Switched-off node types make the blueprint unsaveable; each such node
+    # also gets a warning entry so the canvas marks it.
+    gate_errors = _disabled_node_items(blueprint)
     try:
         parsed = parse_blueprint(blueprint)
         warnings = _validate(parsed)
-        return ApiResponse(data={
-            "valid": True,
+        data: dict[str, Any] = {
+            "valid": not gate_errors,
             "node_count": len(parsed.nodes),
             "edge_count": len(parsed.edges),
             "warnings": [
-                {
-                    "node_id": w.node_id,
-                    "code": w.code,
-                    "message": w.message,
-                }
-                for w in warnings
+                *(w.model_dump() for w in gate_errors),
+                *(
+                    {
+                        "node_id": w.node_id,
+                        "code": w.code,
+                        "message": w.message,
+                    }
+                    for w in warnings
+                ),
             ],
-        })
+        }
+        if gate_errors:
+            data["error"] = "; ".join(w.message for w in gate_errors)
+        return ApiResponse(data=data)
     except BlueprintValidationError as exc:
         return ApiResponse(data={
             "valid": False,
@@ -1268,17 +1327,21 @@ async def validate_workflow(
 
     warnings = _validate(parsed)
     topo_order = topological_sort(parsed)
+    gate_errors = _disabled_node_items(blueprint)
 
     return ApiResponse(data=WorkflowValidateResponse(
-        valid=True,
-        errors=[],
+        valid=not gate_errors,
+        errors=[w.message for w in gate_errors],
         warnings=[
-            BlueprintWarningItem(
-                node_id=w.node_id,
-                code=w.code,
-                message=w.message,
-            )
-            for w in warnings
+            *gate_errors,
+            *(
+                BlueprintWarningItem(
+                    node_id=w.node_id,
+                    code=w.code,
+                    message=w.message,
+                )
+                for w in warnings
+            ),
         ],
         node_count=len(parsed.nodes),
         edge_count=len(parsed.edges),
@@ -1305,7 +1368,18 @@ async def run_workflow(
     When ``body.dry_run`` is ``True``, parse and validate the blueprint,
     compute the topological execution order, and return a JSON response
     with the planned execution plan — no nodes are actually executed.
+    A dry run is ``valid`` only if a real run by the caller would pass the
+    run service's checks (account, quota, plan, switched-off steps);
+    otherwise ``errors`` and ``error_code`` say why. It creates no run and
+    uses no rate-limit budget, so it does not predict the concurrent-run
+    and runs-per-minute limits.
     """
+    from fim_one.core.workflow.run_service import (
+        RunMode,
+        RunRefusedError,
+        get_run_service,
+    )
+
     wf = await _get_accessible_workflow(workflow_id, current_user.id, db)
 
     # --- Dry-run mode: validate + return execution plan, no execution ---
@@ -1322,6 +1396,7 @@ async def run_workflow(
             dry_result = WorkflowDryRunResponse(
                 valid=False,
                 errors=["Blueprint is empty or has no nodes"],
+                error_code="blueprint_empty",
             )
             return ApiResponse(data=dry_result.model_dump())  # type: ignore[return-value]
 
@@ -1334,13 +1409,23 @@ async def run_workflow(
                 # Parse errors name nodes; other users only learn that it
                 # is invalid.
                 errors=[str(exc) if is_author else "The workflow blueprint is invalid"],
+                error_code="invalid_blueprint",
             )
             return ApiResponse(data=dry_result.model_dump())  # type: ignore[return-value]
+
+        # What a real run by this caller would be refused for, if anything.
+        refusal = await get_run_service().would_refuse(
+            wf, current_user.id, RunMode.INTERACTIVE
+        )
+        refusal_errors = [refusal.detail] if refusal else []
+        refusal_code = refusal.error_code if refusal else None
 
         if not is_author:
             # The plan, warnings and topology describe the blueprint, which
             # only its author sees.
-            dry_result = WorkflowDryRunResponse(valid=True, errors=[])
+            dry_result = WorkflowDryRunResponse(
+                valid=refusal is None, errors=refusal_errors, error_code=refusal_code
+            )
             return ApiResponse(data=dry_result.model_dump())  # type: ignore[return-value]
 
         bp_warnings = _validate(parsed)
@@ -1364,8 +1449,9 @@ async def run_workflow(
         ]
 
         dry_result = WorkflowDryRunResponse(
-            valid=True,
-            errors=[],
+            valid=refusal is None,
+            errors=refusal_errors,
+            error_code=refusal_code,
             warnings=[
                 BlueprintWarningItem(
                     node_id=w.node_id,
@@ -1382,12 +1468,6 @@ async def run_workflow(
         return ApiResponse(data=dry_result.model_dump())  # type: ignore[return-value]
 
     # --- Normal execution mode (SSE streaming) ---
-    from fim_one.core.workflow.run_service import (
-        RunMode,
-        RunRefusedError,
-        get_run_service,
-    )
-
     try:
         started = await get_run_service().start_run(
             wf,
@@ -1447,6 +1527,11 @@ async def batch_run_workflow(
     Runs each input set as an independent workflow execution, bounded by
     ``max_parallel`` concurrency.  If one run fails, the rest continue.
     Returns a non-streaming JSON response with results for every input set.
+
+    Items count toward the caller's concurrent-run limit like any other
+    run: each waits for a free slot, and one slot is always left for runs
+    the caller starts elsewhere, so fewer than ``max_parallel`` items may
+    run at once.
     """
     wf = await _get_accessible_workflow(workflow_id, current_user.id, db)
 
@@ -1457,10 +1542,11 @@ async def batch_run_workflow(
     )
 
     service = get_run_service()
-    # Checked once for the whole batch; each item then runs as the caller.
+    # Checked once for the whole batch, which counts as one start against
+    # runs-per-minute; each item then runs as the caller.
     try:
         authorized = await service.authorize(
-            wf, current_user.id, RunMode.BATCH, check_rate=True
+            wf, current_user.id, RunMode.BATCH, admit_batch=True
         )
     except RunRefusedError as exc:
         raise _refused(exc) from None
@@ -1478,7 +1564,6 @@ async def batch_run_workflow(
                     inputs=inputs,
                     mode=RunMode.BATCH,
                     authorized=authorized,
-                    acquire_slot=False,
                 )
             except Exception as exc:
                 logger.exception("Batch run %s item %d failed", batch_id, index)
@@ -1996,6 +2081,7 @@ async def restore_workflow_version(
         raise AppError("workflow_version_not_found", status_code=404)
 
     # Apply the restored blueprint
+    ensure_nodes_enabled(ver.blueprint)
     wf.blueprint = ver.blueprint
     input_schema, output_schema = _extract_schemas_from_blueprint(ver.blueprint)
     wf.input_schema = input_schema

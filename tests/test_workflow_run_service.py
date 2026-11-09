@@ -122,12 +122,13 @@ class _TokenSpendingExecutor:
 
 
 @pytest.fixture()
-async def world() -> AsyncIterator[World]:
+async def world(tmp_path: Path) -> AsyncIterator[World]:
     import fim_one.db.models  # noqa: F401
 
-    engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:", connect_args={"check_same_thread": False}
-    )
+    # A file, not ``:memory:``: the in-memory engine hands every session the
+    # same connection, and runs that overlap (a batch, a run started beside
+    # it) then commit into each other's statements.
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'world.db'}")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -330,6 +331,7 @@ async def test_tokens_billed_to_the_principal(entry: str, world: World) -> None:
         assert ctx.db_session_factory is not None  # approval nodes persist
 
 
+@pytest.mark.usefixtures("human_intervention_enabled")
 @pytest.mark.asyncio
 @pytest.mark.parametrize("entry", ENTRIES)
 async def test_approval_step(entry: str, world: World, real_engine: None) -> None:
@@ -362,6 +364,250 @@ async def test_approval_step(entry: str, world: World, real_engine: None) -> Non
         assert run.id == approvals[0].workflow_run_id
         assert run.user_id == _expected_principal(entry, world)
         assert run.status == "failed"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("entry", ENTRIES)
+async def test_approval_step_refused_while_switched_off(
+    entry: str, world: World, real_engine: None
+) -> None:
+    """With Human Intervention off (the default), a stored workflow that
+    contains the step is refused at every entry point before it starts: no
+    engine, no approval, and the step is not skipped or auto-approved."""
+    async with world.factory() as s:
+        wf = await s.get(Workflow, world.wf.id)
+        assert wf is not None
+        wf.blueprint = APPROVAL_BLUEPRINT
+        await s.commit()
+
+    result = await asyncio.wait_for(_drive(entry, world), timeout=30)
+
+    assert result.refused == "human_intervention_disabled"
+    async with world.factory() as s:
+        assert list((await s.execute(select(WorkflowApproval))).scalars().all()) == []
+    runs = await _runs(world)
+    if entry == "schedule":
+        # Nobody to tell: the refusal is recorded for the author.
+        (run,) = runs
+        assert (run.status, run.error) == ("failed", "human_intervention_disabled")
+    else:
+        assert runs == []
+
+
+# ---------------------------------------------------------------------------
+# Dry run: the answer a real run would get, without starting one
+# ---------------------------------------------------------------------------
+
+
+async def _dry_run(w: World, user: User) -> dict[str, Any]:
+    async with w.factory() as db:
+        resp = await wf_api.run_workflow(
+            w.wf.id,
+            WorkflowRunRequest(inputs={}, dry_run=True),
+            MagicMock(),
+            current_user=user,
+            db=db,
+        )
+    data: dict[str, Any] = resp.data  # type: ignore[attr-defined]
+    return data
+
+
+async def _assert_nothing_started(w: World) -> None:
+    """A dry run creates no run, starts no engine and uses no rate-limit budget."""
+    assert await _runs(w) == []
+    assert w.engines == []
+    limiter = rs.get_run_service().rate_limiter
+    assert not any(limiter._active_runs.values())
+    assert not any(limiter._run_timestamps.values())
+
+
+@pytest.mark.asyncio
+async def test_dry_run_of_a_runnable_workflow_is_valid(world: World) -> None:
+    for user in (world.author, world.subscriber):
+        data = await _dry_run(world, user)
+        assert (data["valid"], data["errors"], data["error_code"]) == (True, [], None)
+    await _assert_nothing_started(world)
+
+
+@pytest.mark.asyncio
+async def test_dry_run_reports_a_switched_off_step(world: World) -> None:
+    """A workflow whose real run is refused for a switched-off Human
+    Intervention step is not reported as valid."""
+    async with world.factory() as s:
+        wf = await s.get(Workflow, world.wf.id)
+        assert wf is not None
+        wf.blueprint = APPROVAL_BLUEPRINT
+        await s.commit()
+
+    own = await _dry_run(world, world.author)
+    assert own["valid"] is False
+    assert own["error_code"] == "human_intervention_disabled"
+    assert "switched off" in own["errors"][0]
+    # The author still gets the plan beside the refusal.
+    assert [p["node_id"] for p in own["execution_plan"]] == ["start_1", "human_1", "end_1"]
+
+    theirs = await _dry_run(world, world.subscriber)
+    assert theirs["valid"] is False
+    assert theirs["error_code"] == "human_intervention_disabled"
+    assert theirs["execution_plan"] == []
+    await _assert_nothing_started(world)
+
+    # The real run gives the same answer.
+    assert (await _drive("interactive", world)).refused == "human_intervention_disabled"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        "token_quota_exceeded",
+        "subscription_required",
+        "workflow_owner_inactive",
+        "account_disabled",
+    ],
+)
+async def test_dry_run_reports_what_a_real_run_is_refused_for(
+    scenario: str, world: World
+) -> None:
+    quota = (100, 50) if scenario == "token_quota_exceeded" else (0, 0)
+    if scenario in ("workflow_owner_inactive", "account_disabled"):
+        disabled = world.author if scenario == "workflow_owner_inactive" else world.subscriber
+        async with world.factory() as s:
+            user = await s.get(User, disabled.id)
+            assert user is not None
+            user.is_active = False
+            await s.commit()
+
+    with (
+        patch("fim_one.web.api.chat._get_quota_status", new=AsyncMock(return_value=quota)),
+        patch(
+            "fim_one.web.services.quota_enforcer.is_user_unentitled",
+            new=AsyncMock(return_value=scenario == "subscription_required"),
+        ),
+    ):
+        data = await _dry_run(world, world.subscriber)
+        real = await _drive("interactive", world)
+
+    assert data["valid"] is False
+    assert data["error_code"] == scenario
+    assert len(data["errors"]) == 1
+    assert real.refused == scenario
+    await _assert_nothing_started(world)
+
+
+# ---------------------------------------------------------------------------
+# Batch runs and the concurrent-run limit
+# ---------------------------------------------------------------------------
+
+
+class _GatedEngine:
+    """Engine whose runs stay active until ``release`` is set."""
+
+    running = 0
+    peak = 0
+    release: ClassVar[asyncio.Event]
+
+    def __init__(self, **_kwargs: Any) -> None:
+        pass
+
+    async def execute_streaming(
+        self, _parsed: Any, _inputs: Any, context: Any = None
+    ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
+        cls = _GatedEngine
+        cls.running += 1
+        cls.peak = max(cls.peak, cls.running)
+        try:
+            await cls.release.wait()
+        finally:
+            cls.running -= 1
+        yield "run_completed", {"status": "completed", "outputs": {}, "total_tokens": 0}
+
+
+async def _until(condition: Any, timeout: float = 5.0) -> None:
+    async def _poll() -> None:
+        while not condition():
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(_poll(), timeout=timeout)
+
+
+@pytest.mark.asyncio
+async def test_batch_items_count_toward_the_concurrent_limit(world: World) -> None:
+    """A batch of 6 at max_parallel=5 holds 2 of the caller's 3 slots, not 5
+    outside the limit: the third stays free for a run started by hand, a
+    fourth run is refused, and every item still completes."""
+    _GatedEngine.running = _GatedEngine.peak = 0
+    _GatedEngine.release = asyncio.Event()
+    service = rs.WorkflowRunService(engine_factory=_GatedEngine)
+    assert service.rate_limiter.max_concurrent_runs == 3
+
+    with patch.object(rs, "_default_service", service):
+        async with world.factory() as db:
+            wf = await db.get(Workflow, world.wf.id)
+            assert wf is not None
+            batch = asyncio.create_task(
+                wf_api.batch_run_workflow(
+                    wf.id,
+                    WorkflowBatchRunRequest(inputs=[{"i": i} for i in range(6)], max_parallel=5),
+                    current_user=world.subscriber,
+                    db=db,
+                )
+            )
+            await _until(lambda: _GatedEngine.running >= 2)
+            await asyncio.sleep(0.1)  # time for more items to start, if they could
+            assert _GatedEngine.peak == 2
+
+            by_hand = await service.start_run(
+                wf, caller_id=world.subscriber.id, inputs={}, mode=rs.RunMode.INTERACTIVE
+            )
+            with pytest.raises(rs.RunRefusedError) as exc:
+                await service.start_run(
+                    wf, caller_id=world.subscriber.id, inputs={}, mode=rs.RunMode.INTERACTIVE
+                )
+            assert exc.value.error_code == "workflow_rate_limited"
+
+            _GatedEngine.release.set()
+            response = await asyncio.wait_for(batch, timeout=10)
+            await by_hand.wait()
+
+    results = response.data["results"]
+    assert [r["status"] for r in results] == ["completed"] * 6
+    assert _GatedEngine.peak == 3  # 2 batch items + the run started by hand
+    assert service.rate_limiter._active_runs[world.subscriber.id] == set()
+    runs = await _runs(world)
+    assert sorted(r.mode for r in runs) == ["batch"] * 6 + ["interactive"]
+
+
+@pytest.mark.asyncio
+async def test_batch_counts_once_against_runs_per_minute(world: World) -> None:
+    """Submitting a batch uses one start of the per-minute allowance, and is
+    refused once the allowance is spent."""
+    service = rs.WorkflowRunService(
+        engine_factory=_RecordingEngine,
+        rate_limiter=rs.WorkflowRateLimiter(max_runs_per_minute=2, max_concurrent_runs=3),
+    )
+    with patch.object(rs, "_default_service", service):
+        async with world.factory() as db:
+            wf = await db.get(Workflow, world.wf.id)
+            assert wf is not None
+            for _ in range(2):
+                ok = await wf_api.batch_run_workflow(
+                    wf.id,
+                    WorkflowBatchRunRequest(inputs=[{}, {}, {}]),
+                    current_user=world.subscriber,
+                    db=db,
+                )
+                assert [r["status"] for r in ok.data["results"]] == ["completed"] * 3
+            with pytest.raises(AppError) as exc:
+                await wf_api.batch_run_workflow(
+                    wf.id,
+                    WorkflowBatchRunRequest(inputs=[{}]),
+                    current_user=world.subscriber,
+                    db=db,
+                )
+    assert exc.value.error_code == "workflow_rate_limited"
+    assert exc.value.status_code == 429
+    assert len(await _runs(world)) == 6
 
 
 # ---------------------------------------------------------------------------

@@ -242,6 +242,7 @@ async def session() -> AsyncIterator[AsyncSession]:
 
 
 class TestSaveEndpoints:
+    @pytest.mark.usefixtures("human_intervention_enabled")
     @pytest.mark.asyncio
     async def test_create_stores_v2_and_update_rejects_bad_fields(
         self, session: AsyncSession

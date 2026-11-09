@@ -31,6 +31,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { workflowApi } from "@/lib/api"
+import { toastWorkflowError } from "@/lib/workflow-errors"
 import { useDateFormatter } from "@/hooks/use-date-formatter"
 import { VersionDiffDialog } from "@/components/workflows/version-diff-dialog"
 import type { WorkflowVersionResponse } from "@/types/workflow"
@@ -49,6 +50,7 @@ export function VersionHistorySheet({
   onVersionRestored,
 }: VersionHistorySheetProps) {
   const t = useTranslations("workflows")
+  const tError = useTranslations("errors")
   const tc = useTranslations("common")
   const { formatRelativeTime } = useDateFormatter()
 
@@ -110,12 +112,12 @@ export function VersionHistorySheet({
       setRestoreTarget(null)
       onOpenChange(false)
       onVersionRestored()
-    } catch {
-      toast.error(t("versionHistoryRestoreFailed"))
+    } catch (err) {
+      toastWorkflowError(err, t("versionHistoryRestoreFailed"), tError, t)
     } finally {
       setIsRestoring(false)
     }
-  }, [workflowId, restoreTarget, t, onOpenChange, onVersionRestored])
+  }, [workflowId, restoreTarget, t, tError, onOpenChange, onVersionRestored])
 
   return (
     <>
