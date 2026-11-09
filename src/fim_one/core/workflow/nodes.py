@@ -1517,7 +1517,16 @@ class MCPExecutor:
                 effective_env: dict[str, str] | None = server.env
                 effective_headers: dict[str, str] | None = server.headers
 
-                has_user_cred = False
+                from fim_one.core.mcp.credentials import (
+                    must_bring_own_credential,
+                    personal_credential_fits,
+                )
+
+                # allow_fallback=False and the runner is not the owner:
+                # connect with the runner's own credential or not at all.
+                own_only = must_bring_own_credential(server, context.user_id)
+                own_env: dict[str, str] = {}
+                own_headers: dict[str, str] = {}
                 try:
                     from fim_one.db.models.mcp_server_credential import (
                         MCPServerCredential,
@@ -1531,20 +1540,14 @@ class MCPExecutor:
                     )
                     cred = cred_result.scalar_one_or_none()
                     if cred:
-                        env_dict: dict[str, str] = dict(cred.env_blob) if cred.env_blob else {}
-                        if env_dict:
-                            effective_env = {
-                                **(effective_env or {}),
-                                **env_dict,
-                            }
-                        headers_dict: dict[str, str] = dict(cred.headers_blob) if cred.headers_blob else {}
-                        if headers_dict:
-                            effective_headers = {
-                                **(effective_headers or {}),
-                                **headers_dict,
-                            }
-                        has_user_cred = bool(env_dict or headers_dict)
+                        own_env = dict(cred.env_blob) if cred.env_blob else {}
+                        own_headers = (
+                            dict(cred.headers_blob) if cred.headers_blob else {}
+                        )
                 except Exception:
+                    # A failed lookup counts as no credential: the gate below
+                    # then refuses a runner who must bring their own.
+                    own_env, own_headers = {}, {}
                     logger.warning(
                         "Failed to load MCP credentials for user %s, server %s",
                         context.user_id,
@@ -1552,25 +1555,42 @@ class MCPExecutor:
                         exc_info=True,
                     )
 
-                # allow_fallback gate (align with chat.py MCP path): a
-                # non-owner with no usable per-user credential must not
-                # silently fall back to the owner's server-level env/headers.
-                if (
-                    not has_user_cred
-                    and not getattr(server, "allow_fallback", True)
-                    and server.user_id != context.user_id
-                ):
-                    return NodeResult(
-                        node_id=node.id,
-                        status=NodeStatus.FAILED,
-                        error=(
-                            f"MCP server '{server.name}' requires your own "
-                            "credentials (fallback to the owner's is "
-                            "disabled). Configure per-user credentials to "
-                            "use it in a workflow."
-                        ),
-                        duration_ms=_ms_since(t0),
-                    )
+                if own_only:
+                    # The credential must supply what the transport reads
+                    # (stdio: env; SSE / HTTP: headers). An env-only
+                    # credential on an HTTP server supplies nothing, and the
+                    # owner's headers must not fill the gap.
+                    if not personal_credential_fits(
+                        server.transport, own_env, own_headers
+                    ):
+                        _needs = (
+                            "environment variables"
+                            if server.transport == "stdio"
+                            else "HTTP headers"
+                        )
+                        return NodeResult(
+                            node_id=node.id,
+                            status=NodeStatus.FAILED,
+                            error=(
+                                f"MCP server '{server.name}' requires your own "
+                                "credentials (fallback to the owner's is "
+                                f"disabled). Save your own {_needs} for it "
+                                "to use it in a workflow."
+                            ),
+                            duration_ms=_ms_since(t0),
+                        )
+                    # Only the runner's own values, never merged with the
+                    # owner's.
+                    effective_env = own_env or None
+                    effective_headers = own_headers or None
+                else:
+                    if own_env:
+                        effective_env = {**(effective_env or {}), **own_env}
+                    if own_headers:
+                        effective_headers = {
+                            **(effective_headers or {}),
+                            **own_headers,
+                        }
 
             # Connect to MCP server and discover tools
             from fim_one.core.mcp import MCPClient

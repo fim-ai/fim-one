@@ -2420,6 +2420,10 @@ async def _connect_pending_mcp_servers(
 
     # Determine MCP tool mode (progressive vs legacy)
     from fim_one.core.mcp import build_mcp_meta_tool, get_mcp_tool_mode
+    from fim_one.core.mcp.credentials import (
+        must_bring_own_credential,
+        personal_credential_fits,
+    )
 
     _mcp_tool_mode = get_mcp_tool_mode(agent_cfg)
     # Collect adapters per server for progressive mode
@@ -2430,6 +2434,12 @@ async def _connect_pending_mcp_servers(
             # Resolve per-user credentials vs server-level env/headers
             _effective_env = _srv.env
             _effective_headers = _srv.headers
+
+            # allow_fallback=False and the caller is not the owner: connect
+            # with the caller's own credential or not at all.
+            _own_only = must_bring_own_credential(_srv, _mcp_user_id)
+            _cred: Any = None
+            _cred_lookup_failed = False
 
             if _mcp_user_id:
                 try:
@@ -2448,26 +2458,44 @@ async def _connect_pending_mcp_servers(
                             )
                         )
                         _cred = _cred_res.scalar_one_or_none()
-
-                    if _cred and _cred.env_blob:
-                        _effective_env = _cred.env_blob
-                        _effective_headers = (
-                            _cred.headers_blob if _cred.headers_blob else _srv.headers
-                        )
-                    elif not getattr(_srv, "allow_fallback", True) and _srv.user_id != _mcp_user_id:
-                        # allow_fallback=False and non-owner has no credential — skip
-                        logger.info(
-                            "Skipping MCP server %r: allow_fallback=False and user has no credentials",
-                            _srv.name,
-                        )
-                        continue
-                    # else: use server-level env (current behavior)
                 except Exception:
+                    _cred = None
+                    _cred_lookup_failed = True
                     logger.warning(
-                        "Failed to resolve MCP credentials for server %r, using server-level env",
+                        "Failed to resolve MCP credentials for server %r%s",
                         _srv.name,
+                        "" if _own_only else ", using server-level env",
                         exc_info=True,
                     )
+
+            if _own_only:
+                # The credential must supply what the transport reads (stdio:
+                # env; SSE / HTTP: headers). One that does not — an env-only
+                # credential on an HTTP server — supplies nothing, and the
+                # owner's headers must not fill the gap. A failed lookup is
+                # treated as no credential.
+                if (
+                    _cred_lookup_failed
+                    or _cred is None
+                    or not personal_credential_fits(
+                        _srv.transport, _cred.env_blob, _cred.headers_blob
+                    )
+                ):
+                    logger.info(
+                        "Skipping MCP server %r: allow_fallback=False and user "
+                        "has no credentials for its transport",
+                        _srv.name,
+                    )
+                    continue
+                # Only the caller's own values, never merged with the owner's.
+                _effective_env = _cred.env_blob
+                _effective_headers = _cred.headers_blob
+            elif _cred and _cred.env_blob:
+                _effective_env = _cred.env_blob
+                _effective_headers = (
+                    _cred.headers_blob if _cred.headers_blob else _srv.headers
+                )
+            # else: use server-level env (current behavior)
 
             if _srv.transport == "stdio" and _srv.command:
                 if not is_stdio_allowed():
