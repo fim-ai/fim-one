@@ -262,6 +262,7 @@ class TestConnectorToolAdapterAnnotations:
             action_request_body_template=None,
             action_response_extract=None,
             action_requires_confirmation=False,
+            on_call_complete=None,
         )
 
     def test_schema_without_annotations_unchanged(self) -> None:

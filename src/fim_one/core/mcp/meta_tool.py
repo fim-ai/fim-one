@@ -16,9 +16,8 @@ from __future__ import annotations
 import json
 import logging
 import os
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from fim_one.core.tool.base import BaseTool
 
@@ -66,12 +65,10 @@ class MCPServerMetaTool(BaseTool):
         stubs: list[MCPServerStub],
         *,
         adapters: dict[str, dict[str, MCPToolAdapter]],
-        on_call_complete: Callable[..., Awaitable[None]] | None = None,
     ) -> None:
         self._stubs: dict[str, MCPServerStub] = {s.name: s for s in stubs}
         # server_name -> {tool_original_name -> MCPToolAdapter}
         self._adapters = adapters
-        self._on_call_complete = on_call_complete
 
     # ------------------------------------------------------------------
     # BaseTool protocol
@@ -284,7 +281,6 @@ class MCPServerMetaTool(BaseTool):
 
 def build_mcp_meta_tool(
     servers: dict[str, list[MCPToolAdapter]],
-    on_call_complete: Callable[..., Awaitable[None]] | None = None,
 ) -> MCPServerMetaTool:
     """Build an MCPServerMetaTool from a mapping of server names to tool adapters.
 
@@ -293,8 +289,8 @@ def build_mcp_meta_tool(
 
     Args:
         servers: Mapping of server_name -> list of MCPToolAdapter instances
-            (as returned by MCPClient.connect_*).
-        on_call_complete: Optional async callback for call logging.
+            (as returned by MCPClient.connect_*). A call is recorded by the
+            adapter that makes it, not by the meta-tool.
 
     Returns:
         A fully configured MCPServerMetaTool instance.
@@ -327,14 +323,10 @@ def build_mcp_meta_tool(
         stubs.append(stub)
         adapters[server_name] = adapter_map
 
-    return MCPServerMetaTool(
-        stubs=stubs,
-        adapters=adapters,
-        on_call_complete=on_call_complete,
-    )
+    return MCPServerMetaTool(stubs=stubs, adapters=adapters)
 
 
-def get_mcp_tool_mode(agent_cfg: dict[str, Any] | None = None) -> str:
+def get_mcp_tool_mode(agent_cfg: dict[str, Any] | None = None) -> Literal["progressive", "legacy"]:
     """Determine the MCP tool mode from environment or agent config.
 
     Priority:
@@ -351,11 +343,11 @@ def get_mcp_tool_mode(agent_cfg: dict[str, Any] | None = None) -> str:
         if isinstance(model_cfg, dict):
             agent_mode = model_cfg.get("mcp_tool_mode")
             if isinstance(agent_mode, str) and agent_mode in ("progressive", "legacy"):
-                return agent_mode
+                return "legacy" if agent_mode == "legacy" else "progressive"
 
     # Fall back to environment variable
     env_mode = os.environ.get("MCP_TOOL_MODE", "progressive").lower()
     if env_mode in ("progressive", "legacy"):
-        return env_mode
+        return "legacy" if env_mode == "legacy" else "progressive"
 
     return "progressive"

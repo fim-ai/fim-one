@@ -21,7 +21,7 @@ import re
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from fim_one.core.tool.base import BaseTool
 
@@ -460,7 +460,8 @@ class DatabaseMetaTool(BaseTool):
 
 def build_database_meta_tool(
     db_connectors: list[tuple[Any, dict[str, Any], list[dict[str, Any]]]],
-    on_call_complete: Callable[..., Awaitable[None]] | None = None,
+    *,
+    on_call_complete: Callable[..., Awaitable[None]] | None,
 ) -> DatabaseMetaTool:
     """Build a DatabaseMetaTool from a list of database connector tuples.
 
@@ -473,7 +474,8 @@ def build_database_meta_tool(
             - ``decrypted_db_config``: Decrypted database config dict.
             - ``schema_tables``: List of table dicts with columns (same format as
               ``DatabaseToolAdapter.create_tools``).
-        on_call_complete: Optional async callback for call logging.
+        on_call_complete: Async callback that records each call; ``None`` only
+            for a tool whose calls are deliberately not recorded.
 
     Returns:
         A fully configured DatabaseMetaTool instance.
@@ -528,7 +530,9 @@ def build_database_meta_tool(
     )
 
 
-def get_database_tool_mode(agent_cfg: dict[str, Any] | None = None) -> str:
+def get_database_tool_mode(
+    agent_cfg: dict[str, Any] | None = None,
+) -> Literal["progressive", "legacy"]:
     """Determine the database tool mode from environment or agent config.
 
     Priority:
@@ -545,11 +549,11 @@ def get_database_tool_mode(agent_cfg: dict[str, Any] | None = None) -> str:
         if isinstance(model_cfg, dict):
             agent_mode = model_cfg.get("database_tool_mode")
             if isinstance(agent_mode, str) and agent_mode in ("progressive", "legacy"):
-                return agent_mode
+                return "legacy" if agent_mode == "legacy" else "progressive"
 
     # Fall back to environment variable
     env_mode = os.environ.get("DATABASE_TOOL_MODE", "progressive").lower()
     if env_mode in ("progressive", "legacy"):
-        return env_mode
+        return "legacy" if env_mode == "legacy" else "progressive"
 
     return "progressive"

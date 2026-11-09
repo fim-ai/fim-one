@@ -615,7 +615,6 @@ def outside_world(factory: async_sessionmaker[AsyncSession]) -> Iterator[Outside
             ("fim_one.core.tool.connector.adapter.get_safe_async_client", _client),
             ("fim_one.core.tool.connector.adapter.validate_url", lambda *a, **k: None),
             ("fim_one.core.mcp.MCPClient", _FakeMCPClient),
-            ("fim_one.web.api.chat.is_stdio_allowed", lambda: True),
             ("fim_one.core.security.is_stdio_allowed", lambda: True),
             ("fim_one.core.agent.ReActAgent", _RecordingAgent),
             ("fim_one.core.agent.react.ReActAgent", _RecordingAgent),
@@ -797,6 +796,29 @@ def _observe_bound_kb(scene: Scene, asm: Assembled) -> Outcome:
     )
 
 
+async def _kb_tool_reads(tools: Any, kb_id: str) -> bool:
+    """Whether ``kb_retrieve`` with no bound KBs reads *kb_id* when asked to.
+
+    The vector store is faked; the retrieval layer's own owner check is not.
+    """
+    from fim_one.rag.manager import KnowledgeBaseManager
+
+    read: list[str] = []
+
+    class _Manager:
+        async def retrieve(self, _query: str, *, kb_id: str, user_id: str, **_: Any) -> list[Any]:
+            if await KnowledgeBaseManager._resolve_owner_for_caller(kb_id, user_id) is not None:
+                read.append(kb_id)
+            return []
+
+    tool = tools.get("kb_retrieve")
+    if tool is None:
+        return False
+    with patch("fim_one.web.deps.get_kb_manager", lambda: _Manager()):
+        await tool.run(query="anything", kb_id=kb_id)
+    return kb_id in read
+
+
 def _classify(error: str | None) -> str:
     """The refusal code a node error or tool error text amounts to."""
     text = error or ""
@@ -863,7 +885,6 @@ async def probe_chat_agent(
 async def probe_chat_noagent(
     scene: Scene, factory: async_sessionmaker[AsyncSession]
 ) -> dict[str, Outcome]:
-    from fim_one.rag.manager import KnowledgeBaseManager
     from fim_one.web.api import chat
 
     with outside_world(factory) as out:
@@ -872,10 +893,7 @@ async def probe_chat_noagent(
         asm = Assembled(tools, await _chat_hooks(None), None, scene.actor)
 
         results = await _observe_tools(scene, out, factory, asm, _TOOL_RESOURCES)
-        # kb_retrieve with no bound KBs reads whatever the retrieval layer
-        # resolves an owner for.
-        owner = await KnowledgeBaseManager._resolve_owner_for_caller(scene.ids["kb"], scene.actor)
-        results["kb"] = Outcome(exposed=owner is not None)
+        results["kb"] = Outcome(exposed=await _kb_tool_reads(tools, scene.ids["kb"]))
         results["skill"] = Outcome(
             exposed=scene.ids["skill"] in await chat._resolve_user_skill_ids(scene.actor)
         )
@@ -1164,35 +1182,8 @@ def _agent_entry_unchecked(_entry: str, cell: Cell, _so_far: Outcome) -> Outcome
     return Outcome(exposed=sees(cell.role, "agent"))
 
 
-def _kb_ignores_switch(_entry: str, cell: Cell, _so_far: Outcome) -> Outcome | None:
-    return Outcome(exposed=True) if cell.role == "owner" and not cell.is_active else None
-
-
-def _noagent_connector_unauthenticated(_entry: str, cell: Cell, so_far: Outcome) -> Outcome | None:
-    if not (sees(cell.role, cell.resource) and cell.is_active):
-        return None
-    # Offered to everyone who can see it, called with no credential at all
-    # (also when the rule would refuse for want of one), and not recorded.
-    return Outcome(exposed=True, credential_source="none", logged=False, confirmed=True)
-
-
-def _not_recorded(_entry: str, _cell: Cell, so_far: Outcome) -> Outcome | None:
-    return _replace(so_far, logged=False) if so_far.exposed else None
-
-
 def _not_confirmed(_entry: str, _cell: Cell, so_far: Outcome) -> Outcome | None:
     return _replace(so_far, confirmed=False) if so_far.exposed else None
-
-
-def _node_sends_unauthenticated(_entry: str, _cell: Cell, so_far: Outcome) -> Outcome | None:
-    if so_far.refusal_code != "credential_required":
-        return None
-    return Outcome(exposed=True, credential_source="none", logged=True, confirmed=True)
-
-
-def _fallback_gate_on_no_auth(_entry: str, cell: Cell, so_far: Outcome) -> Outcome | None:
-    hidden = cell.role != "owner" and not cell.allow_fallback and not cell.has_personal
-    return Outcome(exposed=False) if so_far.exposed and hidden else None
 
 
 def _never_connected(_entry: str, _cell: Cell, so_far: Outcome) -> Outcome | None:
@@ -1253,38 +1244,6 @@ KNOWN_DEVIATIONS: tuple[Deviation, ...] = (
         today=_agent_entry_unchecked,
     ),
     Deviation(
-        name="noagent-kb-ignores-switch",
-        entries=("chat_noagent",),
-        resources=("kb",),
-        what="The owner's switched-off knowledge base is still read by kb_retrieve.",
-        ref="design §1.1 row 'KB chat-0'",
-        removed_in="C1 phase 2 (kb_binding)",
-        today=_kb_ignores_switch,
-    ),
-    Deviation(
-        name="noagent-connector-unauthenticated",
-        entries=("chat_noagent",),
-        resources=API_CONNECTORS,
-        what=(
-            "Auto-discovered connectors resolve no credential: every call goes out "
-            "unauthenticated, for the owner too, and a subscriber with no personal "
-            "credential and fallback off is offered the connector anyway. No call "
-            "record is written."
-        ),
-        ref="S9; design §1.2 row 'chat-0', §1.5; B5",
-        removed_in="C1 phase 2",
-        today=_noagent_connector_unauthenticated,
-    ),
-    Deviation(
-        name="noagent-database-not-recorded",
-        entries=("chat_noagent",),
-        resources=("db",),
-        what="The auto-discovered database tool is built without the call-record callback.",
-        ref="S9; design §1.5",
-        removed_in="C1 phase 2",
-        today=_not_recorded,
-    ),
-    Deviation(
         name="noagent-no-confirmation",
         entries=("chat_noagent",),
         resources=API_CONNECTORS,
@@ -1292,18 +1251,6 @@ KNOWN_DEVIATIONS: tuple[Deviation, ...] = (
         ref="N2; design §1.3 row 'chat-0'; B9; 待拍板 4",
         removed_in="C1 phase 3",
         today=_not_confirmed,
-    ),
-    Deviation(
-        name="connector-node-sends-unauthenticated",
-        entries=("wf_connector_node",),
-        resources=("api_bearer",),
-        what=(
-            "A runner with no personal credential and fallback off is not refused: "
-            "the request is sent with no credential."
-        ),
-        ref="design §1.2 row 'API 连接器 wf-节点'; B7",
-        removed_in="C1 phase 2",
-        today=_node_sends_unauthenticated,
     ),
     Deviation(
         name="connector-node-cannot-confirm",
@@ -1327,18 +1274,6 @@ KNOWN_DEVIATIONS: tuple[Deviation, ...] = (
         today=_database_unsupported,
     ),
     Deviation(
-        name="fallback-gate-on-connector-without-auth",
-        entries=("chat_agent", "sub_agent", "wf_agent_node"),
-        resources=("api_none",),
-        what=(
-            "A connector that needs no credential is hidden from a non-owner unless "
-            "fallback is on or they saved a personal credential."
-        ),
-        ref="design §1.2 row 'chat-A / sub'; B6",
-        removed_in="C1 phase 2",
-        today=_fallback_gate_on_no_auth,
-    ),
-    Deviation(
         name="agent-mcp-never-connected",
         entries=("sub_agent", "wf_agent_node"),
         resources=MCP_SERVERS,
@@ -1346,15 +1281,6 @@ KNOWN_DEVIATIONS: tuple[Deviation, ...] = (
         ref="N7; B16, B17",
         removed_in="C1 phase 4",
         today=_never_connected,
-    ),
-    Deviation(
-        name="mcp-calls-not-recorded",
-        entries=("chat_agent", "chat_noagent", "wf_mcp_node"),
-        resources=MCP_SERVERS,
-        what="An MCP tool call leaves no call record, from any entry point.",
-        ref="S10; design §1.5; B8",
-        removed_in="C1 phase 2",
-        today=_not_recorded,
     ),
     Deviation(
         name="workflow-entry-own-inactive-code",

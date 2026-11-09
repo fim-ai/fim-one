@@ -457,7 +457,8 @@ class DatabaseToolAdapter:
         connector_id: str,
         db_config: dict[str, Any],
         schema_tables: list[dict[str, Any]],
-        on_call_complete: Callable[..., Awaitable[None]] | None = None,
+        *,
+        on_call_complete: Callable[..., Awaitable[None]] | None,
     ) -> list[BaseTool]:
         """Create the standard set of database tools.
 
@@ -473,7 +474,8 @@ class DatabaseToolAdapter:
             List of table dicts with columns, loaded from DB.
             Each dict: ``{table_name, display_name, description, columns: [...]}``.
         on_call_complete:
-            Optional async callback for logging connector calls.
+            Async callback that records each call; ``None`` only for tools
+            whose calls are deliberately not recorded.
 
         Returns
         -------

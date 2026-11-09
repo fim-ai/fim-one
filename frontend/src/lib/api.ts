@@ -1348,13 +1348,19 @@ export interface AdminAnnouncement {
 }
 
 // --- Admin Stats Types ---
+// What a call-log row was a call to. For "mcp", `connector_id` and
+// `connector_name` are the MCP server's.
+export type CallLogKind = "connector" | "database" | "mcp"
+
 interface ConnectorCallStat {
+  kind?: CallLogKind
   connector_id: string
   connector_name: string
   call_count: number
 }
 
 interface ConnectorActionStat {
+  kind?: CallLogKind
   action_name: string
   connector_name: string
   call_count: number
@@ -1430,8 +1436,9 @@ export interface AdminAnalyticsByAgent {
   total_tokens: number; avg_tokens_per_conv: number
 }
 export interface AdminAnalyticsByConnector {
+  kind?: CallLogKind
   connector_name: string; total_calls: number; success_rate: number
-  avg_response_time_ms: number; errors: number
+  avg_response_time_ms: number; error_count: number
 }
 export interface AdminAnalyticsByWorkflow {
   workflow_name: string; owner: string | null; total_runs: number

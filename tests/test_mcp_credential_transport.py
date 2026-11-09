@@ -17,10 +17,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from fim_one.core.mcp.credentials import (
+from fim_one.core.assembly.credentials import (
     must_bring_own_credential,
     personal_credential_fits,
 )
+from fim_one.core.assembly.principal import CallContext, provisional_principal
+from fim_one.core.security.encryption import encrypt_credential
 from fim_one.core.workflow.nodes import MCPExecutor
 from fim_one.core.workflow.types import (
     ExecutionContext,
@@ -124,13 +126,27 @@ class TestMustBringOwnCredential:
 # ---------------------------------------------------------------------------
 
 
+def _cred_rows(cred: Any) -> list[tuple[str, str | None, str | None]]:
+    """The caller's saved credential as the lookup reads it: one row per
+    server, the two blobs as stored (encrypted)."""
+    if cred is None:
+        return []
+    return [
+        (
+            "srv-1",
+            encrypt_credential(cred.env_blob) if cred.env_blob is not None else None,
+            encrypt_credential(cred.headers_blob) if cred.headers_blob is not None else None,
+        )
+    ]
+
+
 def _cred_session(cred: Any = None, *, raises: bool = False) -> AsyncMock:
     session = AsyncMock()
     if raises:
         session.execute = AsyncMock(side_effect=RuntimeError("db down"))
     else:
         result = MagicMock()
-        result.scalar_one_or_none.return_value = cred
+        result.all.return_value = _cred_rows(cred)
         session.execute = AsyncMock(return_value=result)
     cm = AsyncMock()
     cm.__aenter__ = AsyncMock(return_value=session)
@@ -150,8 +166,11 @@ async def _chat_connect(
 
     tools: Any = SimpleNamespace(
         _pending_mcp_servers=[server],
-        _mcp_user_id=user_id,
+        _mcp_call_context=CallContext(
+            principal=provisional_principal(user_id or ""), binding=None, entry="chat"
+        ),
         register=MagicMock(),
+        list_tools=lambda: [],
     )
     client = _client()
     with (
@@ -160,7 +179,7 @@ async def _chat_connect(
             return_value=_cred_session(cred, raises=lookup_raises),
         ),
         patch("fim_one.core.mcp.MCPClient", return_value=client),
-        patch("fim_one.web.api.chat.is_stdio_allowed", return_value=True),
+        patch("fim_one.core.security.is_stdio_allowed", return_value=True),
     ):
         await _connect_pending_mcp_servers(
             tools,
@@ -227,10 +246,11 @@ class TestChatOwnerAndFallbackOn:
 
         assert client.connect_streamable_http.await_args.kwargs["headers"] == OWNER_HEADERS
 
-    async def test_owner_survives_a_failed_lookup(self) -> None:
+    async def test_a_failed_lookup_refuses_the_owner_too(self) -> None:
+        """Their saved credential, if any, would have replaced the server's."""
         client = await _chat_connect(_server(), None, user_id=OWNER, lookup_raises=True)
 
-        assert client.connect_streamable_http.await_args.kwargs["headers"] == OWNER_HEADERS
+        client.connect_streamable_http.assert_not_awaited()
 
     async def test_fallback_on_without_credential_uses_the_owners(self) -> None:
         client = await _chat_connect(_server(allow_fallback=True), None)
@@ -262,10 +282,11 @@ class TestChatOwnerAndFallbackOn:
 
         assert client.connect_stdio.await_args.kwargs["env"] == own
 
-    async def test_fallback_on_survives_a_failed_lookup(self) -> None:
+    async def test_fallback_on_does_not_cover_a_failed_lookup(self) -> None:
+        """The lookup error fell through to the owner's credentials (B4)."""
         client = await _chat_connect(_server(allow_fallback=True), None, lookup_raises=True)
 
-        assert client.connect_streamable_http.await_args.kwargs["headers"] == OWNER_HEADERS
+        client.connect_streamable_http.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -296,7 +317,7 @@ def _node_session(server: Any, cred: Any, *, cred_raises: bool = False) -> Async
             return result
         if cred_raises:
             raise RuntimeError("db down")
-        result.scalar_one_or_none.return_value = cred
+        result.all.return_value = _cred_rows(cred)
         return result
 
     session = AsyncMock()
@@ -382,23 +403,34 @@ class TestWorkflowNodeFallbackOff:
 
 
 @pytest.mark.usefixtures("_passthrough_visibility")
-class TestWorkflowNodeUnchangedPaths:
+class TestWorkflowNodeOwnerAndFallbackOn:
     async def test_owner_uses_server_credentials(self) -> None:
         result, client = await _run_node(_server(), None, user_id=OWNER)
 
         assert result.status == NodeStatus.COMPLETED
         assert client.connect_streamable_http.await_args.kwargs["headers"] == OWNER_HEADERS
 
-    async def test_owner_credential_still_merges_over_server_values(self) -> None:
-        result, client = await _run_node(
-            _server(), _cred(headers={"Authorization": "Bearer other"}), user_id=OWNER
-        )
+    async def test_owner_credential_replaces_the_server_values(self) -> None:
+        """B3: the server's other headers used to ride along (key-by-key merge)."""
+        own = {"Authorization": "Bearer other"}
+        result, client = await _run_node(_server(), _cred(headers=own), user_id=OWNER)
 
         assert result.status == NodeStatus.COMPLETED
-        assert client.connect_streamable_http.await_args.kwargs["headers"] == {
-            "Authorization": "Bearer other",
-            "X-Tenant": "owner-tenant",
-        }
+        assert client.connect_streamable_http.await_args.kwargs["headers"] == own
+
+    async def test_fallback_on_does_not_cover_a_failed_lookup(self) -> None:
+        """The node connected with the owner's credentials after the error (B4)."""
+        result, client = await _run_node(_server(allow_fallback=True), None, cred_raises=True)
+
+        assert result.status == NodeStatus.FAILED
+        assert "could not be loaded" in (result.error or "")
+        client.connect_streamable_http.assert_not_awaited()
+
+    async def test_a_failed_lookup_fails_the_node_for_the_owner_too(self) -> None:
+        result, client = await _run_node(_server(), None, user_id=OWNER, cred_raises=True)
+
+        assert result.status == NodeStatus.FAILED
+        client.connect_streamable_http.assert_not_awaited()
 
     async def test_fallback_on_without_credential_uses_the_owners(self) -> None:
         result, client = await _run_node(_server(allow_fallback=True), None)
@@ -406,13 +438,12 @@ class TestWorkflowNodeUnchangedPaths:
         assert result.status == NodeStatus.COMPLETED
         assert client.connect_streamable_http.await_args.kwargs["headers"] == OWNER_HEADERS
 
-    async def test_fallback_on_credential_still_merges_over_server_values(self) -> None:
+    async def test_fallback_on_credential_replaces_the_server_values(self) -> None:
+        """B3: with fallback on, the owner's other variables used to be sent too."""
+        own = {"API_KEY": "mine"}
         result, client = await _run_node(
-            _server(transport="stdio", allow_fallback=True), _cred(env={"API_KEY": "mine"})
+            _server(transport="stdio", allow_fallback=True), _cred(env=own)
         )
 
         assert result.status == NodeStatus.COMPLETED
-        assert client.connect_stdio.await_args.kwargs["env"] == {
-            "API_KEY": "mine",
-            "REGION": "owner-region",
-        }
+        assert client.connect_stdio.await_args.kwargs["env"] == own

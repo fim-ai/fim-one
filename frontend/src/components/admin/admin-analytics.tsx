@@ -505,7 +505,11 @@ function ByConnectorSection({
             <tbody className="divide-y divide-border">
               {data.map((item, i) => (
                 <tr key={i} className="hover:bg-muted/20 transition-colors">
-                  <td className="px-4 py-3 font-medium text-foreground">{item.connector_name}</td>
+                  <td className="px-4 py-3 font-medium text-foreground">
+                    {item.kind === "mcp"
+                      ? te("mcpServerName", { name: item.connector_name })
+                      : item.connector_name}
+                  </td>
                   <td className="px-4 py-3 text-right tabular-nums">{(item.total_calls ?? 0).toLocaleString()}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
@@ -519,7 +523,7 @@ function ByConnectorSection({
                     </div>
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">{Math.round(item.avg_response_time_ms ?? 0)}ms</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-red-600 dark:text-red-400">{item.errors ?? 0}</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-red-600 dark:text-red-400">{item.error_count ?? 0}</td>
                 </tr>
               ))}
             </tbody>

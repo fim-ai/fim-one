@@ -204,6 +204,7 @@ def _make_connector_tool() -> tuple[ConnectorToolAdapter, dict[str, Any]]:
         auth_credentials=None,
         connector_id="conn-demo",
         action_id="action-demo",
+        on_call_complete=None,
     )
     spy: dict[str, Any] = {"called": 0, "last_kwargs": None}
 

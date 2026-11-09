@@ -9,6 +9,8 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import fim_one.db.models  # noqa: F401
+from fim_one.core.assembly.credentials import resolve_credential
+from fim_one.core.assembly.errors import AssemblyRefusal
 from fim_one.core.assembly.principal import Binding, CallContext, provisional_principal
 from fim_one.core.assembly.visibility import ResourceKind, authorize_use
 from fim_one.db.base import Base
@@ -164,3 +166,80 @@ async def test_authorize_use_implements_the_visibility_part_of_the_rule(
                 if got != want_code:
                     mismatches.append(f"{cell}: rule {want_code!r}, authorize_use {got!r}")
     assert not mismatches, "\n  ".join(mismatches)
+
+
+_SECRETS = {
+    # resource -> source -> what resolve_credential must hand out
+    "api_bearer": {
+        "personal": {"connector": {"token": m.PERSONAL_TOKEN}},
+        "owner": {"connector": {"default_token": m.OWNER_TOKEN}},
+        "owner_fallback": {"connector": {"default_token": m.OWNER_TOKEN}},
+    },
+    "api_none": {"none": {"connector": {}}},
+    "mcp_stdio": {
+        "personal": {"env": m.PERSONAL_ENV, "headers": None},
+        "owner": {"env": m.OWNER_ENV, "headers": None},
+        "owner_fallback": {"env": m.OWNER_ENV, "headers": None},
+    },
+    "mcp_http": {
+        "personal": {"env": None, "headers": m.PERSONAL_HEADERS},
+        "owner": {"env": None, "headers": m.OWNER_HEADERS},
+        "owner_fallback": {"env": None, "headers": m.OWNER_HEADERS},
+    },
+}
+
+
+@pytest.mark.timeout(120)
+async def test_resolve_credential_implements_the_credential_part_of_the_rule(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """``resolve_credential`` answers every cell the way the table says.
+
+    For each resource the acting user may use as far as visibility goes: the
+    source of the credential, the secret itself (the user's own or the
+    owner's, never a mix), or the refusal.
+    """
+    mismatches: list[str] = []
+    checked = 0
+    for key in m.all_scene_keys():
+        scene = await m.seed_scene(factory, key)
+        principal = provisional_principal(scene.actor)
+        ctx = CallContext(principal=principal, binding=None, entry="chat_noagent")
+        async with factory() as db:
+            for resource in (*m.CREDENTIALED, "db"):
+                cell = key.cell(resource)
+                # ``trigger`` surfaces refusal codes and binds nothing: the rule
+                # for a direct use by the acting user.
+                want = m.rule("trigger", cell, subject=key.role)
+                if want.refusal_code in ("resource_not_found", "resource_inactive"):
+                    continue  # never reaches the credential rule
+                decision = await authorize_use(db, ctx, _KINDS[resource], [scene.ids[resource]])
+                # ``owner_only`` is refused by both; ask the credential rule too.
+                (row,) = decision.including("owner_only")
+                checked += 1
+                try:
+                    got = await resolve_credential(db, principal, row)
+                except AssemblyRefusal as refusal:
+                    if refusal.error_code != want.refusal_code:
+                        mismatches.append(
+                            f"{cell}: rule {want.refusal_code or want.credential_source!r}, "
+                            f"refused {refusal.error_code!r}"
+                        )
+                    continue
+                if want.refusal_code is not None or str(got.source) != want.credential_source:
+                    mismatches.append(
+                        f"{cell}: rule {want.refusal_code or want.credential_source!r}, "
+                        f"resolved {got.source!r}"
+                    )
+                    continue
+                if resource == "db":
+                    if (got.db_config or {}).get("password") != "p":
+                        mismatches.append(f"{cell}: database config not decrypted")
+                    continue
+                for field_name, value in _SECRETS[resource][str(got.source)].items():
+                    if getattr(got, field_name) != value:
+                        mismatches.append(
+                            f"{cell}: {field_name} is {getattr(got, field_name)!r}, want {value!r}"
+                        )
+    assert checked > 0
+    assert not mismatches, f"{len(mismatches)} of {checked} cell(s)\n  " + "\n  ".join(mismatches)

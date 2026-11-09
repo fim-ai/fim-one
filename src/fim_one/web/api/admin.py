@@ -41,6 +41,7 @@ from fim_one.web.schemas.billing import (
 )
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse
 from fim_one.web.schemas.model_config import ModelConfigResponse
+from fim_one.web.services.call_log_stats import any_database, is_mcp, kind_of
 from fim_one.web.services.user_deletion import purge_user_data
 
 # ---------------------------------------------------------------------------
@@ -90,12 +91,16 @@ class DayStat(BaseModel):
 
 
 class ConnectorCallStat(BaseModel):
+    # What was called: "connector", "database" or "mcp". For "mcp",
+    # ``connector_id`` and ``connector_name`` are the MCP server's.
+    kind: str = "connector"
     connector_id: str
     connector_name: str
     call_count: int
 
 
 class ConnectorActionStat(BaseModel):
+    kind: str = "connector"
     action_name: str
     connector_name: str
     call_count: int
@@ -475,7 +480,11 @@ async def get_connector_stats(
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ConnectorStatsResponse:
-    """Return connector call statistics. Requires admin privileges."""
+    """Return call statistics over the call log. Requires admin privileges.
+
+    The log holds connector, database and MCP calls; all are counted, and
+    each row of the two "top" lists says which kind it is.
+    """
     # Total calls
     total_result = await db.execute(
         select(func.count()).select_from(ConnectorCallLog)
@@ -514,32 +523,53 @@ async def get_connector_stats(
     # Top connectors (top 10)
     top_conn_rows = await db.execute(
         select(
+            is_mcp(),
+            any_database(),
             ConnectorCallLog.connector_id,
+            ConnectorCallLog.mcp_server_id,
             ConnectorCallLog.connector_name,
             func.count().label("cnt"),
         )
-        .group_by(ConnectorCallLog.connector_id, ConnectorCallLog.connector_name)
+        .group_by(
+            is_mcp(),
+            ConnectorCallLog.connector_id,
+            ConnectorCallLog.mcp_server_id,
+            ConnectorCallLog.connector_name,
+        )
         .order_by(func.count().desc())
         .limit(10)
     )
     top_connectors = [
-        ConnectorCallStat(connector_id=r[0], connector_name=r[1], call_count=r[2])
+        ConnectorCallStat(
+            kind=kind_of(r[0], r[1]),
+            connector_id=r[2] or r[3] or "",
+            connector_name=r[4],
+            call_count=r[5],
+        )
         for r in top_conn_rows.all()
     ]
 
     # Top actions (top 10)
     top_action_rows = await db.execute(
         select(
+            is_mcp(),
+            any_database(),
             ConnectorCallLog.action_name,
             ConnectorCallLog.connector_name,
             func.count().label("cnt"),
         )
-        .group_by(ConnectorCallLog.action_name, ConnectorCallLog.connector_name)
+        .group_by(
+            is_mcp(),
+            ConnectorCallLog.action_name,
+            ConnectorCallLog.connector_name,
+        )
         .order_by(func.count().desc())
         .limit(10)
     )
     top_actions = [
-        ConnectorActionStat(action_name=r[0], connector_name=r[1], call_count=r[2])
+        ConnectorActionStat(
+            kind=kind_of(r[0], r[1]), action_name=r[2], connector_name=r[3], call_count=r[4]
+        )
         for r in top_action_rows.all()
     ]
 

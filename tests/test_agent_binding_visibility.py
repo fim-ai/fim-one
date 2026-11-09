@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from fim_one.db.base import Base
 from fim_one.db.models.connector import Connector
+from fim_one.db.models.knowledge_base import KnowledgeBase
 from fim_one.db.models.resource_subscription import ResourceSubscription
 from fim_one.web.api.agents import _validate_binding_ownership
 from fim_one.web.exceptions import AppError
@@ -132,3 +133,47 @@ class TestBindingVisibility:
         await session.commit()
 
         await _validate_binding_ownership(OWNER, session, connector_ids=[CID])
+
+
+class TestKnowledgeBaseBinding:
+    """A knowledge base cannot be shared: only its owner may bind it.
+
+    The use-time rule already dropped a bound knowledge base the agent's
+    owner does not own; the bind-time check used the wider "own or
+    subscribed" clause, so such a binding could be saved and then never
+    worked.
+    """
+
+    @pytest.fixture()
+    async def kb_session(self, session: AsyncSession) -> AsyncSession:
+        # Rows as they could be left over from before knowledge bases stopped
+        # being shareable: still marked shared, with a subscription.
+        session.add(KnowledgeBase(id="kb-own", user_id=SUBSCRIBER, name="mine"))
+        session.add(
+            KnowledgeBase(
+                id="kb-theirs", user_id=OWNER, name="theirs", visibility="org", org_id="org-1"
+            )
+        )
+        session.add(
+            ResourceSubscription(
+                user_id=SUBSCRIBER,
+                resource_type="knowledge_base",
+                resource_id="kb-theirs",
+                org_id="org-1",
+            )
+        )
+        await session.commit()
+        return session
+
+    async def test_own_kb_is_bindable(self, kb_session: AsyncSession) -> None:
+        await _validate_binding_ownership(SUBSCRIBER, kb_session, kb_ids=["kb-own"])
+
+    async def test_a_subscription_does_not_make_a_kb_bindable(
+        self, kb_session: AsyncSession
+    ) -> None:
+        with pytest.raises(AppError) as exc:
+            await _validate_binding_ownership(
+                SUBSCRIBER, kb_session, kb_ids=["kb-own", "kb-theirs"]
+            )
+        assert exc.value.error_code == "kb_ownership_denied"
+        assert exc.value.status_code == 403

@@ -1,203 +1,183 @@
-"""Workflow connector calls must leave a ConnectorCallLog trail (audit P0#3c).
+"""The workflow connector step: credentials, refusals and the call record.
 
-Before the fix, the workflow CONNECTOR node built its ConnectorToolAdapter
-without an ``on_call_complete`` callback, so connector calls made from a
-workflow left no audit record — unlike the chat path. These tests pin the
-wiring and the log row the callback writes.
+The step resolves the runner's credential and records its call through the
+assembly layer, the same way a call made from chat is. These tests run the
+step against a seeded database; only the outgoing HTTP request is faked.
+
+- Every call leaves a ``ConnectorCallLog`` row (audit P0#3c).
+- An action flagged "requires confirmation" does not run unattended (P0#3b).
+- A connector the runner cannot see is refused (PR-1.3).
+- A runner with no credential of their own, on a connector whose owner
+  switched fallback off, is refused; the request used to go out with no
+  credential at all (B7).
 """
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
-
-from sqlalchemy import true as _sa_true
 
 import pytest
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+import fim_one.db.models  # noqa: F401
 from fim_one.core.workflow.nodes import ConnectorExecutor
 from fim_one.core.workflow.types import (
     ExecutionContext,
+    NodeResult,
     NodeStatus,
     NodeType,
     WorkflowNodeDef,
 )
 from fim_one.core.workflow.variable_store import VariableStore
+from fim_one.db.base import Base
 from fim_one.db.models.connector_call_log import ConnectorCallLog
+from tests.assembly import matrix as m
+
+pytestmark = pytest.mark.timeout(60)
 
 
-def _fake_db_cm(added: list[Any], *, requires_confirmation: bool = False) -> AsyncMock:
-    """A create_session() mock returning connector then action, capturing add()."""
-    fake_connector = MagicMock(
-        id="c1", name="C", base_url="http://x", auth_type="none", auth_config=None
-    )
-    fake_action = MagicMock(
-        name="act",
-        description="d",
-        method="GET",
-        path="/p",
-        parameters_schema=None,
-        request_body_template=None,
-        response_extract=None,
-        requires_confirmation=requires_confirmation,
-    )
-    conn_res = MagicMock()
-    conn_res.scalar_one_or_none.return_value = fake_connector
-    act_res = MagicMock()
-    act_res.scalar_one_or_none.return_value = fake_action
-
-    mock_session = AsyncMock()
-    mock_session.execute = AsyncMock(side_effect=[conn_res, act_res])
-    mock_session.add = MagicMock(side_effect=lambda o: added.append(o))
-
-    mock_cm = AsyncMock()
-    mock_cm.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_cm.__aexit__ = AsyncMock(return_value=False)
-    return mock_cm
+@pytest.fixture()
+async def factory(tmp_path: Path) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'node.db'}")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield async_sessionmaker(engine, expire_on_commit=False)
+    await engine.dispose()
 
 
-@pytest.mark.asyncio
-async def test_connector_call_is_audited() -> None:
-    added: list[Any] = []
-    captured: dict[str, Any] = {}
-
-    class FakeAdapter:
-        def __init__(self, **kwargs: Any) -> None:
-            captured["on_call_complete"] = kwargs.get("on_call_complete")
-
-        async def run(self, **kwargs: Any) -> dict[str, Any]:
-            cb = captured["on_call_complete"]
-            assert cb is not None  # wiring: the audit callback must be passed
-            await cb(
-                connector_id="c1",
-                connector_name="C",
-                action_id="a1",
-                action_name="act",
-                request_method="GET",
-                request_url="http://x/p",
-                response_status=200,
-                response_time_ms=5,
-                success=True,
-                error_message=None,
-            )
-            return {"ok": True}
-
+async def _run(scene: m.Scene, resource: str, action: str) -> NodeResult:
     node = WorkflowNodeDef(
         id="conn_1",
         type=NodeType.CONNECTOR,
-        data={"type": "CONNECTOR", "connector_id": "c1", "action_id": "a1"},
+        data={
+            "connector_id": scene.ids[resource],
+            "action_id": scene.actions[resource][action],
+            "parameters": {},
+        },
     )
-    store = VariableStore()
-    ctx = ExecutionContext(run_id="r", user_id="user-9", workflow_id="w")
+    ctx = ExecutionContext(run_id="run-1", user_id=scene.actor, workflow_id="wf-1")
+    return await ConnectorExecutor().execute(node, VariableStore(), ctx)
 
-    with (
-        patch("fim_one.db.create_session", return_value=_fake_db_cm(added)),
-        patch(
-            "fim_one.core.assembly.visibility.resolve_visibility",
-            new=AsyncMock(return_value=(_sa_true(), [], [])),
-        ),
-        patch(
-            "fim_one.core.security.connector_credentials.resolve_connector_credentials",
-            new=AsyncMock(return_value={}),
-        ),
-        patch(
-            "fim_one.core.tool.connector.adapter.ConnectorToolAdapter",
-            FakeAdapter,
-        ),
-    ):
-        result = await ConnectorExecutor().execute(node, store, ctx)
+
+async def _records(factory: async_sessionmaker[AsyncSession]) -> list[Any]:
+    async with factory() as s:
+        return list((await s.execute(select(ConnectorCallLog))).scalars().all())
+
+
+async def test_connector_call_is_audited(factory: async_sessionmaker[AsyncSession]) -> None:
+    scene = await m.seed_scene(factory, m.SceneKey("owner", True, True, False))
+    with m.outside_world(factory) as out:
+        result = await _run(scene, "api_bearer", "ping")
 
     assert result.status == NodeStatus.COMPLETED
-    logs = [o for o in added if isinstance(o, ConnectorCallLog)]
-    assert len(logs) == 1
-    log = logs[0]
-    assert log.user_id == "user-9"
+    assert out.http[-1]["authorization"] == f"Bearer {m.OWNER_TOKEN}"
+    (log,) = await _records(factory)
+    assert log.connector_id == scene.ids["api_bearer"]
+    assert log.action_id == scene.actions["api_bearer"]["ping"]
+    assert log.user_id == scene.actor
     assert log.conversation_id is None  # no conversation in workflow context
     assert log.agent_id is None
     assert log.success is True
 
 
-@pytest.mark.asyncio
-async def test_confirmation_required_action_fails_closed() -> None:
-    """A requires_confirmation action must not run unattended in a workflow (P0#3b).
-
-    Previously the connector node hardcoded confirmation off and ran the action
-    anyway. It now fails closed before resolving credentials or calling out.
-    """
-    added: list[Any] = []
-    node = WorkflowNodeDef(
-        id="conn_1",
-        type=NodeType.CONNECTOR,
-        data={"type": "CONNECTOR", "connector_id": "c1", "action_id": "a1"},
-    )
-    store = VariableStore()
-    ctx = ExecutionContext(run_id="r", user_id="user-9", workflow_id="w")
-
-    resolve = AsyncMock(return_value={})
-    with (
-        patch(
-            "fim_one.db.create_session",
-            return_value=_fake_db_cm(added, requires_confirmation=True),
-        ),
-        patch(
-            "fim_one.core.assembly.visibility.resolve_visibility",
-            new=AsyncMock(return_value=(_sa_true(), [], [])),
-        ),
-        patch(
-            "fim_one.core.security.connector_credentials.resolve_connector_credentials",
-            new=resolve,
-        ),
-    ):
-        result = await ConnectorExecutor().execute(node, store, ctx)
+async def test_confirmation_required_action_fails_closed(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """A requires_confirmation action must not run unattended in a workflow."""
+    scene = await m.seed_scene(factory, m.SceneKey("owner", True, True, False))
+    with m.outside_world(factory) as out:
+        result = await _run(scene, "api_bearer", "wipe")
 
     assert result.status == NodeStatus.FAILED
     assert "confirmation" in (result.error or "").lower()
-    # Must short-circuit: no credential resolution, no audit log, no call.
-    resolve.assert_not_awaited()
-    assert not [o for o in added if isinstance(o, ConnectorCallLog)]
+    # Must short-circuit: no call, no audit log.
+    assert out.http == []
+    assert await _records(factory) == []
 
 
-@pytest.mark.asyncio
-async def test_connector_not_visible_to_runner_is_blocked() -> None:
-    """A workflow node may only use connectors the runner can see (PR-1.3).
-
-    The connector query is filtered by the runner's visibility (own +
-    subscribed). When the referenced connector is not visible, the query
-    returns no row and the node fails with a not-accessible error before
-    resolving credentials — a shared workflow can't reach a connector the
-    runner has no access to just by hardcoding its id.
-    """
-    # Connector query returns None: the visibility filter excluded it.
-    conn_res = MagicMock()
-    conn_res.scalar_one_or_none.return_value = None
-    mock_session = AsyncMock()
-    mock_session.execute = AsyncMock(return_value=conn_res)
-    mock_cm = AsyncMock()
-    mock_cm.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_cm.__aexit__ = AsyncMock(return_value=False)
-
-    node = WorkflowNodeDef(
-        id="conn_1",
-        type=NodeType.CONNECTOR,
-        data={"type": "CONNECTOR", "connector_id": "c1", "action_id": "a1"},
-    )
-    store = VariableStore()
-    ctx = ExecutionContext(run_id="r", user_id="outsider", workflow_id="w")
-
-    resolve = AsyncMock(return_value={})
-    with (
-        patch("fim_one.db.create_session", return_value=mock_cm),
-        patch(
-            "fim_one.core.assembly.visibility.resolve_visibility",
-            new=AsyncMock(return_value=(_sa_true(), [], [])),
-        ),
-        patch(
-            "fim_one.core.security.connector_credentials.resolve_connector_credentials",
-            new=resolve,
-        ),
-    ):
-        result = await ConnectorExecutor().execute(node, store, ctx)
+async def test_connector_not_visible_to_runner_is_blocked(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """A shared workflow cannot reach a connector by hardcoding its id."""
+    scene = await m.seed_scene(factory, m.SceneKey("outsider", True, True, False))
+    with m.outside_world(factory) as out:
+        result = await _run(scene, "api_bearer", "ping")
 
     assert result.status == NodeStatus.FAILED
-    assert "not" in (result.error or "").lower()
-    resolve.assert_not_awaited()
+    assert "not found or not accessible" in (result.error or "")
+    assert out.http == []
+
+
+async def test_runner_without_a_credential_is_refused_when_fallback_is_off(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """B7: the request used to be sent with no credential."""
+    scene = await m.seed_scene(factory, m.SceneKey("subscriber", False, True, False))
+    with m.outside_world(factory) as out:
+        result = await _run(scene, "api_bearer", "ping")
+
+    assert result.status == NodeStatus.FAILED
+    assert "requires your own credentials" in (result.error or "")
+    assert out.http == []
+    assert await _records(factory) == []
+
+
+@pytest.mark.parametrize(
+    ("key", "token"),
+    [
+        (m.SceneKey("subscriber", False, True, True), m.PERSONAL_TOKEN),
+        (m.SceneKey("subscriber", True, True, False), m.OWNER_TOKEN),
+    ],
+    ids=["own-credential", "fallback-on"],
+)
+async def test_runner_calls_with_their_own_credential_or_a_borrowed_one(
+    factory: async_sessionmaker[AsyncSession], key: m.SceneKey, token: str
+) -> None:
+    scene = await m.seed_scene(factory, key)
+    with m.outside_world(factory) as out:
+        result = await _run(scene, "api_bearer", "ping")
+
+    assert result.status == NodeStatus.COMPLETED
+    assert out.http[-1]["authorization"] == f"Bearer {token}"
+
+
+async def test_a_connector_that_takes_no_credential_runs_for_any_runner_who_sees_it(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    scene = await m.seed_scene(factory, m.SceneKey("subscriber", False, True, False))
+    with m.outside_world(factory) as out:
+        result = await _run(scene, "api_none", "ping")
+
+    assert result.status == NodeStatus.COMPLETED
+    assert out.http[-1]["authorization"] is None
+
+
+async def test_an_agent_steps_connector_call_is_recorded_as_a_workflow_call(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """It was recorded as a chat call; the run id follows when the agent step
+    is assembled through the layer itself."""
+    from fim_one.core.workflow.nodes import AgentExecutor
+
+    scene = await m.seed_scene(factory, m.SceneKey("owner", True, True, False))
+    node = WorkflowNodeDef(
+        id="agent_1",
+        type=NodeType.AGENT,
+        data={"agent_id": scene.carrier_agent_id, "prompt_template": "go"},
+    )
+    ctx = ExecutionContext(run_id="run-1", user_id=scene.actor, workflow_id="wf-1")
+    with m.outside_world(factory) as out:
+        result = await AgentExecutor().execute(node, VariableStore(), ctx)
+        assert result.status == NodeStatus.COMPLETED, result.error
+        await out.agents_built[-1]["tools"].get("connector").run(
+            subcommand="execute",
+            connector=scene.names["api_bearer"],
+            action="ping",
+            parameters={},
+        )
+
+    (log,) = await _records(factory)
+    assert (log.entry, log.agent_id) == ("workflow_node", scene.carrier_agent_id)

@@ -23,6 +23,7 @@ from fim_one.db.models import (
 )
 from fim_one.db.models.workflow import history_run_clause
 from fim_one.web.auth import get_current_admin
+from fim_one.web.services.call_log_stats import any_database, is_mcp, kind_of
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,9 @@ class AgentAnalyticsItem(BaseModel):
 
 
 class ConnectorAnalyticsItem(BaseModel):
+    # What was called: "connector", "database" or "mcp". For "mcp",
+    # ``connector_id`` and ``connector_name`` are the MCP server's.
+    kind: str = "connector"
     connector_id: str
     connector_name: str
     total_calls: int = 0
@@ -166,12 +170,18 @@ async def analytics_by_connector(
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> list[ConnectorAnalyticsItem]:
-    """Per-connector analytics: calls, success rate, avg response time."""
+    """Per-connector analytics: calls, success rate, avg response time.
+
+    MCP servers called in the period are listed too, with ``kind="mcp"``.
+    """
     cutoff = _period_to_cutoff(period)
 
     stmt = (
         select(
+            is_mcp().label("mcp_flag"),
+            any_database().label("database_flag"),
             ConnectorCallLog.connector_id,
+            ConnectorCallLog.mcp_server_id,
             ConnectorCallLog.connector_name,
             func.count(ConnectorCallLog.id).label("total_calls"),
             func.sum(
@@ -183,7 +193,12 @@ async def analytics_by_connector(
             func.avg(ConnectorCallLog.response_time_ms).label("avg_response_time_ms"),
         )
         .where(ConnectorCallLog.created_at >= cutoff)
-        .group_by(ConnectorCallLog.connector_id, ConnectorCallLog.connector_name)
+        .group_by(
+            is_mcp(),
+            ConnectorCallLog.connector_id,
+            ConnectorCallLog.mcp_server_id,
+            ConnectorCallLog.connector_name,
+        )
         .order_by(func.count(ConnectorCallLog.id).desc())
         .limit(top_n)
     )
@@ -198,7 +213,8 @@ async def analytics_by_connector(
         avg_rt = round(float(row.avg_response_time_ms), 1) if row.avg_response_time_ms else None
         items.append(
             ConnectorAnalyticsItem(
-                connector_id=row.connector_id,
+                kind=kind_of(row.mcp_flag, row.database_flag),
+                connector_id=row.connector_id or row.mcp_server_id or "",
                 connector_name=row.connector_name,
                 total_calls=total,
                 success_count=success,

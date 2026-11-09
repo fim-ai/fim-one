@@ -150,6 +150,7 @@ class TestQueryToolRedaction:
             connector_id="c1",
             db_config={"type": "postgresql", "read_only": True},
             schema_tables=schema_tables,
+            on_call_complete=None,
         )
         query_tool = next(t for t in tools if t.name.endswith("__query"))
 
@@ -185,6 +186,7 @@ class TestQueryToolRedaction:
             connector_id="c1",
             db_config={"type": "postgresql", "read_only": True},
             schema_tables=schema_tables,
+            on_call_complete=None,
         )
         query_tool = next(t for t in tools if t.name.endswith("__query"))
 
@@ -220,6 +222,7 @@ class TestQueryToolRedaction:
                     "columns": [{"column_name": "name", "data_type": "varchar"}],
                 }
             ],
+            on_call_complete=None,
         )
         query_tool = next(t for t in tools if t.name.endswith("__query"))
 

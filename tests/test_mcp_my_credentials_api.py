@@ -4,7 +4,7 @@ The save endpoint used to accept any mix of ``env`` and ``headers``, and the
 portal form only ever sent ``env``.  For an SSE / HTTP server that stored a
 credential the connection never reads, and the server then showed as
 "configured".  The endpoints now agree with the use-time rule in
-``core/mcp/credentials.py``.
+``core/assembly/credentials.py``.
 """
 
 from __future__ import annotations

@@ -73,6 +73,9 @@ class TokenUsageResponse(BaseModel):
 
 
 class ConnectorUsageItem(BaseModel):
+    # What was called: "connector", "database" or "mcp". For "mcp",
+    # ``connector_id`` and ``connector_name`` are the MCP server's.
+    kind: str = "connector"
     connector_id: str
     connector_name: str
     total_calls: int

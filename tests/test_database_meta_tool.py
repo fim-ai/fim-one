@@ -924,7 +924,8 @@ class TestBuildDatabaseMetaTool:
         schema_tables = self._make_schema_tables()
 
         meta_tool = build_database_meta_tool(
-            [(conn, db_config, schema_tables)]
+            [(conn, db_config, schema_tables)],
+            on_call_complete=None,
         )
 
         assert isinstance(meta_tool, DatabaseMetaTool)
@@ -937,7 +938,8 @@ class TestBuildDatabaseMetaTool:
         schema_tables = self._make_schema_tables()
 
         meta_tool = build_database_meta_tool(
-            [(conn, db_config, schema_tables)]
+            [(conn, db_config, schema_tables)],
+            on_call_complete=None,
         )
         assert "my_awesome_db" in meta_tool.database_names
 
@@ -947,7 +949,8 @@ class TestBuildDatabaseMetaTool:
         schema_tables = self._make_schema_tables()
 
         meta_tool = build_database_meta_tool(
-            [(conn, db_config, schema_tables)]
+            [(conn, db_config, schema_tables)],
+            on_call_complete=None,
         )
         names = meta_tool.database_names
         assert len(names) == 1
@@ -966,12 +969,13 @@ class TestBuildDatabaseMetaTool:
         meta_tool = build_database_meta_tool([
             (conn1, db_config, schema_tables),
             (conn2, db_config, schema_tables),
-        ])
+        ],
+        on_call_complete=None,)
         assert meta_tool.stub_count == 2
         assert sorted(meta_tool.database_names) == ["mysql_db", "postgres_db"]
 
     def test_empty_connectors_list(self) -> None:
-        meta_tool = build_database_meta_tool([])
+        meta_tool = build_database_meta_tool([], on_call_complete=None)
         assert meta_tool.stub_count == 0
         assert meta_tool.database_names == []
 
@@ -981,7 +985,8 @@ class TestBuildDatabaseMetaTool:
         schema_tables = self._make_schema_tables()
 
         meta_tool = build_database_meta_tool(
-            [(conn, db_config, schema_tables)]
+            [(conn, db_config, schema_tables)],
+            on_call_complete=None,
         )
 
         # Access internal stub to verify table stubs
@@ -1003,7 +1008,8 @@ class TestBuildDatabaseMetaTool:
         schema_tables = self._make_schema_tables()
 
         meta_tool = build_database_meta_tool(
-            [(conn, db_config, schema_tables)]
+            [(conn, db_config, schema_tables)],
+            on_call_complete=None,
         )
 
         stub = meta_tool._stubs["my_postgres_db"]
@@ -1019,7 +1025,8 @@ class TestBuildDatabaseMetaTool:
         schema_tables = self._make_schema_tables()
 
         meta_tool = build_database_meta_tool(
-            [(conn, db_config, schema_tables)]
+            [(conn, db_config, schema_tables)],
+            on_call_complete=None,
         )
 
         stub = meta_tool._stubs["my_postgres_db"]
@@ -1033,7 +1040,8 @@ class TestBuildDatabaseMetaTool:
         schema_tables = self._make_schema_tables()
 
         meta_tool = build_database_meta_tool(
-            [(conn, db_config, schema_tables)]
+            [(conn, db_config, schema_tables)],
+            on_call_complete=None,
         )
 
         stub = meta_tool._stubs["my_postgres_db"]
@@ -1047,7 +1055,8 @@ class TestBuildDatabaseMetaTool:
         schema_tables = self._make_schema_tables()
 
         meta_tool = build_database_meta_tool(
-            [(conn, db_config, schema_tables)]
+            [(conn, db_config, schema_tables)],
+            on_call_complete=None,
         )
 
         stub = meta_tool._stubs["my_postgres_db"]
@@ -1072,7 +1081,8 @@ class TestBuildDatabaseMetaTool:
         schema_tables = self._make_schema_tables()
 
         meta_tool = build_database_meta_tool(
-            [(conn, db_config, schema_tables)]
+            [(conn, db_config, schema_tables)],
+            on_call_complete=None,
         )
         names = meta_tool.database_names
         assert len(names) == 1
@@ -1176,7 +1186,8 @@ class TestNameDeduplication:
         tool = build_database_meta_tool([
             (conn_a, db_config, schema),
             (conn_b, db_config, schema),
-        ])
+        ],
+        on_call_complete=None,)
 
         names = list(tool._stubs.keys())
         assert len(names) == 2, f"Expected 2 stubs, got {len(names)}: {names}"
@@ -1195,7 +1206,8 @@ class TestNameDeduplication:
         tool = build_database_meta_tool([
             (conn_a, db_config, schema),
             (conn_b, db_config, schema),
-        ])
+        ],
+        on_call_complete=None,)
 
         names = list(tool._stubs.keys())
         assert len(names) == 2, f"Expected 2 stubs, got {len(names)}: {names}"
@@ -1210,7 +1222,8 @@ class TestNameDeduplication:
         tool = build_database_meta_tool([
             (conn_a, db_config, schema),
             (conn_b, db_config, schema),
-        ])
+        ],
+        on_call_complete=None,)
 
         names = list(tool._stubs.keys())
         assert names == ["staging", "production"]

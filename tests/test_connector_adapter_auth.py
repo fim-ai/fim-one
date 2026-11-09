@@ -35,6 +35,7 @@ def _make_adapter(
         action_response_extract=None,
         action_requires_confirmation=False,
         auth_credentials=auth_credentials,
+        on_call_complete=None,
     )
 
 
@@ -59,15 +60,26 @@ class TestBearerAuthInjection:
         adapter._inject_auth(headers)
         assert headers["Authorization"] == "Bearer legacy_xyz"
 
-    def test_auth_config_fallback_when_creds_empty(self) -> None:
-        adapter = _make_adapter(
-            auth_type="bearer",
-            auth_config={"token_prefix": "Bearer", "default_token": "config_tok"},
-            auth_credentials={},
-        )
+    @pytest.mark.parametrize(
+        ("auth_type", "auth_config"),
+        [
+            ("bearer", {"token_prefix": "Bearer", "default_token": "config_tok"}),
+            ("api_key", {"header_name": "X-Key", "default_api_key": "config_key"}),
+            ("basic", {"default_username": "u", "default_password": "p"}),
+        ],
+    )
+    def test_a_secret_in_auth_config_is_not_read(
+        self, auth_type: str, auth_config: dict[str, Any]
+    ) -> None:
+        """The adapter sends what was resolved for the caller and nothing else.
+
+        It used to fall back to a secret left in ``auth_config``, whoever the
+        caller was and whatever the owner's fallback switch said.
+        """
+        adapter = _make_adapter(auth_type=auth_type, auth_config=auth_config, auth_credentials={})
         headers: dict[str, str] = {}
         adapter._inject_auth(headers)
-        assert headers["Authorization"] == "Bearer config_tok"
+        assert headers == {}
 
     def test_no_header_when_all_sources_empty(
         self, caplog: pytest.LogCaptureFixture

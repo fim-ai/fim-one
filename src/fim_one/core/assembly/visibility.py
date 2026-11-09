@@ -52,6 +52,7 @@ __all__ = [
     "is_shared_clause",
     "list_usable",
     "resolve_visibility",
+    "use_clause_for",
     "visibility_clause",
     "visible_clause_for",
 ]
@@ -230,8 +231,13 @@ def _owner_only(row: Any) -> AssemblyRefusal:
     )
 
 
-async def _subject_clause(db: AsyncSession, kind: ResourceKind, subject_id: str) -> Any:
-    """WHERE clause: rows of *kind* the subject can see for the purpose of use."""
+async def use_clause_for(db: AsyncSession, kind: ResourceKind, subject_id: str) -> Any:
+    """WHERE clause: rows of *kind* the subject can see for the purpose of use.
+
+    The visibility clause, narrowed for the kinds that cannot be shared.
+    Use-time checks start from it, and so does the check made when a
+    resource is bound to an agent: what may be bound is what would be usable.
+    """
     clause = await visible_clause_for(db, kind, subject_id)
     if kind is ResourceKind.KNOWLEDGE_BASE:
         # Not shareable: a subscription row, should one exist, grants nothing.
@@ -306,7 +312,7 @@ async def authorize_use(
 
     model = _model_for(kind)
     subject_id = ctx.subject_id
-    clause = await _subject_clause(db, kind, subject_id)
+    clause = await use_clause_for(db, kind, subject_id)
 
     # ``is_active`` is read from the row, not filtered in SQL, so that
     # "switched off" and "not visible" stay distinguishable.
@@ -353,7 +359,7 @@ async def list_usable(
     workflows, say); they narrow the result and are not part of the rule.
     """
     model = _model_for(kind)
-    clause = await _subject_clause(db, kind, ctx.subject_id)
+    clause = await use_clause_for(db, kind, ctx.subject_id)
     conditions = [clause, model.is_active == True, *where]  # noqa: E712
 
     if columns is not None:

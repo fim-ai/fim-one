@@ -19,7 +19,7 @@ import os
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from fim_one.core.tool.base import BaseTool
 from fim_one.core.tool.connector.adapter import ConnectorToolAdapter
@@ -349,7 +349,7 @@ def build_connector_meta_tool(
     connectors: list[Any],
     *,
     resolved_credentials: dict[str, dict[str, Any]] | None = None,
-    on_call_complete: Callable[..., Awaitable[None]] | None = None,
+    on_call_complete: Callable[..., Awaitable[None]] | None,
 ) -> ConnectorMetaTool:
     """Build a ConnectorMetaTool from a list of ORM Connector objects.
 
@@ -359,7 +359,8 @@ def build_connector_meta_tool(
     Args:
         connectors: List of ORM Connector objects (with ``.actions`` loaded).
         resolved_credentials: Mapping of connector_id → decrypted credentials dict.
-        on_call_complete: Optional async callback for call logging.
+        on_call_complete: Async callback that records each call; ``None`` only
+            for a tool whose calls are deliberately not recorded.
 
     Returns:
         A fully configured ConnectorMetaTool instance.
@@ -424,7 +425,9 @@ def build_connector_meta_tool(
     )
 
 
-def get_connector_tool_mode(agent_cfg: dict[str, Any] | None = None) -> str:
+def get_connector_tool_mode(
+    agent_cfg: dict[str, Any] | None = None,
+) -> Literal["progressive", "legacy"]:
     """Determine the connector tool mode from environment or agent config.
 
     Priority:
@@ -443,11 +446,11 @@ def get_connector_tool_mode(agent_cfg: dict[str, Any] | None = None) -> str:
         if isinstance(model_cfg, dict):
             agent_mode = model_cfg.get("connector_tool_mode")
             if agent_mode in ("progressive", "legacy"):
-                return str(agent_mode)
+                return "legacy" if agent_mode == "legacy" else "progressive"
 
     # Fall back to environment variable
     env_mode = os.environ.get("CONNECTOR_TOOL_MODE", "progressive").lower()
     if env_mode in ("progressive", "legacy"):
-        return env_mode
+        return "legacy" if env_mode == "legacy" else "progressive"
 
     return "progressive"
