@@ -40,7 +40,7 @@ interface AuthContextValue {
   isLoading: boolean
   meLoaded: boolean   // true once /api/auth/me has responded with fresh server data
   login: (body: LoginRequest) => Promise<TwoFactorChallenge | void>
-  loginWithCode: (body: LoginWithCodeRequest) => Promise<void>
+  loginWithCode: (body: LoginWithCodeRequest) => Promise<TwoFactorChallenge | void>
   register: (body: RegisterRequest) => Promise<void>
   verify2fa: (tempToken: string, code: string) => Promise<void>
   logout: () => void
@@ -175,8 +175,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   )
 
   const loginWithCode = useCallback(
-    async (body: LoginWithCodeRequest) => {
-      const data = await authApi.loginWithCode(body)
+    async (body: LoginWithCodeRequest): Promise<TwoFactorChallenge | void> => {
+      const data = await authApi.loginWithCode(body) as TokenResponse & { requires_2fa?: boolean; temp_token?: string }
+      if (data.requires_2fa && data.temp_token) {
+        return { requires2fa: true, tempToken: data.temp_token }
+      }
       saveTokens(data.access_token, data.refresh_token, data.user)
       syncLocaleCookie(data.user.preferred_language)
       scheduleRefresh(data.expires_in)

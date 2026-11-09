@@ -12,7 +12,6 @@ from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.db import get_session
-from fim_one.web.auth import get_current_admin
 from fim_one.db.models import (
     Agent,
     Connector,
@@ -22,6 +21,8 @@ from fim_one.db.models import (
     Workflow,
     WorkflowRun,
 )
+from fim_one.db.models.workflow import history_run_clause
+from fim_one.web.auth import get_current_admin
 
 logger = logging.getLogger(__name__)
 
@@ -233,7 +234,7 @@ async def analytics_by_workflow(
             ).label("success_count"),
             func.avg(WorkflowRun.duration_ms).label("avg_duration_ms"),
         )
-        .where(WorkflowRun.created_at >= cutoff)
+        .where(WorkflowRun.created_at >= cutoff, history_run_clause())
         .group_by(WorkflowRun.workflow_id)
         .subquery()
     )

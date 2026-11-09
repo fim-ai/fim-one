@@ -90,5 +90,9 @@
   "db_password_required": "连接设置已更改。请重新输入密码以进行测试。",
   "session_required": "此操作需要登录您的账户；无法使用API密钥。",
   "api_key_scope_denied": "此API密钥的作用域不允许此请求。",
-  "api_key_scope_escalation": "API密钥无法创建具有比自身更广泛作用域的密钥。"
+  "api_key_scope_escalation": "API密钥无法创建具有比自身更广泛作用域的密钥。",
+  "ip_not_allowed": "不允许从您的IP地址访问。请联系您的管理员。",
+  "ip_rule_self_lockout": "此更改将阻止您自己的地址（{ip}），因此未保存。",
+  "2fa_too_many_attempts": "验证码错误次数过多。请等待15分钟后重新登录。",
+  "approval_channel_denied": "审批通道必须属于您所在的组织。"
 }

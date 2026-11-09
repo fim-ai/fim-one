@@ -557,7 +557,8 @@ class TestCreateWorkflowFromTemplate:
         wf_mock.schedule_enabled = False
         wf_mock.schedule_inputs = None
         wf_mock.schedule_timezone = "UTC"
-        wf_mock.api_key = None
+        wf_mock.api_key_hash = None
+        wf_mock.api_key_prefix = None
         wf_mock.change_summary = None
         wf_mock.forked_from = None
         wf_mock.created_at = datetime.now(timezone.utc)
@@ -617,7 +618,8 @@ class TestCreateWorkflowFromTemplate:
         wf_mock.schedule_enabled = False
         wf_mock.schedule_inputs = None
         wf_mock.schedule_timezone = "UTC"
-        wf_mock.api_key = None
+        wf_mock.api_key_hash = None
+        wf_mock.api_key_prefix = None
         wf_mock.forked_from = None
         wf_mock.created_at = datetime.now(timezone.utc)
         wf_mock.updated_at = None
@@ -697,3 +699,14 @@ class TestAdminAccessControl:
 
         result = await get_current_admin(user=admin)
         assert result.is_admin is True
+
+
+class TestTemplateRoutesFollowModuleFlag:
+    """Template routes 404 with the rest of the Workflows module when it is off."""
+
+    def test_both_routers_depend_on_the_flag(self) -> None:
+        from fim_one.web.api.workflow_templates import admin_router, router
+        from fim_one.web.services.feature_flags import require_workflows_enabled
+
+        for r in (router, admin_router):
+            assert any(d.dependency is require_workflows_enabled for d in r.dependencies)

@@ -295,3 +295,172 @@ class TestDispatchRun:
 
         # Release the semaphore
         scheduler._semaphore.release()
+
+
+# ---------------------------------------------------------------------------
+# Scheduled runs pass the same gates as interactive runs (T10 P0: W1, W10, S10)
+# ---------------------------------------------------------------------------
+
+
+def _approval_blueprint() -> dict:
+    return {
+        "nodes": [
+            {"id": "start_1", "type": "start", "data": {"type": "START"}},
+            {
+                "id": "human_1",
+                "type": "humanIntervention",
+                "data": {
+                    "type": "HUMAN_INTERVENTION",
+                    "title": "Approve the scheduled step",
+                    "timeout_hours": 1,
+                    "poll_interval_seconds": 0.05,
+                },
+            },
+            {"id": "end_1", "type": "end", "data": {"type": "END"}},
+        ],
+        "edges": [
+            {"id": "e1", "source": "start_1", "target": "human_1"},
+            {"id": "e2", "source": "human_1", "target": "end_1"},
+        ],
+    }
+
+
+@pytest.fixture()
+async def sched_db(tmp_path):  # type: ignore[no-untyped-def]
+    """File DB wired in as ``fim_one.db.create_session``.
+
+    A file, not ``:memory:``: the in-memory engine hands every session the
+    same connection, so the node's polling session closing (a rollback) could
+    discard the test's not-yet-committed decision.
+    """
+    import uuid
+    from contextlib import asynccontextmanager
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    import fim_one.db.models  # noqa: F401
+    from fim_one.db.base import Base
+    from fim_one.db.models.user import User
+    from fim_one.db.models.workflow import Workflow
+
+    engine = create_async_engine(
+        f"sqlite+aiosqlite:///{tmp_path / 'sched.db'}"
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    @asynccontextmanager
+    async def _cs():  # type: ignore[no-untyped-def]
+        async with factory() as s:
+            yield s
+
+    async with factory() as s:
+        user = User(id=str(uuid.uuid4()), email="owner@x.io")
+        s.add(user)
+        await s.flush()
+        wf = Workflow(
+            user_id=user.id,
+            name="nightly",
+            blueprint=_approval_blueprint(),
+            schedule_cron="*/5 * * * *",
+            schedule_enabled=True,
+            max_run_duration_seconds=1,
+        )
+        s.add(wf)
+        await s.commit()
+
+    with patch("fim_one.db.create_session", _cs):
+        yield factory, wf
+    await engine.dispose()
+
+
+async def _run_scheduled(wf) -> None:  # type: ignore[no-untyped-def]
+    scheduler = WorkflowScheduler(poll_interval=60, max_concurrent_runs=1)
+    await scheduler._execute_workflow(wf)
+
+
+class TestScheduledRunGates:
+    @pytest.mark.asyncio
+    async def test_approval_node_waits_for_a_decision(self, sched_db) -> None:  # type: ignore[no-untyped-def]
+        """W1: a scheduled run creates a pending approval and waits for it.
+
+        The approval wait does not count toward the 1-second run limit (W5),
+        so the run is still waiting after the limit has passed.
+        """
+        from sqlalchemy import select
+
+        from fim_one.db.models.workflow import WorkflowApproval, WorkflowRun
+
+        factory, wf = sched_db
+        task = asyncio.create_task(_run_scheduled(wf))
+
+        approval = None
+        for _ in range(100):
+            await asyncio.sleep(0.05)
+            async with factory() as s:
+                approval = (await s.execute(select(WorkflowApproval))).scalar_one_or_none()
+            if approval is not None:
+                break
+        assert approval is not None, "no approval was created"
+        assert approval.status == "pending"
+        assert approval.title == "Approve the scheduled step"
+
+        await asyncio.sleep(1.3)  # past max_run_duration_seconds
+        async with factory() as s:
+            run = (await s.execute(select(WorkflowRun))).scalar_one()
+        assert run.status == "running"
+        assert run.mode == "schedule"
+        assert run.user_id == wf.user_id
+
+        async with factory() as s:
+            row = await s.get(WorkflowApproval, approval.id)
+            assert row is not None
+            row.status = "rejected"
+            row.decision_note = "not tonight"
+            await s.commit()
+        await asyncio.wait_for(task, timeout=10)
+
+        async with factory() as s:
+            run = (await s.execute(select(WorkflowRun))).scalar_one()
+        assert run.status == "failed"
+        human = (run.node_results or {}).get("human_1", {})
+        assert "Approval rejected: not tonight" in (human.get("error") or "")
+
+    @pytest.mark.asyncio
+    async def test_paid_only_without_plan_is_refused(self, sched_db) -> None:  # type: ignore[no-untyped-def]
+        """S10: the plan gate applies to scheduled runs too."""
+        from sqlalchemy import select
+
+        from fim_one.db.models.workflow import WorkflowApproval, WorkflowRun
+
+        factory, wf = sched_db
+        with patch(
+            "fim_one.web.services.quota_enforcer.is_user_unentitled",
+            new=AsyncMock(return_value=True),
+        ):
+            await asyncio.wait_for(_run_scheduled(wf), timeout=20)
+
+        async with factory() as s:
+            run = (await s.execute(select(WorkflowRun))).scalar_one()
+            approvals = (await s.execute(select(WorkflowApproval))).scalars().all()
+        assert run.status == "failed"
+        assert run.error == "subscription_required"
+        assert approvals == []
+
+    @pytest.mark.asyncio
+    async def test_dispatch_hands_the_workflow_over(self) -> None:
+        scheduler = WorkflowScheduler(poll_interval=60, max_concurrent_runs=1)
+        wf = _make_workflow()
+        mock_session = AsyncMock()
+        mock_session.__aenter__.return_value = mock_session
+        mock_session.execute.return_value = MagicMock(
+            scalar_one_or_none=MagicMock(return_value=None)
+        )
+        with (
+            patch("fim_one.db.create_session", return_value=mock_session),
+            patch.object(scheduler, "_execute_workflow", new_callable=AsyncMock) as ex,
+        ):
+            await scheduler._dispatch_run(wf)
+            await asyncio.sleep(0)
+        ex.assert_awaited_once_with(wf)

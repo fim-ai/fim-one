@@ -30,6 +30,8 @@ from fim_one.web.schemas.workflow import (
 )
 
 from fim_one.web.api.admin_utils import write_audit
+from fim_one.web.api.workflows import normalize_blueprint
+from fim_one.web.services.feature_flags import require_workflows_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -37,13 +39,23 @@ logger = logging.getLogger(__name__)
 # Public router — accessible by any authenticated user
 # ---------------------------------------------------------------------------
 
-router = APIRouter(prefix="/api/workflow-templates", tags=["workflow-templates"])
+# Both routers belong to the soft-shelvable Workflows module and 404 in
+# lock-step with ``/api/workflows`` while the module is disabled.
+router = APIRouter(
+    prefix="/api/workflow-templates",
+    tags=["workflow-templates"],
+    dependencies=[Depends(require_workflows_enabled)],
+)
 
 # ---------------------------------------------------------------------------
 # Admin router — requires admin privileges
 # ---------------------------------------------------------------------------
 
-admin_router = APIRouter(prefix="/api/admin/workflow-templates", tags=["admin"])
+admin_router = APIRouter(
+    prefix="/api/admin/workflow-templates",
+    tags=["admin"],
+    dependencies=[Depends(require_workflows_enabled)],
+)
 
 
 # ---------------------------------------------------------------------------
@@ -86,7 +98,7 @@ def _extract_schemas_from_blueprint(
 
     nodes = blueprint.get("nodes", [])
     for node in nodes:
-        node_type = (node.get("data", {}) or {}).get("type", "") or node.get("type", "")
+        node_type = str(node.get("type") or "")  # v2: "start" / "end"
         node_data = node.get("data", {}) or {}
 
         if node_type.upper() == "START":
@@ -245,7 +257,7 @@ async def admin_create_template(
         description=body.description,
         icon=body.icon,
         category=body.category,
-        blueprint=body.blueprint,
+        blueprint=normalize_blueprint(body.blueprint),
         is_active=body.is_active,
         sort_order=body.sort_order,
     )
@@ -285,6 +297,8 @@ async def admin_update_template(
         raise AppError("template_not_found", status_code=404)
 
     update_data = body.model_dump(exclude_unset=True)
+    if update_data.get("blueprint") is not None:
+        update_data["blueprint"] = normalize_blueprint(update_data["blueprint"])
     for field, value in update_data.items():
         setattr(tpl, field, value)
 

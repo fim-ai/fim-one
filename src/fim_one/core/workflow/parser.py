@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import re
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Any
 
+from .blueprint_v2 import NODE_TYPES_BY_NAME, node_type_of
 from .types import (
     ErrorStrategy,
     NodeType,
@@ -30,54 +30,34 @@ class BlueprintWarning:
     message: str
 
 
-_CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+def resolve_node_type(raw_node: dict[str, Any]) -> NodeType:
+    """The engine type of a v2 node; raises for anything else.
 
-
-def _normalize_type_name(raw: str) -> str:
-    """Normalize ``conditionBranch`` / ``condition-branch`` / ``CONDITION_BRANCH``."""
-    return (
-        _CAMEL_BOUNDARY.sub("_", raw.strip())
-        .upper()
-        .replace("-", "_")
-        .replace(" ", "_")
-    )
-
-
-def _resolve_node_type(raw: str) -> NodeType:
-    """Map a raw type string to a NodeType enum.
-
-    Accepts the backend spelling (``CONDITION_BRANCH``) as well as the React
-    Flow spelling the editor saves (``conditionBranch``).
+    Only v2 type names (``start``, ``llm``, ``conditionBranch`` ...) are
+    accepted. Older spellings are rewritten by
+    :func:`fim_one.core.workflow.blueprint_v2.upgrade_blueprint` before a
+    blueprint is stored.
     """
-    normalized = _normalize_type_name(raw)
+    node_type = node_type_of(raw_node)
+    if node_type is None:
+        raise BlueprintValidationError(
+            f"Unknown node type: '{raw_node.get('type')}'. "
+            f"Valid types: {sorted(NODE_TYPES_BY_NAME)}"
+        )
+    return node_type
+
+
+def parse_error_strategy(raw: Any) -> ErrorStrategy:
+    """A node's ``error_strategy``; absent means stop the workflow."""
+    if raw is None or raw == "":
+        return ErrorStrategy.STOP_WORKFLOW
     try:
-        return NodeType(normalized)
+        return ErrorStrategy(raw)
     except ValueError:
         raise BlueprintValidationError(
-            f"Unknown node type: '{raw}'. "
-            f"Valid types: {[t.value for t in NodeType]}"
-        )
-
-
-def resolve_raw_node_type(node: dict[str, Any]) -> NodeType | None:
-    """Return the type of a raw (unparsed) blueprint node, or ``None``.
-
-    The editor saves the React Flow type on ``node.type`` (``conditionBranch``)
-    and usually nothing on ``data.type``; templates and imports carry the
-    backend type on ``data.type`` and a placeholder such as ``custom`` on
-    ``node.type``.  Both spellings are tried, ``data.type`` first.
-    """
-    if not isinstance(node, dict):
-        return None
-    data = node.get("data") or {}
-    candidates = (data.get("type") if isinstance(data, dict) else None, node.get("type"))
-    for raw in candidates:
-        if isinstance(raw, str) and raw:
-            try:
-                return NodeType(_normalize_type_name(raw))
-            except ValueError:
-                continue
-    return None
+            f"Unknown error_strategy: '{raw}'. "
+            f"Valid values: {[e.value for e in ErrorStrategy]}"
+        ) from None
 
 
 def parse_blueprint(raw: dict[str, Any]) -> WorkflowBlueprint:
@@ -125,31 +105,15 @@ def parse_blueprint(raw: dict[str, Any]) -> WorkflowBlueprint:
             raise BlueprintValidationError(f"Duplicate node ID: '{node_id}'")
         node_ids.add(node_id)
 
-        # Type can be in data.type or directly on the node
         node_data = n.get("data", {}) or {}
-        raw_type = node_data.get("type", "") or n.get("type", "")
-        if not raw_type:
-            raise BlueprintValidationError(
-                f"Node '{node_id}' is missing type"
-            )
-
-        resolved = resolve_raw_node_type(n)
-        node_type = resolved if resolved is not None else _resolve_node_type(raw_type)
+        node_type = resolve_node_type(n)
 
         if node_type == NodeType.START:
             start_count += 1
         elif node_type == NodeType.END:
             end_count += 1
 
-        # Parse optional error_strategy from node data (case-insensitive)
-        raw_error_strategy = node_data.get("error_strategy", "")
-        error_strategy = ErrorStrategy.STOP_WORKFLOW
-        if raw_error_strategy:
-            normalized_strategy = raw_error_strategy.lower().replace("-", "_")
-            try:
-                error_strategy = ErrorStrategy(normalized_strategy)
-            except ValueError:
-                pass  # fallback to default
+        error_strategy = parse_error_strategy(node_data.get("error_strategy"))
 
         # Parse optional per-node timeout
         timeout_ms = parse_timeout_ms(node_data.get("timeout_ms"), node_type)
@@ -375,7 +339,7 @@ def validate_blueprint(blueprint: WorkflowBlueprint) -> list[BlueprintWarning]:
                     message="Condition branch has no conditions defined",
                 ))
         elif node.type == NodeType.LLM:
-            prompt = node.data.get("prompt_template", "") or node.data.get("prompt", "")
+            prompt = node.data.get("prompt_template", "")
             if not prompt:
                 warnings.append(BlueprintWarning(
                     node_id=node.id,

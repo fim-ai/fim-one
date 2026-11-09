@@ -96,27 +96,14 @@ class TestExtractReferences:
         assert refs[0].resource_type == "connector"
         assert refs[0].referenced_id == "conn-456"
 
-    def test_knowledge_retrieval_with_kb_id(self) -> None:
+    def test_knowledge_retrieval_with_kb_ids(self) -> None:
         bp = _minimal_blueprint(
-            _make_node("kr_1", NodeType.KNOWLEDGE_RETRIEVAL, kb_id="kb-789")
+            _make_node("kr_1", NodeType.KNOWLEDGE_RETRIEVAL, kb_ids=["kb-789", "kb-790"])
         )
         refs = _extract_references(bp)
-        assert len(refs) == 1
-        assert refs[0].resource_type == "knowledge_base"
-        assert refs[0].field_name == "kb_id"
-
-    def test_knowledge_retrieval_with_knowledge_base_id(self) -> None:
-        bp = _minimal_blueprint(
-            _make_node(
-                "kr_1",
-                NodeType.KNOWLEDGE_RETRIEVAL,
-                knowledge_base_id="kb-abc",
-            )
-        )
-        refs = _extract_references(bp)
-        assert len(refs) == 1
-        assert refs[0].resource_type == "knowledge_base"
-        assert refs[0].field_name == "knowledge_base_id"
+        assert [r.referenced_id for r in refs] == ["kb-789", "kb-790"]
+        assert {r.field_name for r in refs} == {"kb_ids"}
+        assert {r.resource_type for r in refs} == {"knowledge_base"}
 
     def test_mcp_node(self) -> None:
         bp = _minimal_blueprint(
@@ -131,7 +118,7 @@ class TestExtractReferences:
         bp = _minimal_blueprint(
             _make_node("agent_1", NodeType.AGENT, agent_id="agt-1"),
             _make_node("conn_1", NodeType.CONNECTOR, connector_id="conn-2"),
-            _make_node("kr_1", NodeType.KNOWLEDGE_RETRIEVAL, kb_id="kb-3"),
+            _make_node("kr_1", NodeType.KNOWLEDGE_RETRIEVAL, kb_ids=["kb-3"]),
         )
         # Fix edges for chained nodes
         bp.edges = [

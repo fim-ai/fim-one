@@ -120,6 +120,7 @@ async def _validate_binding_ownership(
     connector_ids: list[str] | None = None,
     kb_ids: list[str] | None = None,
     mcp_server_ids: list[str] | None = None,
+    approval_channel_id: str | None = None,
 ) -> None:
     """Verify the user can *access* every referenced connector / KB / MCP server.
 
@@ -157,6 +158,22 @@ async def _validate_binding_ownership(
         MCPServer, "mcp_server", mcp_server_ids, "mcp_server_ownership_denied"
     )
 
+    # An approval channel posts tool arguments into its chat, so it may only
+    # come from an organization the user belongs to.  At run time it must also
+    # belong to the agent's own organization (``FeishuGateHook``).
+    if approval_channel_id:
+        from fim_one.db.models.channel import Channel
+
+        channel_org = (
+            await db.execute(
+                select(Channel.org_id).where(Channel.id == approval_channel_id)
+            )
+        ).scalar_one_or_none()
+        if channel_org is None or channel_org not in await get_user_org_ids(
+            user_id, db
+        ):
+            raise AppError("approval_channel_denied", status_code=403)
+
 
 @router.post("", response_model=ApiResponse)
 async def create_agent(
@@ -169,6 +186,7 @@ async def create_agent(
         connector_ids=body.connector_ids,
         kb_ids=body.kb_ids,
         mcp_server_ids=body.mcp_server_ids,
+        approval_channel_id=body.approval_channel_id,
     )
     agent = Agent(
         user_id=current_user.id,
@@ -289,6 +307,7 @@ async def update_agent(
         connector_ids=update_data.get("connector_ids"),
         kb_ids=update_data.get("kb_ids"),
         mcp_server_ids=update_data.get("mcp_server_ids"),
+        approval_channel_id=update_data.get("approval_channel_id"),
     )
     for field, value in update_data.items():
         setattr(agent, field, value)

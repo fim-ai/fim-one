@@ -1,5 +1,6 @@
 "use client"
 
+import { defaultNodeData, serializeBlueprint, type CanvasNode } from "@/lib/workflow-blueprint"
 import { useCallback, useRef, useState, useEffect, useMemo, useImperativeHandle, forwardRef } from "react"
 import { useTheme } from "next-themes"
 import {
@@ -88,17 +89,6 @@ const minimapNodeColor: Record<string, string> = {
 
 const getMinimapNodeColor = (node: Node) => minimapNodeColor[node.type ?? ""] ?? "#6b7280"
 
-const defaultNodeData: Record<WorkflowNodeType, Record<string, unknown>> = {
-  start: { variables: [] },
-  end: { output_mapping: {} },
-  llm: { prompt_template: "", output_variable: "llm_result", temperature: 0.7 },
-  conditionBranch: { mode: "expression", conditions: [] },
-  agent: { agent_id: "", output_variable: "agent_result" },
-  knowledgeRetrieval: { kb_id: "", query_template: "", top_k: 5, output_variable: "kb_result" },
-  connector: { connector_id: "", action: "", parameters: {}, output_variable: "connector_result" },
-  humanIntervention: { prompt_message: "", assignee: "", timeout_hours: 24, output_variable: "approval_result" },
-  mcp: { server_id: "", tool_name: "", parameters: {}, output_variable: "mcp_result" },
-}
 
 interface WorkflowEditorProps {
   workflowId: string
@@ -810,27 +800,14 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
   useEffect(() => {
     if (syncTimer.current) clearTimeout(syncTimer.current)
     syncTimer.current = setTimeout(() => {
-      onBlueprintChangeRef.current({
-        nodes: nodes.map((n) => {
-          // Strip transient overlay fields before persisting
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { runStatus: _rs, _runOverlay: _ro, _validationState: _vs, ...cleanData } = n.data as Record<string, unknown>
-          return {
-            id: n.id,
-            type: n.type as WorkflowNodeType,
-            position: n.position,
-            data: cleanData,
-          }
-        }),
-        edges: edges.map((e) => ({
-          id: e.id,
-          source: e.source,
-          target: e.target,
-          sourceHandle: e.sourceHandle ?? undefined,
-          targetHandle: e.targetHandle ?? undefined,
-        })),
-        viewport: blueprint.viewport,
-      })
+      // v2 blueprint: run-time overlay fields are stripped by the serializer.
+      onBlueprintChangeRef.current(
+        serializeBlueprint(
+          nodes as CanvasNode[],
+          edges,
+          blueprint.viewport ?? { x: 0, y: 0, zoom: 1 },
+        ) as unknown as WorkflowBlueprint,
+      )
     }, 300)
     return () => {
       if (syncTimer.current) clearTimeout(syncTimer.current)
@@ -916,7 +893,7 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
         id: `${nodeType}_${Date.now()}`,
         type: nodeType,
         position,
-        data: { ...defaultNodeData[nodeType] },
+        data: defaultNodeData(nodeType),
       }
 
       setNodes((nds) => [...nds, newNode])
@@ -1213,7 +1190,7 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
         <RunPanel
           isOpen={runPanelOpen}
           isRunning={isRunning}
-          startVariables={startVariables}
+          startVariables={startVariables ?? []}
           nodeResults={nodeResults}
           finalOutputs={finalOutputs}
           finalError={finalError}

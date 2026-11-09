@@ -1,123 +1,134 @@
-"""Tests for the RunWorkflowTool builtin (inline workflow invocation)."""
+"""Tests for the RunWorkflowTool builtin (inline workflow invocation).
+
+Since T10 P2 the tool starts runs through the run service and runs as the
+agent's user (the caller), not the workflow's author: the caller's quota is
+checked and billed, and the author's env vars are injected only when the
+caller is the author (decision 2026-11-04).
+"""
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-from typing import Any
+import uuid
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager
+from typing import Any, ClassVar
+from unittest.mock import AsyncMock, patch
 
 import pytest
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from fim_one.core.tool.builtin.run_workflow import (
     _MAX_WORKFLOW_DEPTH,
-    _active_workflows,
     RunWorkflowTool,
+    _active_workflows,
 )
-from fim_one.core.workflow.types import NodeType
+from fim_one.core.workflow import run_service as rs
+from fim_one.db.base import Base
+from fim_one.db.models.user import User
+from fim_one.db.models.workflow import Workflow, WorkflowRun
+from fim_one.web.exceptions import AppError
+
+_BLUEPRINT = {
+    "nodes": [
+        {"id": "start_1", "type": "start", "data": {"type": "START"}},
+        {"id": "llm_1", "type": "llm", "data": {"type": "LLM", "prompt_template": "hi"}},
+        {"id": "end_1", "type": "end", "data": {"type": "END"}},
+    ],
+    "edges": [
+        {"id": "e1", "source": "start_1", "target": "llm_1"},
+        {"id": "e2", "source": "llm_1", "target": "end_1"},
+    ],
+}
 
 
-class _FakeResult:
-    def __init__(self, scalar: Any = None) -> None:
-        self._scalar = scalar
+class _FakeEngine:
+    """Records what the service built and replays a scripted ending."""
 
-    def scalar_one_or_none(self) -> Any:
-        return self._scalar
+    created: ClassVar[list[dict[str, Any]]] = []
+    ending: ClassVar[tuple[str, dict[str, Any]]] = ("run_completed", {})
 
-
-class _FakeSession:
-    """Minimal async session over a shared store so the audit run created in one
-    session is visible to the finalize lookup in a later session."""
-
-    def __init__(self, wf: Any, runs: dict[str, Any]) -> None:
-        self._wf = wf
-        self._runs = runs
-
-    async def execute(self, _query: Any) -> _FakeResult:
-        return _FakeResult(scalar=self._wf)
-
-    def add(self, obj: Any) -> None:
-        self._runs[obj.id] = obj
-
-    async def commit(self) -> None:
-        return None
-
-    async def get(self, _model: Any, _id: str) -> Any:
-        return self._runs.get(_id)
-
-    async def __aenter__(self) -> _FakeSession:
-        return self
-
-    async def __aexit__(self, *_: Any) -> bool:
-        return False
-
-
-def _make_session_factory(wf: Any) -> Any:
-    runs: dict[str, Any] = {}
-
-    def _factory() -> _FakeSession:
-        return _FakeSession(wf, runs)
-
-    _factory.runs = runs  # type: ignore[attr-defined]
-    return _factory
-
-
-class _FakeEngineCompleted:
-    def __init__(self, **_: Any) -> None:
-        pass
+    def __init__(self, **kwargs: Any) -> None:
+        _FakeEngine.created.append(kwargs)
 
     async def execute_streaming(
         self, _parsed: Any, _inputs: Any, context: Any = None
-    ) -> Any:
-        yield (
-            "run_completed",
-            {"outputs": {"answer": 42}, "status": "completed", "total_tokens": 1234},
-        )
+    ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
+        _FakeEngine.created[-1]["context"] = context
+        yield _FakeEngine.ending
 
 
-class _FakeEngineFailed:
-    def __init__(self, **_: Any) -> None:
-        pass
+@pytest.fixture()
+async def db() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    import fim_one.db.models  # noqa: F401
 
-    async def execute_streaming(
-        self, _parsed: Any, _inputs: Any, context: Any = None
-    ) -> Any:
-        yield (
-            "run_failed",
-            {"status": "failed", "error": "boom", "total_tokens": 77},
-        )
-
-
-def _patch_runtime(
-    monkeypatch: pytest.MonkeyPatch,
-    wf: Any,
-    nodes: list[Any],
-    engine_cls: Any,
-    quota: tuple[int, int] = (0, 0),
-) -> Any:
-    factory = _make_session_factory(wf)
-    monkeypatch.setattr("fim_one.db.create_session", factory)
-    monkeypatch.setattr(
-        "fim_one.core.workflow.parser.parse_blueprint",
-        lambda _bp: SimpleNamespace(nodes=nodes),
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:", connect_args={"check_same_thread": False}
     )
-    monkeypatch.setattr("fim_one.core.workflow.engine.WorkflowEngine", engine_cls)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
 
-    async def _fake_quota(_user_id: str) -> tuple[int, int]:
-        return quota
+    @asynccontextmanager
+    async def _cs() -> AsyncIterator[AsyncSession]:
+        async with factory() as s:
+            yield s
 
-    monkeypatch.setattr("fim_one.web.api.chat._get_quota_status", _fake_quota)
-    return factory
+    with patch("fim_one.db.create_session", _cs):
+        yield factory
+    await engine.dispose()
 
 
-def _wf(**overrides: Any) -> SimpleNamespace:
-    base: dict[str, Any] = dict(
-        id="wf1",
-        name="nightly_reconcile",
-        user_id="owner1",
-        blueprint={"nodes": []},
-        env_vars_blob=None,
+@pytest.fixture(autouse=True)
+def service() -> Iterator[rs.WorkflowRunService]:
+    _FakeEngine.created = []
+    _FakeEngine.ending = (
+        "run_completed",
+        {"outputs": {"answer": 42}, "status": "completed", "total_tokens": 1234},
     )
-    base.update(overrides)
-    return SimpleNamespace(**base)
+    svc = rs.WorkflowRunService(engine_factory=_FakeEngine)
+    with (
+        patch.object(rs, "_default_service", svc),
+        patch("fim_one.web.api.chat._check_token_quota", new=AsyncMock()),
+    ):
+        yield svc
+
+
+async def _setup(
+    factory: async_sessionmaker[AsyncSession],
+    *,
+    blueprint: dict[str, Any] | None = None,
+    env: dict[str, str] | None = None,
+) -> tuple[str, str, str]:
+    """Create author, caller and a workflow; return their ids."""
+    from fim_one.core.security.encryption import encrypt_credential
+
+    async with factory() as s:
+        author = User(id=str(uuid.uuid4()), email=f"{uuid.uuid4()}@x.io")
+        caller = User(id=str(uuid.uuid4()), email=f"{uuid.uuid4()}@x.io")
+        s.add_all([author, caller])
+        await s.flush()
+        wf = Workflow(
+            user_id=author.id,
+            name="nightly_reconcile",
+            blueprint=blueprint or _BLUEPRINT,
+            status="active",
+            is_active=True,
+            env_vars_blob=encrypt_credential(env) if env else None,
+        )
+        s.add(wf)
+        await s.commit()
+        return author.id, caller.id, wf.id
+
+
+async def _runs(factory: async_sessionmaker[AsyncSession]) -> list[WorkflowRun]:
+    async with factory() as s:
+        return list((await s.execute(select(WorkflowRun))).scalars().all())
+
+
+# ---------------------------------------------------------------------------
+# Argument validation
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -140,85 +151,128 @@ async def test_inputs_must_be_object() -> None:
 
 
 @pytest.mark.asyncio
-async def test_not_found_when_db_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
-    _patch_runtime(monkeypatch, wf=None, nodes=[], engine_cls=_FakeEngineCompleted)
-    tool = RunWorkflowTool(workflow_ids=["wf1"], user_id="u1")
+async def test_not_found_when_not_in_ids(db: async_sessionmaker[AsyncSession]) -> None:
+    _, caller, _ = await _setup(db)
+    tool = RunWorkflowTool(workflow_ids=["other"], user_id=caller)
     out = await tool.run(name="nightly_reconcile")
     assert "not found or not runnable" in out
 
 
+# ---------------------------------------------------------------------------
+# Running
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.asyncio
-async def test_rejects_human_intervention_node(monkeypatch: pytest.MonkeyPatch) -> None:
-    nodes = [SimpleNamespace(type=NodeType.HUMAN_INTERVENTION)]
-    _patch_runtime(monkeypatch, wf=_wf(), nodes=nodes, engine_cls=_FakeEngineCompleted)
-    tool = RunWorkflowTool(workflow_ids=["wf1"], user_id="u1")
-    out = await tool.run(name="nightly_reconcile")
+async def test_rejects_human_intervention_node(db: async_sessionmaker[AsyncSession]) -> None:
+    bp = {
+        "nodes": [
+            {"id": "start_1", "type": "start", "data": {}},
+            {"id": "h", "type": "humanIntervention", "data": {"title": "ok?"}},
+            {"id": "end_1", "type": "end", "data": {}},
+        ],
+        "edges": [
+            {"id": "e1", "source": "start_1", "target": "h"},
+            {"id": "e2", "source": "h", "target": "end_1"},
+        ],
+    }
+    _, caller, wf_id = await _setup(db, blueprint=bp)
+    out = await RunWorkflowTool(workflow_ids=[wf_id], user_id=caller).run(
+        name="nightly_reconcile"
+    )
     assert "human-approval step" in out
+    assert await _runs(db) == []
 
 
 @pytest.mark.asyncio
-async def test_success_returns_outputs(monkeypatch: pytest.MonkeyPatch) -> None:
-    nodes = [SimpleNamespace(type=NodeType.LLM)]
-    factory = _patch_runtime(
-        monkeypatch, wf=_wf(), nodes=nodes, engine_cls=_FakeEngineCompleted
+async def test_success_runs_as_caller_and_bills_caller(
+    db: async_sessionmaker[AsyncSession],
+) -> None:
+    author, caller, wf_id = await _setup(db, env={"SECRET": "author-only"})
+    out = await RunWorkflowTool(workflow_ids=[wf_id], user_id=caller).run(
+        name="nightly_reconcile", inputs={"x": 1}
     )
-    tool = RunWorkflowTool(workflow_ids=["wf1"], user_id="u1")
-    out = await tool.run(name="nightly_reconcile", inputs={"x": 1})
-    assert "completed" in out
-    assert "answer" in out and "42" in out
-    # Token usage must be written back so it bills to the owner's quota window.
-    (run,) = factory.runs.values()
+    assert "completed" in out and "42" in out
+
+    (run,) = await _runs(db)
+    assert run.user_id == caller != author
+    assert run.mode == "tool"
     assert run.total_tokens == 1234
+    built = _FakeEngine.created[-1]
+    assert built["user_id"] == caller
+    assert built["env_vars"] == {}
+    assert built["context"].user_id == caller
+    assert built["context"].env_vars == {}
 
 
 @pytest.mark.asyncio
-async def test_over_quota_owner_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
-    nodes = [SimpleNamespace(type=NodeType.LLM)]
-    factory = _patch_runtime(
-        monkeypatch,
-        wf=_wf(),
-        nodes=nodes,
-        engine_cls=_FakeEngineCompleted,
-        quota=(100, 50),  # used >= cap
-    )
-    tool = RunWorkflowTool(workflow_ids=["wf1"], user_id="u1")
-    out = await tool.run(name="nightly_reconcile")
+async def test_author_caller_gets_env(db: async_sessionmaker[AsyncSession]) -> None:
+    author, _, wf_id = await _setup(db, env={"SECRET": "author-only"})
+    await RunWorkflowTool(workflow_ids=[wf_id], user_id=author).run(name="nightly_reconcile")
+    assert _FakeEngine.created[-1]["env_vars"] == {"SECRET": "author-only"}
+
+
+@pytest.mark.asyncio
+async def test_over_quota_caller_is_refused(db: async_sessionmaker[AsyncSession]) -> None:
+    _, caller, wf_id = await _setup(db)
+    checked: list[str] = []
+
+    async def _quota(user_id: str) -> None:
+        checked.append(user_id)
+        raise AppError("token_quota_exceeded", status_code=429)
+
+    with patch("fim_one.web.api.chat._check_token_quota", new=_quota):
+        out = await RunWorkflowTool(workflow_ids=[wf_id], user_id=caller).run(
+            name="nightly_reconcile"
+        )
     assert "quota exceeded" in out
-    # Refused before any run record is created — no unmetered execution.
-    assert not factory.runs
+    assert checked == [caller]
+    assert await _runs(db) == []
 
 
 @pytest.mark.asyncio
-async def test_failure_surfaces_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    nodes = [SimpleNamespace(type=NodeType.LLM)]
-    _patch_runtime(monkeypatch, wf=_wf(), nodes=nodes, engine_cls=_FakeEngineFailed)
-    tool = RunWorkflowTool(workflow_ids=["wf1"], user_id="u1")
-    out = await tool.run(name="nightly_reconcile")
+async def test_missing_user_is_refused(db: async_sessionmaker[AsyncSession]) -> None:
+    _, _, wf_id = await _setup(db)
+    out = await RunWorkflowTool(workflow_ids=[wf_id], user_id=None).run(
+        name="nightly_reconcile"
+    )
+    assert "run_identity_missing" in out
+
+
+@pytest.mark.asyncio
+async def test_failure_surfaces_error(db: async_sessionmaker[AsyncSession]) -> None:
+    _, caller, wf_id = await _setup(db)
+    _FakeEngine.ending = ("run_failed", {"status": "failed", "error": "boom", "total_tokens": 77})
+    out = await RunWorkflowTool(workflow_ids=[wf_id], user_id=caller).run(
+        name="nightly_reconcile"
+    )
     assert "failed" in out and "boom" in out
+    (run,) = await _runs(db)
+    assert run.total_tokens == 77
 
 
 @pytest.mark.asyncio
-async def test_reentrancy_cycle_prevented(monkeypatch: pytest.MonkeyPatch) -> None:
-    nodes = [SimpleNamespace(type=NodeType.LLM)]
-    _patch_runtime(monkeypatch, wf=_wf(), nodes=nodes, engine_cls=_FakeEngineCompleted)
-    tool = RunWorkflowTool(workflow_ids=["wf1"], user_id="u1")
-    token = _active_workflows.set(frozenset({"wf1"}))
+async def test_reentrancy_cycle_prevented(db: async_sessionmaker[AsyncSession]) -> None:
+    _, caller, wf_id = await _setup(db)
+    token = _active_workflows.set(frozenset({wf_id}))
     try:
-        out = await tool.run(name="nightly_reconcile")
+        out = await RunWorkflowTool(workflow_ids=[wf_id], user_id=caller).run(
+            name="nightly_reconcile"
+        )
     finally:
         _active_workflows.reset(token)
     assert "already running" in out
 
 
 @pytest.mark.asyncio
-async def test_depth_limit_enforced(monkeypatch: pytest.MonkeyPatch) -> None:
-    nodes = [SimpleNamespace(type=NodeType.LLM)]
-    _patch_runtime(monkeypatch, wf=_wf(), nodes=nodes, engine_cls=_FakeEngineCompleted)
-    tool = RunWorkflowTool(workflow_ids=["wf1"], user_id="u1")
+async def test_depth_limit_enforced(db: async_sessionmaker[AsyncSession]) -> None:
+    _, caller, wf_id = await _setup(db)
     deep = frozenset(f"other{i}" for i in range(_MAX_WORKFLOW_DEPTH))
     token = _active_workflows.set(deep)
     try:
-        out = await tool.run(name="nightly_reconcile")
+        out = await RunWorkflowTool(workflow_ids=[wf_id], user_id=caller).run(
+            name="nightly_reconcile"
+        )
     finally:
         _active_workflows.reset(token)
     assert "nesting too deep" in out

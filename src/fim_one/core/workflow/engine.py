@@ -32,6 +32,10 @@ from .variable_store import VariableStore
 
 logger = logging.getLogger(__name__)
 
+# Extra time the engine allows a Human Intervention node past its own
+# ``timeout_hours`` so the node can expire its approval record itself.
+_APPROVAL_EXPIRY_GRACE_SEC = 30.0
+
 # Maximum size for trace detail values (e.g. HTTP response body)
 _TRACE_MAX_BYTES = 10 * 1024  # 10 KB
 
@@ -137,6 +141,29 @@ class WorkflowEngine:
 
         # Semaphore for concurrency control
         semaphore = asyncio.Semaphore(self._max_concurrency)
+
+        # Time spent waiting for a human decision does not count toward the
+        # whole-run limit: an approval may wait for hours, the run limit is
+        # minutes. ``paused`` accumulates every interval during which at
+        # least one Human Intervention node was waiting.
+        approval_clock = {"waiting": 0, "since": 0.0, "paused": 0.0}
+
+        def _approval_wait_started() -> None:
+            if approval_clock["waiting"] == 0:
+                approval_clock["since"] = time.time()
+            approval_clock["waiting"] += 1
+
+        def _approval_wait_ended() -> None:
+            approval_clock["waiting"] -= 1
+            if approval_clock["waiting"] == 0:
+                approval_clock["paused"] += time.time() - approval_clock["since"]
+
+        def _active_elapsed_ms() -> int:
+            """Run time so far, excluding time spent waiting for approvals."""
+            paused = approval_clock["paused"]
+            if approval_clock["waiting"] > 0:
+                paused += time.time() - approval_clock["since"]
+            return int((time.time() - start_time - paused) * 1000)
 
         # Determine dependencies: for each node, which nodes must complete first
         predecessors: dict[str, set[str]] = defaultdict(set)
@@ -293,10 +320,16 @@ class WorkflowEngine:
                 timeout_hours = float(
                     node.data.get("timeout_hours", 24)
                 )
-                timeout_sec = timeout_hours * 3600
+                # Grace beyond the node's own deadline, so the executor marks
+                # its approval record expired before this outer limit fires;
+                # otherwise the record would stay pending after the run ends.
+                timeout_sec = timeout_hours * 3600 + _APPROVAL_EXPIRY_GRACE_SEC
             else:
                 timeout_sec = node.timeout_ms / 1000
 
+            is_approval = node.type == NodeType.HUMAN_INTERVENTION
+            if is_approval:
+                _approval_wait_started()
             try:
                 return await asyncio.wait_for(
                     executor.execute(node, store, ctx),
@@ -308,6 +341,9 @@ class WorkflowEngine:
                     status=NodeStatus.FAILED,
                     error=f"Node execution timed out after {timeout_sec:.0f}s",
                 )
+            finally:
+                if is_approval:
+                    _approval_wait_ended()
 
         async def _run_node(nid: str) -> None:
             """Execute a single node with retry, semaphore, and per-node timeout."""
@@ -469,7 +505,7 @@ class WorkflowEngine:
                 while pending or running_tasks:
                     # Check for workflow-level timeout
                     if self._workflow_timeout_ms > 0:
-                        elapsed_ms = int((time.time() - start_time) * 1000)
+                        elapsed_ms = _active_elapsed_ms()
                         if elapsed_ms >= self._workflow_timeout_ms:
                             logger.warning(
                                 "Workflow %s timed out after %dms",
@@ -597,9 +633,7 @@ class WorkflowEngine:
                     # can re-check the timeout at the top of the next iteration.
                     wait_timeout: float | None = None
                     if self._workflow_timeout_ms > 0:
-                        remaining_ms = self._workflow_timeout_ms - int(
-                            (time.time() - start_time) * 1000
-                        )
+                        remaining_ms = self._workflow_timeout_ms - _active_elapsed_ms()
                         wait_timeout = max(remaining_ms / 1000.0, 0.01)
 
                     done, _ = await asyncio.wait(

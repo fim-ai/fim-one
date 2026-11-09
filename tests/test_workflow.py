@@ -11,11 +11,11 @@ import asyncio
 import json
 import pytest
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
 from fim_one.core.workflow.parser import (
     BlueprintValidationError,
     BlueprintWarning,
-    parse_blueprint,
     topological_sort,
     validate_blueprint,
 )
@@ -36,6 +36,16 @@ from fim_one.core.workflow.engine import WorkflowEngine
 # ---------------------------------------------------------------------------
 # Fixtures: reusable blueprint builders
 # ---------------------------------------------------------------------------
+
+
+
+def parse_blueprint(raw: dict[str, Any]) -> Any:
+    """Fixtures here use pre-v2 spellings; upgrade them as the T10 P3
+    migration does for stored blueprints, then parse strictly."""
+    from fim_one.core.workflow.blueprint_v2 import upgrade_blueprint
+    from fim_one.core.workflow.parser import parse_blueprint as parse_v2
+
+    return parse_v2(upgrade_blueprint(raw))
 
 def _start_node(node_id: str = "start_1", **data: Any) -> dict:
     return {
@@ -564,7 +574,12 @@ class TestFieldNameCompatibility:
         ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
 
         executor = KnowledgeRetrievalExecutor()
-        result = await executor.execute(node, store, ctx)
+        # No DB in this unit test: report the KB as enabled.
+        with patch(
+            "fim_one.core.workflow.nodes._disabled_kb_names",
+            new=AsyncMock(return_value=[]),
+        ):
+            result = await executor.execute(node, store, ctx)
         # KB executor handles per-KB errors gracefully (returns 0 results),
         # so it should complete (not "no query" error).
         # The important thing: it read query_template, not "query"
@@ -3115,7 +3130,7 @@ class TestAgentExecutorBindings:
         node = WorkflowNodeDef(
             id="agent1",
             type=NodeType.AGENT,
-            data={"type": "AGENT", "agent_id": "a1", "query": "summarize {{input.x}}"},
+            data={"agent_id": "a1", "prompt_template": "summarize {{input.x}}"},
         )
         store = VariableStore()
         await store.set("input.x", "the report")
@@ -3151,7 +3166,7 @@ class TestAgentExecutorBindings:
         node = WorkflowNodeDef(
             id="agent2",
             type=NodeType.AGENT,
-            data={"type": "AGENT", "query": "just answer"},
+            data={"prompt_template": "just answer"},
         )
         ctx = ExecutionContext(run_id="r", user_id="owner1", workflow_id="w")
 

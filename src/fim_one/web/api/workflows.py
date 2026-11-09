@@ -7,9 +7,7 @@ import ipaddress
 import json
 import logging
 import math
-import secrets
 import socket
-import time
 import uuid
 from collections import defaultdict
 from collections.abc import AsyncGenerator
@@ -19,18 +17,17 @@ from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import Response, StreamingResponse
-from sqlalchemy import CursorResult, delete, func, select, update
+from sqlalchemy import CursorResult, and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fim_one.db import get_session, create_session
+from fim_one.db import get_session
 from fim_one.core.security import get_safe_async_client, is_private_ip
-from fim_one.core.utils import spawn_background
-from fim_one.core.workflow.rate_limiter import WorkflowRateLimiter
 from fim_one.web.exceptions import AppError
 from fim_one.web.auth import get_current_user, get_user_org_ids
 from fim_one.web.platform import MARKET_ORG_ID, is_market_org
 from fim_one.db.models import User, Workflow, WorkflowApproval, WorkflowRun, WorkflowVersion
 from fim_one.db.models.resource_subscription import ResourceSubscription
+from fim_one.db.models.workflow import RUN_MODE_TEST_NODE
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse, PublishRequest
 from fim_one.web.schemas.workflow import (
     BatchRunResultItem,
@@ -83,8 +80,6 @@ router = APIRouter(
     dependencies=[Depends(require_workflows_enabled)],
 )
 
-# Module-level rate limiter shared across all workflow run endpoints
-_rate_limiter = WorkflowRateLimiter()
 
 
 # ---------------------------------------------------------------------------
@@ -178,11 +173,6 @@ def _validate_webhook_url(url: str) -> None:
             )
 
 
-def _run_timeout_ms(wf: Workflow) -> int:
-    """Whole-run time limit: the workflow's own override, else 10 minutes."""
-    return (wf.max_run_duration_seconds or 600) * 1000
-
-
 def _sse(event: str, data: Any) -> str:
     """Format a Server-Sent Event frame."""
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
@@ -230,7 +220,8 @@ def _workflow_to_response(wf: Workflow, *, is_owner: bool = True) -> WorkflowRes
         schedule_enabled=getattr(wf, "schedule_enabled", False),
         schedule_inputs=getattr(wf, "schedule_inputs", None),
         schedule_timezone=getattr(wf, "schedule_timezone", "UTC") or "UTC",
-        has_api_key=bool(getattr(wf, "api_key", None)),
+        has_api_key=bool(wf.api_key_hash),
+        api_key_prefix=wf.api_key_prefix if is_owner else None,
         forked_from=getattr(wf, "forked_from", None),
         created_at=wf.created_at.isoformat() if wf.created_at else "",
         updated_at=wf.updated_at.isoformat() if wf.updated_at else None,
@@ -301,6 +292,82 @@ async def _get_accessible_workflow(
     return wf
 
 
+def _own_runs_clause(user_id: str) -> Any:
+    """Restrict run queries to runs the caller started (or that bill to them).
+
+    Run records carry the runner's inputs and outputs, so their contents are
+    shown only to that runner. This holds for the workflow author too: an
+    author sees subscribers' runs only through the aggregate endpoints
+    (counts, durations, success and failure), never their inputs or outputs.
+    """
+    return and_(WorkflowRun.user_id == user_id, _history_run_clause())
+
+
+def _history_run_clause() -> Any:
+    """Exclude single-node test executions from run history and statistics."""
+    from fim_one.db.models.workflow import history_run_clause
+
+    return history_run_clause()
+
+
+def _run_stats_clauses(wf: Workflow, user_id: str) -> list[Any]:
+    """WHERE clauses for aggregate run statistics.
+
+    The author aggregates over every run of the workflow; anyone else only
+    over the runs they started themselves.
+    """
+    clauses: list[Any] = [WorkflowRun.workflow_id == wf.id, _history_run_clause()]
+    if wf.user_id != user_id:
+        clauses.append(_own_runs_clause(user_id))
+    return clauses
+
+
+def normalize_blueprint(raw: Any) -> dict[str, Any]:
+    """Upgrade an incoming blueprint to v2 and validate it against the schema.
+
+    Every write of a blueprint goes through here, so stored blueprints are
+    always v2. A schema violation answers 422 ``blueprint_schema_invalid``
+    with ``error_args.errors`` listing ``{loc, node_id, message}`` per field.
+    """
+    from fim_one.core.workflow.blueprint_v2 import BlueprintSchemaError, normalize_for_save
+
+    try:
+        return normalize_for_save(raw)
+    except BlueprintSchemaError as exc:
+        raise AppError(
+            "blueprint_schema_invalid",
+            status_code=422,
+            detail="The workflow blueprint has invalid fields",
+            detail_args={"errors": exc.errors},
+        ) from None
+
+
+def _refused(exc: Any) -> AppError:
+    """Map a run service refusal onto the API's error envelope."""
+    return AppError(exc.error_code, status_code=exc.status_code, detail=exc.detail)
+
+
+async def _get_version_owner_workflow(
+    workflow_id: str,
+    user_id: str,
+    db: AsyncSession,
+) -> Workflow:
+    """Fetch a workflow whose version history the user may read.
+
+    Versions carry full blueprints, which non-authors never see (the same
+    rule ``_workflow_to_response`` applies to the live workflow). A user who
+    can see the workflow but is not its author gets 403; anyone else 404.
+    """
+    wf = await _get_accessible_workflow(workflow_id, user_id, db)
+    if wf.user_id != user_id:
+        raise AppError(
+            "workflow_versions_owner_only",
+            status_code=403,
+            detail="Only the workflow author can view its version history",
+        )
+    return wf
+
+
 def _extract_schemas_from_blueprint(
     blueprint: dict[str, Any],
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
@@ -317,7 +384,7 @@ def _extract_schemas_from_blueprint(
 
     nodes = blueprint.get("nodes", [])
     for node in nodes:
-        node_type = (node.get("data", {}) or {}).get("type", "") or node.get("type", "")
+        node_type = str(node.get("type") or "")  # v2: "start" / "end"
         node_data = node.get("data", {}) or {}
 
         if node_type.upper() == "START":
@@ -374,13 +441,14 @@ async def create_workflow(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
-    input_schema, output_schema = _extract_schemas_from_blueprint(body.blueprint)
+    blueprint = normalize_blueprint(body.blueprint)
+    input_schema, output_schema = _extract_schemas_from_blueprint(blueprint)
     wf = Workflow(
         user_id=current_user.id,
         name=body.name,
         icon=body.icon,
         description=body.description,
-        blueprint=body.blueprint,
+        blueprint=blueprint,
         input_schema=input_schema,
         output_schema=output_schema,
         status=body.status,
@@ -541,199 +609,105 @@ async def create_workflow_from_template(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/trigger/{api_key}", response_model=ApiResponse)
+# Successor of the deprecated key-in-path trigger route.
+TRIGGER_PATH = "/api/workflows/trigger"
+# Response headers on the deprecated route (RFC 9745 ``Deprecation``,
+# RFC 8288 ``Link``). The route is kept for one release.
+_TRIGGER_DEPRECATION_HEADERS = {
+    "Deprecation": "true",
+    "Link": f'<{TRIGGER_PATH}>; rel="successor-version"',
+    "Warning": (
+        '299 - "Passing the trigger key in the URL is deprecated; send it as '
+        f'Authorization: Bearer <key> to POST {TRIGGER_PATH}"'
+    ),
+}
+
+
+async def _resolve_trigger_workflow(raw_key: str | None, db: AsyncSession) -> Workflow:
+    from fim_one.web.services.workflow_trigger_keys import (
+        TriggerKeyRejectedError,
+        resolve_trigger_key,
+    )
+
+    try:
+        return await resolve_trigger_key(raw_key, db)
+    except TriggerKeyRejectedError as exc:
+        raise AppError(exc.error_code, status_code=401, detail=exc.detail) from None
+
+
+@router.post("/trigger", response_model=ApiResponse)
 async def trigger_workflow(
-    api_key: str,
     body: WorkflowTriggerRequest,
+    request: Request,
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
-    """Trigger a workflow execution via its API key (no user auth required).
+    """Trigger a workflow execution with its trigger key (no user session).
 
-    This is the public webhook-style endpoint for external systems to invoke
-    a workflow.  The workflow is looked up by its unique ``api_key`` field.
-    Runs synchronously (non-SSE) and returns the final result.
+    This is the public webhook-style endpoint for external systems. Send the
+    key as ``Authorization: Bearer <key>``. Runs synchronously (non-SSE) and
+    returns the final result. The run is billed to the workflow's author.
     """
-    # Look up workflow by API key
-    result = await db.execute(
-        select(Workflow).where(Workflow.api_key == api_key)
+    from fim_one.web.services.workflow_trigger_keys import parse_bearer
+
+    raw_key = parse_bearer(request.headers.get("authorization"))
+    wf = await _resolve_trigger_workflow(raw_key, db)
+    logger.info("Workflow %s triggered by key %s", wf.id, wf.api_key_prefix)
+    return await _execute_trigger(wf, body)
+
+
+@router.post("/trigger/{api_key}", response_model=ApiResponse, deprecated=True)
+async def trigger_workflow_legacy(
+    api_key: str,
+    body: WorkflowTriggerRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Deprecated: trigger with the key in the URL path.
+
+    Kept for one release so existing integrations keep working; responses
+    carry ``Deprecation`` and ``Link`` headers pointing at ``POST /trigger``
+    with an ``Authorization`` header. Keys in URLs end up in proxy and
+    access logs.
+    """
+    response.headers.update(_TRIGGER_DEPRECATION_HEADERS)
+    wf = await _resolve_trigger_workflow(api_key, db)
+    logger.info(
+        "Workflow %s triggered by key %s via the deprecated URL route",
+        wf.id,
+        wf.api_key_prefix,
     )
-    wf = result.scalar_one_or_none()
-    if wf is None:
-        raise AppError("invalid_api_key", status_code=401, detail="Invalid API key")
+    return await _execute_trigger(wf, body)
 
-    if not wf.is_active:
-        raise AppError("workflow_inactive", status_code=403, detail="Workflow is inactive")
 
-    if not wf.blueprint or not wf.blueprint.get("nodes"):
-        raise AppError("blueprint_empty", status_code=400)
-
-    # Quota gate: an unattended (webhook) run bills its LLM usage to the
-    # workflow owner. Reject up-front when the owner is already over quota so
-    # the public trigger can't be used as a free, unmetered LLM spigot.
-    from fim_one.web.api.chat import _check_token_quota
-
-    await _check_token_quota(wf.user_id)
-
-    # Rate limit: reject if there's already a running run for this workflow
-    running_result = await db.execute(
-        select(func.count()).where(
-            WorkflowRun.workflow_id == wf.id,
-            WorkflowRun.status.in_(["pending", "running"]),
-        )
+async def _execute_trigger(
+    wf: Workflow,
+    body: WorkflowTriggerRequest,
+) -> ApiResponse:
+    """Run *wf* for a trigger-key request. It runs as its author."""
+    from fim_one.core.workflow.run_service import (
+        RunMode,
+        RunRefusedError,
+        get_run_service,
     )
-    if running_result.scalar_one() > 0:
-        raise AppError(
-            "workflow_already_running",
-            status_code=429,
-            detail="Workflow already has a running execution. Please wait for it to complete.",
-        )
-
-    from fim_one.core.workflow.engine import WorkflowEngine
-    from fim_one.core.workflow.parser import BlueprintValidationError, parse_blueprint
-
-    # Validate before taking a rate-limiter slot: a slot is only released
-    # once the run finishes, so an early rejection here would leak it.
-    try:
-        parsed = parse_blueprint(wf.blueprint)
-    except BlueprintValidationError as exc:
-        raise AppError(f"invalid_blueprint: {exc}", status_code=400)
-
-    # Per-user rate limit (workflow owner)
-    run_id = str(uuid.uuid4())
-    allowed, rate_error = await _rate_limiter.acquire(wf.user_id, run_id)
-    if not allowed:
-        raise AppError(
-            "workflow_rate_limited",
-            status_code=429,
-            detail=rate_error,
-        )
-
-    # Decrypt env vars if present
-    env_vars: dict[str, str] = {}
-    if wf.env_vars_blob:
-        try:
-            from fim_one.core.security.encryption import decrypt_credential
-
-            env_vars = decrypt_credential(wf.env_vars_blob)
-        except Exception:
-            logger.warning("Failed to decrypt workflow env vars for %s", wf.id)
-    run = WorkflowRun(
-        id=run_id,
-        workflow_id=wf.id,
-        user_id=wf.user_id,  # attribute run to the workflow owner
-        blueprint_snapshot=wf.blueprint,
-        inputs=body.inputs,
-        status="running",
-    )
-    try:
-        db.add(run)
-        await db.commit()
-    except Exception:
-        await _rate_limiter.record_run_end(wf.user_id, run_id)
-        raise
-
-    # Execute synchronously (non-SSE)
-    start_time = time.time()
-    final_status = "completed"
-    outputs: dict[str, Any] = {}
-    node_results: dict[str, Any] = {}
-    error_msg: str | None = None
-    run_tokens = 0
 
     try:
-        engine = WorkflowEngine(
-            max_concurrency=5,
-            env_vars=env_vars,
-            run_id=run_id,
-            user_id=wf.user_id,
-            workflow_id=wf.id,
-            workflow_timeout_ms=_run_timeout_ms(wf),
+        outcome = await get_run_service().run_to_completion(
+            wf,
+            caller_id=None,
+            inputs=body.inputs,
+            mode=RunMode.TRIGGER,
+            # One trigger-key run at a time per workflow.
+            single_flight=True,
         )
-
-        from fim_one.core.workflow.types import ExecutionContext
-
-        exec_context = ExecutionContext(
-            run_id=run_id,
-            user_id=wf.user_id,
-            workflow_id=wf.id,
-            env_vars=env_vars,
-            db_session_factory=create_session,
-        )
-
-        async for event_name, event_data in engine.execute_streaming(
-            parsed, body.inputs, context=exec_context
-        ):
-            if event_name in (
-                "node_started",
-                "node_completed",
-                "node_failed",
-                "node_skipped",
-            ):
-                nid = event_data.get("node_id", "")
-                node_results[nid] = {
-                    **(node_results.get(nid) or {}),
-                    **event_data,
-                }
-            elif event_name == "run_completed":
-                outputs = event_data.get("outputs", {})
-                final_status = event_data.get("status", "completed")
-                run_tokens = int(event_data.get("total_tokens", 0) or 0)
-            elif event_name == "run_failed":
-                final_status = "failed"
-                error_msg = event_data.get("error")
-                run_tokens = int(event_data.get("total_tokens", 0) or 0)
-
-    except Exception as exc:
-        final_status = "failed"
-        error_msg = f"{type(exc).__name__}: {exc}"
-        logger.exception("Trigger execution failed for run %s", run_id)
-
-    elapsed_ms = int((time.time() - start_time) * 1000)
-
-    # Release rate limiter slot
-    await _rate_limiter.record_run_end(wf.user_id, run_id)
-
-    # Persist run results
-    try:
-        async with create_session() as persist_db:
-            run_result = await persist_db.execute(
-                select(WorkflowRun).where(WorkflowRun.id == run_id)
-            )
-            db_run = run_result.scalar_one_or_none()
-            if db_run:
-                db_run.status = final_status
-                db_run.outputs = outputs or None
-                db_run.node_results = node_results or None
-                db_run.started_at = datetime.fromtimestamp(start_time, tz=UTC)
-                db_run.completed_at = datetime.now(UTC)
-                db_run.duration_ms = elapsed_ms
-                db_run.error = error_msg
-                db_run.total_tokens = run_tokens
-                await persist_db.commit()
-    except Exception:
-        logger.exception("Failed to persist trigger run %s", run_id)
-
-    # Fire webhook if configured (fire-and-forget)
-    wf_webhook_url = getattr(wf, "webhook_url", None)
-    if wf_webhook_url and final_status in ("completed", "failed"):
-        webhook_payload = {
-            "event": "run_completed" if final_status == "completed" else "run_failed",
-            "workflow_id": wf.id,
-            "run_id": run_id,
-            "status": final_status,
-            "outputs": outputs or None,
-            "error": error_msg,
-            "duration_ms": elapsed_ms,
-            "completed_at": datetime.now(UTC).isoformat(),
-        }
-        spawn_background(_deliver_webhook(wf_webhook_url, webhook_payload))
+    except RunRefusedError as exc:
+        raise _refused(exc) from None
 
     trigger_response = WorkflowTriggerResponse(
-        run_id=run_id,
-        status=final_status,
-        outputs=outputs or None,
-        error=error_msg,
-        duration_ms=elapsed_ms,
+        run_id=outcome.run_id,
+        status=outcome.status,
+        outputs=outcome.outputs or None,
+        error=outcome.error,
+        duration_ms=outcome.duration_ms,
     )
     return ApiResponse(data=trigger_response.model_dump())
 
@@ -938,6 +912,7 @@ async def update_workflow(
     # Capture old blueprint BEFORE applying updates (for diff computation)
     old_blueprint: dict[str, Any] | None = None
     if "blueprint" in update_data and update_data["blueprint"] is not None:
+        update_data["blueprint"] = normalize_blueprint(update_data["blueprint"])
         old_blueprint = wf.blueprint or {"nodes": [], "edges": [], "viewport": {}}
 
     for field, value in update_data.items():
@@ -1215,7 +1190,21 @@ async def validate_blueprint_endpoint(
         validate_blueprint as _validate,
     )
 
+    from fim_one.core.workflow.blueprint_v2 import (
+        BlueprintSchemaError,
+        normalize_for_save,
+    )
+
     blueprint = body.get("blueprint", body)
+    try:
+        blueprint = normalize_for_save(blueprint)
+    except BlueprintSchemaError as exc:
+        return ApiResponse(data={
+            "valid": False,
+            "error": str(exc),
+            "field_errors": exc.errors,
+            "warnings": [],
+        })
     try:
         parsed = parse_blueprint(blueprint)
         warnings = _validate(parsed)
@@ -1250,7 +1239,8 @@ async def validate_workflow(
 
     Parses the blueprint, runs ``validate_blueprint()`` for warnings, and
     returns a structured ``WorkflowValidateResponse`` with topology order.
-    Does **not** execute the workflow.
+    Does **not** execute the workflow. Author only: the analysis names the
+    blueprint's nodes.
     """
     from fim_one.core.workflow.parser import (
         BlueprintValidationError,
@@ -1259,7 +1249,7 @@ async def validate_workflow(
         validate_blueprint as _validate,
     )
 
-    wf = await _get_accessible_workflow(workflow_id, current_user.id, db)
+    wf = await _get_owned_workflow(workflow_id, current_user.id, db)
 
     blueprint = wf.blueprint
     if not blueprint or not blueprint.get("nodes"):
@@ -1301,35 +1291,6 @@ async def validate_workflow(
 # ---------------------------------------------------------------------------
 
 
-# Track running workflow tasks for cancellation
-_running_tasks: dict[str, asyncio.Event] = {}
-
-
-async def _deliver_webhook(
-    webhook_url: str,
-    payload: dict[str, Any],
-) -> None:
-    """Fire-and-forget POST to a workflow webhook URL.
-
-    Logs errors but never raises — callers should schedule this as a
-    background task so it doesn't block the SSE stream.
-    """
-    try:
-        async with get_safe_async_client(timeout=10.0) as client:
-            resp = await client.post(
-                webhook_url,
-                json=payload,
-                headers={
-                    "Content-Type": "application/json",
-                    "X-Webhook-Source": "fim-one",
-                },
-            )
-            logger.info(
-                "Webhook delivered to %s — status %d", webhook_url, resp.status_code
-            )
-    except Exception:
-        logger.exception("Webhook delivery failed for %s", webhook_url)
-
 
 @router.post("/{workflow_id}/run")
 async def run_workflow(
@@ -1364,13 +1325,22 @@ async def run_workflow(
             )
             return ApiResponse(data=dry_result.model_dump())  # type: ignore[return-value]
 
+        is_author = wf.user_id == current_user.id
         try:
             parsed = parse_blueprint(blueprint)
         except BlueprintValidationError as exc:
             dry_result = WorkflowDryRunResponse(
                 valid=False,
-                errors=[str(exc)],
+                # Parse errors name nodes; other users only learn that it
+                # is invalid.
+                errors=[str(exc) if is_author else "The workflow blueprint is invalid"],
             )
+            return ApiResponse(data=dry_result.model_dump())  # type: ignore[return-value]
+
+        if not is_author:
+            # The plan, warnings and topology describe the blueprint, which
+            # only its author sees.
+            dry_result = WorkflowDryRunResponse(valid=True, errors=[])
             return ApiResponse(data=dry_result.model_dump())  # type: ignore[return-value]
 
         bp_warnings = _validate(parsed)
@@ -1412,197 +1382,43 @@ async def run_workflow(
         return ApiResponse(data=dry_result.model_dump())  # type: ignore[return-value]
 
     # --- Normal execution mode (SSE streaming) ---
-
-    # LLM and Agent steps bill the runner's token quota, the same as chat and
-    # the unattended trigger paths; refuse up front when it's exhausted.
-    from fim_one.web.api.chat import _check_token_quota
-
-    await _check_token_quota(current_user.id)
-
-    # Create run record
-    run_id = str(uuid.uuid4())
-
-    # Atomically check rate limit and record the run start
-    allowed, rate_error = await _rate_limiter.acquire(current_user.id, run_id)
-    if not allowed:
-        raise AppError(
-            "workflow_rate_limited",
-            status_code=429,
-            detail=rate_error,
-        )
-
-    run = WorkflowRun(
-        id=run_id,
-        workflow_id=wf.id,
-        user_id=current_user.id,
-        blueprint_snapshot=wf.blueprint,
-        inputs=body.inputs,
-        status="pending",
+    from fim_one.core.workflow.run_service import (
+        RunMode,
+        RunRefusedError,
+        get_run_service,
     )
-    db.add(run)
-    await db.commit()
 
-    # Decrypt env vars if present
-    env_vars: dict[str, str] = {}
-    if wf.env_vars_blob:
-        try:
-            from fim_one.core.security.encryption import decrypt_credential
+    try:
+        started = await get_run_service().start_run(
+            wf,
+            caller_id=current_user.id,
+            inputs=body.inputs,
+            mode=RunMode.INTERACTIVE,
+        )
+    except RunRefusedError as exc:
+        raise _refused(exc) from None
 
-            env_vars = decrypt_credential(wf.env_vars_blob)
-        except Exception:
-            logger.warning("Failed to decrypt workflow env vars for %s", wf.id)
-
-    cancel_event = asyncio.Event()
-    _running_tasks[run_id] = cancel_event
-
-    run_timeout_ms = _run_timeout_ms(wf)
+    run_id = started.run_id
 
     async def generate() -> AsyncGenerator[str, None]:
-        start_time = time.time()
-        node_results: dict[str, Any] = {}
-        outputs: dict[str, Any] = {}
-        final_status = "completed"
-        error_msg: str | None = None
-        run_tokens = 0
-
+        # The run executes in the run service's background task, which
+        # persists it and releases its slot; this stream only relays events.
+        # Until runs are decoupled from the browser (T10 P5), a client that
+        # goes away cancels its run, however the disconnect is noticed.
         try:
             yield _sse("run_started", {"run_id": run_id, "status": "running"})
-
-            from fim_one.core.workflow.engine import WorkflowEngine
-            from fim_one.core.workflow.parser import parse_blueprint
-
-            blueprint = wf.blueprint
-            parsed = parse_blueprint(blueprint)
-
-            engine = WorkflowEngine(
-                max_concurrency=5,
-                cancel_event=cancel_event,
-                env_vars=env_vars,
-                run_id=run_id,
-                user_id=current_user.id,
-                workflow_id=wf.id,
-                workflow_timeout_ms=run_timeout_ms,
-            )
-
-            from fim_one.core.workflow.types import ExecutionContext as _EC
-
-            _sse_ctx = _EC(
-                run_id=run_id,
-                user_id=current_user.id,
-                workflow_id=wf.id,
-                env_vars=env_vars,
-                db_session_factory=create_session,
-            )
-
-            ait = engine.execute_streaming(parsed, body.inputs, context=_sse_ctx).__aiter__()
-            while True:
-                try:
-                    sse_event, sse_data = await asyncio.wait_for(
-                        ait.__anext__(), timeout=15.0
-                    )
-                except StopAsyncIteration:
-                    break
-                except asyncio.TimeoutError:
+            async for sse_event, sse_data in started.events(keepalive=15.0):
+                if await request.is_disconnected():
+                    return
+                if sse_event == "keepalive":
                     # Keepalive comment to prevent proxy/browser timeout
-                    if await request.is_disconnected():
-                        cancel_event.set()
-                        break
                     yield ": keepalive\n\n"
                     continue
-
-                # Check for client disconnect
-                if await request.is_disconnected():
-                    cancel_event.set()
-                    break
-
-                # Track node results for persistence
-                if sse_event in (
-                    "node_started",
-                    "node_completed",
-                    "node_failed",
-                    "node_skipped",
-                ):
-                    nid = sse_data.get("node_id", "")
-                    node_results[nid] = {
-                        **(node_results.get(nid) or {}),
-                        **sse_data,
-                    }
-
-                if sse_event == "run_completed":
-                    outputs = sse_data.get("outputs", {})
-                    final_status = sse_data.get("status", "completed")
-                    run_tokens = int(sse_data.get("total_tokens", 0) or 0)
-                elif sse_event == "run_failed":
-                    final_status = "failed"
-                    error_msg = sse_data.get("error")
-                    run_tokens = int(sse_data.get("total_tokens", 0) or 0)
-
                 yield _sse(sse_event, sse_data)
-
-        except asyncio.CancelledError:
-            final_status = "cancelled"
-            error_msg = "Execution cancelled"
-            yield _sse("run_completed", {
-                "run_id": run_id,
-                "status": "cancelled",
-                "error": error_msg,
-            })
-        except Exception as exc:
-            final_status = "failed"
-            error_msg = f"{type(exc).__name__}: {exc}"
-            logger.exception("Workflow execution failed for run %s", run_id)
-            yield _sse("run_failed", {
-                "run_id": run_id,
-                "status": "failed",
-                "error": error_msg,
-            })
         finally:
-            _running_tasks.pop(run_id, None)
-            await _rate_limiter.record_run_end(current_user.id, run_id)
-            elapsed_ms = int((time.time() - start_time) * 1000)
-
-            # Persist run results
-            try:
-                async with create_session() as persist_db:
-                    result = await persist_db.execute(
-                        select(WorkflowRun).where(WorkflowRun.id == run_id)
-                    )
-                    db_run = result.scalar_one_or_none()
-                    if db_run:
-                        db_run.status = final_status
-                        db_run.outputs = outputs or None
-                        db_run.node_results = node_results or None
-                        db_run.started_at = datetime.fromtimestamp(
-                            start_time, tz=UTC
-                        )
-                        db_run.completed_at = datetime.now(UTC)
-                        db_run.duration_ms = elapsed_ms
-                        db_run.error = error_msg
-                        db_run.total_tokens = run_tokens
-                        await persist_db.commit()
-            except Exception:
-                logger.exception("Failed to persist workflow run %s", run_id)
-
-            # Fire webhook if configured (fire-and-forget)
-            wf_webhook_url = getattr(wf, "webhook_url", None)
-            if wf_webhook_url and final_status in ("completed", "failed"):
-                webhook_payload = {
-                    "event": (
-                        "run_completed"
-                        if final_status == "completed"
-                        else "run_failed"
-                    ),
-                    "workflow_id": wf.id,
-                    "run_id": run_id,
-                    "status": final_status,
-                    "outputs": outputs or None,
-                    "error": error_msg,
-                    "duration_ms": elapsed_ms,
-                    "completed_at": datetime.now(UTC).isoformat(),
-                }
-                spawn_background(_deliver_webhook(wf_webhook_url, webhook_payload))
-
-            yield _sse("end", {})
+            if not started.done:
+                started.cancel()
+        yield _sse("end", {})
 
     return StreamingResponse(
         generate(),
@@ -1634,156 +1450,52 @@ async def batch_run_workflow(
     """
     wf = await _get_accessible_workflow(workflow_id, current_user.id, db)
 
-    if not wf.blueprint or not wf.blueprint.get("nodes"):
-        raise AppError("blueprint_empty", status_code=400)
+    from fim_one.core.workflow.run_service import (
+        RunMode,
+        RunRefusedError,
+        get_run_service,
+    )
 
-    from fim_one.web.api.chat import _check_token_quota
-
-    await _check_token_quota(current_user.id)
-
-    # Pre-check rate limit for the total batch size before starting
-    allowed, rate_error = await _rate_limiter.check_rate_limit(current_user.id)
-    if not allowed:
-        raise AppError(
-            "workflow_rate_limited",
-            status_code=429,
-            detail=rate_error,
-        )
-
-    from fim_one.core.workflow.engine import WorkflowEngine
-    from fim_one.core.workflow.parser import BlueprintValidationError, parse_blueprint
-
+    service = get_run_service()
+    # Checked once for the whole batch; each item then runs as the caller.
     try:
-        parsed = parse_blueprint(wf.blueprint)
-    except BlueprintValidationError as exc:
-        raise AppError(f"invalid_blueprint: {exc}", status_code=400)
-
-    # Decrypt env vars if present
-    env_vars: dict[str, str] = {}
-    if wf.env_vars_blob:
-        try:
-            from fim_one.core.security.encryption import decrypt_credential
-
-            env_vars = decrypt_credential(wf.env_vars_blob)
-        except Exception:
-            logger.warning("Failed to decrypt workflow env vars for %s", wf.id)
+        authorized = await service.authorize(
+            wf, current_user.id, RunMode.BATCH, check_rate=True
+        )
+    except RunRefusedError as exc:
+        raise _refused(exc) from None
 
     batch_id = str(uuid.uuid4())
     semaphore = asyncio.Semaphore(body.max_parallel)
 
     async def _run_single(index: int, inputs: dict[str, Any]) -> BatchRunResultItem:
         """Execute one workflow run within the batch."""
-        run_id = str(uuid.uuid4())
-        start_time = time.time()
-        final_status = "completed"
-        outputs: dict[str, Any] = {}
-        node_results: dict[str, Any] = {}
-        error_msg: str | None = None
-        run_tokens = 0
-
-        # Create run record
-        try:
-            async with create_session() as run_db:
-                run = WorkflowRun(
-                    id=run_id,
-                    workflow_id=wf.id,
-                    user_id=current_user.id,
-                    blueprint_snapshot=wf.blueprint,
-                    inputs=inputs,
-                    status="pending",
-                )
-                run_db.add(run)
-                await run_db.commit()
-        except Exception:
-            logger.exception("Failed to create run record for batch item %d", index)
-            return BatchRunResultItem(
-                run_id=run_id,
-                inputs=inputs,
-                status="failed",
-                error="Failed to create run record",
-                duration_ms=0,
-            )
-
         async with semaphore:
             try:
-                engine = WorkflowEngine(
-                    max_concurrency=5,
-                    env_vars=env_vars,
-                    run_id=run_id,
-                    user_id=current_user.id,
-                    workflow_id=wf.id,
-                    workflow_timeout_ms=_run_timeout_ms(wf),
+                outcome = await service.run_to_completion(
+                    wf,
+                    caller_id=current_user.id,
+                    inputs=inputs,
+                    mode=RunMode.BATCH,
+                    authorized=authorized,
+                    acquire_slot=False,
                 )
-
-                from fim_one.core.workflow.types import ExecutionContext as _BatchEC
-
-                _batch_ctx = _BatchEC(
-                    run_id=run_id,
-                    user_id=current_user.id,
-                    workflow_id=wf.id,
-                    env_vars=env_vars,
-                    db_session_factory=create_session,
-                )
-
-                async for event_name, event_data in engine.execute_streaming(
-                    parsed, inputs, context=_batch_ctx
-                ):
-                    if event_name in (
-                        "node_started",
-                        "node_completed",
-                        "node_failed",
-                        "node_skipped",
-                    ):
-                        nid = event_data.get("node_id", "")
-                        node_results[nid] = {
-                            **(node_results.get(nid) or {}),
-                            **event_data,
-                        }
-                    elif event_name == "run_completed":
-                        outputs = event_data.get("outputs", {})
-                        final_status = event_data.get("status", "completed")
-                        run_tokens = int(event_data.get("total_tokens", 0) or 0)
-                    elif event_name == "run_failed":
-                        final_status = "failed"
-                        error_msg = event_data.get("error")
-                        run_tokens = int(event_data.get("total_tokens", 0) or 0)
-
             except Exception as exc:
-                final_status = "failed"
-                error_msg = f"{type(exc).__name__}: {exc}"
-                logger.exception(
-                    "Batch run %s item %d failed", batch_id, index
+                logger.exception("Batch run %s item %d failed", batch_id, index)
+                return BatchRunResultItem(
+                    run_id="",
+                    inputs=inputs,
+                    status="failed",
+                    error=f"{type(exc).__name__}: {exc}",
+                    duration_ms=0,
                 )
-
-        elapsed_ms = int((time.time() - start_time) * 1000)
-
-        # Persist run results
-        try:
-            async with create_session() as persist_db:
-                result = await persist_db.execute(
-                    select(WorkflowRun).where(WorkflowRun.id == run_id)
-                )
-                db_run = result.scalar_one_or_none()
-                if db_run:
-                    db_run.status = final_status
-                    db_run.outputs = outputs or None
-                    db_run.node_results = node_results or None
-                    db_run.started_at = datetime.fromtimestamp(start_time, tz=UTC)
-                    db_run.completed_at = datetime.now(UTC)
-                    db_run.duration_ms = elapsed_ms
-                    db_run.error = error_msg
-                    db_run.total_tokens = run_tokens
-                    await persist_db.commit()
-        except Exception:
-            logger.exception("Failed to persist batch run %s item %d", batch_id, index)
-
         return BatchRunResultItem(
-            run_id=run_id,
+            run_id=outcome.run_id,
             inputs=inputs,
-            status=final_status,
-            outputs=outputs or None,
-            error=error_msg,
-            duration_ms=elapsed_ms,
+            status=outcome.status,
+            outputs=outcome.outputs or None,
+            error=outcome.error,
+            duration_ms=outcome.duration_ms,
         )
 
     # Launch all runs concurrently (bounded by semaphore)
@@ -1919,8 +1631,7 @@ async def test_node(
     Useful for debugging individual nodes during workflow development.
     """
     from fim_one.core.workflow.nodes import get_executor
-    from fim_one.core.workflow.types import ExecutionContext, NodeType
-    from fim_one.core.workflow.variable_store import VariableStore
+    from fim_one.core.workflow.types import NodeType
 
     # Node types that cannot be meaningfully tested in isolation
     non_testable = frozenset({NodeType.START, NodeType.END})
@@ -1947,27 +1658,20 @@ async def test_node(
 
     # Parse node type
     node_data = target_node_raw.get("data", {}) or {}
-    raw_type = node_data.get("type", "") or target_node_raw.get("type", "")
-    if not raw_type:
-        raise AppError("node_type_missing", status_code=400)
 
     from fim_one.core.workflow.parser import (
-        _resolve_node_type,
+        BlueprintValidationError,
+        parse_error_strategy,
         parse_timeout_ms,
-        resolve_raw_node_type,
+        resolve_node_type,
     )
-    from fim_one.core.workflow.types import (
-        ErrorStrategy,
-        WorkflowNodeDef,
-    )
+    from fim_one.core.workflow.types import WorkflowNodeDef
 
     try:
-        resolved_type = resolve_raw_node_type(target_node_raw)
-        node_type = (
-            resolved_type if resolved_type is not None else _resolve_node_type(raw_type)
-        )
-    except ValueError as exc:
-        raise AppError(f"invalid_node_type: {exc}", status_code=400)
+        node_type = resolve_node_type(target_node_raw)
+        error_strategy = parse_error_strategy(node_data.get("error_strategy"))
+    except BlueprintValidationError as exc:
+        raise AppError(f"invalid_node_type: {exc}", status_code=400) from None
 
     # Reject non-testable node types
     if node_type in non_testable:
@@ -1978,16 +1682,6 @@ async def test_node(
         )
 
     # Build a WorkflowNodeDef from raw data
-    raw_error_strategy = node_data.get("error_strategy", "")
-    error_strategy = ErrorStrategy.STOP_WORKFLOW
-    if raw_error_strategy:
-        try:
-            error_strategy = ErrorStrategy(
-                raw_error_strategy.lower().replace("-", "_")
-            )
-        except ValueError:
-            pass
-
     timeout_ms = parse_timeout_ms(node_data.get("timeout_ms"), node_type)
 
     node_def = WorkflowNodeDef(
@@ -1999,79 +1693,26 @@ async def test_node(
         timeout_ms=timeout_ms,
     )
 
-    # Merge workflow env vars with user-provided overrides
-    env_vars: dict[str, str] = {}
-    if wf.env_vars_blob:
-        try:
-            from fim_one.core.security.encryption import decrypt_credential
-
-            env_vars = decrypt_credential(wf.env_vars_blob)
-        except Exception:
-            logger.warning("Failed to decrypt workflow env vars for %s", wf.id)
-
-    # User-provided env_vars override the stored ones
-    env_vars.update(body.env_vars)
-
-    # Populate variable store with mock variables and env vars
-    store = VariableStore(env_vars=env_vars)
-    for key, value in body.variables.items():
-        await store.set(key, value)
-
-    # Build execution context (temporary run_id, no real run record)
-    context = ExecutionContext(
-        run_id=f"test-{uuid.uuid4()}",
-        user_id=current_user.id,
-        workflow_id=wf.id,
-        env_vars=env_vars,
-    )
-
-    # Resolve executor and run the node with a timeout
     try:
-        executor = get_executor(node_type)
+        get_executor(node_type)
     except ValueError as exc:
-        raise AppError(f"executor_not_found: {exc}", status_code=400)
+        raise AppError(f"executor_not_found: {exc}", status_code=400) from None
 
-    start_time = time.time()
+    from fim_one.core.workflow.run_service import RunRefusedError, get_run_service
+
+    # Same principal, quota, plan and env rules as a full run; the tokens a
+    # model-backed node uses count toward the tester's quota.
     try:
-        result = await asyncio.wait_for(
-            executor.execute(node_def, store, context),
-            timeout=timeout_ms / 1000,
+        result, snapshot = await get_run_service().test_node(
+            wf,
+            caller_id=current_user.id,
+            node=node_def,
+            variables=body.variables,
+            env_overrides=body.env_vars,
         )
-    except asyncio.TimeoutError:
-        elapsed_ms = int((time.time() - start_time) * 1000)
-        snapshot = await store.snapshot()
-        return ApiResponse(
-            data=NodeTestResponse(
-                node_id=body.node_id,
-                node_type=node_type.value,
-                status="failed",
-                error=f"Node execution timed out after {timeout_ms / 1000:.0f} seconds",
-                duration_ms=elapsed_ms,
-                variables_after=snapshot,
-            ).model_dump()
-        )
-    except Exception as exc:
-        elapsed_ms = int((time.time() - start_time) * 1000)
-        snapshot = await store.snapshot()
-        logger.warning(
-            "Test-node execution error for node %s in workflow %s: %s",
-            body.node_id,
-            wf.id,
-            exc,
-        )
-        return ApiResponse(
-            data=NodeTestResponse(
-                node_id=body.node_id,
-                node_type=node_type.value,
-                status="failed",
-                error=f"{type(exc).__name__}: {exc}",
-                duration_ms=elapsed_ms,
-                variables_after=snapshot,
-            ).model_dump()
-        )
+    except RunRefusedError as exc:
+        raise _refused(exc) from None
 
-    # Success path
-    snapshot = await store.snapshot()
     return ApiResponse(
         data=NodeTestResponse(
             node_id=body.node_id,
@@ -2202,9 +1843,10 @@ async def get_workflow_variables(
 
     Used by the frontend variable-picker dropdowns in node config panels.
     For each node the response includes the node_type, title, and a list of
-    declared output variables with name and type.
+    declared output variables with name and type. Author only: the map
+    lists every node of the blueprint, which other users are not shown.
     """
-    wf = await _get_accessible_workflow(workflow_id, current_user.id, db)
+    wf = await _get_owned_workflow(workflow_id, current_user.id, db)
 
     from fim_one.core.workflow.nodes import EXECUTOR_REGISTRY
     from fim_one.core.workflow.parser import parse_blueprint
@@ -2279,8 +1921,8 @@ async def list_workflow_versions(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> PaginatedResponse:
-    """List all versions for a workflow, newest first."""
-    await _get_accessible_workflow(workflow_id, current_user.id, db)
+    """List all versions for a workflow, newest first. Author only."""
+    await _get_version_owner_workflow(workflow_id, current_user.id, db)
 
     base = select(WorkflowVersion).where(WorkflowVersion.workflow_id == workflow_id)
 
@@ -2312,8 +1954,8 @@ async def get_workflow_version(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
-    """Get a specific workflow version by ID."""
-    await _get_accessible_workflow(workflow_id, current_user.id, db)
+    """Get a specific workflow version by ID. Author only."""
+    await _get_version_owner_workflow(workflow_id, current_user.id, db)
 
     result = await db.execute(
         select(WorkflowVersion).where(
@@ -2401,7 +2043,10 @@ async def list_workflow_runs(
     # Verify access to the workflow
     await _get_accessible_workflow(workflow_id, current_user.id, db)
 
-    base = select(WorkflowRun).where(WorkflowRun.workflow_id == workflow_id)
+    base = select(WorkflowRun).where(
+        WorkflowRun.workflow_id == workflow_id,
+        _own_runs_clause(current_user.id),
+    )
     if status:
         base = base.where(WorkflowRun.status == status)
 
@@ -2437,9 +2082,10 @@ async def get_workflow_stats(
     Includes total runs, success/failure rates, average duration, and the
     last run timestamp.  Useful for dashboard cards and editor status bars.
     """
-    await _get_accessible_workflow(workflow_id, current_user.id, db)
+    wf = await _get_accessible_workflow(workflow_id, current_user.id, db)
+    scope = _run_stats_clauses(wf, current_user.id)
 
-    base = select(WorkflowRun).where(WorkflowRun.workflow_id == workflow_id)
+    base = select(WorkflowRun).where(*scope)
 
     # Total runs
     total_result = await db.execute(
@@ -2463,7 +2109,7 @@ async def get_workflow_stats(
     for status_val in ("completed", "failed", "cancelled", "running", "pending"):
         count_result = await db.execute(
             select(func.count()).where(
-                WorkflowRun.workflow_id == workflow_id,
+                *scope,
                 WorkflowRun.status == status_val,
             )
         )
@@ -2472,7 +2118,7 @@ async def get_workflow_stats(
     # Average duration of completed runs
     avg_result = await db.execute(
         select(func.avg(WorkflowRun.duration_ms)).where(
-            WorkflowRun.workflow_id == workflow_id,
+            *scope,
             WorkflowRun.status == "completed",
             WorkflowRun.duration_ms.isnot(None),
         )
@@ -2482,7 +2128,7 @@ async def get_workflow_stats(
     # Last run timestamp
     last_result = await db.execute(
         select(WorkflowRun.created_at)
-        .where(WorkflowRun.workflow_id == workflow_id)
+        .where(*scope)
         .order_by(WorkflowRun.created_at.desc())
         .limit(1)
     )
@@ -2517,13 +2163,14 @@ async def get_workflow_node_stats(
     per-node success rate, average duration, and failure count.  Useful for
     identifying bottleneck or flaky nodes.
     """
-    await _get_accessible_workflow(workflow_id, current_user.id, db)
+    wf = await _get_accessible_workflow(workflow_id, current_user.id, db)
 
-    # Fetch recent runs that have node_results
+    # Fetch recent runs that have node_results. Only status and duration are
+    # read from them, so the author may aggregate over every run.
     result = await db.execute(
         select(WorkflowRun.node_results)
         .where(
-            WorkflowRun.workflow_id == workflow_id,
+            *_run_stats_clauses(wf, current_user.id),
             WorkflowRun.node_results.isnot(None),
         )
         .order_by(WorkflowRun.created_at.desc())
@@ -2616,11 +2263,11 @@ async def get_workflow_analytics(
     most-failed nodes, and average node count per run.  The ``days`` query
     param controls the lookback window (default 30, max 365).
     """
-    await _get_accessible_workflow(workflow_id, current_user.id, db)
+    wf = await _get_accessible_workflow(workflow_id, current_user.id, db)
 
     cutoff = datetime.now(UTC) - timedelta(days=days)
     base_filter = [
-        WorkflowRun.workflow_id == workflow_id,
+        *_run_stats_clauses(wf, current_user.id),
         WorkflowRun.created_at >= cutoff,
     ]
 
@@ -2795,7 +2442,10 @@ async def export_workflow_runs(
     """
     wf = await _get_accessible_workflow(workflow_id, current_user.id, db)
 
-    base = select(WorkflowRun).where(WorkflowRun.workflow_id == workflow_id)
+    base = select(WorkflowRun).where(
+        WorkflowRun.workflow_id == workflow_id,
+        _own_runs_clause(current_user.id),
+    )
     if status:
         base = base.where(WorkflowRun.status == status)
 
@@ -2847,6 +2497,7 @@ async def get_workflow_run(
         select(WorkflowRun).where(
             WorkflowRun.id == run_id,
             WorkflowRun.workflow_id == workflow_id,
+            _own_runs_clause(current_user.id),
         )
     )
     run = result.scalar_one_or_none()
@@ -2863,15 +2514,9 @@ async def cancel_workflow_run(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
-    # Verify ownership
-    await _get_owned_workflow(workflow_id, current_user.id, db)
-
-    cancel_event = _running_tasks.get(run_id)
-    if cancel_event:
-        cancel_event.set()
-        return ApiResponse(data={"cancelled": True, "run_id": run_id})
-
-    # If not running, check if it exists and update status
+    # The runner may cancel their own run; the author may cancel any run of
+    # the workflow. The run must belong to this workflow either way.
+    wf = await _get_accessible_workflow(workflow_id, current_user.id, db)
     result = await db.execute(
         select(WorkflowRun).where(
             WorkflowRun.id == run_id,
@@ -2879,8 +2524,15 @@ async def cancel_workflow_run(
         )
     )
     run = result.scalar_one_or_none()
-    if run is None:
+    if run is None or (
+        run.user_id != current_user.id and wf.user_id != current_user.id
+    ):
         raise AppError("workflow_run_not_found", status_code=404)
+
+    from fim_one.core.workflow.run_service import get_run_service
+
+    if get_run_service().cancel_run(run_id):
+        return ApiResponse(data={"cancelled": True, "run_id": run_id})
 
     if run.status in ("pending", "running"):
         run.status = "cancelled"
@@ -2942,6 +2594,7 @@ async def delete_workflow_run(
         select(WorkflowRun).where(
             WorkflowRun.id == run_id,
             WorkflowRun.workflow_id == workflow_id,
+            _own_runs_clause(current_user.id),
         )
     )
     run = result.scalar_one_or_none()
@@ -2971,6 +2624,7 @@ async def clear_workflow_runs(
     del_result = cast(CursorResult[Any], await db.execute(
         delete(WorkflowRun).where(
             WorkflowRun.workflow_id == workflow_id,
+            _own_runs_clause(current_user.id),
             WorkflowRun.status.in_(["completed", "failed", "cancelled"]),
         )
     ))
@@ -3054,24 +2708,16 @@ async def import_workflow(
         raise AppError("import_invalid_format", status_code=400)
 
     # Validate blueprint structure: must have nodes with at least a start node
-    raw_blueprint = data.blueprint
-    nodes = raw_blueprint.get("nodes", [])
-    if not nodes:
+    # Exports written before blueprint v2 are upgraded here, once.
+    if not (data.blueprint or {}).get("nodes"):
         raise AppError("import_invalid_blueprint", status_code=400)
-
-    has_start = any(
-        (n.get("data", {}) or {}).get("type", "").upper() == "START"
-        or n.get("type", "").upper() == "START"
-        for n in nodes
-    )
-    if not has_start:
-        raise AppError("import_invalid_blueprint", status_code=400)
+    raw_blueprint = normalize_blueprint(data.blueprint)
 
     # Parse the blueprint so the resolver can work with typed node definitions
     try:
         parsed_bp = parse_blueprint(raw_blueprint)
     except Exception:
-        raise AppError("import_invalid_blueprint", status_code=400)
+        raise AppError("import_invalid_blueprint", status_code=400) from None
 
     # Resolve external references
     user_org_ids = await get_user_org_ids(current_user.id, db)
@@ -3096,7 +2742,7 @@ async def import_workflow(
         name=name,
         icon=data.icon,
         description=data.description,
-        blueprint=data.blueprint,
+        blueprint=raw_blueprint,
         input_schema=data.input_schema,
         output_schema=data.output_schema,
         status="draft",
@@ -3137,15 +2783,9 @@ async def get_workflow_env(
     """Return the env-var key names (not values) for a workflow."""
     wf = await _get_owned_workflow(workflow_id, current_user.id, db)
 
-    keys: list[str] = []
-    if wf.env_vars_blob:
-        try:
-            from fim_one.core.security.encryption import decrypt_credential
+    from fim_one.core.workflow.run_service import decrypt_workflow_env
 
-            env_vars = decrypt_credential(wf.env_vars_blob)
-            keys = list(env_vars.keys())
-        except Exception:
-            logger.warning("Failed to decrypt workflow env vars for %s", wf.id)
+    keys = list(decrypt_workflow_env(wf).keys())
 
     return ApiResponse(data={"keys": keys})
 
@@ -3191,12 +2831,22 @@ async def generate_workflow_api_key(
     The key is returned in the response and is only shown once.
     If an existing key exists, it is replaced.
     """
+    from fim_one.web.services.workflow_trigger_keys import generate_trigger_key
+
     wf = await _get_owned_workflow(workflow_id, current_user.id, db)
 
-    # Generate a new API key: wf_ prefix + 43-char token = ~46 chars total
-    new_key = f"wf_{secrets.token_urlsafe(32)}"
-    wf.api_key = new_key
+    # wf_ prefix + 43-char token. Only the hash and a display prefix are
+    # stored; the plain key is returned this once.
+    new_key, key_hash, key_prefix = generate_trigger_key()
+    wf.api_key_hash = key_hash
+    wf.api_key_prefix = key_prefix
     await db.commit()
+    logger.info(
+        "Workflow %s trigger key %s generated by user %s",
+        wf.id,
+        key_prefix,
+        current_user.id,
+    )
 
     response = WorkflowApiKeyResponse(
         api_key=new_key,
@@ -3214,10 +2864,18 @@ async def revoke_workflow_api_key(
     """Revoke the API key for a workflow, disabling external triggers."""
     wf = await _get_owned_workflow(workflow_id, current_user.id, db)
 
-    if not wf.api_key:
+    if not wf.api_key_hash:
         raise AppError("no_api_key", status_code=404, detail="Workflow has no API key")
 
-    wf.api_key = None
+    revoked_prefix = wf.api_key_prefix
+    wf.api_key_hash = None
+    wf.api_key_prefix = None
     await db.commit()
+    logger.info(
+        "Workflow %s trigger key %s revoked by user %s",
+        wf.id,
+        revoked_prefix,
+        current_user.id,
+    )
 
     return ApiResponse(data={"revoked": True, "workflow_id": wf.id})

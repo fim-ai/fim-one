@@ -31,7 +31,7 @@ import type {
 interface RunPanelProps {
   isOpen: boolean
   isRunning: boolean
-  startVariables: StartNodeData["variables"]
+  startVariables: NonNullable<StartNodeData["variables"]>
   nodeResults: Record<string, NodeRunResult> | null
   finalOutputs: Record<string, unknown> | null
   finalError: string | null
@@ -819,7 +819,7 @@ export function RunPanel({
                       </label>
                       <Input
                         className="h-7 text-xs"
-                        placeholder={v.default_value ?? ""}
+                        placeholder={v.default_value == null ? "" : String(v.default_value)}
                         value={inputValues[v.name] ?? ""}
                         onChange={(e) => handleInputChange(v.name, e.target.value)}
                       />

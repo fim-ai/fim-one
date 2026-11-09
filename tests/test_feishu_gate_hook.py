@@ -665,3 +665,136 @@ class TestAsHook:
         listed = registry.list_hooks(HookPoint.PRE_TOOL_USE)
         assert listed[0].name == "feishu_gate"
         assert listed[0].priority == 10
+
+
+class TestChannelOrgBoundary:
+    """A bound approval channel is used only inside the agent's organization."""
+
+    async def _foreign_channel(
+        self, session_factory: async_sessionmaker[AsyncSession], owner_id: str
+    ) -> str:
+        async with session_factory() as db:
+            other = Organization(
+                id=str(uuid.uuid4()),
+                name="OtherCo",
+                slug=f"other-{uuid.uuid4().hex[:6]}",
+                owner_id=owner_id,
+            )
+            db.add(other)
+            channel = Channel(
+                id=str(uuid.uuid4()),
+                name="Other Feishu",
+                type="feishu",
+                org_id=other.id,
+                created_by=owner_id,
+                config={"app_id": "cli_y", "app_secret": "s", "chat_id": "oc_other"},
+            )
+            db.add(channel)
+            await db.commit()
+        return channel.id
+
+    @pytest.mark.asyncio
+    async def test_channel_outside_agent_org_is_not_used(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        seed: dict[str, Any],
+    ) -> None:
+        # Agent in DemoCo bound to OtherCo's channel.
+        channel_id = await self._foreign_channel(session_factory, seed["user_id"])
+        assert await self._channel_only_sends(
+            session_factory, seed, org_id=seed["org_id"], channel_id=channel_id
+        ) is False
+
+    @pytest.mark.asyncio
+    async def test_personal_agent_uses_owner_org_channel(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        seed: dict[str, Any],
+    ) -> None:
+        from fim_one.db.models.organization import OrgMembership
+
+        async with session_factory() as db:
+            db.add(OrgMembership(org_id=seed["org_id"], user_id=seed["user_id"], role="member"))
+            await db.commit()
+        assert await self._channel_only_sends(
+            session_factory, seed, org_id=None, channel_id=seed["channel_id"]
+        ) is True
+
+    @pytest.mark.asyncio
+    async def test_personal_agent_cannot_use_foreign_org_channel(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        seed: dict[str, Any],
+    ) -> None:
+        # Owner is not a member of DemoCo (seed adds no membership).
+        assert await self._channel_only_sends(
+            session_factory, seed, org_id=None, channel_id=seed["channel_id"]
+        ) is False
+
+    async def _channel_only_sends(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        seed: dict[str, Any],
+        *,
+        org_id: str | None,
+        channel_id: str,
+    ) -> bool:
+        await _seed_agent(
+            session_factory,
+            user_id=seed["user_id"],
+            org_id=org_id,
+            agent_id="agent-cross",
+            confirmation_mode="channel_only",
+            approval_channel_id=channel_id,
+        )
+        hook = create_feishu_gate_hook(
+            session_factory=session_factory, timeout_seconds=5, poll_interval_seconds=0.02
+        )
+        ctx = _make_context(org_id=org_id, user_id=seed["user_id"], agent_id="agent-cross")
+        send_mock = AsyncMock(return_value=ChannelSendResult(ok=True))
+        with patch(
+            "fim_one.core.channels.feishu.FeishuChannel.send_interactive_card",
+            new=send_mock,
+        ), _decide_on_create(session_factory, "approved"):
+            await hook.execute(ctx)
+        return send_mock.await_count > 0
+
+
+class TestApprovalChannelBinding:
+    """Saving an agent checks the approval channel's organization."""
+
+    @pytest.mark.asyncio
+    async def test_member_may_bind_own_org_channel(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        seed: dict[str, Any],
+    ) -> None:
+        from fim_one.db.models.organization import OrgMembership
+        from fim_one.web.api.agents import _validate_binding_ownership
+
+        async with session_factory() as db:
+            db.add(OrgMembership(org_id=seed["org_id"], user_id=seed["user_id"], role="member"))
+            await db.commit()
+            await _validate_binding_ownership(
+                seed["user_id"], db, approval_channel_id=seed["channel_id"]
+            )
+
+    @pytest.mark.asyncio
+    async def test_non_member_cannot_bind(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        seed: dict[str, Any],
+    ) -> None:
+        from fim_one.web.api.agents import _validate_binding_ownership
+        from fim_one.web.exceptions import AppError
+
+        async with session_factory() as db:
+            outsider = User(id=str(uuid.uuid4()), username="eve", email="eve@test.com")
+            db.add(outsider)
+            await db.commit()
+            for channel_id in (seed["channel_id"], "no-such-channel"):
+                with pytest.raises(AppError) as exc:
+                    await _validate_binding_ownership(
+                        outsider.id, db, approval_channel_id=channel_id
+                    )
+                assert exc.value.error_code == "approval_channel_denied"

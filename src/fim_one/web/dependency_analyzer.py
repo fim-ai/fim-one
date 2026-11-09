@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
-from fim_one.core.workflow.parser import resolve_raw_node_type
+from fim_one.core.workflow.blueprint_v2 import node_type_of
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -207,10 +207,7 @@ def extract_mcp_credential_schema(server: Any) -> dict[str, Any]:
 _WORKFLOW_NODE_REFS: dict[str, list[tuple[str, str]]] = {
     "AGENT": [("agent_id", "agent")],
     "CONNECTOR": [("connector_id", "connector")],
-    "KNOWLEDGE_RETRIEVAL": [
-        ("knowledge_base_id", "knowledge_base"),
-        ("kb_id", "knowledge_base"),
-    ],
+    "KNOWLEDGE_RETRIEVAL": [("kb_ids", "knowledge_base")],
     "MCP": [("server_id", "mcp_server")],
 }
 
@@ -431,9 +428,7 @@ async def _resolve_workflow(
         data: dict[str, Any] = node.get("data", {})
         if not isinstance(data, dict):
             continue
-        # The editor saves ``knowledgeRetrieval`` on node.type, templates save
-        # ``custom`` there and the real type on data.type — resolve both.
-        resolved_type = resolve_raw_node_type(node)
+        resolved_type = node_type_of(node)
         if resolved_type is None:
             continue
 
@@ -441,12 +436,15 @@ async def _resolve_workflow(
         if not field_specs:
             continue
 
+        refs: list[tuple[str, str]] = []
         for field_name, resource_type in field_specs:
-            ref_id = data.get(field_name)
-            if not ref_id or not isinstance(ref_id, str) or not ref_id.strip():
-                continue
-            ref_id = ref_id.strip()
+            value = data.get(field_name)
+            # A field holds one id (``agent_id``) or a list (``kb_ids``).
+            for item in value if isinstance(value, list) else [value]:
+                if item and isinstance(item, str) and item.strip():
+                    refs.append((item.strip(), resource_type))
 
+        for ref_id, resource_type in refs:
             if resource_type == "agent":
                 # Add the agent itself as a content dep, then recursively
                 # resolve its own deps (KBs, connectors, MCP servers, skills).

@@ -16,7 +16,6 @@ from sqlalchemy import case, distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.db import get_session
-from fim_one.web.auth import get_current_admin
 from fim_one.db.models import (
     Connector,
     ConnectorCallLog,
@@ -25,6 +24,8 @@ from fim_one.db.models import (
     Workflow,
     WorkflowRun,
 )
+from fim_one.db.models.workflow import history_run_clause
+from fim_one.web.auth import get_current_admin
 from fim_one.web.schemas.common import ApiResponse
 from fim_one.web.schemas.metrics import (
     ConnectorCallMetrics,
@@ -109,7 +110,10 @@ async def get_metrics_overview(
     ).scalar_one()
 
     # -- Workflow runs -------------------------------------------------------
-    wf_runs_base = select(WorkflowRun).where(WorkflowRun.created_at >= cutoff)
+    # Single-node test rows only carry token usage; they are not runs.
+    wf_runs_base = select(WorkflowRun).where(
+        WorkflowRun.created_at >= cutoff, history_run_clause()
+    )
 
     total_runs = (
         await db.execute(
@@ -124,6 +128,7 @@ async def get_metrics_overview(
             .where(
                 WorkflowRun.created_at >= cutoff,
                 WorkflowRun.status == "completed",
+                history_run_clause(),
             )
         )
     ).scalar_one()
@@ -134,6 +139,7 @@ async def get_metrics_overview(
             .where(
                 WorkflowRun.created_at >= cutoff,
                 WorkflowRun.duration_ms.isnot(None),
+                history_run_clause(),
             )
         )
     ).scalar_one()
@@ -376,7 +382,7 @@ async def get_workflow_performance(
                 ).label("avg_duration"),
             )
             .join(Workflow, Workflow.id == WorkflowRun.workflow_id)
-            .where(WorkflowRun.created_at >= cutoff)
+            .where(WorkflowRun.created_at >= cutoff, history_run_clause())
             .group_by(WorkflowRun.workflow_id, Workflow.name)
             .order_by(func.count().desc())
             .limit(50)
@@ -400,6 +406,7 @@ async def get_workflow_performance(
                     WorkflowRun.created_at >= cutoff,
                     WorkflowRun.workflow_id.in_(workflow_ids),
                     WorkflowRun.duration_ms.isnot(None),
+                    history_run_clause(),
                 )
                 .order_by(WorkflowRun.workflow_id, WorkflowRun.duration_ms)
             )

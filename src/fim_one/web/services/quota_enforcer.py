@@ -36,10 +36,12 @@ from __future__ import annotations
 
 import logging
 
+from fastapi import Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.db.models import BillingPlan, SystemSetting, User
+from fim_one.web.auth import get_current_user
 from fim_one.web.services.billing_flag import (
     ACCESS_MODEL_OFF,
     ACCESS_MODEL_PAID_ONLY,
@@ -206,4 +208,24 @@ async def is_user_unentitled(user_id: str, db: AsyncSession) -> bool:
     return plan_id is None
 
 
-__all__ = ["get_user_quota", "get_user_quota_by_id", "is_user_unentitled"]
+async def get_quota_checked_user(
+    user: User = Depends(get_current_user),  # noqa: B008
+) -> User:
+    """``get_current_user`` that also refuses an over-quota or unentitled user.
+
+    For endpoints that call a model outside chat (AI-assisted builders, KB and
+    DB chat, eval runs); chat runs the same check before each turn. These
+    calls are not yet counted in the user's usage.
+    """
+    from fim_one.web.api.chat import _check_token_quota
+
+    await _check_token_quota(user.id)
+    return user
+
+
+__all__ = [
+    "get_quota_checked_user",
+    "get_user_quota",
+    "get_user_quota_by_id",
+    "is_user_unentitled",
+]

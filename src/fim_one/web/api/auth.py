@@ -483,7 +483,7 @@ async def login_with_code(
     body: LoginWithCodeRequest,
     request: Request,
     db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> TokenResponse:
+) -> TokenResponse | JSONResponse:
     """Passwordless login using an email OTP code."""
     user = await db.scalar(
         select(User).options(selectinload(User.oauth_bindings)).where(User.email == body.email)
@@ -530,6 +530,14 @@ async def login_with_code(
     # Mark as verified
     verif.verified_at = datetime.now(UTC)
     await db.flush()
+
+    # 2FA check, same as /login: the email code replaces the password, not
+    # the second factor.
+    if user.totp_enabled:
+        await db.commit()
+        temp_token = _create_2fa_temp_token(user.id)
+        await _record_login(db, request, user, success=True, failure_reason="2fa_pending")
+        return JSONResponse(content={"requires_2fa": True, "temp_token": temp_token})
 
     # Issue tokens (same pattern as /login)
     access = create_access_token(user.id, user.email)
@@ -1542,6 +1550,8 @@ from fim_one.web.schemas.user_settings import (
 )
 
 _2FA_TEMP_TOKEN_EXPIRE_MINUTES = 5
+_2FA_MAX_FAILURES = 5
+_2FA_FAILURE_WINDOW_MINUTES = 15
 
 
 def _create_2fa_temp_token(user_id: str) -> str:
@@ -1711,6 +1721,22 @@ async def verify_2fa_login(
 
     if not user.totp_enabled or not user.totp_secret:
         raise AppError("2fa_not_enabled")
+
+    # Failed codes are counted per user, not per temp token: password, email
+    # code and OAuth sign-in can each mint a fresh token, so a per-token count
+    # would reset on every new sign-in.
+    window_start = datetime.now(UTC) - timedelta(minutes=_2FA_FAILURE_WINDOW_MINUTES)
+    recent_failures = await db.scalar(
+        select(func.count())
+        .select_from(LoginHistory)
+        .where(
+            LoginHistory.user_id == user.id,
+            LoginHistory.failure_reason == "2fa_code_invalid",
+            LoginHistory.created_at >= window_start,
+        )
+    )
+    if (recent_failures or 0) >= _2FA_MAX_FAILURES:
+        raise AppError("2fa_too_many_attempts", status_code=429)
 
     # Try TOTP code first
     totp = pyotp.TOTP(user.totp_secret)

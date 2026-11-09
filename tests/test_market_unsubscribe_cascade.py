@@ -268,7 +268,7 @@ class TestResolveWorkflowDeps:
             name="Test Workflow",
             blueprint={
                 "nodes": [
-                    {"id": "n1", "data": {"type": "connector", "connector_id": conn_id}},
+                    {"id": "n1", "type": "connector", "data": {"connector_id": conn_id}},
                 ],
                 "edges": [],
             },
@@ -292,7 +292,7 @@ class TestResolveWorkflowDeps:
             name="KB Workflow",
             blueprint={
                 "nodes": [
-                    {"id": "n1", "data": {"type": "knowledge_retrieval", "knowledge_base_id": kb_id}},
+                    {"id": "n1", "type": "knowledgeRetrieval", "data": {"kb_ids": [kb_id]}},
                 ],
                 "edges": [],
             },
@@ -316,7 +316,7 @@ class TestResolveWorkflowDeps:
             name="MCP Workflow",
             blueprint={
                 "nodes": [
-                    {"id": "n1", "data": {"type": "mcp", "server_id": server_id}},
+                    {"id": "n1", "type": "mcp", "data": {"server_id": server_id}},
                 ],
                 "edges": [],
             },

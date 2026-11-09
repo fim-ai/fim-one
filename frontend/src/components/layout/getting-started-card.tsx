@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
-import { Check, ChevronDown, ChevronUp, X, Plug, Bot, MessageSquare } from "lucide-react"
+import { Check, ChevronDown, ChevronUp, X, Bot, MessageSquare } from "lucide-react"
 import { motion } from "motion/react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
@@ -156,7 +156,6 @@ export function GettingStartedCard({ collapsed }: { collapsed: boolean }) {
   const [allDoneShown, setAllDoneShown] = useState(false)
 
   const steps = [
-    { key: "gsConnector", icon: Plug,          href: "/connectors", done: !!user?.has_connector },
     { key: "gsAgent",     icon: Bot,           href: "/agents",     done: !!user?.has_agent },
     { key: "gsChat",      icon: MessageSquare, href: "/new",        done: !!user?.has_conversation },
   ]

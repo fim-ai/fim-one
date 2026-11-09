@@ -375,7 +375,7 @@ class LLMExecutor:
             from fim_one.db import create_session
 
             # Get config from node data (accept both frontend and legacy keys)
-            prompt_template = node.data.get("prompt_template", "") or node.data.get("prompt", "")
+            prompt_template = node.data.get("prompt_template", "")
             system_prompt = node.data.get("system_prompt", "")
 
             # Interpolate variables in prompts
@@ -716,7 +716,7 @@ class AgentExecutor:
             from fim_one.web.deps import get_effective_fast_llm, get_tools
 
             agent_id = node.data.get("agent_id", "")
-            query_template = node.data.get("prompt_template", "") or node.data.get("query", "")
+            query_template = node.data.get("prompt_template", "")
 
             query = await store.interpolate(query_template) if query_template else ""
 
@@ -850,6 +850,44 @@ class AgentExecutor:
 # ---------------------------------------------------------------------------
 
 
+def _missing_identity(
+    node: WorkflowNodeDef, context: ExecutionContext, t0: float
+) -> NodeResult | None:
+    """Fail a node that resolves resources when the run has no user identity.
+
+    Visibility and credential checks are made against ``context.user_id``.
+    Without one there is nothing to check against, so the node fails rather
+    than skipping the checks.
+    """
+    if context.user_id:
+        return None
+    return NodeResult(
+        node_id=node.id,
+        status=NodeStatus.FAILED,
+        error="Workflow run has no user identity; cannot resolve resources",
+        duration_ms=_ms_since(t0),
+    )
+
+
+async def _disabled_kb_names(kb_ids: list[str]) -> list[str]:
+    """Return the names of the knowledge bases in *kb_ids* that are disabled."""
+    if not kb_ids:
+        return []
+    from sqlalchemy import select
+
+    from fim_one.db import create_session
+    from fim_one.db.models.knowledge_base import KnowledgeBase
+
+    async with create_session() as db:
+        rows = await db.execute(
+            select(KnowledgeBase.name).where(
+                KnowledgeBase.id.in_(kb_ids),
+                KnowledgeBase.is_active == False,  # noqa: E712
+            )
+        )
+        return [str(name) for name in rows.scalars().all()]
+
+
 class KnowledgeRetrievalExecutor:
     """Query the RAG pipeline for relevant knowledge."""
 
@@ -867,16 +905,23 @@ class KnowledgeRetrievalExecutor:
         context: ExecutionContext,
     ) -> NodeResult:
         t0 = time.time()
+        if (failed := _missing_identity(node, context, t0)) is not None:
+            return failed
         try:
             from fim_one.web.deps import get_kb_manager
 
-            # Frontend sends kb_id (singular string), legacy uses kb_ids (list)
-            kb_ids = node.data.get("kb_ids", [])
-            if not kb_ids:
-                single_id = node.data.get("kb_id", "")
-                if single_id:
-                    kb_ids = [single_id]
-            query_template = node.data.get("query_template", "") or node.data.get("query", "")
+            kb_ids: list[str] = list(node.data.get("kb_ids", []) or [])
+
+            # A disabled knowledge base is not queried (same rule as chat).
+            disabled = await _disabled_kb_names(kb_ids)
+            if disabled:
+                return NodeResult(
+                    node_id=node.id,
+                    status=NodeStatus.FAILED,
+                    error=f"Knowledge base '{disabled[0]}' is disabled",
+                    duration_ms=_ms_since(t0),
+                )
+            query_template = node.data.get("query_template", "")
             top_k = node.data.get("top_k", 5)
 
             query = await store.interpolate(query_template) if query_template else ""
@@ -954,12 +999,14 @@ class ConnectorExecutor:
         context: ExecutionContext,
     ) -> NodeResult:
         t0 = time.time()
+        if (failed := _missing_identity(node, context, t0)) is not None:
+            return failed
         try:
             from fim_one.core.tool.connector.adapter import ConnectorToolAdapter
             from fim_one.db import create_session
 
             connector_id = node.data.get("connector_id", "")
-            action_id = node.data.get("action_id", "") or node.data.get("action", "")
+            action_id = node.data.get("action_id", "")
             params_template = node.data.get("parameters", {})
 
             if not connector_id or not action_id:
@@ -989,14 +1036,14 @@ class ConnectorExecutor:
                 # connectors the runner owns or has subscribed to are usable —
                 # not any connector that merely exists by id (tightened from
                 # existence-only to match chat assembly + agent binding).
-                conn_stmt = select(Connector).where(Connector.id == connector_id)
-                if context.user_id:
-                    from fim_one.web.visibility import resolve_visibility
+                from fim_one.web.visibility import resolve_visibility
 
-                    _vis_clause, _, _ = await resolve_visibility(
-                        Connector, context.user_id, "connector", db
-                    )
-                    conn_stmt = conn_stmt.where(_vis_clause)
+                _vis_clause, _, _ = await resolve_visibility(
+                    Connector, context.user_id, "connector", db
+                )
+                conn_stmt = select(Connector).where(
+                    Connector.id == connector_id, _vis_clause
+                )
                 conn_result = await db.execute(conn_stmt)
                 connector = conn_result.scalar_one_or_none()
                 if not connector:
@@ -1007,6 +1054,15 @@ class ConnectorExecutor:
                             f"Connector '{connector_id}' not found or not "
                             "accessible to you"
                         ),
+                        duration_ms=_ms_since(t0),
+                    )
+
+                # A disabled connector is not callable (same rule as chat).
+                if not connector.is_active:
+                    return NodeResult(
+                        node_id=node.id,
+                        status=NodeStatus.FAILED,
+                        error=f"Connector '{connector.name}' is disabled",
                         duration_ms=_ms_since(t0),
                     )
 
@@ -1383,6 +1439,8 @@ class MCPExecutor:
         context: ExecutionContext,
     ) -> NodeResult:
         t0 = time.time()
+        if (failed := _missing_identity(node, context, t0)) is not None:
+            return failed
         mcp_client = None
         try:
             server_id: str = node.data.get("server_id", "")
@@ -1425,14 +1483,14 @@ class MCPExecutor:
                 # exists by id (previously existence-only, so a workflow
                 # referencing a foreign server_id could ride the owner's
                 # env/headers whenever allow_fallback was on).
-                server_stmt = select(MCPServer).where(MCPServer.id == server_id)
-                if context.user_id:
-                    from fim_one.web.visibility import resolve_visibility
+                from fim_one.web.visibility import resolve_visibility
 
-                    _vis_clause, _, _ = await resolve_visibility(
-                        MCPServer, context.user_id, "mcp_server", db
-                    )
-                    server_stmt = server_stmt.where(_vis_clause)
+                _vis_clause, _, _ = await resolve_visibility(
+                    MCPServer, context.user_id, "mcp_server", db
+                )
+                server_stmt = select(MCPServer).where(
+                    MCPServer.id == server_id, _vis_clause
+                )
                 result = await db.execute(server_stmt)
                 server = result.scalar_one_or_none()
 
@@ -1459,61 +1517,60 @@ class MCPExecutor:
                 effective_env: dict[str, str] | None = server.env
                 effective_headers: dict[str, str] | None = server.headers
 
-                if context.user_id:
-                    has_user_cred = False
-                    try:
-                        from fim_one.db.models.mcp_server_credential import (
-                            MCPServerCredential,
-                        )
+                has_user_cred = False
+                try:
+                    from fim_one.db.models.mcp_server_credential import (
+                        MCPServerCredential,
+                    )
 
-                        cred_result = await db.execute(
-                            select(MCPServerCredential).where(
-                                MCPServerCredential.server_id == server_id,
-                                MCPServerCredential.user_id == context.user_id,
-                            )
+                    cred_result = await db.execute(
+                        select(MCPServerCredential).where(
+                            MCPServerCredential.server_id == server_id,
+                            MCPServerCredential.user_id == context.user_id,
                         )
-                        cred = cred_result.scalar_one_or_none()
-                        if cred:
-                            env_dict: dict[str, str] = dict(cred.env_blob) if cred.env_blob else {}
-                            if env_dict:
-                                effective_env = {
-                                    **(effective_env or {}),
-                                    **env_dict,
-                                }
-                            headers_dict: dict[str, str] = dict(cred.headers_blob) if cred.headers_blob else {}
-                            if headers_dict:
-                                effective_headers = {
-                                    **(effective_headers or {}),
-                                    **headers_dict,
-                                }
-                            has_user_cred = bool(env_dict or headers_dict)
-                    except Exception:
-                        logger.warning(
-                            "Failed to load MCP credentials for user %s, server %s",
-                            context.user_id,
-                            server_id,
-                            exc_info=True,
-                        )
+                    )
+                    cred = cred_result.scalar_one_or_none()
+                    if cred:
+                        env_dict: dict[str, str] = dict(cred.env_blob) if cred.env_blob else {}
+                        if env_dict:
+                            effective_env = {
+                                **(effective_env or {}),
+                                **env_dict,
+                            }
+                        headers_dict: dict[str, str] = dict(cred.headers_blob) if cred.headers_blob else {}
+                        if headers_dict:
+                            effective_headers = {
+                                **(effective_headers or {}),
+                                **headers_dict,
+                            }
+                        has_user_cred = bool(env_dict or headers_dict)
+                except Exception:
+                    logger.warning(
+                        "Failed to load MCP credentials for user %s, server %s",
+                        context.user_id,
+                        server_id,
+                        exc_info=True,
+                    )
 
-                    # allow_fallback gate (align with chat.py MCP path): a
-                    # non-owner with no usable per-user credential must not
-                    # silently fall back to the owner's server-level env/headers.
-                    if (
-                        not has_user_cred
-                        and not getattr(server, "allow_fallback", True)
-                        and server.user_id != context.user_id
-                    ):
-                        return NodeResult(
-                            node_id=node.id,
-                            status=NodeStatus.FAILED,
-                            error=(
-                                f"MCP server '{server.name}' requires your own "
-                                "credentials (fallback to the owner's is "
-                                "disabled). Configure per-user credentials to "
-                                "use it in a workflow."
-                            ),
-                            duration_ms=_ms_since(t0),
-                        )
+                # allow_fallback gate (align with chat.py MCP path): a
+                # non-owner with no usable per-user credential must not
+                # silently fall back to the owner's server-level env/headers.
+                if (
+                    not has_user_cred
+                    and not getattr(server, "allow_fallback", True)
+                    and server.user_id != context.user_id
+                ):
+                    return NodeResult(
+                        node_id=node.id,
+                        status=NodeStatus.FAILED,
+                        error=(
+                            f"MCP server '{server.name}' requires your own "
+                            "credentials (fallback to the owner's is "
+                            "disabled). Configure per-user credentials to "
+                            "use it in a workflow."
+                        ),
+                        duration_ms=_ms_since(t0),
+                    )
 
             # Connect to MCP server and discover tools
             from fim_one.core.mcp import MCPClient

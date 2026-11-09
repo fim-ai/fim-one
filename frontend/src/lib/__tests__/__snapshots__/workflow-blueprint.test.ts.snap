@@ -1,0 +1,191 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`serializeBlueprint > produces a v2 blueprint (snapshot) 1`] = `
+{
+  "edges": [
+    {
+      "id": "e0",
+      "source": "start_1",
+      "target": "end_1",
+    },
+    {
+      "id": "e1",
+      "source": "end_1",
+      "target": "llm_1",
+    },
+    {
+      "id": "e2",
+      "source": "llm_1",
+      "target": "conditionBranch_1",
+    },
+    {
+      "id": "e3",
+      "source": "conditionBranch_1",
+      "sourceHandle": "source-default",
+      "target": "agent_1",
+    },
+    {
+      "id": "e4",
+      "source": "agent_1",
+      "target": "knowledgeRetrieval_1",
+    },
+    {
+      "id": "e5",
+      "source": "knowledgeRetrieval_1",
+      "target": "connector_1",
+    },
+    {
+      "id": "e6",
+      "source": "connector_1",
+      "target": "humanIntervention_1",
+    },
+    {
+      "id": "e7",
+      "source": "humanIntervention_1",
+      "target": "mcp_1",
+    },
+  ],
+  "nodes": [
+    {
+      "data": {
+        "label": "start step",
+        "note": "editor note",
+        "variables": [],
+      },
+      "id": "start_1",
+      "position": {
+        "x": 0,
+        "y": 0,
+      },
+      "type": "start",
+    },
+    {
+      "data": {
+        "label": "end step",
+        "note": "editor note",
+        "output_mapping": {},
+      },
+      "id": "end_1",
+      "position": {
+        "x": 200,
+        "y": 0,
+      },
+      "type": "end",
+    },
+    {
+      "data": {
+        "label": "llm step",
+        "note": "editor note",
+        "output_variable": "llm_result",
+        "prompt_template": "",
+        "temperature": 0.7,
+      },
+      "id": "llm_1",
+      "position": {
+        "x": 400,
+        "y": 0,
+      },
+      "type": "llm",
+    },
+    {
+      "data": {
+        "conditions": [],
+        "label": "conditionBranch step",
+        "mode": "expression",
+        "note": "editor note",
+      },
+      "id": "conditionBranch_1",
+      "position": {
+        "x": 600,
+        "y": 0,
+      },
+      "type": "conditionBranch",
+    },
+    {
+      "data": {
+        "agent_id": "",
+        "label": "agent step",
+        "note": "editor note",
+        "output_variable": "agent_result",
+        "prompt_template": "",
+      },
+      "id": "agent_1",
+      "position": {
+        "x": 800,
+        "y": 0,
+      },
+      "type": "agent",
+    },
+    {
+      "data": {
+        "kb_ids": [],
+        "label": "knowledgeRetrieval step",
+        "note": "editor note",
+        "output_variable": "kb_result",
+        "query_template": "",
+        "top_k": 5,
+      },
+      "id": "knowledgeRetrieval_1",
+      "position": {
+        "x": 1000,
+        "y": 0,
+      },
+      "type": "knowledgeRetrieval",
+    },
+    {
+      "data": {
+        "action_id": "",
+        "connector_id": "",
+        "label": "connector step",
+        "note": "editor note",
+        "output_variable": "connector_result",
+        "parameters": {},
+      },
+      "id": "connector_1",
+      "position": {
+        "x": 1200,
+        "y": 0,
+      },
+      "type": "connector",
+    },
+    {
+      "data": {
+        "assignee": "",
+        "label": "humanIntervention step",
+        "note": "editor note",
+        "output_variable": "approval_result",
+        "prompt_message": "",
+        "timeout_hours": 24,
+      },
+      "id": "humanIntervention_1",
+      "position": {
+        "x": 1400,
+        "y": 0,
+      },
+      "type": "humanIntervention",
+    },
+    {
+      "data": {
+        "label": "mcp step",
+        "note": "editor note",
+        "output_variable": "mcp_result",
+        "parameters": {},
+        "server_id": "",
+        "tool_name": "",
+      },
+      "id": "mcp_1",
+      "position": {
+        "x": 1600,
+        "y": 0,
+      },
+      "type": "mcp",
+    },
+  ],
+  "schema_version": 2,
+  "viewport": {
+    "x": 10,
+    "y": 20,
+    "zoom": 1.5,
+  },
+}
+`;

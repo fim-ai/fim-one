@@ -15,6 +15,7 @@ from fim_one.core.model.types import ChatMessage
 from fim_one.core.utils import get_language_directive
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_user
+from fim_one.web.services.quota_enforcer import get_quota_checked_user
 from fim_one.core.model.structured import structured_llm_call
 from fim_one.web.deps import get_effective_fast_llm
 from fim_one.db.models.connector import Connector, ConnectorAction
@@ -265,7 +266,7 @@ def _build_messages(
 @router.post("/ai/create", response_model=ApiResponse)
 async def ai_create_connector(
     body: AICreateConnectorRequest,
-    current_user: User = Depends(get_current_user),  # noqa: B008
+    current_user: User = Depends(get_quota_checked_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     """Create a new connector using AI from natural language or OpenAPI URL."""
@@ -399,7 +400,7 @@ async def ai_create_connector(
 async def ai_generate_actions(
     connector_id: str,
     body: AIGenerateActionsRequest,
-    current_user: User = Depends(get_current_user),  # noqa: B008
+    current_user: User = Depends(get_quota_checked_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     """Generate new actions for a connector using AI."""
@@ -475,7 +476,7 @@ async def ai_generate_actions(
 async def ai_refine_action(
     connector_id: str,
     body: AIRefineActionRequest,
-    current_user: User = Depends(get_current_user),  # noqa: B008
+    current_user: User = Depends(get_quota_checked_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     """Refine connector actions using AI instructions."""

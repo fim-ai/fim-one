@@ -1,5 +1,6 @@
 "use client"
 
+import { defaultNodeData } from "@/lib/workflow-blueprint"
 import { useState, useCallback, useRef, useEffect, useMemo } from "react"
 import {
   BaseEdge,
@@ -16,17 +17,6 @@ import { resolveEdgeLabel } from "./edges/labeled-edge"
 import { categories, itemByType } from "./node-palette"
 import type { WorkflowNodeType } from "@/types/workflow"
 
-const defaultNodeData: Record<WorkflowNodeType, Record<string, unknown>> = {
-  start: { variables: [] },
-  end: { output_mapping: {} },
-  llm: { prompt_template: "", output_variable: "llm_result", temperature: 0.7 },
-  conditionBranch: { mode: "expression", conditions: [] },
-  agent: { agent_id: "", output_variable: "agent_result" },
-  knowledgeRetrieval: { kb_id: "", query_template: "", top_k: 5, output_variable: "kb_result" },
-  connector: { connector_id: "", action: "", parameters: {}, output_variable: "connector_result" },
-  humanIntervention: { prompt_message: "", assignee: "", timeout_hours: 24, output_variable: "approval_result" },
-  mcp: { server_id: "", tool_name: "", parameters: {}, output_variable: "mcp_result" },
-}
 
 export function AddNodeEdge({
   id,
@@ -154,7 +144,7 @@ export function AddNodeEdge({
         id: newNodeId,
         type: nodeType,
         position: { x: midX - 110, y: midY - 30 },
-        data: { ...defaultNodeData[nodeType] },
+        data: defaultNodeData(nodeType),
       }
 
       // Remove the current edge and add two new edges

@@ -90,5 +90,9 @@
   "db_password_required": "Les paramètres de connexion ont changé. Saisissez à nouveau le mot de passe pour tester.",
   "session_required": "Cette action nécessite de se connecter à votre compte ; les clés API ne peuvent pas être utilisées.",
   "api_key_scope_denied": "Les scopes de cette clé API ne permettent pas cette requête.",
-  "api_key_scope_escalation": "Une clé API ne peut pas créer une clé avec des scopes plus larges que les siens."
+  "api_key_scope_escalation": "Une clé API ne peut pas créer une clé avec des scopes plus larges que les siens.",
+  "ip_not_allowed": "L'accès depuis votre adresse IP n'est pas autorisé. Contactez votre administrateur.",
+  "ip_rule_self_lockout": "Cette modification bloquerait votre propre adresse ({ip}), elle n'a donc pas été enregistrée.",
+  "2fa_too_many_attempts": "Trop de codes incorrects. Attendez 15 minutes et reconnectez-vous.",
+  "approval_channel_denied": "Le canal d'approbation doit appartenir à une organisation dont vous êtes membre."
 }

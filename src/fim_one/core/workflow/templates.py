@@ -16,7 +16,7 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 
-# React Flow component key the editor renders each backend node type with.
+# v2 node type name (the editor's React Flow key) for each engine node type.
 _EDITOR_NODE_TYPES: dict[str, str] = {
     "START": "start",
     "END": "end",
@@ -46,7 +46,7 @@ def _node(
         "id": node_id,
         "type": _EDITOR_NODE_TYPES[node_type],
         "position": {"x": x, "y": y},
-        "data": {"type": node_type, **data},
+        "data": dict(data),
     }
 
 
@@ -81,6 +81,7 @@ _SIMPLE_LLM_CHAIN: dict[str, Any] = {
     "icon": "MessageSquare",
     "category": "basic",
     "blueprint": {
+        "schema_version": 2,
         "nodes": [
             _node(
                 "start_1",
@@ -145,6 +146,7 @@ _CONDITIONAL_ROUTER: dict[str, Any] = {
     "icon": "GitBranch",
     "category": "intermediate",
     "blueprint": {
+        "schema_version": 2,
         "nodes": [
             _node(
                 "start_1",
@@ -274,6 +276,7 @@ _KNOWLEDGE_QA: dict[str, Any] = {
     "icon": "BookOpen",
     "category": "advanced",
     "blueprint": {
+        "schema_version": 2,
         "nodes": [
             _node(
                 "start_1",
@@ -297,8 +300,8 @@ _KNOWLEDGE_QA: dict[str, Any] = {
                 "KNOWLEDGE_RETRIEVAL",
                 {
                     "label": "Knowledge Retrieval",
-                    "knowledge_base_id": "",
-                    "query": "{{input.query}}",
+                    "kb_ids": [],
+                    "query_template": "{{input.query}}",
                     "top_k": 5,
                 },
                 x=400,
@@ -347,6 +350,7 @@ _AGENT_WITH_KB: dict[str, Any] = {
     "icon": "Bot",
     "category": "ai",
     "blueprint": {
+        "schema_version": 2,
         "nodes": [
             _node(
                 "start_1",
@@ -365,6 +369,7 @@ _AGENT_WITH_KB: dict[str, Any] = {
                 "KNOWLEDGE_RETRIEVAL",
                 {
                     "label": "Retrieve Context",
+                    "kb_ids": [],
                     "query_template": "{{start_1.question}}",
                     "top_k": 5,
                 },
@@ -376,7 +381,7 @@ _AGENT_WITH_KB: dict[str, Any] = {
                 "AGENT",
                 {
                     "label": "AI Agent",
-                    "prompt": (
+                    "prompt_template": (
                         "Answer the following question using the provided context.\n\n"
                         "Context:\n{{kb_1.output}}\n\n"
                         "Question: {{start_1.question}}"
@@ -417,6 +422,7 @@ _HUMAN_APPROVAL_PIPELINE: dict[str, Any] = {
     "icon": "UserCheck",
     "category": "advanced",
     "blueprint": {
+        "schema_version": 2,
         "nodes": [
             _node(
                 "start_1",
@@ -542,6 +548,7 @@ _CONNECTOR_ACTION: dict[str, Any] = {
     "icon": "Plug",
     "category": "integration",
     "blueprint": {
+        "schema_version": 2,
         "nodes": [
             _node(
                 "start_1",
@@ -566,7 +573,7 @@ _CONNECTOR_ACTION: dict[str, Any] = {
                 {
                     "label": "Connector Action",
                     "connector_id": "",
-                    "action": "",
+                    "action_id": "",
                     "parameters": {},
                     "output_variable": "connector_result",
                 },
@@ -622,6 +629,7 @@ _MCP_TOOL_CALL: dict[str, Any] = {
     "icon": "Cable",
     "category": "integration",
     "blueprint": {
+        "schema_version": 2,
         "nodes": [
             _node(
                 "start_1",

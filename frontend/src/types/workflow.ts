@@ -39,7 +39,42 @@ export interface WorkflowVariable {
   description: string
 }
 
+// Blueprint v2: node and node-data types are generated from the backend's
+// pydantic models (src/fim_one/core/workflow/blueprint_v2.py). Regenerate with
+// `uv run python scripts/gen_workflow_types.py`; never edit them here.
+import type {
+  AgentNodeData,
+  BranchCondition,
+  ConditionBranchNodeData,
+  ConnectorNodeData,
+  EndNodeData,
+  HumanInterventionNodeData,
+  KnowledgeRetrievalNodeData,
+  LLMNodeData,
+  MCPNodeData,
+  StartNodeData,
+  StartVariable,
+  WorkflowNodeV2Type,
+} from "./workflow-blueprint.generated"
+
+export type {
+  AgentNodeData,
+  BranchCondition,
+  ConnectorNodeData,
+  EndNodeData,
+  HumanInterventionNodeData,
+  KnowledgeRetrievalNodeData,
+  LLMNodeData,
+  MCPNodeData,
+  StartNodeData,
+  StartVariable,
+}
+
+/** Data of a Condition Branch node. */
+export type ConditionNodeData = ConditionBranchNodeData
+
 export interface WorkflowBlueprint {
+  schema_version?: number
   nodes: WorkflowNode[]
   edges: WorkflowEdge[]
   viewport: { x: number; y: number; zoom: number }
@@ -53,8 +88,6 @@ export interface WorkflowNode {
   type: WorkflowNodeType
   position: { x: number; y: number }
   data: Record<string, unknown>
-  error_strategy?: ErrorStrategy
-  timeout_ms?: number
 }
 
 export interface WorkflowEdge {
@@ -65,83 +98,7 @@ export interface WorkflowEdge {
   targetHandle?: string
 }
 
-export type WorkflowNodeType =
-  | "start"
-  | "end"
-  | "llm"
-  | "conditionBranch"
-  | "agent"
-  | "knowledgeRetrieval"
-  | "connector"
-  | "humanIntervention"
-  | "mcp"
-
-// --- Per-node data interfaces ---
-
-export interface StartNodeData {
-  variables: Array<{
-    name: string
-    type: string
-    default_value?: string
-    required?: boolean
-  }>
-}
-
-export interface EndNodeData {
-  output_mapping: Record<string, string>
-}
-
-export interface LLMNodeData {
-  system_prompt?: string
-  prompt_template: string
-  output_variable: string
-  temperature?: number
-  max_tokens?: number
-}
-
-export interface ConditionNodeData {
-  mode: "expression" | "llm"
-  conditions: Array<{
-    id: string
-    label: string
-    expression?: string
-    llm_prompt?: string
-  }>
-}
-
-export interface AgentNodeData {
-  agent_id: string
-  prompt_template?: string
-  output_variable: string
-}
-
-export interface KnowledgeRetrievalNodeData {
-  kb_id: string
-  query_template: string
-  top_k?: number
-  output_variable: string
-}
-
-export interface ConnectorNodeData {
-  connector_id: string
-  action: string
-  parameters: Record<string, string>
-  output_variable: string
-}
-
-export interface HumanInterventionNodeData {
-  prompt_message: string
-  assignee: string
-  timeout_hours: number
-  output_variable: string
-}
-
-export interface MCPNodeData {
-  server_id: string
-  tool_name: string
-  parameters: Record<string, unknown>
-  output_variable: string
-}
+export type WorkflowNodeType = WorkflowNodeV2Type
 
 // --- Validation types ---
 

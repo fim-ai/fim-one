@@ -26,7 +26,10 @@ class Workflow(UUIDPKMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     icon: Mapped[str | None] = mapped_column(String(100), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    blueprint: Any = Column(JSON, nullable=False)  # { nodes: [], edges: [], viewport: {} }
+    blueprint: Any = Column(JSON, nullable=False)  # blueprint v2 (core/workflow/blueprint_v2.py)
+    # Pre-v2 copy kept by migration t10p3c4d5e6f for one release; NULL for
+    # rows written as v2. Not read by the application.
+    blueprint_legacy: Any = Column(JSON, nullable=True)
     input_schema: Any = Column(JSON, nullable=True)  # extracted from Start node on save
     output_schema: Any = Column(JSON, nullable=True)  # extracted from End node on save
     status: Mapped[str] = mapped_column(String(20), default="draft")
@@ -68,10 +71,12 @@ class Workflow(UUIDPKMixin, TimestampMixin, Base):
     # Optional webhook URL — receives POST on run completion/failure
     webhook_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
-    # API key for external trigger (public endpoint, no user auth)
-    api_key: Mapped[str | None] = mapped_column(
+    # Trigger key for the public trigger endpoint, stored as a hex SHA-256
+    # hash plus a short display prefix; the plain key is shown only once.
+    api_key_hash: Mapped[str | None] = mapped_column(
         String(64), nullable=True, unique=True, index=True
     )
+    api_key_prefix: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
     # Encrypted env vars for workflow (stored as encrypted JSON)
     env_vars_blob: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -108,6 +113,9 @@ class WorkflowTemplate(UUIDPKMixin, TimestampMixin, Base):
     icon: Mapped[str] = mapped_column(String(100), nullable=False, default="🔄")
     category: Mapped[str] = mapped_column(String(100), nullable=False)
     blueprint: Any = Column(JSON, nullable=False)
+    # Pre-v2 copy kept by migration t10p3c4d5e6f for one release; NULL for
+    # rows written as v2. Not read by the application.
+    blueprint_legacy: Any = Column(JSON, nullable=True)
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False, server_default=sa.text("TRUE")
     )
@@ -131,6 +139,9 @@ class WorkflowRun(UUIDPKMixin, TimestampMixin, Base):
         String(36), ForeignKey("users.id"), nullable=False, index=True
     )
     blueprint_snapshot: Any = Column(JSON, nullable=False)  # frozen copy at run time
+    # Pre-v2 copy kept by migration t10p3c4d5e6f for one release; NULL for
+    # rows written as v2. Not read by the application.
+    blueprint_legacy: Any = Column(JSON, nullable=True)
     inputs: Any = Column(JSON, nullable=True)
     outputs: Any = Column(JSON, nullable=True)
     node_results: Any = Column(
@@ -154,10 +165,26 @@ class WorkflowRun(UUIDPKMixin, TimestampMixin, Base):
         Integer, nullable=False, default=0, server_default="0"
     )
 
+    # Entry point that started the run: interactive, batch, trigger,
+    # schedule, tool or test_node. NULL on rows written before the column
+    # existed; readers treat NULL as an ordinary run.
+    mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
     workflow: Mapped[Workflow] = relationship(back_populates="runs", lazy="raise")
     approvals: Mapped[list[WorkflowApproval]] = relationship(
         back_populates="run", lazy="raise", passive_deletes=True
     )
+
+
+# ``WorkflowRun.mode`` of a single-node test: such rows exist only so the
+# test's token usage counts toward quota.
+RUN_MODE_TEST_NODE = "test_node"
+
+
+def history_run_clause() -> Any:
+    """WHERE clause excluding single-node test rows from run history, counts,
+    rates and recent-run lists. Quota sums deliberately include them."""
+    return sa.or_(WorkflowRun.mode.is_(None), WorkflowRun.mode != RUN_MODE_TEST_NODE)
 
 
 class WorkflowApproval(UUIDPKMixin, TimestampMixin, Base):
@@ -205,6 +232,9 @@ class WorkflowVersion(UUIDPKMixin, Base):
     )
     version_number: Mapped[int] = mapped_column(Integer, nullable=False)
     blueprint: Any = Column(JSON, nullable=False)  # frozen snapshot
+    # Pre-v2 copy kept by migration t10p3c4d5e6f for one release; NULL for
+    # rows written as v2. Not read by the application.
+    blueprint_legacy: Any = Column(JSON, nullable=True)
     input_schema: Any = Column(JSON, nullable=True)
     output_schema: Any = Column(JSON, nullable=True)
     change_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
