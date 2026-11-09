@@ -6,6 +6,7 @@ from typing import Any
 
 __all__ = [
     "ACCOUNT_DISABLED",
+    "AGENT_UNAVAILABLE",
     "APPROVAL_ASSIGNEE_NOT_IN_ORG",
     "CONFIRMATION_ALREADY_DECIDED",
     "CONFIRMATION_FORBIDDEN",
@@ -32,6 +33,7 @@ CONFIRMATION_NOT_FOUND = "confirmation_not_found"
 CONFIRMATION_FORBIDDEN = "confirmation_forbidden"
 CONFIRMATION_ALREADY_DECIDED = "confirmation_already_decided"
 APPROVAL_ASSIGNEE_NOT_IN_ORG = "approval_assignee_not_in_org"
+AGENT_UNAVAILABLE = "agent_unavailable"
 
 
 class AssemblyRefusal(Exception):  # noqa: N818 - a refusal is an outcome, not a fault

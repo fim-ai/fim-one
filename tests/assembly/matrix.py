@@ -43,6 +43,7 @@ import httpx
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from fim_one.core.assembly.errors import AssemblyRefusal
 from fim_one.core.security.encryption import encrypt_credential, encrypt_db_config
 from fim_one.db.models.agent import Agent
 from fim_one.db.models.connector import Connector, ConnectorAction
@@ -877,10 +878,15 @@ async def probe_chat_agent(
         results["workflow"] = Outcome(
             exposed=scene.ids["workflow"] in await chat._resolve_user_workflow_ids(scene.actor)
         )
-        # An agent chat cannot enter falls back to chat without an agent,
-        # with no error: nothing is surfaced.
-        entered = await chat._resolve_agent_config(scene.ids["agent"], None, scene.actor)
-        results["agent"] = Outcome(exposed=entered is not None)
+        # Entering the agent under test, as the chat endpoints do.
+        try:
+            entered = await chat._resolve_agent_config(
+                scene.ids["agent"], None, scene.actor, refuse_unavailable=True
+            )
+        except AssemblyRefusal as refusal:
+            results["agent"] = Outcome(exposed=False, refusal_code=refusal.error_code)
+        else:
+            results["agent"] = Outcome(exposed=entered is not None)
     return results
 
 
@@ -1219,18 +1225,6 @@ KNOWN_DEVIATIONS: tuple[Deviation, ...] = (
         ref="S10; design §1.1 rows 'wf-节点'; B15",
         removed_in="C1 phase 4",
         today=_runner_is_subject,
-    ),
-    Deviation(
-        name="chat-agent-entry-unchecked",
-        entries=("chat_agent",),
-        resources=("agent",),
-        what=(
-            "A switched-off agent still answers. An agent the caller cannot see is "
-            "not refused: the chat silently continues with no agent."
-        ),
-        ref="N3; design §1.1 row 1; B10; 待拍板 1",
-        removed_in="C1 phase 3",
-        today=_agent_entry_unchecked,
     ),
     Deviation(
         name="workflow-agent-node-unchecked",

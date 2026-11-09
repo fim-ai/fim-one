@@ -81,6 +81,7 @@ from fim_one.core.assembly.toolset import (
     kb_binding,
     mcp_tools,
 )
+from fim_one.core.assembly.errors import AGENT_UNAVAILABLE, AssemblyRefusal
 from fim_one.core.assembly.visibility import ResourceKind, authorize_use, list_usable
 from fim_one.core.agent.workspace import AgentWorkspace
 from fim_one.core.agent.guardrail import (
@@ -1213,31 +1214,40 @@ async def _resolve_agent_config(
     agent_id: str | None,
     conversation_id: str | None,
     user_id: str | None = None,
+    *,
+    refuse_unavailable: bool = False,
 ) -> dict[str, Any] | None:
     """Load agent configuration from DB.
 
     Resolution priority: explicit ``agent_id`` > conversation's bound agent.
-    When *user_id* is provided, the agent must belong to that user (returns
-    ``None`` otherwise) to prevent cross-user agent access.
+    When *user_id* is provided, the agent must be usable by that user: one
+    they own or are subscribed to, and switched on.
+
+    An agent that is not usable is, with ``refuse_unavailable``, a refusal
+    (the chat endpoints): ``agent_unavailable`` (409) when the conversation
+    is bound to it, so the user is told to start a new conversation;
+    ``resource_not_found`` / ``resource_inactive`` for an agent named
+    explicitly. Without it, ``None``: the caller carries on with no agent
+    (the composer's vision check; the workflow Agent step until C1 phase 4).
+
     Returns a dict with ``instructions``, ``tool_categories``,
     ``model_config_json``, ``kb_ids``, and ``grounding_config``, or ``None``.
     """
     from fim_one.db import create_session
     from fim_one.db.models import Agent, Conversation
 
-    resolved_id = agent_id
-
-    if not resolved_id and conversation_id:
+    async def _bound_agent_id() -> str | None:
+        if not conversation_id:
+            return None
         async with create_session() as session:
             conv_result = await session.execute(
                 sa_select(Conversation.agent_id).where(
                     Conversation.id == conversation_id,
                 )
             )
-            row = conv_result.scalar_one_or_none()
-            if row:
-                resolved_id = row
+            return conv_result.scalar_one_or_none() or None
 
+    resolved_id = agent_id or await _bound_agent_id()
     if not resolved_id:
         return None
 
@@ -1249,10 +1259,32 @@ async def _resolve_agent_config(
                 ResourceKind.AGENT,
                 [resolved_id],
             )
-            # Not applied here yet: a switched-off agent still answers
-            # (registered in tests/assembly/matrix.py).
-            _agents = _agent_decision.including("resource_inactive")
-            agent = _agents[0] if _agents else None
+            if not refuse_unavailable:
+                # The workflow Agent step keeps running a switched-off agent
+                # until C1 phase 4 (B16; registered in tests/assembly/matrix.py).
+                _agents = _agent_decision.including("resource_inactive")
+                agent = _agents[0] if _agents else None
+            elif _agent_decision.usable:
+                agent = _agent_decision.usable[0]
+            else:
+                refusal = _agent_decision.refused.get(resolved_id) or AssemblyRefusal(
+                    "resource_not_found", 404
+                )
+                # The explicit agent and the conversation's own are told
+                # apart only now, so a turn that goes through costs no
+                # extra query.
+                if not agent_id or await _bound_agent_id() == resolved_id:
+                    # The conversation's own agent: nothing the user can do
+                    # in this conversation puts it back.
+                    raise AssemblyRefusal(
+                        AGENT_UNAVAILABLE,
+                        409,
+                        "The agent this conversation uses is no longer available to you "
+                        "(unpublished, unsubscribed or switched off). Start a new "
+                        "conversation to continue.",
+                        {"agent_id": resolved_id, "reason": refusal.error_code},
+                    )
+                raise refusal
         else:
             agent_result = await session.execute(sa_select(Agent).where(Agent.id == resolved_id))
             agent = agent_result.scalar_one_or_none()
@@ -2932,7 +2964,9 @@ async def react_endpoint(
     if conversation_id:
         _parallel_tasks.append(_validate_conversation_ownership(conversation_id, current_user_id))
     _parallel_tasks.append(
-        _resolve_agent_config(agent_id, conversation_id, user_id=current_user_id)
+        _resolve_agent_config(
+            agent_id, conversation_id, user_id=current_user_id, refuse_unavailable=True
+        )
     )
     _parallel_results = await asyncio.gather(*_parallel_tasks)
     # _resolve_agent_config is always the last task appended
@@ -4243,7 +4277,9 @@ async def dag_endpoint(
             _validate_conversation_ownership(conversation_id, current_user_id)
         )
     _parallel_tasks_dag.append(
-        _resolve_agent_config(agent_id, conversation_id, user_id=current_user_id)
+        _resolve_agent_config(
+            agent_id, conversation_id, user_id=current_user_id, refuse_unavailable=True
+        )
     )
     _parallel_results_dag = await asyncio.gather(*_parallel_tasks_dag)
     # _resolve_agent_config is always the last task appended
@@ -5541,7 +5577,10 @@ async def auto_endpoint(
     async with _create_session() as _llm_db:
         fast_llm = await _resolve_fast_llm(
             await _resolve_agent_config(
-                body.agent_id, body.conversation_id, user_id=current_user_id
+                body.agent_id,
+                body.conversation_id,
+                user_id=current_user_id,
+                refuse_unavailable=True,
             ),
             _llm_db,
         )
