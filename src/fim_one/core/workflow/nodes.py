@@ -1592,13 +1592,12 @@ class MCPExecutor:
                     effective_env = own_env or None
                     effective_headers = own_headers or None
                 else:
+                    # What the runner saved replaces the server's values; it
+                    # is not laid over them key by key (same as chat).
                     if own_env:
-                        effective_env = {**(effective_env or {}), **own_env}
+                        effective_env = own_env
                     if own_headers:
-                        effective_headers = {
-                            **(effective_headers or {}),
-                            **own_headers,
-                        }
+                        effective_headers = own_headers
 
             # Connect to MCP server and discover tools
             from fim_one.core.mcp import MCPClient

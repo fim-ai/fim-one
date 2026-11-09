@@ -387,23 +387,20 @@ class TestWorkflowNodeFallbackOff:
 
 
 @pytest.mark.usefixtures("_passthrough_visibility")
-class TestWorkflowNodeUnchangedPaths:
+class TestWorkflowNodeOwnerAndFallbackOn:
     async def test_owner_uses_server_credentials(self) -> None:
         result, client = await _run_node(_server(), None, user_id=OWNER)
 
         assert result.status == NodeStatus.COMPLETED
         assert client.connect_streamable_http.await_args.kwargs["headers"] == OWNER_HEADERS
 
-    async def test_owner_credential_still_merges_over_server_values(self) -> None:
-        result, client = await _run_node(
-            _server(), _cred(headers={"Authorization": "Bearer other"}), user_id=OWNER
-        )
+    async def test_owner_credential_replaces_the_server_values(self) -> None:
+        """B3: the server's other headers used to ride along (key-by-key merge)."""
+        own = {"Authorization": "Bearer other"}
+        result, client = await _run_node(_server(), _cred(headers=own), user_id=OWNER)
 
         assert result.status == NodeStatus.COMPLETED
-        assert client.connect_streamable_http.await_args.kwargs["headers"] == {
-            "Authorization": "Bearer other",
-            "X-Tenant": "owner-tenant",
-        }
+        assert client.connect_streamable_http.await_args.kwargs["headers"] == own
 
     async def test_fallback_on_does_not_cover_a_failed_lookup(self) -> None:
         """The node connected with the owner's credentials after the error (B4)."""
@@ -425,13 +422,12 @@ class TestWorkflowNodeUnchangedPaths:
         assert result.status == NodeStatus.COMPLETED
         assert client.connect_streamable_http.await_args.kwargs["headers"] == OWNER_HEADERS
 
-    async def test_fallback_on_credential_still_merges_over_server_values(self) -> None:
+    async def test_fallback_on_credential_replaces_the_server_values(self) -> None:
+        """B3: with fallback on, the owner's other variables used to be sent too."""
+        own = {"API_KEY": "mine"}
         result, client = await _run_node(
-            _server(transport="stdio", allow_fallback=True), _cred(env={"API_KEY": "mine"})
+            _server(transport="stdio", allow_fallback=True), _cred(env=own)
         )
 
         assert result.status == NodeStatus.COMPLETED
-        assert client.connect_stdio.await_args.kwargs["env"] == {
-            "API_KEY": "mine",
-            "REGION": "owner-region",
-        }
+        assert client.connect_stdio.await_args.kwargs["env"] == own
