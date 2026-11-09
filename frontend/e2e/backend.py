@@ -7,7 +7,8 @@ Run from the repository root (``playwright.config.ts`` does this):
 What it sets up, and why each piece is here:
 
 * A fresh SQLite database, uploads and vector store under ``E2E_STATE_DIR``
-  (wiped on every start), so the smoke never touches the developer's data.
+  (wiped on every start), and that directory as the working directory, so
+  the smoke never writes into the checkout or touches the developer's data.
 * Every model endpoint (general, fast, reasoning, embeddings) pointed at the
   stub in ``e2e/stubs/server.mjs``. ``.env`` loading is switched off and
   model-related variables from the shell are dropped first, so a real key in
@@ -123,9 +124,13 @@ def _allow_loopback() -> None:
 
 
 def main() -> None:
-    os.chdir(REPO_ROOT)
     sys.path.insert(0, str(REPO_ROOT / "src"))
-    _, api_port = _configure_environment()
+    state_dir, api_port = _configure_environment()
+    # The app resolves several defaults against the working directory
+    # (uploads/kb, data/workspaces, data/dag_checkpoints) and some of them
+    # ignore UPLOADS_DIR. Run inside the state directory so that all of it
+    # lands there and nothing is written into the checkout.
+    os.chdir(state_dir)
     _migrate()
     _allow_loopback()
 

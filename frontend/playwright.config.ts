@@ -33,6 +33,8 @@ const stubUrl = `http://127.0.0.1:${stubPort}`
 process.env.E2E_API_URL = apiUrl
 process.env.E2E_STUB_URL = stubUrl
 process.env.E2E_MCP_STUB_PATH = path.join(__dirname, "e2e", "stubs", "mcp-stdio.mjs")
+process.env.E2E_STATE_DIR = path.join(__dirname, ".e2e-state")
+process.env.E2E_REPO_ROOT = repoRoot
 
 const webEnv = {
   NEXT_PUBLIC_API_URL: apiUrl,

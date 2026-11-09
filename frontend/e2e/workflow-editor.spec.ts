@@ -1,4 +1,6 @@
+import { existsSync } from "node:fs"
 import { readFile, writeFile } from "node:fs/promises"
+import path from "node:path"
 
 import { expect, test, type Page } from "@playwright/test"
 
@@ -67,6 +69,18 @@ test.beforeAll(async ({ request }) => {
 
 test.beforeEach(async ({ page }) => {
   await signIn(page, seeded.session)
+})
+
+test("the backend under test writes into its state directory, not into the checkout", () => {
+  // Seeding ingested a knowledge base document. The app stores it under a
+  // path relative to its working directory, which used to be the checkout.
+  const stateDir = process.env.E2E_STATE_DIR ?? ""
+  const repoRoot = process.env.E2E_REPO_ROOT ?? ""
+  expect(stateDir).not.toBe("")
+  expect(repoRoot).not.toBe("")
+  const stored = path.join("uploads", "kb", seeded.kbId, "smoke.md")
+  expect(existsSync(path.join(stateDir, stored))).toBe(true)
+  expect(existsSync(path.join(repoRoot, stored))).toBe(false)
 })
 
 /** Pick a variable in the picker that sits next to a field. */
