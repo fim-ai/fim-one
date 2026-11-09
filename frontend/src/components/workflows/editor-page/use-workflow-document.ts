@@ -116,9 +116,9 @@ export function useWorkflowDocument({
         // Trigger initial validation after load
         onBlueprintChanged()
       })
-      .catch(() => {
+      .catch((err) => {
         if (!cancelled) {
-          toast.error(t("workflowUpdateFailed"))
+          toastWorkflowError(err, t("workflowUpdateFailed"), tError, t)
           router.replace("/workflows")
         }
       })
@@ -128,7 +128,7 @@ export function useWorkflowDocument({
     return () => {
       cancelled = true
     }
-  }, [userId, workflowId, router, t, onBlueprintChanged, blueprintRef, trackNodeTypes])
+  }, [userId, workflowId, router, t, tError, onBlueprintChanged, blueprintRef, trackNodeTypes])
 
   // Dirty state beforeunload guard
   useEffect(() => {
@@ -174,11 +174,11 @@ export function useWorkflowDocument({
         const updated = await workflowApi.update(workflow.id, { status })
         setWorkflow(updated)
         toast.success(t("statusChanged"))
-      } catch {
-        toast.error(t("workflowUpdateFailed"))
+      } catch (err) {
+        toastWorkflowError(err, t("workflowUpdateFailed"), tError, t)
       }
     },
-    [workflow, t],
+    [workflow, t, tError],
   )
 
   const save = useCallback(async () => {
@@ -296,10 +296,10 @@ export function useWorkflowDocument({
       a.download = exportFileName(workflow.name)
       a.click()
       URL.revokeObjectURL(url)
-    } catch {
-      toast.error(t("workflowExportFailed"))
+    } catch (err) {
+      toastWorkflowError(err, t("workflowExportFailed"), tError, t)
     }
-  }, [workflow, t])
+  }, [workflow, t, tError])
 
   /** Replace the blueprint being edited with the one in an exported file's text. */
   const importFromText = useCallback(
@@ -371,10 +371,10 @@ export function useWorkflowDocument({
       await workflowApi.delete(workflow.id)
       toast.success(t("workflowDeleted"))
       router.replace("/workflows")
-    } catch {
-      toast.error(t("workflowDeleteFailed"))
+    } catch (err) {
+      toastWorkflowError(err, t("workflowDeleteFailed"), tError, t)
     }
-  }, [workflow, router, t])
+  }, [workflow, router, t, tError])
 
   /** Reload the workflow from the server after a version restore. */
   const reloadAfterRestore = useCallback(() => {
@@ -397,10 +397,10 @@ export function useWorkflowDocument({
         setLastSavedAt(new Date())
         onBlueprintChanged()
       })
-      .catch(() => {
-        toast.error(t("workflowUpdateFailed"))
+      .catch((err) => {
+        toastWorkflowError(err, t("workflowUpdateFailed"), tError, t)
       })
-  }, [workflowId, t, onBlueprintChanged, blueprintRef, trackNodeTypes])
+  }, [workflowId, t, tError, onBlueprintChanged, blueprintRef, trackNodeTypes])
 
   return {
     workflow,

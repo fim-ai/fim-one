@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
 import type { MutableRefObject } from "react"
 
+import { ApiError } from "@/lib/api"
+
 import { emptyBlueprint } from "@/components/workflows/editor-page/blueprint-derived"
 import { useWorkflowDocument } from "@/components/workflows/editor-page/use-workflow-document"
 import type { UserInfo } from "@/types/auth"
@@ -181,6 +183,65 @@ describe("useWorkflowDocument", () => {
       await waitFor(() => expect(result.current.isLoadingWorkflow).toBe(false))
       expect(router.replace).toHaveBeenCalledWith("/workflows")
       expect(toast.error).toHaveBeenCalledWith("workflowUpdateFailed")
+    })
+  })
+
+  describe("failures say why when the server gave a reason", () => {
+    // These actions used to show one fixed sentence whatever the server
+    // answered. A failure that carries an error code now shows its message;
+    // one without (network down) keeps the fixed sentence.
+    const refused = () =>
+      new ApiError(403, "Only the workflow's author can do this", "workflow_author_only", {})
+
+    it("status change", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      api.update.mockRejectedValueOnce(refused())
+      await act(() => result.current.changeStatus("active"))
+      expect(toast.error).toHaveBeenLastCalledWith(
+        "Only the workflow's author can do this",
+        expect.objectContaining({ id: "workflow_author_only" }),
+      )
+      api.update.mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      await act(() => result.current.changeStatus("active"))
+      expect(toast.error).toHaveBeenLastCalledWith("workflowUpdateFailed")
+    })
+
+    it("delete", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      api.delete.mockRejectedValueOnce(refused())
+      await act(() => result.current.deleteWorkflow())
+      expect(toast.error).toHaveBeenLastCalledWith(
+        "Only the workflow's author can do this",
+        expect.objectContaining({ id: "workflow_author_only" }),
+      )
+      expect(router.replace).not.toHaveBeenCalled()
+      api.delete.mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      await act(() => result.current.deleteWorkflow())
+      expect(toast.error).toHaveBeenLastCalledWith("workflowDeleteFailed")
+    })
+
+    it("export", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      api.export.mockRejectedValueOnce(refused())
+      await act(() => result.current.exportToFile())
+      expect(toast.error).toHaveBeenLastCalledWith(
+        "Only the workflow's author can do this",
+        expect.objectContaining({ id: "workflow_author_only" }),
+      )
+    })
+
+    it("loading", async () => {
+      api.get.mockRejectedValue(new ApiError(404, "Workflow not found", "workflow_not_found", {}))
+      const blueprintRef: MutableRefObject<WorkflowBlueprint> = { current: emptyBlueprint() }
+      const { result } = renderHook(() =>
+        useWorkflowDocument({ workflowId: "wf1", userId: "u1", blueprintRef, onBlueprintChanged: noop }),
+      )
+      await waitFor(() => expect(result.current.isLoadingWorkflow).toBe(false))
+      expect(toast.error).toHaveBeenLastCalledWith(
+        "Workflow not found",
+        expect.objectContaining({ id: "workflow_not_found" }),
+      )
+      expect(router.replace).toHaveBeenCalledWith("/workflows")
     })
   })
 

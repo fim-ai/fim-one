@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { MutableRefObject, RefObject } from "react"
-import { toast } from "sonner"
 import { useTranslations } from "next-intl"
 
 import { workflowApi } from "@/lib/api"
+import { toastWorkflowError } from "@/lib/workflow-errors"
 import type { ValidationResult } from "@/components/workflows/workflow-toolbar"
 import type { WorkflowEditorHandle } from "@/components/workflows/workflow-editor"
 import type { WorkflowBlueprint, WorkflowValidateResponse } from "@/types/workflow"
@@ -22,6 +22,7 @@ export function useWorkflowValidation(
   editorRef: RefObject<WorkflowEditorHandle | null>,
 ) {
   const t = useTranslations("workflows")
+  const tError = useTranslations("errors")
 
   // Validation state (client-side, debounced)
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null)
@@ -77,12 +78,12 @@ export function useWorkflowValidation(
     try {
       const result = await workflowApi.validateById(workflowId)
       setServerValidationResult(result)
-    } catch {
-      toast.error(t("validateFailed"))
+    } catch (err) {
+      toastWorkflowError(err, t("validateFailed"), tError, t)
     } finally {
       setIsServerValidating(false)
     }
-  }, [workflowId, t])
+  }, [workflowId, t, tError])
 
   return {
     validationResult,

@@ -4,6 +4,8 @@ import { toast } from "sonner"
 import { useTranslations } from "next-intl"
 
 import { orgApi, workflowApi } from "@/lib/api"
+import { getErrorMessage } from "@/lib/error-utils"
+import { toastWorkflowError } from "@/lib/workflow-errors"
 import type { UserOrg } from "@/lib/api"
 import type { WorkflowResponse } from "@/types/workflow"
 
@@ -14,6 +16,7 @@ export function useWorkflowPublishing(
 ) {
   const t = useTranslations("workflows")
   const to = useTranslations("organizations")
+  const tError = useTranslations("errors")
 
   const [showPublishDialog, setShowPublishDialog] = useState(false)
   const [showUnpublishDialog, setShowUnpublishDialog] = useState(false)
@@ -28,8 +31,12 @@ export function useWorkflowPublishing(
     orgApi.list().then((orgs) => {
       setUserOrgs(orgs)
       if (orgs.length > 0) setPublishOrgId(orgs[0].id)
-    }).catch(() => {}).finally(() => setOrgsLoading(false))
-  }, [])
+    }).catch((err) => {
+      // Without the list the dialog says there is no organisation to
+      // publish to; say that the list could not be loaded instead.
+      toast.error(getErrorMessage(err, tError))
+    }).finally(() => setOrgsLoading(false))
+  }, [tError])
 
   const confirmPublish = useCallback(async () => {
     if (!workflow || !publishOrgId) return
@@ -41,10 +48,10 @@ export function useWorkflowPublishing(
       })
       setWorkflow(updated)
       toast.success(t("workflowPublished"))
-    } catch {
-      toast.error(t("workflowPublishFailed"))
+    } catch (err) {
+      toastWorkflowError(err, t("workflowPublishFailed"), tError, t)
     }
-  }, [workflow, publishOrgId, setWorkflow, t])
+  }, [workflow, publishOrgId, setWorkflow, t, tError])
 
   const openUnpublishDialog = useCallback(() => {
     setShowUnpublishDialog(true)
@@ -57,10 +64,10 @@ export function useWorkflowPublishing(
       const updated = await workflowApi.unpublish(workflow.id)
       setWorkflow(updated)
       toast.success(t("workflowUnpublished"))
-    } catch {
-      toast.error(t("workflowUnpublishFailed"))
+    } catch (err) {
+      toastWorkflowError(err, t("workflowUnpublishFailed"), tError, t)
     }
-  }, [workflow, setWorkflow, t])
+  }, [workflow, setWorkflow, t, tError])
 
   const resubmit = useCallback(async () => {
     if (!workflow) return
@@ -68,10 +75,10 @@ export function useWorkflowPublishing(
       const updated = await workflowApi.resubmit(workflow.id)
       setWorkflow(updated)
       toast.success(to("resubmitSuccess"))
-    } catch {
-      toast.error(to("resubmitFailed"))
+    } catch (err) {
+      toastWorkflowError(err, to("resubmitFailed"), tError, t)
     }
-  }, [workflow, setWorkflow, to])
+  }, [workflow, setWorkflow, to, t, tError])
 
   // Find selected org for review notice
   const selectedOrg = publishOrgId
