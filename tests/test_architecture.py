@@ -28,7 +28,9 @@ SRC = Path(__file__).resolve().parent.parent / "src" / "fim_one"
 CORE = SRC / "core"
 
 # Subpackages that must remain entirely free of any fim_one.web reference.
-WEB_FREE_SUBPACKAGES = ("agent", "model", "planner")
+# ``assembly`` is where the rules shared by every entry point live; data only
+# the web layer has reaches it through ports the web layer registers.
+WEB_FREE_SUBPACKAGES = ("agent", "model", "planner", "assembly")
 
 
 class _ImportCollector(ast.NodeVisitor):
@@ -73,7 +75,7 @@ def _core_py_files() -> list[Path]:
 
 
 class TestCrownJewelSubpackagesAreWebFree:
-    """agent / model / planner must not reference fim_one.web in any form."""
+    """agent / model / planner / assembly must not reference fim_one.web in any form."""
 
     def test_no_web_reference_anywhere(self) -> None:
         offenders: list[str] = []
@@ -87,7 +89,7 @@ class TestCrownJewelSubpackagesAreWebFree:
                         rel = py.relative_to(SRC)
                         offenders.append(f"{rel}: imports {module}")
         assert not offenders, (
-            "core.{agent,model,planner} must stay web-free, but found:\n  "
+            "core.{agent,model,planner,assembly} must stay web-free, but found:\n  "
             + "\n  ".join(offenders)
         )
 

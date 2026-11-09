@@ -17,98 +17,16 @@ revocation applies to running conversations too.
 Org-scoped resources are surfaced via subscriptions that are created when
 org members subscribe from the Market page (or via auto-subscribe on
 resource creation / org membership join).
+
+The rule itself lives in :mod:`fim_one.core.assembly.visibility`, where chat
+and workflow nodes apply it at use time.  This module re-exports the two
+helpers the list pages under ``web/api/`` filter with.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from fim_one.core.assembly.visibility import (
+    build_visibility_filter,
+    resolve_visibility,
+)
 
-from sqlalchemy import and_, or_, select
-
-from fim_one.db.models.resource_subscription import ResourceSubscription
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-
-def build_visibility_filter(
-    model: Any,
-    user_id: str,
-    user_org_ids: list[str],  # kept for backward compat; unused after marketplace redesign
-    subscribed_ids: list[str] | None = None,
-) -> Any:
-    """Build a SQLAlchemy WHERE clause for visibility filtering.
-
-    Returns rows where:
-    - user owns the resource (any visibility), OR
-    - resource id is in the user's subscription list **and** the resource is
-      still shared (``visibility == "org"`` and ``publish_status`` is either
-      unset or ``approved``)
-
-    Org resources are now included via subscriptions (created when user
-    subscribes from the org scope in the Market page).  A subscription does
-    not survive the owner unpublishing: the share state is checked here on
-    every query rather than trusted from the subscription row.
-
-    For a higher-level helper that auto-fetches org IDs and subscriptions,
-    see :func:`resolve_visibility`.
-    """
-    conditions = [
-        model.user_id == user_id,  # own resources (any visibility)
-    ]
-
-    if subscribed_ids:
-        conditions.append(
-            and_(
-                model.id.in_(subscribed_ids),
-                model.visibility == "org",
-                or_(
-                    model.publish_status.is_(None),
-                    model.publish_status == "approved",
-                ),
-            )
-        )
-
-    return or_(*conditions)
-
-
-async def resolve_visibility(
-    model: Any,
-    user_id: str,
-    resource_type: str,
-    db: AsyncSession,
-) -> tuple[Any, list[str], list[str]]:
-    """High-level visibility resolver: org IDs + subscriptions in one call.
-
-    Parameters
-    ----------
-    model:
-        SQLAlchemy model class (Agent, Connector, MCPServer, etc.)
-    user_id:
-        Current user ID.
-    resource_type:
-        Subscription resource type (``"agent"``, ``"connector"``,
-        ``"mcp_server"``, ``"knowledge_base"``, ``"skill"``, ``"workflow"``).
-    db:
-        Async DB session.
-
-    Returns
-    -------
-    (filter_clause, user_org_ids, subscribed_ids)
-        - ``filter_clause``: ready-to-use SQLAlchemy WHERE clause
-        - ``user_org_ids``: list of org IDs the user belongs to
-        - ``subscribed_ids``: list of subscribed resource IDs
-    """
-    from fim_one.web.auth import get_user_org_ids
-
-    user_org_ids = await get_user_org_ids(user_id, db)
-    sub_result = await db.execute(
-        select(ResourceSubscription.resource_id).where(
-            ResourceSubscription.user_id == user_id,
-            ResourceSubscription.resource_type == resource_type,
-        )
-    )
-    subscribed_ids: list[str] = list(sub_result.scalars().all())
-    clause = build_visibility_filter(
-        model, user_id, user_org_ids, subscribed_ids=subscribed_ids,
-    )
-    return clause, user_org_ids, subscribed_ids
+__all__ = ["build_visibility_filter", "resolve_visibility"]

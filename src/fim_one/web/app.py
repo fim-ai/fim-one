@@ -38,6 +38,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 
 from fim_one import __version__
+from fim_one.core.assembly.errors import AssemblyRefusal
 
 from .exceptions import AppError
 from .api.admin import SETTING_MAINTENANCE_MODE, router as admin_router
@@ -425,6 +426,21 @@ def create_app() -> FastAPI:
                 "detail": exc.detail,
                 "error_code": exc.error_code,
                 "error_args": exc.detail_args,
+            },
+        )
+
+    @app.exception_handler(AssemblyRefusal)
+    async def assembly_refusal_handler(
+        request: Request, exc: AssemblyRefusal
+    ) -> JSONResponse:
+        # A refusal from the assembly layer that an endpoint let propagate:
+        # same body as an AppError with the same code.
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "detail": exc.detail,
+                "error_code": exc.error_code,
+                "error_args": exc.detail_args or {},
             },
         )
 

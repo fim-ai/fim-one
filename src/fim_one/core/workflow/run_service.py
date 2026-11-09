@@ -35,6 +35,8 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Protocol
 
+from fim_one.core.assembly.errors import AssemblyRefusal
+
 from .node_gates import (
     HUMAN_INTERVENTION_DISABLED,
     HUMAN_INTERVENTION_DISABLED_DETAIL,
@@ -70,18 +72,12 @@ NO_APPROVAL_MODES = frozenset({RunMode.TOOL})
 QUEUED_MODES = frozenset({RunMode.BATCH})
 
 
-class RunRefusedError(Exception):
+class RunRefusedError(AssemblyRefusal):
     """A run was refused before it started.
 
     ``error_code`` and ``status_code`` follow the API's ``AppError``
     conventions so HTTP entry points can re-raise them unchanged.
     """
-
-    def __init__(self, error_code: str, status_code: int, detail: str | None = None) -> None:
-        super().__init__(detail or error_code)
-        self.error_code = error_code
-        self.status_code = status_code
-        self.detail = detail or error_code.replace("_", " ").capitalize()
 
 
 @dataclass(frozen=True)
