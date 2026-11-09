@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, model_validator
+
+# The transports the MCP client can open.  Anything else could be stored but
+# never connected, and no personal credential would fit it.
+MCPTransport = Literal["stdio", "sse", "streamable_http"]
 
 
 class MCPServerCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str | None = None
-    transport: str = "stdio"
+    transport: MCPTransport = "stdio"
     command: str | None = None
     args: list[str] | None = None
     env: dict[str, str] | None = None
@@ -33,7 +39,7 @@ class MCPServerCreate(BaseModel):
 class MCPServerUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
-    transport: str | None = None
+    transport: MCPTransport | None = None
     command: str | None = None
     args: list[str] | None = None
     env: dict[str, str] | None = None

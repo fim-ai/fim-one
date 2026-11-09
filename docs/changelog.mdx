@@ -37,6 +37,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **An MCP server cannot be saved with a transport that does not exist.** The API accepted any text as the transport, so a server created through it with, say, `http` or `SSE` was stored, could never be connected, and refused every personal credential with a message about request headers. Creating or updating a server now accepts only `stdio`, `sse` and `streamable_http`.
+
 - **A long task keeps your original request when you interrupt it more than once.** When the request and the interrupts sent mid-run together took more than half the context budget, compaction kept only the newest interrupt word for word and folded the original request into the summary. The original request and the newest interrupt are now both kept; only the interrupts in between are summarised.
 
 - **More failures in the workflow editor give the server's reason.** Changing the status, exporting, deleting, publishing, unpublishing, resubmitting, validating and opening a workflow each showed one fixed sentence whatever the server answered. A refusal that comes with a reason now shows it; a failure without one, such as a dropped connection, keeps the fixed sentence. When your organisations cannot be loaded, the Publish dialog says so instead of stating that there is none to publish to.
