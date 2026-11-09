@@ -161,6 +161,35 @@ class TestApiConnector:
         )
 
 
+class TestConnectorThatTakesNoCredential:
+    """B6: such a connector was hidden from a non-owner unless fallback was on."""
+
+    @pytest.mark.parametrize("allow_fallback", [True, False])
+    @pytest.mark.parametrize("user_id", [OWNER, OTHER, ""])
+    async def test_anyone_who_may_use_it_calls_it_with_nothing(
+        self, session: AsyncSession, allow_fallback: bool, user_id: str
+    ) -> None:
+        got = await resolve_credential(
+            session,
+            provisional_principal(user_id),
+            _connector(allow_fallback=allow_fallback, auth_type="none"),
+        )
+
+        assert got.source is CredentialSource.NONE
+        assert got.connector == {}
+
+    async def test_a_stored_credential_is_not_sent_either(self, session: AsyncSession) -> None:
+        await _store(session, None, {"default_token": "left-over"})
+        await _store(session, OTHER, {"token": "mine"})
+
+        got = await resolve_credential(
+            session, provisional_principal(OTHER), _connector(allow_fallback=True, auth_type="none")
+        )
+
+        assert got.source is CredentialSource.NONE
+        assert got.connector == {}
+
+
 class TestDatabaseConnector:
     def _db(self, *, allow_fallback: bool = True) -> SimpleNamespace:
         return SimpleNamespace(
@@ -318,3 +347,34 @@ class TestMcpServer:
             "credential_unavailable",
             503,
         )
+
+
+class TestMcpServerThatStoresNothing:
+    """B6: a server with no env and no headers was gated by the fallback switch."""
+
+    def _bare(self, *, allow_fallback: bool) -> SimpleNamespace:
+        server = _mcp(transport="stdio", allow_fallback=allow_fallback)
+        server.env, server.headers = None, {}
+        return server
+
+    @pytest.mark.parametrize("allow_fallback", [True, False])
+    @pytest.mark.parametrize("user_id", [OWNER, OTHER])
+    async def test_anyone_who_may_use_it_opens_it_with_nothing(
+        self, session: AsyncSession, allow_fallback: bool, user_id: str
+    ) -> None:
+        got = await resolve_credential(
+            session, provisional_principal(user_id), self._bare(allow_fallback=allow_fallback)
+        )
+
+        assert got.source is CredentialSource.NONE
+        assert (got.env, got.headers) == (None, None)
+
+    async def test_a_key_the_user_brought_is_still_used(self, session: AsyncSession) -> None:
+        await _save_mcp(session, OTHER, env={"API_KEY": "mine"})
+
+        got = await resolve_credential(
+            session, provisional_principal(OTHER), self._bare(allow_fallback=False)
+        )
+
+        assert got.source is CredentialSource.PERSONAL
+        assert got.env == {"API_KEY": "mine"}

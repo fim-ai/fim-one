@@ -3,12 +3,19 @@
 One rule for API connectors and MCP servers, from every entry point (chat
 with or without an agent, sub-agents, workflow nodes):
 
-1. The acting user's own credential, when they saved one that the resource
+1. A resource that takes no credential (a connector whose auth type is
+   ``none``; an MCP server with no ``env`` and no ``headers`` stored) is
+   called with none. ``allow_fallback`` has nothing to gate there: there is
+   nothing of the owner's to borrow.
+2. The acting user's own credential, when they saved one that the resource
    can use, is used alone: it is never mixed with the owner's.
-2. The resource's owner uses the credential stored on the resource.
-3. Anyone else may borrow the owner's only when the owner switched
+3. The resource's owner uses the credential stored on the resource.
+4. Anyone else may borrow the owner's only when the owner switched
    ``allow_fallback`` on.
-4. Otherwise the call is refused with ``credential_required``.
+5. Otherwise the call is refused with ``credential_required``.
+
+For an MCP server step 2 comes first: a server that stores nothing may
+still be one every user brings their own key to.
 
 "That the resource can use" matters for MCP servers. A server row carries
 the owner's ``env`` (read by a stdio server) and ``headers`` (sent to an SSE
@@ -136,6 +143,11 @@ async def _connector_credential(
 ) -> ResolvedCredential:
     from fim_one.core.security.connector_credentials import load_connector_credential
 
+    if (getattr(conn, "auth_type", None) or "none") == "none":
+        # The connector sends no credential, so there is none to resolve and
+        # none of the owner's to gate.
+        return ResolvedCredential(source=CredentialSource.NONE, connector={})
+
     is_owner = _is_owner(principal, conn)
     may_borrow = is_owner or bool(getattr(conn, "allow_fallback", True))
     try:
@@ -238,6 +250,10 @@ async def _mcp_credential(
             env=dict(personal.env_blob) if personal.env_blob else None,
             headers=dict(personal.headers_blob) if personal.headers_blob else None,
         )
+    if not server.env and not server.headers:
+        # Nothing is stored on the server: there is nothing of the owner's
+        # to borrow, so the fallback switch has nothing to gate.
+        return ResolvedCredential(source=CredentialSource.NONE)
     if must_bring_own_credential(server, principal.user_id):
         # The credential must supply what the transport reads. One that does
         # not supplies nothing, and the owner's must not fill the gap.

@@ -1196,11 +1196,6 @@ def _node_sends_unauthenticated(_entry: str, _cell: Cell, so_far: Outcome) -> Ou
     return Outcome(exposed=True, credential_source="none", logged=True, confirmed=True)
 
 
-def _fallback_gate_on_no_auth(_entry: str, cell: Cell, so_far: Outcome) -> Outcome | None:
-    hidden = cell.role != "owner" and not cell.allow_fallback and not cell.has_personal
-    return Outcome(exposed=False) if so_far.exposed and hidden else None
-
-
 def _never_connected(_entry: str, _cell: Cell, so_far: Outcome) -> Outcome | None:
     return Outcome(exposed=False) if so_far.exposed else None
 
@@ -1299,18 +1294,6 @@ KNOWN_DEVIATIONS: tuple[Deviation, ...] = (
         ref="design §1.2 row 'DB 连接器 wf-节点'",
         removed_in="T10 P4 (support, or refuse at save)",
         today=_database_unsupported,
-    ),
-    Deviation(
-        name="fallback-gate-on-connector-without-auth",
-        entries=("chat_agent", "chat_noagent", "sub_agent", "wf_agent_node"),
-        resources=("api_none",),
-        what=(
-            "A connector that needs no credential is hidden from a non-owner unless "
-            "fallback is on or they saved a personal credential."
-        ),
-        ref="design §1.2 row 'chat-A / sub'; B6",
-        removed_in="C1 phase 2",
-        today=_fallback_gate_on_no_auth,
     ),
     Deviation(
         name="agent-mcp-never-connected",
