@@ -1510,6 +1510,11 @@ async def batch_run_workflow(
     Runs each input set as an independent workflow execution, bounded by
     ``max_parallel`` concurrency.  If one run fails, the rest continue.
     Returns a non-streaming JSON response with results for every input set.
+
+    Items count toward the caller's concurrent-run limit like any other
+    run: each waits for a free slot, and one slot is always left for runs
+    the caller starts elsewhere, so fewer than ``max_parallel`` items may
+    run at once.
     """
     wf = await _get_accessible_workflow(workflow_id, current_user.id, db)
 
@@ -1520,10 +1525,11 @@ async def batch_run_workflow(
     )
 
     service = get_run_service()
-    # Checked once for the whole batch; each item then runs as the caller.
+    # Checked once for the whole batch, which counts as one start against
+    # runs-per-minute; each item then runs as the caller.
     try:
         authorized = await service.authorize(
-            wf, current_user.id, RunMode.BATCH, check_rate=True
+            wf, current_user.id, RunMode.BATCH, admit_batch=True
         )
     except RunRefusedError as exc:
         raise _refused(exc) from None
@@ -1541,7 +1547,6 @@ async def batch_run_workflow(
                     inputs=inputs,
                     mode=RunMode.BATCH,
                     authorized=authorized,
-                    acquire_slot=False,
                 )
             except Exception as exc:
                 logger.exception("Batch run %s item %d failed", batch_id, index)

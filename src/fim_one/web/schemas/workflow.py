@@ -138,7 +138,10 @@ class WorkflowBatchRunRequest(BaseModel):
         default=3,
         ge=1,
         le=10,
-        description="Maximum number of concurrent workflow executions (1-10).",
+        description=(
+            "Maximum number of concurrent workflow executions (1-10). Items also "
+            "count toward the caller's concurrent-run limit, which may be lower."
+        ),
     )
 
 

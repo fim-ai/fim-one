@@ -64,6 +64,9 @@ AUTHOR_MODES = frozenset({RunMode.TRIGGER, RunMode.SCHEDULE})
 ACTIVE_ONLY_MODES = frozenset({RunMode.TRIGGER, RunMode.SCHEDULE, RunMode.TOOL})
 # Entry points with no way to wait for a human decision.
 NO_APPROVAL_MODES = frozenset({RunMode.TOOL})
+# Entry points whose runs wait for a concurrent-run slot instead of being
+# refused when the user is at the limit, and always leave one slot free.
+QUEUED_MODES = frozenset({RunMode.BATCH})
 
 
 class RunRefusedError(Exception):
@@ -377,9 +380,14 @@ class WorkflowRunService:
         caller_id: str | None,
         mode: RunMode,
         *,
-        check_rate: bool = False,
+        admit_batch: bool = False,
     ) -> tuple[Principal, Any]:
         """Run every pre-start check; return ``(principal, parsed_blueprint)``.
+
+        *admit_batch* is for a batch, which is checked once for all its
+        items: the batch counts as one start against the caller's
+        runs-per-minute limit. Its items then each take a concurrent-run
+        slot in :meth:`start_run`.
 
         Raises :class:`RunRefusedError` on the first failed check.
         """
@@ -415,8 +423,8 @@ class WorkflowRunService:
                 "The workflow contains a human-approval step and cannot run here",
             )
 
-        if check_rate:
-            allowed, rate_error = await self.rate_limiter.check_rate_limit(principal.user_id)
+        if admit_batch:
+            allowed, rate_error = await self.rate_limiter.admit_batch(principal.user_id)
             if not allowed:
                 raise RunRefusedError("workflow_rate_limited", 429, rate_error)
         return principal, parsed
@@ -441,6 +449,9 @@ class WorkflowRunService:
 
         *authorized* skips the checks when the caller already ran
         :meth:`authorize` (a batch checks once for all its items).
+        Every run takes one of the principal's concurrent-run slots unless
+        *acquire_slot* is off: a batch item waits for one, any other run is
+        refused when none is free.
         *single_flight* refuses while another run of the workflow is pending
         or running. *record_refusal* writes a failed ``WorkflowRun`` when a
         check refuses, for entry points with nobody to tell (schedules).
@@ -456,7 +467,9 @@ class WorkflowRunService:
             raise
 
         run_id = str(uuid.uuid4())
-        if acquire_slot:
+        if acquire_slot and mode in QUEUED_MODES:
+            await self.rate_limiter.acquire_when_free(principal.user_id, run_id)
+        elif acquire_slot:
             allowed, rate_error = await self.rate_limiter.acquire(principal.user_id, run_id)
             if not allowed:
                 raise RunRefusedError("workflow_rate_limited", 429, rate_error)

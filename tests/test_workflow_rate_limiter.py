@@ -127,3 +127,76 @@ async def test_default_limits() -> None:
     limiter = WorkflowRateLimiter()
     assert limiter.max_runs_per_minute == 10
     assert limiter.max_concurrent_runs == 3
+
+
+# ---------------------------------------------------------------------------
+# Batch items: same pool of concurrent slots, waiting instead of refused
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_batch_items_wait_and_leave_one_slot_free() -> None:
+    """Batch items fill at most ``max_concurrent_runs - 1`` slots; the rest wait."""
+    limiter = WorkflowRateLimiter(max_runs_per_minute=100, max_concurrent_runs=3)
+    assert limiter.max_batch_runs == 2
+
+    await limiter.acquire_when_free("u", "b1")
+    await limiter.acquire_when_free("u", "b2")
+    third = asyncio.create_task(limiter.acquire_when_free("u", "b3"))
+    await asyncio.sleep(0.01)
+    assert not third.done()
+
+    # The slot the batch left is there for a run started by hand...
+    assert await limiter.acquire("u", "interactive") == (True, None)
+    # ...and with it the user is at the limit, batch items included.
+    allowed, err = await limiter.acquire("u", "interactive-2")
+    assert allowed is False
+    assert err is not None and "concurrent" in err.lower()
+
+    # A batch item ending does not let the waiting one in while the pool
+    # still holds max_batch_runs runs (b2 + interactive).
+    await limiter.record_run_end("u", "b1")
+    await asyncio.sleep(0.01)
+    assert not third.done()
+
+    await limiter.record_run_end("u", "interactive")
+    await asyncio.wait_for(third, timeout=1)
+    assert limiter._active_runs["u"] == {"b2", "b3"}
+
+
+@pytest.mark.asyncio
+async def test_batch_items_do_not_count_against_runs_per_minute() -> None:
+    """A batch counts once against runs-per-minute, however many items it has."""
+    limiter = WorkflowRateLimiter(max_runs_per_minute=2, max_concurrent_runs=3)
+
+    assert await limiter.admit_batch("u") == (True, None)
+    for i in range(5):
+        await limiter.acquire_when_free("u", f"b{i}")
+        await limiter.record_run_end("u", f"b{i}")
+
+    # One start used by the batch, one left, then the window is full.
+    assert await limiter.acquire("u", "r1") == (True, None)
+    allowed, err = await limiter.admit_batch("u")
+    assert allowed is False
+    assert err is not None and "per minute" in err.lower()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_batch_item_stops_waiting() -> None:
+    limiter = WorkflowRateLimiter(max_runs_per_minute=100, max_concurrent_runs=2)
+    await limiter.acquire_when_free("u", "b1")
+    waiting = asyncio.create_task(limiter.acquire_when_free("u", "b2"))
+    await asyncio.sleep(0.01)
+    waiting.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await waiting
+    assert limiter._slot_waiters["u"] == []
+    await limiter.record_run_end("u", "b1")
+    assert limiter._active_runs["u"] == set()
+
+
+@pytest.mark.asyncio
+async def test_single_slot_limit_still_runs_batches() -> None:
+    limiter = WorkflowRateLimiter(max_runs_per_minute=100, max_concurrent_runs=1)
+    assert limiter.max_batch_runs == 1
+    await asyncio.wait_for(limiter.acquire_when_free("u", "b1"), timeout=1)

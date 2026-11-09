@@ -394,6 +394,121 @@ async def test_approval_step_refused_while_switched_off(
 
 
 # ---------------------------------------------------------------------------
+# Batch runs and the concurrent-run limit
+# ---------------------------------------------------------------------------
+
+
+class _GatedEngine:
+    """Engine whose runs stay active until ``release`` is set."""
+
+    running = 0
+    peak = 0
+    release: ClassVar[asyncio.Event]
+
+    def __init__(self, **_kwargs: Any) -> None:
+        pass
+
+    async def execute_streaming(
+        self, _parsed: Any, _inputs: Any, context: Any = None
+    ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
+        cls = _GatedEngine
+        cls.running += 1
+        cls.peak = max(cls.peak, cls.running)
+        try:
+            await cls.release.wait()
+        finally:
+            cls.running -= 1
+        yield "run_completed", {"status": "completed", "outputs": {}, "total_tokens": 0}
+
+
+async def _until(condition: Any, timeout: float = 5.0) -> None:
+    async def _poll() -> None:
+        while not condition():
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(_poll(), timeout=timeout)
+
+
+@pytest.mark.asyncio
+async def test_batch_items_count_toward_the_concurrent_limit(world: World) -> None:
+    """A batch of 6 at max_parallel=5 holds 2 of the caller's 3 slots, not 5
+    outside the limit: the third stays free for a run started by hand, a
+    fourth run is refused, and every item still completes."""
+    _GatedEngine.running = _GatedEngine.peak = 0
+    _GatedEngine.release = asyncio.Event()
+    service = rs.WorkflowRunService(engine_factory=_GatedEngine)
+    assert service.rate_limiter.max_concurrent_runs == 3
+
+    with patch.object(rs, "_default_service", service):
+        async with world.factory() as db:
+            wf = await db.get(Workflow, world.wf.id)
+            assert wf is not None
+            batch = asyncio.create_task(
+                wf_api.batch_run_workflow(
+                    wf.id,
+                    WorkflowBatchRunRequest(inputs=[{"i": i} for i in range(6)], max_parallel=5),
+                    current_user=world.subscriber,
+                    db=db,
+                )
+            )
+            await _until(lambda: _GatedEngine.running >= 2)
+            await asyncio.sleep(0.1)  # time for more items to start, if they could
+            assert _GatedEngine.peak == 2
+
+            by_hand = await service.start_run(
+                wf, caller_id=world.subscriber.id, inputs={}, mode=rs.RunMode.INTERACTIVE
+            )
+            with pytest.raises(rs.RunRefusedError) as exc:
+                await service.start_run(
+                    wf, caller_id=world.subscriber.id, inputs={}, mode=rs.RunMode.INTERACTIVE
+                )
+            assert exc.value.error_code == "workflow_rate_limited"
+
+            _GatedEngine.release.set()
+            response = await asyncio.wait_for(batch, timeout=10)
+            await by_hand.wait()
+
+    results = response.data["results"]
+    assert [r["status"] for r in results] == ["completed"] * 6
+    assert _GatedEngine.peak == 3  # 2 batch items + the run started by hand
+    assert service.rate_limiter._active_runs[world.subscriber.id] == set()
+    runs = await _runs(world)
+    assert sorted(r.mode for r in runs) == ["batch"] * 6 + ["interactive"]
+
+
+@pytest.mark.asyncio
+async def test_batch_counts_once_against_runs_per_minute(world: World) -> None:
+    """Submitting a batch uses one start of the per-minute allowance, and is
+    refused once the allowance is spent."""
+    service = rs.WorkflowRunService(
+        engine_factory=_RecordingEngine,
+        rate_limiter=rs.WorkflowRateLimiter(max_runs_per_minute=2, max_concurrent_runs=3),
+    )
+    with patch.object(rs, "_default_service", service):
+        async with world.factory() as db:
+            wf = await db.get(Workflow, world.wf.id)
+            assert wf is not None
+            for _ in range(2):
+                ok = await wf_api.batch_run_workflow(
+                    wf.id,
+                    WorkflowBatchRunRequest(inputs=[{}, {}, {}]),
+                    current_user=world.subscriber,
+                    db=db,
+                )
+                assert [r["status"] for r in ok.data["results"]] == ["completed"] * 3
+            with pytest.raises(AppError) as exc:
+                await wf_api.batch_run_workflow(
+                    wf.id,
+                    WorkflowBatchRunRequest(inputs=[{}]),
+                    current_user=world.subscriber,
+                    db=db,
+                )
+    assert exc.value.error_code == "workflow_rate_limited"
+    assert exc.value.status_code == 429
+    assert len(await _runs(world)) == 6
+
+
+# ---------------------------------------------------------------------------
 # grep gate: entry points no longer assemble runs themselves
 # ---------------------------------------------------------------------------
 
