@@ -89,7 +89,10 @@ def call_recorder(
                     )
                 )
                 await session.commit()
-        except Exception:
-            logger.debug("Failed to record %s call", kind, exc_info=True)
+        except Exception as exc:
+            # WARNING, so that an audit write that fails every time is seen.
+            # Only the error's type: its text can echo the row (the URL
+            # called, the error message stored).
+            logger.warning("Failed to record a %s call: %s", kind, type(exc).__name__)
 
     return _record

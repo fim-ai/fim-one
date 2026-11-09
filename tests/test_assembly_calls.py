@@ -107,9 +107,23 @@ async def test_a_database_call_keeps_the_fences_it_ran_under(
     assert (row.resource_kind, row.credential_source) == ("database", "owner")
 
 
-async def test_a_record_that_cannot_be_written_does_not_fail_the_call() -> None:
-    def _broken() -> AsyncSession:
-        raise RuntimeError("db down")
+async def test_a_record_that_cannot_be_written_does_not_fail_the_call_and_is_reported(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """It was logged at DEBUG: an audit write failing every time was invisible."""
 
-    with patch("fim_one.db.create_session", _broken):
-        await call_recorder(_ctx(), kind="connector")(connector_id="c", success=True)
+    def _broken() -> AsyncSession:
+        raise RuntimeError("db down: INSERT ... 'https://crm.test/contacts?token=SECRET'")
+
+    with (
+        patch("fim_one.db.create_session", _broken),
+        caplog.at_level("WARNING", logger="fim_one.core.assembly.calls"),
+    ):
+        await call_recorder(_ctx(), kind="connector")(
+            connector_id="c", request_url="https://crm.test/contacts?token=SECRET", success=True
+        )
+
+    (warning,) = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert warning.getMessage() == "Failed to record a connector call: RuntimeError"
+    # The payload is not in the log, by text or by traceback.
+    assert "SECRET" not in caplog.text
