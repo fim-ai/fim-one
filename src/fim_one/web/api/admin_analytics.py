@@ -23,6 +23,7 @@ from fim_one.db.models import (
 )
 from fim_one.db.models.workflow import history_run_clause
 from fim_one.web.auth import get_current_admin
+from fim_one.web.services.call_log_stats import any_database, is_mcp, kind_of
 
 logger = logging.getLogger(__name__)
 
@@ -177,7 +178,8 @@ async def analytics_by_connector(
 
     stmt = (
         select(
-            ConnectorCallLog.resource_kind,
+            is_mcp().label("mcp_flag"),
+            any_database().label("database_flag"),
             ConnectorCallLog.connector_id,
             ConnectorCallLog.mcp_server_id,
             ConnectorCallLog.connector_name,
@@ -192,7 +194,7 @@ async def analytics_by_connector(
         )
         .where(ConnectorCallLog.created_at >= cutoff)
         .group_by(
-            ConnectorCallLog.resource_kind,
+            is_mcp(),
             ConnectorCallLog.connector_id,
             ConnectorCallLog.mcp_server_id,
             ConnectorCallLog.connector_name,
@@ -211,7 +213,7 @@ async def analytics_by_connector(
         avg_rt = round(float(row.avg_response_time_ms), 1) if row.avg_response_time_ms else None
         items.append(
             ConnectorAnalyticsItem(
-                kind=row.resource_kind or "connector",
+                kind=kind_of(row.mcp_flag, row.database_flag),
                 connector_id=row.connector_id or row.mcp_server_id or "",
                 connector_name=row.connector_name,
                 total_calls=total,

@@ -42,7 +42,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 import fim_one.db.models  # noqa: F401
-from fim_one.core.assembly.calls import call_recorder
+from fim_one.core.assembly.calls import RecordKind, call_recorder
 from fim_one.core.assembly.principal import CallContext, provisional_principal
 from fim_one.core.assembly.toolset import mcp_tools
 from fim_one.core.mcp.adapter import MCPToolAdapter
@@ -341,6 +341,53 @@ async def _seed_mixed_calls(world: SimpleNamespace) -> None:
         )
 
 
+class TestOneDatabaseConnectorIsOneEntry:
+    """Records of one connector under two kinds are still one resource.
+
+    A database call recorded before the kind existed reads ``connector``;
+    where the migration could not relabel it (its connector row was gone and
+    came back under the same id, a restore, a late writer), grouping by the
+    kind itself listed the connector twice.
+    """
+
+    async def _seed(self, world: SimpleNamespace) -> None:
+        kinds: tuple[RecordKind, ...] = ("connector", "database", "database")
+        for kind in kinds:
+            await call_recorder(_ctx(), kind=kind)(
+                connector_id=world.connector_id,
+                connector_name="warehouse",
+                action_name="query",
+                request_method="QUERY",
+                request_url="db://warehouse/query",
+                success=False,
+            )
+
+    async def test_every_per_resource_reader(
+        self, factory: async_sessionmaker[AsyncSession], world: SimpleNamespace
+    ) -> None:
+        from fim_one.web.api.admin import get_connector_stats
+        from fim_one.web.api.admin_analytics import analytics_by_connector
+        from fim_one.web.api.admin_notifications import list_system_events
+        from fim_one.web.api.metrics import get_connector_usage
+
+        await self._seed(world)
+        admin = SimpleNamespace(id=USER)
+        async with factory() as db:
+            stats = await get_connector_stats(current_user=admin, db=db)
+            items = await analytics_by_connector(period="7d", top_n=20, current_user=admin, db=db)
+            usage = await get_connector_usage(period="7d", _admin=admin, db=db)
+            events = await list_system_events(hours=24, limit=50, current_user=admin, db=db)
+
+        assert [(c.kind, c.call_count) for c in stats.top_connectors] == [("database", 3)]
+        assert [(a.kind, a.call_count) for a in stats.top_actions] == [("database", 3)]
+        assert [(i.kind, i.total_calls) for i in items] == [("database", 3)]
+        assert [(c["kind"], c["total_calls"]) for c in usage.data["connectors"]] == [
+            ("database", 3)
+        ]
+        failures = [e for e in events.events if e.event_type == "connector_failures"]
+        assert [e.description for e in failures] == ["Connector 'warehouse' had 3 failures"]
+
+
 class TestReadersCopeWithARowThatHasNoConnector:
     async def test_admin_connector_stats(
         self, factory: async_sessionmaker[AsyncSession], world: SimpleNamespace
@@ -498,9 +545,15 @@ def legacy_db(request: pytest.FixtureRequest) -> Iterator[sa.Engine]:
             dbapi_conn.execute("PRAGMA foreign_keys=ON")
 
     with engine.begin() as conn:
-        for table in ("connectors", "conversations", "users"):
+        for table in ("conversations", "users"):
             conn.execute(text(f"CREATE TABLE {table} (id VARCHAR(36) PRIMARY KEY)"))
             conn.execute(text(f"INSERT INTO {table} (id) VALUES ('{table[:4]}-1')"))
+        conn.execute(text("CREATE TABLE connectors (id VARCHAR(36) PRIMARY KEY, type VARCHAR(20))"))
+        conn.execute(
+            text(
+                "INSERT INTO connectors (id, type) VALUES ('conn-1', 'api'), ('dbc-1', 'database')"
+            )
+        )
         conn.execute(
             text(
                 """
@@ -655,3 +708,24 @@ class TestMigration:
 
         _migrate(legacy_db, "upgrade")
         assert _shape(legacy_db)["connector_id_nullable"] is True
+
+    def test_upgrade_relabels_old_database_calls(self, legacy_db: sa.Engine) -> None:
+        """An old database call read ``connector`` while new ones are written
+        ``database``: one database connector, two entries in the statistics."""
+        with legacy_db.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO connector_call_logs (id, connector_id, connector_name,"
+                    " action_name, request_method, request_url, success)"
+                    " VALUES ('old-db', 'dbc-1', 'warehouse', 'query', 'QUERY',"
+                    " 'db://warehouse/query', TRUE)"
+                )
+            )
+
+        _migrate(legacy_db, "upgrade")
+        _migrate(legacy_db, "upgrade")
+
+        with legacy_db.connect() as conn:
+            assert conn.execute(
+                text("SELECT id, resource_kind FROM connector_call_logs ORDER BY id")
+            ).all() == [("old-1", "connector"), ("old-db", "database")]

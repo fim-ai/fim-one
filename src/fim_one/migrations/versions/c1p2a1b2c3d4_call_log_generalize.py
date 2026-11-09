@@ -6,7 +6,11 @@ record from any entry point.
 
 - ``connector_id`` becomes nullable (an MCP row has none).
 - ``resource_kind`` says what was called: ``connector``, ``database`` or
-  ``mcp``. Existing rows read ``connector``, database calls among them.
+  ``mcp``. Existing rows read ``connector``; those whose connector is a
+  database connector are relabelled ``database``, so that a database
+  connector does not show as two entries (old calls, new calls) in the
+  per-resource statistics. A row whose connector is already gone keeps
+  ``connector``: there is nothing left to tell what it was.
 - ``mcp_server_id`` (indexed) names the MCP server of an ``mcp`` row.
 - ``workflow_run_id``, ``entry`` and ``credential_source`` record the
   workflow run the call was made in, the entry point it came through, and
@@ -136,6 +140,16 @@ def upgrade() -> None:
 
     if not index_exists(bind, _TABLE, _MCP_INDEX):
         op.create_index(_MCP_INDEX, _TABLE, ["mcp_server_id"])
+
+    if table_exists(bind, "connectors"):
+        # Safe to repeat: it only touches rows still labelled ``connector``.
+        bind.execute(
+            sa.text(
+                f"UPDATE {_TABLE} SET resource_kind = 'database' "
+                "WHERE (resource_kind IS NULL OR resource_kind = 'connector') "
+                "AND connector_id IN (SELECT id FROM connectors WHERE type = 'database')"
+            )
+        )
 
     _rewrite(
         bind,

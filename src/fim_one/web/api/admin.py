@@ -41,6 +41,7 @@ from fim_one.web.schemas.billing import (
 )
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse
 from fim_one.web.schemas.model_config import ModelConfigResponse
+from fim_one.web.services.call_log_stats import any_database, is_mcp, kind_of
 from fim_one.web.services.user_deletion import purge_user_data
 
 # ---------------------------------------------------------------------------
@@ -522,14 +523,15 @@ async def get_connector_stats(
     # Top connectors (top 10)
     top_conn_rows = await db.execute(
         select(
-            ConnectorCallLog.resource_kind,
+            is_mcp(),
+            any_database(),
             ConnectorCallLog.connector_id,
             ConnectorCallLog.mcp_server_id,
             ConnectorCallLog.connector_name,
             func.count().label("cnt"),
         )
         .group_by(
-            ConnectorCallLog.resource_kind,
+            is_mcp(),
             ConnectorCallLog.connector_id,
             ConnectorCallLog.mcp_server_id,
             ConnectorCallLog.connector_name,
@@ -539,10 +541,10 @@ async def get_connector_stats(
     )
     top_connectors = [
         ConnectorCallStat(
-            kind=r[0] or "connector",
-            connector_id=r[1] or r[2] or "",
-            connector_name=r[3],
-            call_count=r[4],
+            kind=kind_of(r[0], r[1]),
+            connector_id=r[2] or r[3] or "",
+            connector_name=r[4],
+            call_count=r[5],
         )
         for r in top_conn_rows.all()
     ]
@@ -550,13 +552,14 @@ async def get_connector_stats(
     # Top actions (top 10)
     top_action_rows = await db.execute(
         select(
-            ConnectorCallLog.resource_kind,
+            is_mcp(),
+            any_database(),
             ConnectorCallLog.action_name,
             ConnectorCallLog.connector_name,
             func.count().label("cnt"),
         )
         .group_by(
-            ConnectorCallLog.resource_kind,
+            is_mcp(),
             ConnectorCallLog.action_name,
             ConnectorCallLog.connector_name,
         )
@@ -565,7 +568,7 @@ async def get_connector_stats(
     )
     top_actions = [
         ConnectorActionStat(
-            kind=r[0] or "connector", action_name=r[1], connector_name=r[2], call_count=r[3]
+            kind=kind_of(r[0], r[1]), action_name=r[2], connector_name=r[3], call_count=r[4]
         )
         for r in top_action_rows.all()
     ]

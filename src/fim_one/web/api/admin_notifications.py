@@ -23,6 +23,7 @@ from fim_one.db.models import (
 from fim_one.db.models.workflow import history_run_clause
 from fim_one.web.api.admin_utils import get_setting, set_setting, write_audit
 from fim_one.web.auth import get_current_admin
+from fim_one.web.services.call_log_stats import any_database, is_mcp, kind_of
 
 logger = logging.getLogger(__name__)
 
@@ -179,7 +180,8 @@ async def list_system_events(
     # 2. Connector and MCP call failures (grouped by the resource called)
     cc_failures = await db.execute(
         select(
-            ConnectorCallLog.resource_kind,
+            is_mcp().label("mcp_flag"),
+            any_database().label("database_flag"),
             ConnectorCallLog.connector_id,
             ConnectorCallLog.mcp_server_id,
             ConnectorCallLog.connector_name,
@@ -190,7 +192,7 @@ async def list_system_events(
             ConnectorCallLog.created_at >= cutoff,
         )
         .group_by(
-            ConnectorCallLog.resource_kind,
+            is_mcp(),
             ConnectorCallLog.connector_id,
             ConnectorCallLog.mcp_server_id,
             ConnectorCallLog.connector_name,
@@ -200,8 +202,8 @@ async def list_system_events(
         .limit(limit // 4)
     )
     for row in cc_failures.all():
-        is_mcp = row.resource_kind == "mcp"
-        label = "MCP server" if is_mcp else "Connector"
+        kind = kind_of(row.mcp_flag, row.database_flag)
+        label = "MCP server" if kind == "mcp" else "Connector"
         events.append(
             SystemEvent(
                 event_type="connector_failures",
@@ -209,7 +211,7 @@ async def list_system_events(
                 severity="warning",
                 created_at=datetime.now(timezone.utc).isoformat(),
                 details={
-                    "kind": row.resource_kind or "connector",
+                    "kind": kind,
                     "connector_id": row.connector_id,
                     "mcp_server_id": row.mcp_server_id,
                     "connector_name": row.connector_name,

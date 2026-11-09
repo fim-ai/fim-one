@@ -42,6 +42,7 @@ from fim_one.web.schemas.metrics import (
     WorkflowPerformanceResponse,
     WorkflowRunMetrics,
 )
+from fim_one.web.services.call_log_stats import any_database, is_mcp, kind_of
 
 logger = logging.getLogger(__name__)
 
@@ -314,7 +315,8 @@ async def get_connector_usage(
     rows = (
         await db.execute(
             select(
-                ConnectorCallLog.resource_kind,
+                is_mcp().label("mcp_flag"),
+                any_database().label("database_flag"),
                 ConnectorCallLog.connector_id,
                 ConnectorCallLog.mcp_server_id,
                 ConnectorCallLog.connector_name,
@@ -329,7 +331,7 @@ async def get_connector_usage(
             )
             .where(ConnectorCallLog.created_at >= cutoff)
             .group_by(
-                ConnectorCallLog.resource_kind,
+                is_mcp(),
                 ConnectorCallLog.connector_id,
                 ConnectorCallLog.mcp_server_id,
                 ConnectorCallLog.connector_name,
@@ -340,7 +342,7 @@ async def get_connector_usage(
 
     connectors = [
         ConnectorUsageItem(
-            kind=r.resource_kind or "connector",
+            kind=kind_of(r.mcp_flag, r.database_flag),
             connector_id=r.connector_id or r.mcp_server_id or "",
             connector_name=r.connector_name,
             total_calls=r.total_calls,

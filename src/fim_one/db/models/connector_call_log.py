@@ -42,7 +42,8 @@ class ConnectorCallLog(UUIDPKMixin, TimestampMixin, Base):
     # that record no fence state.
     scope_rules_applied: Mapped[str | None] = mapped_column(Text, nullable=True)
     # "connector", "database" or "mcp". Rows written before the column
-    # existed read "connector", database calls among them.
+    # existed read "connector"; the migration relabelled the database calls
+    # among them whose connector still existed.
     resource_kind: Mapped[str | None] = mapped_column(
         String(20), nullable=True, server_default="connector"
     )
