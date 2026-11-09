@@ -1,0 +1,188 @@
+"""The tools a call gets for the connectors it may use.
+
+These functions are where connector tools are built for a user's run: each
+resolves the acting user's credential (:mod:`.credentials`), leaves out a
+connector the user may not call, and wires the call record (:mod:`.calls`).
+The caller has already decided which connectors are usable
+(:func:`fim_one.core.assembly.visibility.authorize_use`).
+"""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any, Literal
+
+from .calls import call_recorder
+from .credentials import resolve_credential
+from .errors import AssemblyRefusal
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from fim_one.core.tool.base import BaseTool
+
+    from .principal import CallContext
+
+__all__ = ["ToolMode", "connector_tools", "database_tools"]
+
+logger = logging.getLogger(__name__)
+
+# ``progressive``: one meta-tool for all resources of a kind, with
+# discover / execute subcommands. ``legacy``: one tool per action.
+ToolMode = Literal["progressive", "legacy"]
+
+
+async def connector_tools(
+    db: AsyncSession,
+    ctx: CallContext,
+    connectors: Sequence[Any],
+    *,
+    mode: ToolMode,
+) -> list[BaseTool]:
+    """Tools for the API connectors in *connectors* (rows with ``actions`` loaded).
+
+    A connector the acting user has no credential for is left out.
+    """
+    from fim_one.core.tool.connector import ConnectorToolAdapter, build_connector_meta_tool
+
+    record = call_recorder(ctx, kind="connector")
+    callable_connectors: list[tuple[Any, dict[str, Any]]] = []
+    for conn in connectors:
+        try:
+            credential = await resolve_credential(db, ctx.principal, conn)
+        except AssemblyRefusal as refusal:
+            logger.info("Skipping connector %r: %s", conn.name, refusal.error_code)
+            continue
+        callable_connectors.append((conn, credential.connector or {}))
+
+    if mode == "progressive":
+        if not callable_connectors:
+            return []
+        logger.info(
+            "Loaded ConnectorMetaTool (progressive): %d connectors, "
+            "%d actions consolidated into 1 tool",
+            len(callable_connectors),
+            sum(len(conn.actions or []) for conn, _ in callable_connectors),
+        )
+        return [
+            build_connector_meta_tool(
+                [conn for conn, _ in callable_connectors],
+                resolved_credentials={conn.id: creds for conn, creds in callable_connectors},
+                on_call_complete=record,
+            )
+        ]
+
+    tools: list[BaseTool] = []
+    for conn, creds in callable_connectors:
+        for action in conn.actions or []:
+            tools.append(
+                ConnectorToolAdapter(
+                    connector_name=conn.name,
+                    connector_base_url=conn.base_url or "",
+                    connector_auth_type=conn.auth_type,
+                    connector_auth_config=conn.auth_config,
+                    auth_credentials=creds or None,
+                    action_name=action.name,
+                    action_description=action.description or "",
+                    action_method=action.method,
+                    action_path=action.path,
+                    action_parameters_schema=action.parameters_schema,
+                    action_request_body_template=action.request_body_template,
+                    action_response_extract=action.response_extract,
+                    action_requires_confirmation=action.requires_confirmation,
+                    connector_id=conn.id,
+                    action_id=action.id,
+                    on_call_complete=record,
+                )
+            )
+    logger.info("Loaded %d API tools from %d connectors", len(tools), len(callable_connectors))
+    return tools
+
+
+def _visible_schema(conn: Any) -> list[dict[str, Any]]:
+    """The tables and columns of a database connector its owner left visible."""
+    tables: list[dict[str, Any]] = []
+    for table in conn.database_schemas or []:
+        if not table.is_visible:
+            continue
+        columns = [
+            {
+                "column_name": col.column_name,
+                "data_type": col.data_type,
+                "is_nullable": col.is_nullable,
+                "is_primary_key": col.is_primary_key,
+                "display_name": col.display_name,
+                "description": col.description,
+                "is_pii": col.is_pii,
+            }
+            for col in table.columns or []
+            if col.is_visible
+        ]
+        tables.append(
+            {
+                "table_name": table.table_name,
+                "display_name": table.display_name,
+                "description": table.description,
+                "column_count": len(columns),
+                "columns": columns,
+            }
+        )
+    return tables
+
+
+async def database_tools(
+    db: AsyncSession,
+    ctx: CallContext,
+    connectors: Sequence[Any],
+    *,
+    mode: ToolMode,
+) -> list[BaseTool]:
+    """Tools for the database connectors in *connectors*.
+
+    Rows need ``database_schemas`` and their ``columns`` loaded. Raw-SQL
+    tools run on the owner's database account with no per-caller scoping,
+    so a connector is left out for anyone but its owner, whatever its
+    ``allow_fallback`` says (that switch shares an API credential). One
+    with no connection config saved is left out too.
+    """
+    from fim_one.core.tool.connector.database.adapter import DatabaseToolAdapter
+    from fim_one.core.tool.connector.database.meta_tool import build_database_meta_tool
+
+    record = call_recorder(ctx, kind="database")
+    databases: list[tuple[Any, dict[str, Any], list[Any]]] = []
+    for conn in connectors:
+        if not conn.db_config:
+            continue
+        try:
+            credential = await resolve_credential(db, ctx.principal, conn)
+            databases.append((conn, credential.db_config or {}, _visible_schema(conn)))
+        except AssemblyRefusal as refusal:
+            logger.info("Skipping database connector %r: %s", conn.name, refusal.error_code)
+        except Exception:
+            logger.warning("Failed to load DB connector tools: %s", conn.name, exc_info=True)
+
+    if mode == "progressive":
+        if not databases:
+            return []
+        logger.info(
+            "Loaded DatabaseMetaTool (progressive): %d databases, "
+            "%d tables consolidated into 1 tool",
+            len(databases),
+            sum(len(tables) for _, _, tables in databases),
+        )
+        return [build_database_meta_tool(databases, on_call_complete=record)]
+
+    tools: list[BaseTool] = []
+    for conn, config, tables in databases:
+        tools.extend(
+            DatabaseToolAdapter.create_tools(
+                connector_name=conn.name,
+                connector_id=conn.id,
+                db_config=config,
+                schema_tables=tables,
+                on_call_complete=record,
+            )
+        )
+    logger.info("Loaded %d DB tools from %d connectors", len(tools), len(databases))
+    return tools

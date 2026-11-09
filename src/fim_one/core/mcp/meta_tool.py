@@ -18,7 +18,7 @@ import logging
 import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from fim_one.core.tool.base import BaseTool
 
@@ -334,7 +334,7 @@ def build_mcp_meta_tool(
     )
 
 
-def get_mcp_tool_mode(agent_cfg: dict[str, Any] | None = None) -> str:
+def get_mcp_tool_mode(agent_cfg: dict[str, Any] | None = None) -> Literal["progressive", "legacy"]:
     """Determine the MCP tool mode from environment or agent config.
 
     Priority:
@@ -351,11 +351,11 @@ def get_mcp_tool_mode(agent_cfg: dict[str, Any] | None = None) -> str:
         if isinstance(model_cfg, dict):
             agent_mode = model_cfg.get("mcp_tool_mode")
             if isinstance(agent_mode, str) and agent_mode in ("progressive", "legacy"):
-                return agent_mode
+                return "legacy" if agent_mode == "legacy" else "progressive"
 
     # Fall back to environment variable
     env_mode = os.environ.get("MCP_TOOL_MODE", "progressive").lower()
     if env_mode in ("progressive", "legacy"):
-        return env_mode
+        return "legacy" if env_mode == "legacy" else "progressive"
 
     return "progressive"

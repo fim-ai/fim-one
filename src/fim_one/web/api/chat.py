@@ -52,6 +52,7 @@ import time
 import uuid
 from collections.abc import AsyncGenerator, Sequence
 from contextlib import suppress
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -75,6 +76,7 @@ from fim_one.core.assembly.principal import (
     Entry,
     provisional_principal,
 )
+from fim_one.core.assembly.toolset import connector_tools, database_tools
 from fim_one.core.assembly.visibility import ResourceKind, authorize_use, list_usable
 from fim_one.core.agent.workspace import AgentWorkspace
 from fim_one.core.agent.guardrail import (
@@ -1201,6 +1203,21 @@ def _use_context(
     )
 
 
+def _tool_context(
+    user_id: str | None,
+    agent_cfg: dict[str, Any] | None,
+    conversation_id: str | None,
+) -> CallContext:
+    """The context a chat turn's connector tools are built and recorded under.
+
+    Call records name the agent only where the config carries ``agent_id``.
+    The catalogue entry a ``call_agent`` delegate is built from does not, so
+    a delegate's calls are recorded without one.
+    """
+    ctx = _use_context(user_id, agent_cfg, conversation_id=conversation_id)
+    return replace(ctx, agent_id=agent_cfg.get("agent_id") if agent_cfg else None)
+
+
 async def _resolve_agent_config(
     agent_id: str | None,
     conversation_id: str | None,
@@ -1732,47 +1749,10 @@ async def _resolve_tools(
         from sqlalchemy import select
         from sqlalchemy.orm import selectinload
 
-        from fim_one.core.tool.connector import (
-            ConnectorToolAdapter,
-            build_connector_meta_tool,
-            get_connector_tool_mode,
-        )
-        from fim_one.core.tool.connector.database.meta_tool import (
-            build_database_meta_tool,
-            get_database_tool_mode,
-        )
+        from fim_one.core.tool.connector import get_connector_tool_mode
+        from fim_one.core.tool.connector.database.meta_tool import get_database_tool_mode
         from fim_one.db import create_session
         from fim_one.db.models.connector import Connector as ConnectorModel
-        from fim_one.db.models.connector_call_log import ConnectorCallLog
-
-        agent_id_for_log = agent_cfg.get("agent_id") if agent_cfg else None
-        _connector_tool_mode = get_connector_tool_mode(agent_cfg)
-        _database_tool_mode = get_database_tool_mode(agent_cfg)
-
-        async def _log_connector_call(**kwargs: Any) -> None:
-            """Persist a connector call log entry in its own DB session."""
-            try:
-                async with create_session() as log_session:
-                    log = ConnectorCallLog(
-                        connector_id=kwargs.get("connector_id", ""),
-                        connector_name=kwargs.get("connector_name", ""),
-                        action_id=kwargs.get("action_id"),
-                        action_name=kwargs.get("action_name", ""),
-                        conversation_id=conversation_id,
-                        user_id=user_id,
-                        agent_id=agent_id_for_log,
-                        request_method=kwargs.get("request_method", ""),
-                        request_url=kwargs.get("request_url", ""),
-                        response_status=kwargs.get("response_status"),
-                        response_time_ms=kwargs.get("response_time_ms"),
-                        success=kwargs.get("success", False),
-                        error_message=kwargs.get("error_message"),
-                        scope_rules_applied=kwargs.get("scope_rules_applied"),
-                    )
-                    log_session.add(log)
-                    await log_session.commit()
-            except Exception:
-                logger.debug("Failed to log connector call", exc_info=True)
 
         try:
             async with create_session() as session:
@@ -1803,8 +1783,7 @@ async def _resolve_tools(
                         connector_ids,
                         options=_conn_options,
                     )
-                    # ``owner_only`` is enforced by the database branch
-                    # below (db_raw_sql_tool_allowed), as before.
+                    # ``owner_only`` is applied by database_tools() below.
                     connectors = _conn_decision.including("owner_only")
                 else:
                     result = await session.execute(
@@ -1818,192 +1797,23 @@ async def _resolve_tools(
                     )
                     connectors = result.scalars().all()
 
-                api_tool_count = 0
-                db_tool_count = 0
-
-                # Collect API connectors for potential progressive mode
-                api_connectors = []
-                # Collect DB connectors for potential progressive mode
-                db_connectors_collected: list[tuple[Any, dict[str, Any], list[Any]]] = []
-
-                for conn in connectors:
-                    # Owner-credential fallback gate (mirrors the MCP gate
-                    # below): a non-owner without their own credential may only
-                    # use this connector if it opts into owner-credential
-                    # fallback. Otherwise hide the tool entirely instead of
-                    # registering one that would fail at call time.
-                    _is_conn_owner = bool(user_id) and conn.user_id == user_id
-
-                    if conn.type == "database" and conn.db_config:
-                        # Raw-SQL DB tools are OWNER-ONLY: they run against the
-                        # owner's (typically high-privilege) DB account with no
-                        # per-caller scoping. allow_fallback (an API-credential
-                        # sharing switch) does NOT grant a non-owner the raw-SQL
-                        # surface. See db_raw_sql_tool_allowed().
-                        from fim_one.core.security.connector_credentials import (
-                            db_raw_sql_tool_allowed,
-                        )
-
-                        if not db_raw_sql_tool_allowed(conn, user_id):
-                            logger.info(
-                                "Skipping raw-SQL DB connector %r for non-owner "
-                                "caller (owner-only; allow_fallback does not "
-                                "apply to DB)",
-                                conn.name,
-                            )
-                            continue
-
-                        # Database connector — decrypt config and build schema
-                        from fim_one.core.security.encryption import decrypt_db_config
-
-                        config = decrypt_db_config(conn.db_config)
-                        # Build schema_tables list from ORM
-                        schema_tables = []
-                        for schema_obj in conn.database_schemas or []:
-                            if not schema_obj.is_visible:
-                                continue
-                            cols = []
-                            for col in schema_obj.columns or []:
-                                if not col.is_visible:
-                                    continue
-                                cols.append(
-                                    {
-                                        "column_name": col.column_name,
-                                        "data_type": col.data_type,
-                                        "is_nullable": col.is_nullable,
-                                        "is_primary_key": col.is_primary_key,
-                                        "display_name": col.display_name,
-                                        "description": col.description,
-                                        "is_pii": col.is_pii,
-                                    }
-                                )
-                            schema_tables.append(
-                                {
-                                    "table_name": schema_obj.table_name,
-                                    "display_name": schema_obj.display_name,
-                                    "description": schema_obj.description,
-                                    "column_count": len(cols),
-                                    "columns": cols,
-                                }
-                            )
-
-                        if _database_tool_mode == "progressive":
-                            # Collect for batch meta-tool creation
-                            db_connectors_collected.append((conn, config, schema_tables))
-                        else:
-                            # Legacy mode — three tools per DB
-                            from fim_one.core.tool.connector.database.adapter import (
-                                DatabaseToolAdapter,
-                            )
-
-                            db_tools = DatabaseToolAdapter.create_tools(
-                                connector_name=conn.name,
-                                connector_id=conn.id,
-                                db_config=config,
-                                schema_tables=schema_tables,
-                                on_call_complete=_log_connector_call,
-                            )
-                            for t in db_tools:
-                                tools.register(t)
-                            db_tool_count += len(db_tools)
-                    else:
-                        # API connector — resolve per-user / default credentials
-                        from fim_one.core.security.connector_credentials import (
-                            resolve_connector_credentials,
-                        )
-
-                        resolved_creds: dict[str, Any] = await resolve_connector_credentials(
-                            conn, user_id, session
-                        )
-
-                        # No per-user credential and no owner-fallback for a
-                        # non-owner → resolved_creds is empty. Hide the tool
-                        # rather than registering one that would 401 at call
-                        # time (mirrors the MCP gate).
-                        if (
-                            not resolved_creds
-                            and not _is_conn_owner
-                            and not getattr(conn, "allow_fallback", False)
-                        ):
-                            logger.info(
-                                "Skipping connector %r: allow_fallback=False "
-                                "and caller has no credentials",
-                                conn.name,
-                            )
-                            continue
-
-                        if _connector_tool_mode == "progressive":
-                            # Collect for batch meta-tool creation
-                            api_connectors.append((conn, resolved_creds))
-                        else:
-                            # Legacy mode — one tool per action
-                            for action in conn.actions or []:
-                                adapter = ConnectorToolAdapter(
-                                    connector_name=conn.name,
-                                    connector_base_url=conn.base_url or "",
-                                    connector_auth_type=conn.auth_type,
-                                    connector_auth_config=conn.auth_config,
-                                    auth_credentials=resolved_creds or None,
-                                    action_name=action.name,
-                                    action_description=action.description or "",
-                                    action_method=action.method,
-                                    action_path=action.path,
-                                    action_parameters_schema=action.parameters_schema,
-                                    action_request_body_template=action.request_body_template,
-                                    action_response_extract=action.response_extract,
-                                    action_requires_confirmation=action.requires_confirmation,
-                                    connector_id=conn.id,
-                                    action_id=action.id,
-                                    on_call_complete=_log_connector_call,
-                                )
-                                tools.register(adapter)
-                                api_tool_count += 1
-
-                # Progressive mode — build a single ConnectorMetaTool
-                if _connector_tool_mode == "progressive" and api_connectors:
-                    _cred_map = {conn.id: creds for conn, creds in api_connectors}
-                    meta_tool = build_connector_meta_tool(
-                        [conn for conn, _ in api_connectors],
-                        resolved_credentials=_cred_map,
-                        on_call_complete=_log_connector_call,
-                    )
-                    tools.register(meta_tool)
-                    total_actions = sum(len(conn.actions or []) for conn, _ in api_connectors)
-                    logger.info(
-                        "Loaded ConnectorMetaTool (progressive): %d connectors, "
-                        "%d actions consolidated into 1 tool",
-                        len(api_connectors),
-                        total_actions,
-                    )
-                elif _connector_tool_mode == "legacy":
-                    logger.info(
-                        "Loaded %d API tools + %d DB tools from %d connectors",
-                        api_tool_count,
-                        db_tool_count,
-                        len(connectors),
-                    )
-                else:
-                    logger.info(
-                        "Loaded %d API tools + %d DB tools from %d connectors",
-                        api_tool_count,
-                        db_tool_count,
-                        len(connectors),
-                    )
-
-                # Progressive mode — build a single DatabaseMetaTool
-                if _database_tool_mode == "progressive" and db_connectors_collected:
-                    db_meta_tool = build_database_meta_tool(
-                        db_connectors_collected,
-                        on_call_complete=_log_connector_call,
-                    )
-                    tools.register(db_meta_tool)
-                    total_tables = sum(len(st) for _, _, st in db_connectors_collected)
-                    logger.info(
-                        "Loaded DatabaseMetaTool (progressive): %d databases, "
-                        "%d tables consolidated into 1 tool",
-                        len(db_connectors_collected),
-                        total_tables,
-                    )
+                # The caller's credential decides whether each connector is
+                # offered, and every call is recorded (core/assembly/toolset).
+                _tool_ctx = _tool_context(user_id, agent_cfg, conversation_id)
+                for _conn_tool in await connector_tools(
+                    session,
+                    _tool_ctx,
+                    [c for c in connectors if c.type != "database"],
+                    mode=get_connector_tool_mode(agent_cfg),
+                ):
+                    tools.register(_conn_tool)
+                for _db_tool in await database_tools(
+                    session,
+                    _tool_ctx,
+                    [c for c in connectors if c.type == "database"],
+                    mode=get_database_tool_mode(agent_cfg),
+                ):
+                    tools.register(_db_tool)
         except Exception:
             logger.warning("Failed to load connector tools", exc_info=True)
 

@@ -19,7 +19,7 @@ import os
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from fim_one.core.tool.base import BaseTool
 from fim_one.core.tool.connector.adapter import ConnectorToolAdapter
@@ -424,7 +424,9 @@ def build_connector_meta_tool(
     )
 
 
-def get_connector_tool_mode(agent_cfg: dict[str, Any] | None = None) -> str:
+def get_connector_tool_mode(
+    agent_cfg: dict[str, Any] | None = None,
+) -> Literal["progressive", "legacy"]:
     """Determine the connector tool mode from environment or agent config.
 
     Priority:
@@ -443,11 +445,11 @@ def get_connector_tool_mode(agent_cfg: dict[str, Any] | None = None) -> str:
         if isinstance(model_cfg, dict):
             agent_mode = model_cfg.get("connector_tool_mode")
             if agent_mode in ("progressive", "legacy"):
-                return str(agent_mode)
+                return "legacy" if agent_mode == "legacy" else "progressive"
 
     # Fall back to environment variable
     env_mode = os.environ.get("CONNECTOR_TOOL_MODE", "progressive").lower()
     if env_mode in ("progressive", "legacy"):
-        return env_mode
+        return "legacy" if env_mode == "legacy" else "progressive"
 
     return "progressive"
