@@ -51,6 +51,15 @@ export function nodeTypeMapOf(blueprint: WorkflowBlueprint): Record<string, Work
   return map
 }
 
+/** Whether two node type maps list the same nodes with the same types. */
+export function sameNodeTypes(
+  a: Record<string, WorkflowNodeType>,
+  b: Record<string, WorkflowNodeType>,
+): boolean {
+  const keys = Object.keys(a)
+  return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k])
+}
+
 /** The label a user gave a node, if any (used to name a step in an error). */
 export function nodeLabelOf(blueprint: WorkflowBlueprint, nodeId: string): string | undefined {
   const node = blueprint.nodes.find((n) => n.id === nodeId)

@@ -304,6 +304,12 @@ test("build, save, reload and run a workflow that uses every offered node type",
     await expect(runPanel).toContainText("MCP_STUB")
     await expect(runPanel).toContainText("otters")
     await expect(runPanel.getByText("Failed")).toHaveCount(0)
+
+    // Steps are listed by name, and the progress counts all of them.
+    await expect(runPanel.getByText("8/8 nodes")).toBeVisible()
+    for (const name of ["Start", "LLM", "Condition Branch", "Agent", "Knowledge Retrieval", "Connector", "MCP Tool", "End"]) {
+      await expect(runPanel.getByText(name, { exact: true }).first()).toBeVisible()
+    }
   })
 
   await test.step("the model that answered was the stub", async () => {

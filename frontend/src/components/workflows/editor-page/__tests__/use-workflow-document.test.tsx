@@ -184,6 +184,36 @@ describe("useWorkflowDocument", () => {
     })
   })
 
+  describe("node types for the panels that name steps", () => {
+    // The page used to compute this map once, before the workflow had
+    // loaded, so it stayed empty: the run panel listed raw node ids and
+    // never showed its "n/m nodes" progress.
+    it("is filled when the workflow loads", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      expect(result.current.nodeTypeMap).toEqual({ start_1: "start", llm_1: "llm", end_1: "end" })
+    })
+
+    it("follows nodes added on the canvas and keeps its identity otherwise", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      const before = result.current.nodeTypeMap
+      act(() => result.current.changeBlueprint(canvasOf("only the prompt changed")))
+      expect(result.current.nodeTypeMap).toBe(before)
+
+      const grown = canvasOf("first")
+      grown.nodes.push({ id: "agent_1", type: "agent", position: { x: 0, y: 0 }, data: {} })
+      act(() => result.current.changeBlueprint(grown))
+      expect(result.current.nodeTypeMap).toEqual({ ...before, agent_1: "agent" })
+    })
+
+    it("follows an import", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      const imported = canvasOf("x")
+      imported.nodes = imported.nodes.filter((n) => n.id !== "llm_1")
+      act(() => result.current.importFromText(JSON.stringify({ blueprint: imported })))
+      expect(result.current.nodeTypeMap).toEqual({ start_1: "start", end_1: "end" })
+    })
+  })
+
   describe("saving what is on the canvas", () => {
     // The canvas reports a change 300 ms after it happened. Save used to
     // send the last report, so an edit made just before Save was left out.

@@ -39,7 +39,6 @@ import { useWorkflowRun } from "@/components/workflows/editor-page/use-workflow-
 import { useWorkflowValidation } from "@/components/workflows/editor-page/use-workflow-validation"
 import type {
   WorkflowBlueprint,
-  WorkflowNodeType,
   NodeRunResult,
 } from "@/types/workflow"
 import { usePageTitle } from "@/hooks/use-page-title"
@@ -184,21 +183,11 @@ export default function WorkflowEditorPage() {
   // Get start variables for run panel
   const startVariables = startVariablesOf(blueprintRef.current)
 
-  // Build nodeId -> nodeType map for display labels
-  const nodeTypeMap = useMemo(() => {
-    const map: Record<string, WorkflowNodeType> = {}
-    for (const n of blueprintRef.current.nodes) {
-      map[n.id] = n.type
-    }
-    return map
-  }, [])
-
-  // Total node count (excluding start/end for progress display)
-  const totalNodeCount = useMemo(() => {
-    return blueprintRef.current.nodes.filter(
-      (n) => n.type !== "start" && n.type !== "end",
-    ).length
-  }, [])
+  // nodeId -> node type, for the panels that name steps
+  const { nodeTypeMap } = doc
+  // Every step reports a result, Start and End included: the run panel
+  // counts results against this.
+  const totalNodeCount = useMemo(() => Object.keys(nodeTypeMap).length, [nodeTypeMap])
 
   if (authLoading || !user) return null
 

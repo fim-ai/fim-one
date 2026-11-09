@@ -6,14 +6,21 @@ import { useTranslations } from "next-intl"
 
 import { workflowApi } from "@/lib/api"
 import { toastWorkflowError } from "@/lib/workflow-errors"
-import type { WorkflowBlueprint, WorkflowResponse, WorkflowVariable } from "@/types/workflow"
+import type {
+  WorkflowBlueprint,
+  WorkflowNodeType,
+  WorkflowResponse,
+  WorkflowVariable,
+} from "@/types/workflow"
 import {
   blueprintOfImport,
   emptyBlueprint,
   exportFileName,
   inputSchemaOf,
   nodeLabelOf,
+  nodeTypeMapOf,
   outputSchemaOf,
+  sameNodeTypes,
   withVariablesOf,
 } from "./blueprint-derived"
 
@@ -73,6 +80,15 @@ export function useWorkflowDocument({
   // restore). The canvas keeps its own node state once mounted, so the page
   // keys the editor on this to have it start over from the new blueprint.
   const [canvasRevision, setCanvasRevision] = useState(0)
+  // nodeId -> node type of the blueprint in use, for the panels that name
+  // steps (run panel, run history, statistics). State rather than read off
+  // the ref, so those panels follow the canvas; replaced only when a node
+  // was added, removed or changed type.
+  const [nodeTypeMap, setNodeTypeMap] = useState<Record<string, WorkflowNodeType>>({})
+  const trackNodeTypes = useCallback((bp: WorkflowBlueprint) => {
+    const next = nodeTypeMapOf(bp)
+    setNodeTypeMap((prev) => (sameNodeTypes(prev, next) ? prev : next))
+  }, [])
 
   // Clean up the auto-save timer on unmount
   useEffect(() => {
@@ -96,6 +112,7 @@ export function useWorkflowDocument({
         const bp = data.blueprint ?? emptyBlueprint()
         blueprintRef.current = bp
         savedBlueprintRef.current = JSON.stringify(bp)
+        trackNodeTypes(bp)
         // Trigger initial validation after load
         onBlueprintChanged()
       })
@@ -111,7 +128,7 @@ export function useWorkflowDocument({
     return () => {
       cancelled = true
     }
-  }, [userId, workflowId, router, t, onBlueprintChanged, blueprintRef])
+  }, [userId, workflowId, router, t, onBlueprintChanged, blueprintRef, trackNodeTypes])
 
   // Dirty state beforeunload guard
   useEffect(() => {
@@ -171,7 +188,10 @@ export function useWorkflowDocument({
     if (!isAutoSave) setIsSaving(true)
     // Edits the canvas has not reported yet are part of what is saved.
     const canvas = readCanvas?.()
-    if (canvas) blueprintRef.current = withVariablesOf(canvas, blueprintRef.current)
+    if (canvas) {
+      blueprintRef.current = withVariablesOf(canvas, blueprintRef.current)
+      trackNodeTypes(blueprintRef.current)
+    }
     try {
       const updated = await workflowApi.update(workflow.id, {
         name: workflow.name,
@@ -201,11 +221,12 @@ export function useWorkflowDocument({
       if (!isAutoSave) setIsSaving(false)
       isAutoSavingRef.current = false
     }
-  }, [workflow, t, tError, blueprintRef, readCanvas])
+  }, [workflow, t, tError, blueprintRef, readCanvas, trackNodeTypes])
 
   /** Take a changed blueprint: mark unsaved, validate, and save after a pause. */
   const applyBlueprint = useCallback((bp: WorkflowBlueprint) => {
     blueprintRef.current = bp
+    trackNodeTypes(bp)
 
     // Compare against last-saved snapshot to avoid false dirty flags from
     // overlay-only updates (validation badges, run status overlays).
@@ -225,7 +246,7 @@ export function useWorkflowDocument({
       isAutoSavingRef.current = true
       save()
     }, AUTO_SAVE_DELAY_MS)
-  }, [onBlueprintChanged, save, blueprintRef])
+  }, [onBlueprintChanged, save, blueprintRef, trackNodeTypes])
 
   /**
    * The canvas changed. It knows nodes, edges and the viewport; the
@@ -301,6 +322,7 @@ export function useWorkflowDocument({
         return
       }
       blueprintRef.current = blueprint
+      trackNodeTypes(blueprint)
       setWorkflow((prev) =>
         prev ? { ...prev, blueprint } : prev,
       )
@@ -310,7 +332,7 @@ export function useWorkflowDocument({
       setIsDirty(true)
       toast.success(t("workflowImported"))
     },
-    [t, blueprintRef],
+    [t, blueprintRef, trackNodeTypes],
   )
 
   const importFromFile = useCallback(() => {
@@ -363,6 +385,7 @@ export function useWorkflowDocument({
         const bp = data.blueprint ?? emptyBlueprint()
         blueprintRef.current = bp
         savedBlueprintRef.current = JSON.stringify(bp)
+        trackNodeTypes(bp)
         // What was on the canvas is superseded: drop its pending save and
         // have the canvas start over from the restored blueprint.
         if (autoSaveTimerRef.current) {
@@ -377,7 +400,7 @@ export function useWorkflowDocument({
       .catch(() => {
         toast.error(t("workflowUpdateFailed"))
       })
-  }, [workflowId, t, onBlueprintChanged, blueprintRef])
+  }, [workflowId, t, onBlueprintChanged, blueprintRef, trackNodeTypes])
 
   return {
     workflow,
@@ -389,6 +412,7 @@ export function useWorkflowDocument({
     setIsDirty,
     lastSavedAt,
     canvasRevision,
+    nodeTypeMap,
     changeName,
     changeIcon,
     changeDescription,

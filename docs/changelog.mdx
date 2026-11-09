@@ -23,6 +23,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **Workflow run results name their steps.** The run panel, the run history, Node Stats and Analytics listed steps by internal id (`llm_1731…`) and the run panel never showed its progress. They now show the step type next to the id, and the run panel shows how many steps have finished out of the total.
 - **The workflow editor no longer reloads itself while you work.** The editor fetched the workflow again whenever your session was refreshed (about every two hours) or your profile was updated: the canvas was rebuilt, undo history and the open settings panel were lost, and so was any edit from the last few seconds. Opening a workflow also loaded it twice. It is now loaded once.
 - **Restoring a workflow version, and Import inside the editor, change the canvas.** Both changed the workflow behind the editor and left the canvas showing the previous graph: a restored version was replaced by the old graph again a few seconds after the next click on the canvas, and an imported file was reported as imported while nothing changed. The canvas now shows the restored or imported workflow. A file that is not a workflow export is refused with a message instead of being ignored.
 - **Saving a workflow includes the edit you just made.** Save, Cmd+S and the automatic save sent the canvas as it was up to 0.3 seconds earlier, so a connection drawn or a field typed immediately before saving was left out until the next save.
