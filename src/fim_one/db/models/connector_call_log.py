@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from fim_one.db.base import Base, TimestampMixin, UUIDPKMixin
@@ -20,20 +20,16 @@ class ConnectorCallLog(UUIDPKMixin, TimestampMixin, Base):
 
     __tablename__ = "connector_call_logs"
 
-    # ``SET NULL`` on both references: a record outlives the connector and
-    # the conversation it names, and must not block deleting either.
-    connector_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("connectors.id", ondelete="SET NULL"), nullable=True, index=True
-    )
+    # ``connector_id``, ``conversation_id`` and ``user_id`` are plain ids, not
+    # foreign keys: a call record is an activity record, and it stays when
+    # the row it names is deleted. Readers must expect an id whose row is
+    # gone; ``connector_name`` keeps what the resource was called.
+    connector_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     connector_name: Mapped[str] = mapped_column(String(200), nullable=False)
     action_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     action_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    conversation_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True, index=True
-    )
-    user_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True, index=True
-    )
+    conversation_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    user_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     agent_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     request_method: Mapped[str] = mapped_column(String(10), nullable=False)
     request_url: Mapped[str] = mapped_column(String(1000), nullable=False)
@@ -50,7 +46,7 @@ class ConnectorCallLog(UUIDPKMixin, TimestampMixin, Base):
     resource_kind: Mapped[str | None] = mapped_column(
         String(20), nullable=True, server_default="connector"
     )
-    # Not foreign keys: a record outlives the server or run it names.
+    # Plain ids as well: a record outlives the server or run it names.
     mcp_server_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     workflow_run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     # Where the call entered (``core.assembly.principal.Entry``), and whose

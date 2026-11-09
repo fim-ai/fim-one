@@ -12,7 +12,8 @@ throwaway database) PostgreSQL:
 - ``mcp_tools`` wires the record with who called, from where and with whose
   credential;
 - every reader of the call log copes with a row that has no connector;
-- a conversation or connector that has call records can be deleted;
+- a record stays, ids intact, when its conversation or connector is deleted
+  (the endpoints are driven in ``test_call_log_outlives_parents.py``);
 - migration ``c1p2a1b2c3d4`` up, again, down and up.
 """
 
@@ -447,9 +448,12 @@ class TestARecordOutlivesWhatItNames:
 
         rows = await _rows(factory)
         assert len(rows) == 7
-        assert {(r.connector_id, r.conversation_id) for r in rows} == {(None, None)}
-        # What was called is still on the record.
-        assert {r.connector_name for r in rows} == {"crm", "files"}
+        # The records keep the ids and names of what was called, and where.
+        assert {r.conversation_id for r in rows} == {"conv-1"}
+        assert {(r.connector_id, r.connector_name) for r in rows} == {
+            ("conn-1", "crm"),
+            (None, "files"),
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -557,9 +561,8 @@ def _shape(engine: sa.Engine) -> dict[str, Any]:
     return {
         "columns": set(columns),
         "connector_id_nullable": columns["connector_id"]["nullable"],
-        "on_delete": {
-            fk["constrained_columns"][0]: (fk.get("options") or {}).get("ondelete")
-            for fk in inspector.get_foreign_keys("connector_call_logs")
+        "foreign_keys": {
+            fk["constrained_columns"][0] for fk in inspector.get_foreign_keys("connector_call_logs")
         },
         "indexes": {i["name"] for i in inspector.get_indexes("connector_call_logs")},
     }
@@ -584,9 +587,7 @@ class TestMigration:
         shape = _shape(legacy_db)
         assert shape["columns"] >= _NEW_COLUMNS
         assert shape["connector_id_nullable"] is True
-        assert shape["on_delete"]["connector_id"] == "SET NULL"
-        assert shape["on_delete"]["conversation_id"] == "SET NULL"
-        assert shape["on_delete"]["user_id"] is None
+        assert shape["foreign_keys"] == set()
         assert {
             "ix_connector_call_logs_connector_id",
             "ix_connector_call_logs_mcp_server_id",
@@ -623,10 +624,12 @@ class TestMigration:
             )
             conn.execute(text("DELETE FROM conversations WHERE id = 'conv-1'"))
             conn.execute(text("DELETE FROM connectors WHERE id = 'conn-1'"))
+            conn.execute(text("DELETE FROM users WHERE id = 'user-1'"))
 
-        assert _ids(legacy_db) == [("mcp-1", None, None), ("old-1", None, None)]
+        # The old record keeps naming what is gone.
+        assert _ids(legacy_db) == [("mcp-1", None, None), ("old-1", "conn-1", "conv-1")]
 
-    def test_downgrade_restores_the_old_shape(self, legacy_db: sa.Engine) -> None:
+    def test_downgrade_restores_the_old_columns(self, legacy_db: sa.Engine) -> None:
         before = _shape(legacy_db)
         _migrate(legacy_db, "upgrade")
         with legacy_db.begin() as conn:
@@ -644,7 +647,8 @@ class TestMigration:
         after = _shape(legacy_db)
         assert after["columns"] == before["columns"]
         assert after["connector_id_nullable"] is False
-        assert set(after["on_delete"].values()) == {None}
+        # Not restored: by now a record may name a row that is gone.
+        assert after["foreign_keys"] == set()
         assert "ix_connector_call_logs_mcp_server_id" not in after["indexes"]
         # The MCP row has no place in the old shape; the connector row stays.
         assert _ids(legacy_db) == [("old-1", "conn-1", "conv-1")]
