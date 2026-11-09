@@ -50,10 +50,13 @@ async def connector_tools(
     connectors: Sequence[Any],
     *,
     mode: ToolMode,
+    strict: bool = False,
 ) -> list[BaseTool]:
     """Tools for the API connectors in *connectors* (rows with ``actions`` loaded).
 
-    A connector the acting user has no credential for is left out.
+    A connector the acting user has no credential for is left out; with
+    *strict* the refusal is raised instead, for a caller that needs this
+    connector or nothing.
     """
     from fim_one.core.tool.connector import ConnectorToolAdapter, build_connector_meta_tool
 
@@ -63,6 +66,8 @@ async def connector_tools(
         try:
             credential = await resolve_credential(db, ctx.principal, conn)
         except AssemblyRefusal as refusal:
+            if strict:
+                raise
             logger.info("Skipping connector %r: %s", conn.name, refusal.error_code)
             continue
         callable_connectors.append((conn, credential.connector or {}))
@@ -91,13 +96,13 @@ async def connector_tools(
                 ConnectorToolAdapter(
                     connector_name=conn.name,
                     connector_base_url=conn.base_url or "",
-                    connector_auth_type=conn.auth_type,
+                    connector_auth_type=conn.auth_type or "none",
                     connector_auth_config=conn.auth_config,
                     auth_credentials=creds or None,
                     action_name=action.name,
                     action_description=action.description or "",
-                    action_method=action.method,
-                    action_path=action.path,
+                    action_method=action.method or "GET",
+                    action_path=action.path or "",
                     action_parameters_schema=action.parameters_schema,
                     action_request_body_template=action.request_body_template,
                     action_response_extract=action.response_extract,

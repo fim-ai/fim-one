@@ -162,6 +162,20 @@ class TestConnectorTools:
         assert headers == {"Authorization": "Bearer tok-open"}
         assert tools[0]._on_call_complete is not None
 
+    async def test_strict_raises_the_refusal_instead_of_leaving_the_connector_out(
+        self, session: AsyncSession
+    ) -> None:
+        with pytest.raises(AssemblyRefusal) as caught:
+            await connector_tools(
+                session,
+                _ctx(OTHER),
+                [_api("closed", allow_fallback=False)],
+                mode="legacy",
+                strict=True,
+            )
+
+        assert caught.value.error_code == "credential_required"
+
 
 class TestDatabaseTools:
     async def test_only_the_owner_gets_database_tools(self, session: AsyncSession) -> None:

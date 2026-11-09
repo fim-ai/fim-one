@@ -1190,12 +1190,6 @@ def _not_confirmed(_entry: str, _cell: Cell, so_far: Outcome) -> Outcome | None:
     return _replace(so_far, confirmed=False) if so_far.exposed else None
 
 
-def _node_sends_unauthenticated(_entry: str, _cell: Cell, so_far: Outcome) -> Outcome | None:
-    if so_far.refusal_code != "credential_required":
-        return None
-    return Outcome(exposed=True, credential_source="none", logged=True, confirmed=True)
-
-
 def _never_connected(_entry: str, _cell: Cell, so_far: Outcome) -> Outcome | None:
     return Outcome(exposed=False) if so_far.exposed else None
 
@@ -1261,18 +1255,6 @@ KNOWN_DEVIATIONS: tuple[Deviation, ...] = (
         ref="N2; design §1.3 row 'chat-0'; B9; 待拍板 4",
         removed_in="C1 phase 3",
         today=_not_confirmed,
-    ),
-    Deviation(
-        name="connector-node-sends-unauthenticated",
-        entries=("wf_connector_node",),
-        resources=("api_bearer",),
-        what=(
-            "A runner with no personal credential and fallback off is not refused: "
-            "the request is sent with no credential."
-        ),
-        ref="design §1.2 row 'API 连接器 wf-节点'; B7",
-        removed_in="C1 phase 2",
-        today=_node_sends_unauthenticated,
     ),
     Deviation(
         name="connector-node-cannot-confirm",

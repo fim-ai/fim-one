@@ -18,11 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.core.security.encryption import decrypt_credential
 
-__all__ = [
-    "db_raw_sql_tool_allowed",
-    "load_connector_credential",
-    "resolve_connector_credentials",
-]
+__all__ = ["db_raw_sql_tool_allowed", "load_connector_credential"]
 
 
 def db_raw_sql_tool_allowed(conn: Any, calling_user_id: str | None) -> bool:
@@ -84,23 +80,3 @@ async def load_connector_credential(
         return None
     return decrypt_credential(row.credentials_blob)
 
-
-async def resolve_connector_credentials(
-    conn: Any,
-    calling_user_id: str | None,
-    session: AsyncSession,
-) -> dict[str, Any]:
-    """The credential fields a caller's connector call may use, ungated.
-
-    The caller's own row; else the default row when the caller is the owner
-    or ``allow_fallback`` is on; else an empty dict. Used only by the
-    workflow connector node until it resolves through the assembly layer.
-    """
-    if calling_user_id:
-        personal = await load_connector_credential(session, conn.id, calling_user_id)
-        if personal is not None:
-            return personal
-    is_owner = bool(calling_user_id and getattr(conn, "user_id", None) == calling_user_id)
-    if bool(getattr(conn, "allow_fallback", True)) or is_owner:
-        return await load_connector_credential(session, conn.id, None) or {}
-    return {}

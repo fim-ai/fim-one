@@ -1021,7 +1021,6 @@ class ConnectorExecutor:
         if (failed := _missing_identity(node, context, t0)) is not None:
             return failed
         try:
-            from fim_one.core.tool.connector.adapter import ConnectorToolAdapter
             from fim_one.db import create_session
 
             connector_id = node.data.get("connector_id", "")
@@ -1046,8 +1045,7 @@ class ConnectorExecutor:
 
             # Load connector and action from DB
             async with create_session() as db:
-                from fim_one.db.models.connector import ConnectorAction
-                from sqlalchemy import select
+                from sqlalchemy.orm import selectinload
 
                 # Enforce visibility against the run's identity: a shared
                 # workflow is a graph of references, and each referenced
@@ -1056,17 +1054,25 @@ class ConnectorExecutor:
                 # not any connector that merely exists by id (tightened from
                 # existence-only to match chat assembly + agent binding).
                 # A disabled connector is not callable (same rule as chat).
+                from fim_one.core.assembly.errors import AssemblyRefusal
+                from fim_one.core.assembly.toolset import connector_tools
                 from fim_one.core.assembly.visibility import (
                     ResourceKind,
                     authorize_use,
                 )
+                from fim_one.db.models.connector import Connector
 
+                call_context = _node_call_context(node, context)
                 _decision = await authorize_use(
-                    db, _node_call_context(node, context), ResourceKind.CONNECTOR, [connector_id]
+                    db,
+                    call_context,
+                    ResourceKind.CONNECTOR,
+                    [connector_id],
+                    options=(selectinload(Connector.actions),),
                 )
                 # Not applied here yet: a database connector run by someone
                 # other than its owner is not refused as ``owner_only``; it
-                # goes on to the HTTP adapter below and fails there
+                # has no actions, so the lookup below fails the node
                 # (registered in tests/assembly/matrix.py).
                 _usable = _decision.including("owner_only")
                 if not _usable:
@@ -1078,13 +1084,9 @@ class ConnectorExecutor:
                     )
                 connector = _usable[0]
 
-                action_result = await db.execute(
-                    select(ConnectorAction).where(
-                        ConnectorAction.id == action_id,
-                        ConnectorAction.connector_id == connector_id,
-                    )
+                action = next(
+                    (a for a in connector.actions or [] if a.id == action_id), None
                 )
-                action = action_result.scalar_one_or_none()
                 if not action:
                     return NodeResult(
                         node_id=node.id,
@@ -1112,79 +1114,22 @@ class ConnectorExecutor:
                         duration_ms=_ms_since(t0),
                     )
 
-                # Resolve auth credentials via the shared helper so workflow
-                # and chat paths share identical lookup semantics (per-user
-                # override, owner-exempt default fallback, etc).
-                from fim_one.core.security.connector_credentials import (
-                    resolve_connector_credentials,
-                )
-
-                auth_credentials: dict[str, Any] = await resolve_connector_credentials(
-                    connector, context.user_id, db
-                )
-
-                # Audit every workflow connector call, mirroring the chat path
-                # (chat.py `_log_connector_call`). Without this, connector calls
-                # made from a workflow left no ConnectorCallLog trail. Runs in
-                # its own session; conversation_id/agent_id are absent in the
-                # workflow context.
-                _log_user_id = context.user_id
-
-                async def _log_connector_call(**kwargs: Any) -> None:
-                    """Persist a connector call log entry in its own DB session."""
-                    try:
-                        from fim_one.db import create_session as _log_cs
-                        from fim_one.db.models.connector_call_log import (
-                            ConnectorCallLog,
-                        )
-
-                        async with _log_cs() as log_session:
-                            log_session.add(
-                                ConnectorCallLog(
-                                    connector_id=kwargs.get("connector_id", ""),
-                                    connector_name=kwargs.get("connector_name", ""),
-                                    action_id=kwargs.get("action_id"),
-                                    action_name=kwargs.get("action_name", ""),
-                                    conversation_id=None,
-                                    user_id=_log_user_id,
-                                    agent_id=None,
-                                    request_method=kwargs.get("request_method", ""),
-                                    request_url=kwargs.get("request_url", ""),
-                                    response_status=kwargs.get("response_status"),
-                                    response_time_ms=kwargs.get("response_time_ms"),
-                                    success=kwargs.get("success", False),
-                                    error_message=kwargs.get("error_message"),
-                                    scope_rules_applied=kwargs.get(
-                                        "scope_rules_applied"
-                                    ),
-                                )
-                            )
-                            await log_session.commit()
-                    except Exception:
-                        logger.debug(
-                            "Failed to log workflow connector call", exc_info=True
-                        )
-
-                adapter = ConnectorToolAdapter(
-                    connector_name=connector.name,
-                    connector_base_url=connector.base_url or "",
-                    connector_auth_type=connector.auth_type or "none",
-                    connector_auth_config=connector.auth_config,
-                    action_name=action.name,
-                    action_description=action.description or "",
-                    action_method=action.method or "GET",
-                    action_path=action.path or "",
-                    action_parameters_schema=action.parameters_schema,
-                    action_request_body_template=action.request_body_template,
-                    action_response_extract=action.response_extract,
-                    # Always False here: confirmation-required actions are
-                    # rejected above (fail-closed); a Human Intervention node is
-                    # the workflow-native approval gate.
-                    action_requires_confirmation=False,
-                    auth_credentials=auth_credentials,
-                    connector_id=connector_id,
-                    action_id=action_id,
-                    on_call_complete=_log_connector_call,
+                # The runner's credential, the refusal when they have none,
+                # and the call record all come from core/assembly: the same
+                # rule and the same record as a call made from chat.
+                try:
+                    action_tools = await connector_tools(
+                        db, call_context, [connector], mode="legacy", strict=True
+                    )
+                except AssemblyRefusal as refused:
+                    return NodeResult(
+                        node_id=node.id,
+                        status=NodeStatus.FAILED,
+                        error=refused.detail,
+                        duration_ms=_ms_since(t0),
+                    )
+                adapter = next(
+                    t for t in action_tools if getattr(t, "action_id", None) == action_id
                 )
 
             output = await adapter.run(**params)
