@@ -121,6 +121,7 @@ from ..deps import (
     get_react_max_turn_seconds,
     get_react_max_turn_tokens,
     get_tools,
+    resolve_chat_context_budgets,
 )
 
 logger = logging.getLogger(__name__)
@@ -3279,6 +3280,13 @@ async def react_endpoint(
                 get_effective_context_budget(_llm_db),
                 _resolve_model_supports_vision(agent_cfg, _llm_db),
             )
+            # Budget against the models this turn resolved, not the system
+            # default.  The loop sends one message list to both, so it must
+            # fit the smaller window.
+            _budgets = await resolve_chat_context_budgets(
+                llm, fast_llm, _llm_db, general_default=_context_budget
+            )
+            _context_budget = _budgets.shared
     except ValueError as exc:
         raise AppError(
             "agent_config_error",
@@ -3405,6 +3413,9 @@ async def react_endpoint(
                     _react_domain_hint,
                 )
                 llm = _reasoning_llm
+                # The escalated model reads the same message list.
+                _budgets = _budgets.with_main_model(llm)
+                _context_budget = _budgets.shared
         except (KeyError, Exception) as exc:
             logger.debug(
                 "Domain escalation: no reasoning model available (%s), "
@@ -3827,12 +3838,14 @@ async def react_endpoint(
                     compact_llm=fast_llm,
                     user_id=current_user_id,
                     usage_tracker=fast_usage_tracker,
+                    compact_input_budget=_budgets.fast,
                 )
             context_guard = ContextGuard(
                 compact_llm=fast_llm,
                 default_budget=_context_budget,
                 usage_tracker=fast_usage_tracker,
                 custom_compact_prompt=agent_cfg.get("compact_instructions") if agent_cfg else None,
+                compact_input_budget=_budgets.fast,
             )
 
             # Inject fast usage tracker into grounded retrieve tool
@@ -4585,6 +4598,17 @@ async def dag_endpoint(
                 get_effective_context_budget(_llm_db),
                 _resolve_model_supports_vision(agent_cfg, _llm_db),
             )
+            # Budget against the models this turn resolved, not the system
+            # defaults: history and planning on the main model, steps and
+            # compaction on the fast one.
+            _budgets = await resolve_chat_context_budgets(
+                llm,
+                fast_llm,
+                _llm_db,
+                general_default=_context_budget,
+                fast_default=_fast_context_budget,
+            )
+            _context_budget, _fast_context_budget = _budgets.main, _budgets.fast
     except ValueError as exc:
         raise AppError(
             "agent_config_error",
@@ -4777,6 +4801,7 @@ async def dag_endpoint(
                     compact_llm=fast_llm,
                     user_id=current_user_id,
                     usage_tracker=fast_usage_tracker,
+                    compact_input_budget=_fast_context_budget,
                 )
                 history = await dag_memory.get_messages()
                 if history:
@@ -4797,24 +4822,21 @@ async def dag_endpoint(
 
                     enriched_tokens = CompactUtils.estimate_tokens(enriched_query)
                     if enriched_tokens > 16_000:
-                        if fast_llm:
-                            from fim_one.core.model.types import ChatMessage
-
-                            summary_result = await fast_llm.chat(
-                                [
-                                    ChatMessage(
-                                        role="system",
-                                        content=_COMPACT_PROMPTS["planner_input"],
-                                    ),
-                                    ChatMessage(role="user", content=context_str),
-                                ]
+                        # Summarised in parts when the history does not fit
+                        # the fast model's window; None means it could not
+                        # be summarised at all.
+                        summary = (
+                            await CompactUtils.summarize_history(
+                                history,
+                                fast_llm,
+                                _COMPACT_PROMPTS["planner_input"],
+                                input_budget=_fast_context_budget,
+                                usage_tracker=fast_usage_tracker,
                             )
-                            if summary_result.usage:
-                                await fast_usage_tracker.record(summary_result.usage)
-                            _content = summary_result.message.content
-                            summary = (
-                                _content if isinstance(_content, str) else str(_content or "")
-                            ).strip()
+                            if fast_llm
+                            else None
+                        )
+                        if summary:
                             enriched_query = (
                                 f"Previous conversation (summary):\n{summary}\n\n"
                                 f"Current request: {q}"
@@ -5037,6 +5059,7 @@ async def dag_endpoint(
                     custom_compact_prompt=agent_cfg.get("compact_instructions")
                     if agent_cfg
                     else None,
+                    compact_input_budget=_fast_context_budget,
                 )
 
                 # Inject fast usage tracker into grounded retrieve tool

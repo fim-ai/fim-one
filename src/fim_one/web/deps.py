@@ -60,6 +60,7 @@ from __future__ import annotations
 import json
 import os
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -77,6 +78,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from fim_one.core.mcp import MCPClient
+    from fim_one.core.model import BaseLLM
 
 logger = logging.getLogger(__name__)
 
@@ -247,12 +249,12 @@ def get_react_max_turn_seconds() -> float:
 def _compute_input_budget(context_size: int, max_output: int) -> int:
     """Compute usable input token budget from model specs.
 
-    Delegates to :func:`fim_one.core.memory.context_guard.compute_input_budget`
+    Delegates to :func:`fim_one.core.memory.budget.compute_input_budget`
     (the single authority for the budget formula, shared with the DAG
     executor's model-aware guard): ``(context_size - max_output) * 0.92``
     with a 4 000-token floor.
     """
-    from fim_one.core.memory.context_guard import compute_input_budget
+    from fim_one.core.memory.budget import compute_input_budget
 
     return compute_input_budget(context_size, max_output)
 
@@ -787,25 +789,26 @@ async def _fast_input_capacity(db: "AsyncSession") -> int:
 async def warn_on_context_budget_mismatch(db: "AsyncSession") -> None:
     """Warn when the fast model cannot hold the general input budget.
 
-    The ReAct loop sends the SAME message list — compacted against the
-    general model's input budget — to the fast tool/compaction model.
-    When the fast model's raw input capacity (``context_size -
-    max_output_tokens``) is smaller than that budget, long conversations
-    that pass the ContextGuard check still overflow the fast model with
-    an HTTP 400, and the compaction summariser itself degrades to lossy
-    truncation.  Called once at app startup; logging only, never raises.
+    The ReAct loop sends the SAME message list to the general model and
+    to the fast tool/compaction model, so chat budgets the list against
+    the smaller of the two windows (:func:`resolve_chat_context_budgets`)
+    and summarises compaction input in parts that fit the fast model.
+    The ReAct loop therefore stays within both windows, but the part of
+    the general model's window above the fast model's goes unused and
+    long conversations compact earlier than the general model alone would
+    need.  Called once at app startup; logging only, never raises.
     """
     general_budget = await get_effective_context_budget(db)
     fast_capacity = await _fast_input_capacity(db)
     if fast_capacity < general_budget:
         logger.warning(
-            "Model window misconfiguration: fast model input capacity "
+            "Model window mismatch: fast model input capacity "
             "(%d tokens = context_size - max_output_tokens) is smaller "
             "than the general model's input budget (%d tokens). "
-            "Conversations that fit the general budget will overflow the "
-            "fast tool/compaction model with context-length errors, and "
-            "LLM compaction will degrade to lossy truncation. Raise the "
-            "fast model's context_size (or lower the general model's) in "
+            "Chat keeps conversations within the fast model's window, so "
+            "they are compacted earlier than the general model needs and "
+            "the rest of its window goes unused. Raise the fast model's "
+            "context_size (or lower the general model's) in "
             "Settings → Models so that fast capacity >= general budget.",
             fast_capacity,
             general_budget,
@@ -833,6 +836,77 @@ async def get_effective_fast_context_budget(db: "AsyncSession") -> int:
             max_out = cfg.max_output_tokens or _main_max_output()
             return _compute_input_budget(cfg.context_size, max_out)
     return get_fast_context_budget()
+
+
+@dataclass(frozen=True)
+class ChatContextBudgets:
+    """Input-token budgets of the two models one chat turn runs on."""
+
+    #: Budget of the main model (planning, final answer).
+    main: int
+    #: Budget of the fast model (tool decisions, DAG steps, compaction).
+    fast: int
+
+    @property
+    def shared(self) -> int:
+        """Budget for a message list that both models receive."""
+        return min(self.main, self.fast)
+
+    def with_main_model(self, llm: BaseLLM) -> ChatContextBudgets:
+        """Budgets after the turn swaps its main model for *llm*.
+
+        Used when a turn escalates to another model after the budgets were
+        resolved.  A model with no window metadata keeps the budget of the
+        model it replaces.
+        """
+        from fim_one.core.memory.budget import llm_input_budget
+
+        return ChatContextBudgets(
+            main=llm_input_budget(llm, default=self.main), fast=self.fast
+        )
+
+
+async def resolve_chat_context_budgets(
+    llm: BaseLLM,
+    fast_llm: BaseLLM | None,
+    db: AsyncSession,
+    *,
+    general_default: int | None = None,
+    fast_default: int | None = None,
+) -> ChatContextBudgets:
+    """Input budgets for the models a chat turn actually resolved.
+
+    The main and fast models differ per agent and per model group, so
+    their budgets come from the window each resolved model declares
+    (``context_size`` and max output tokens), not from the system-level
+    ``general`` configuration.
+
+    A model with no window metadata — a model configuration whose context
+    size was left empty — falls back to the system budget for its role:
+    the system model configured for that role, then ``LLM_CONTEXT_SIZE`` /
+    ``FAST_LLM_CONTEXT_SIZE`` (128 000 tokens by default) less
+    ``LLM_MAX_OUTPUT_TOKENS``.  Callers that already looked that budget
+    up pass it as *general_default* / *fast_default* to skip the query.
+    """
+    from fim_one.core.memory.budget import declared_input_budget
+
+    main = declared_input_budget(llm)
+    if main is None:
+        main = (
+            general_default
+            if general_default is not None
+            else await get_effective_context_budget(db)
+        )
+    if fast_llm is None:
+        return ChatContextBudgets(main=main, fast=main)
+    fast = declared_input_budget(fast_llm)
+    if fast is None:
+        fast = (
+            fast_default
+            if fast_default is not None
+            else await get_effective_fast_context_budget(db)
+        )
+    return ChatContextBudgets(main=main, fast=fast)
 
 
 # Alias for convenience — endpoints can use either name.
