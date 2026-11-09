@@ -11,9 +11,11 @@ since been torn down.
 This module defines ``ConfirmationRequestExpirer`` — a background task
 launched from the FastAPI lifespan — which walks the
 ``confirmation_requests`` table every ``sweep_interval_seconds`` and
-flips any ``status='pending'`` row older than ``max_age_minutes`` to
-``status='expired'``, stamping ``responded_at`` with the current
-time.  The existing ``/callback`` handler already degrades gracefully
+flips any ``status='pending'`` row whose ``expires_at`` has passed to
+``status='expired'``, stamping ``responded_at`` with the current time.
+A row with no ``expires_at`` (written before the column existed) is
+expired once it is older than ``max_age_minutes``.  The existing
+``/callback`` handler already degrades gracefully
 when it sees a terminal row on click (returns a warning toast plus a
 grey "Expired" decided card), so no UI-side changes are needed once
 rows are swept.
@@ -32,6 +34,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
+import sqlalchemy as sa
 from sqlalchemy import CursorResult
 from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,9 +50,10 @@ class ConfirmationRequestExpirer:
     Parameters
     ----------
     max_age_minutes:
-        Rows in ``status='pending'`` whose ``created_at`` is older than
-        this many minutes are flipped to ``status='expired'``.
-        Defaults to 24 hours.
+        Rows in ``status='pending'`` with no ``expires_at`` whose
+        ``created_at`` is older than this many minutes are flipped to
+        ``status='expired'``. Defaults to 24 hours. Rows with an
+        ``expires_at`` expire at that moment, whatever their age.
     sweep_interval_seconds:
         How often the background loop runs.  Defaults to 10 minutes.
     """
@@ -65,14 +69,21 @@ class ConfirmationRequestExpirer:
 
     async def sweep(self, db: AsyncSession) -> int:
         """Run one sweep pass; returns the number of rows expired."""
-        cutoff = datetime.now(UTC) - timedelta(minutes=self.max_age_minutes)
+        now = datetime.now(UTC)
+        cutoff = now - timedelta(minutes=self.max_age_minutes)
         stmt = (
             sa_update(ConfirmationRequest)
             .where(
                 ConfirmationRequest.status == "pending",
-                ConfirmationRequest.created_at < cutoff,
+                sa.or_(
+                    ConfirmationRequest.expires_at < now,
+                    sa.and_(
+                        ConfirmationRequest.expires_at.is_(None),
+                        ConfirmationRequest.created_at < cutoff,
+                    ),
+                ),
             )
-            .values(status="expired", responded_at=datetime.now(UTC))
+            .values(status="expired", responded_at=now)
         )
         result = cast(CursorResult[Any], await db.execute(stmt))
         await db.commit()
