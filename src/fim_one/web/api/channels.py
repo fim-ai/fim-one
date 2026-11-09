@@ -782,7 +782,9 @@ async def _decide_from_click(
     are denied — chat membership alone must never satisfy the rule, or any
     member of the target group could approve.  Who may decide is read off
     the row by ``ConfirmationService.may_decide``, the same rule the portal
-    applies.
+    applies.  Only a request this channel carried can be decided here: the
+    signature proves which organization's app is calling, not that the
+    request was theirs.
 
     Returns the Feishu response body: a toast and, once the row is in a
     terminal state, the replacement card.
@@ -808,6 +810,7 @@ async def _decide_from_click(
             confirmation_id=confirmation_id,
             actor=actor,
             decision=decision,
+            via_channel_id=channel.id,
             external_actor=open_id,
         )
     except AssemblyRefusal as refusal:

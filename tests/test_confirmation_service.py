@@ -769,3 +769,94 @@ class TestDecide:
             # An administrator may decide anything, but is not shown everything.
             assert await service.pending_for(db, admin) == []
             assert await service.pending_for(db, initiator, kind="workflow_approval") == []
+
+
+class TestCallbackChannelBinding:
+    """B12: a channel callback decides only requests that channel carried."""
+
+    async def _foreign_signed_channel(
+        self, factory: async_sessionmaker[AsyncSession], d: dict[str, Any]
+    ) -> str:
+        """A signed channel of another organization, with the same signing key."""
+        channel = Channel(
+            id=str(uuid.uuid4()),
+            name="rival",
+            type="feishu",
+            org_id=d["other_org"],
+            created_by=d["outsider"],
+            config={
+                "app_id": "cli2",
+                "app_secret": "s2",
+                "chat_id": "oc_rival",
+                "encrypt_key": SIGNING_KEY,
+            },
+        )
+        async with factory() as db:
+            db.add(channel)
+            await db.commit()
+        return channel.id
+
+    async def test_another_channels_callback_cannot_decide_it(
+        self, factory: async_sessionmaker[AsyncSession], deciders: dict[str, Any], api: Any
+    ) -> None:
+        send = AsyncMock(return_value=ChannelSendResult(ok=True))
+        with patch.object(FeishuChannel, "send_interactive_card", send):
+            row = await _request_with_scope(
+                factory, deciders, "initiator", channel_id=deciders["signed_channel"]
+            )
+        rival = await self._foreign_signed_channel(factory, deciders)
+
+        # The rival's administrator knows the request id and the initiator's
+        # open_id, and signs a click with their own channel's key.
+        body, headers = _signed(
+            {
+                "action": {"value": {"confirmation_id": row.id, "decision": "approve"}},
+                "open_id": "ou_initiator",
+            }
+        )
+        resp = await api.post(f"/api/channels/{rival}/callback", content=body, headers=headers)
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["toast"]["type"] == "error"
+        assert "card" not in resp.json()
+        assert (await _row(factory, row.id)).status == "pending"
+
+        # The channel that carried it still can.
+        resp = await api.post(
+            f"/api/channels/{deciders['signed_channel']}/callback", content=body, headers=headers
+        )
+        assert "card" in resp.json()
+        assert (await _row(factory, row.id)).status == "approved"
+
+    async def test_an_inline_request_is_not_decidable_from_any_channel(
+        self, factory: async_sessionmaker[AsyncSession], deciders: dict[str, Any], api: Any
+    ) -> None:
+        row = await _request_with_scope(factory, deciders, "initiator")
+        assert row.channel_id is None
+        body, headers = _signed(
+            {
+                "action": {"value": {"confirmation_id": row.id, "decision": "approve"}},
+                "open_id": "ou_initiator",
+            }
+        )
+        resp = await api.post(
+            f"/api/channels/{deciders['signed_channel']}/callback", content=body, headers=headers
+        )
+        assert resp.json()["toast"]["type"] == "error"
+        assert (await _row(factory, row.id)).status == "pending"
+
+    async def test_the_service_refuses_it_as_not_found(
+        self, factory: async_sessionmaker[AsyncSession], deciders: dict[str, Any]
+    ) -> None:
+        row = await _request_with_scope(factory, deciders, "initiator")
+        actor = await _principal(factory, deciders["users"]["initiator"])
+        async with factory() as db:
+            with pytest.raises(AssemblyRefusal) as exc:
+                await ConfirmationService(factory).decide(
+                    db,
+                    confirmation_id=row.id,
+                    actor=actor,
+                    decision="approve",
+                    via_channel_id=deciders["signed_channel"],
+                )
+        assert exc.value.error_code == "confirmation_not_found"

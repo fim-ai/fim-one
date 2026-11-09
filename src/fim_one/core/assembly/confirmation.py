@@ -378,9 +378,15 @@ class ConfirmationService:
         actor: Principal,
         decision: Decision,
         note: str | None = None,
+        via_channel_id: str | None = None,
         external_actor: str | None = None,
     ) -> Any:
         """Record *actor*'s decision on a pending request; returns the row.
+
+        A decision arriving through a channel (``via_channel_id``) counts
+        only for a request that channel carried: a callback's signature
+        proves which organization's app sent it, not that the request was
+        theirs, so a request sent elsewhere is "not found" to it.
 
         Raises :class:`AssemblyRefusal`: ``confirmation_not_found`` (404;
         also for a question, which is answered, not decided),
@@ -398,6 +404,8 @@ class ConfirmationService:
             )
         ).scalar_one_or_none()
         if row is None or row.kind == "user_question":
+            raise AssemblyRefusal(CONFIRMATION_NOT_FOUND, 404, "Confirmation request not found.")
+        if via_channel_id is not None and row.channel_id != via_channel_id:
             raise AssemblyRefusal(CONFIRMATION_NOT_FOUND, 404, "Confirmation request not found.")
         if row.status != "pending":
             raise _already_decided(row.status)
