@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useCallback, useRef, useMemo, useState } from "react"
+import { useEffect, useCallback, useRef, useState } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { Loader2 } from "lucide-react"
@@ -196,9 +196,6 @@ export default function WorkflowEditorPage() {
 
   // nodeId -> node type, for the panels that name steps
   const { nodeTypeMap } = doc
-  // Every step reports a result, Start and End included: the run panel
-  // counts results against this.
-  const totalNodeCount = useMemo(() => Object.keys(nodeTypeMap).length, [nodeTypeMap])
 
   if (authLoading || !user) return null
 
@@ -280,7 +277,9 @@ export default function WorkflowEditorPage() {
         finalError={run.finalError}
         runDuration={run.runDuration}
         nodeTypeMap={nodeTypeMap}
-        totalNodeCount={totalNodeCount}
+        // The run executes the stored workflow: its own step count, once it
+        // has started (0 hides the progress until then).
+        totalNodeCount={run.totalNodeCount ?? 0}
         logEvents={run.logEvents}
         onStartRun={run.startRun}
         onRunAgain={run.runAgain}

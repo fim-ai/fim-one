@@ -5,7 +5,13 @@ import { ApiError, workflowApi } from "@/lib/api"
 import { ACCESS_TOKEN_KEY, getApiBaseUrl } from "@/lib/constants"
 import { getErrorMessage } from "@/lib/error-utils"
 import type { NodeRunResult, WorkflowLogEvent } from "@/types/workflow"
-import { createSseParser, logEventOf, nodeResultOfEvent, nodeStatusOfEvent } from "./run-stream"
+import {
+  createSseParser,
+  logEventOf,
+  nodeCountOfRunStarted,
+  nodeResultOfEvent,
+  nodeStatusOfEvent,
+} from "./run-stream"
 
 /**
  * One interactive run of the workflow: the run panel being open, the event
@@ -21,6 +27,9 @@ export function useWorkflowRun(workflowId: string | null) {
   const [finalOutputs, setFinalOutputs] = useState<Record<string, unknown> | null>(null)
   const [finalError, setFinalError] = useState<string | null>(null)
   const [runDuration, setRunDuration] = useState<number | null>(null)
+  // Steps the run executes, as the server reported when it started; null
+  // until then.
+  const [totalNodeCount, setTotalNodeCount] = useState<number | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const [logEvents, setLogEvents] = useState<WorkflowLogEvent[]>([])
 
@@ -31,6 +40,7 @@ export function useWorkflowRun(workflowId: string | null) {
     setFinalOutputs(null)
     setFinalError(null)
     setRunDuration(null)
+    setTotalNodeCount(null)
   }, [])
 
   const closeRunPanel = useCallback(() => setRunPanelOpen(false), [])
@@ -41,6 +51,7 @@ export function useWorkflowRun(workflowId: string | null) {
     setFinalOutputs(null)
     setFinalError(null)
     setRunDuration(null)
+    setTotalNodeCount(null)
     setLogEvents([])
   }, [])
 
@@ -60,6 +71,7 @@ export function useWorkflowRun(workflowId: string | null) {
       setFinalOutputs(null)
       setFinalError(null)
       setRunDuration(null)
+      setTotalNodeCount(null)
       setLogEvents([])
 
       try {
@@ -103,6 +115,9 @@ export function useWorkflowRun(workflowId: string | null) {
             if (logEvent) {
               setLogEvents((prev) => [...prev, logEvent])
             }
+
+            const nodeCount = nodeCountOfRunStarted(eventType, data)
+            if (nodeCount !== null) setTotalNodeCount(nodeCount)
 
             const status = nodeStatusOfEvent(eventType)
             if (status) {
@@ -166,6 +181,7 @@ export function useWorkflowRun(workflowId: string | null) {
     finalOutputs,
     finalError,
     runDuration,
+    totalNodeCount,
     logEvents,
     openRunPanel,
     closeRunPanel,

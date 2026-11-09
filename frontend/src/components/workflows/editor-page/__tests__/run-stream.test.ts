@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   createSseParser,
   logEventOf,
+  nodeCountOfRunStarted,
   nodeResultOfEvent,
   nodeStatusOfEvent,
 } from "@/components/workflows/editor-page/run-stream"
@@ -110,6 +111,14 @@ describe("run events", () => {
       retryAttempt: 2,
       maxRetries: 3,
     })
+  })
+
+  it("reads how many steps the run executes from run_started", () => {
+    // The stream opens with two run_started events; only the second has the count.
+    expect(nodeCountOfRunStarted("run_started", { run_id: "r", status: "running" })).toBeNull()
+    expect(nodeCountOfRunStarted("run_started", { run_id: "r", workflow_id: "w", node_count: 8 })).toBe(8)
+    expect(nodeCountOfRunStarted("run_started", { node_count: "8" })).toBeNull()
+    expect(nodeCountOfRunStarted("node_started", { node_count: 8 })).toBeNull()
   })
 
   it("takes the error of a failed node", () => {

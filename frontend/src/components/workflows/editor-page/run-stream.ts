@@ -64,6 +64,17 @@ export function logEventOf(
   }
 }
 
+/**
+ * How many steps the run executes, from its `run_started` event. The run
+ * executes the stored blueprint, which can differ from the canvas (unsaved
+ * steps), so progress is counted against this number and nothing else.
+ */
+export function nodeCountOfRunStarted(eventType: string, data: Record<string, unknown>): number | null {
+  if (eventType !== "run_started") return null
+  const count = data.node_count
+  return typeof count === "number" && Number.isFinite(count) && count >= 0 ? count : null
+}
+
 const NODE_EVENT_STATUS = new Map<string, NodeRunResult["status"]>([
   ["node_started", "running"],
   ["node_completed", "completed"],
