@@ -291,6 +291,7 @@ export function NodePalette({ existingNodeTypes, recentNodes = [] }: NodePalette
                     return (
                       <div
                         key={item.type}
+                        data-testid={`palette-item-${item.type}`}
                         draggable={!disabled}
                         onDragStart={(e) => {
                           if (disabled) {

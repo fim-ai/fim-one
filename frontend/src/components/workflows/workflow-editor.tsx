@@ -1,6 +1,5 @@
 "use client"
 
-import { defaultNodeData, serializeBlueprint, type CanvasNode } from "@/lib/workflow-blueprint"
 import { useCallback, useRef, useState, useEffect, useMemo, useImperativeHandle, forwardRef } from "react"
 import { useTheme } from "next-themes"
 import {
@@ -10,26 +9,20 @@ import {
   MiniMap,
   useNodesState,
   useEdgesState,
-  addEdge,
   BackgroundVariant,
 } from "@xyflow/react"
 import type {
-  Connection,
-  Edge,
   NodeMouseHandler,
   Node,
   EdgeTypes,
   ReactFlowInstance,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
-import { toast } from "sonner"
 import { useTranslations } from "next-intl"
-import { Beaker, Copy, Trash2, Settings, Clipboard, MousePointerSquareDashed, Maximize2, LayoutGrid, X } from "lucide-react"
+import { X } from "lucide-react"
 
-import { useWorkflowHistory } from "@/hooks/use-workflow-history"
 import { useRecentNodes } from "@/hooks/use-recent-nodes"
 import { useModuleFlags } from "@/lib/module-flags"
-import { fieldOfLoc } from "@/lib/workflow-errors"
 import { getAutoLayoutedNodes } from "./auto-layout"
 import { HiddenNodeTypesContext, NodePalette } from "./node-palette"
 import { NodeConfigPanel } from "./node-config-panel"
@@ -38,12 +31,27 @@ import { RunPanel } from "./run-panel"
 import { AddNodeEdge } from "./add-node-edge"
 import { KeyboardShortcutsDialog } from "./keyboard-shortcuts-dialog"
 import { CanvasSearchBar } from "./canvas-search-bar"
+import {
+  blueprintEdges,
+  blueprintNodes,
+  highlightSearch,
+  nodeTypesOnCanvas,
+  withLiveRunStatus,
+  withRunAnimation,
+} from "./editor/canvas-model"
+import { NodeContextMenu, PaneContextMenu, useCanvasContextMenu } from "./editor/canvas-context-menus"
+import { useBlueprintSync } from "./editor/use-blueprint-sync"
+import { useCanvasConnections } from "./editor/use-canvas-connections"
+import { useCanvasEditing } from "./editor/use-canvas-editing"
+import { useCanvasHistory } from "./editor/use-canvas-history"
+import { useCanvasOverlays } from "./editor/use-canvas-overlays"
+import { useCanvasSearch } from "./editor/use-canvas-search"
+import { useCanvasShortcuts } from "./editor/use-canvas-shortcuts"
 import type {
   WorkflowBlueprint,
   WorkflowNodeType,
   StartNodeData,
   NodeRunResult,
-  NodeValidationState,
   WorkflowLogEvent,
 } from "@/types/workflow"
 import type { ValidationResult } from "@/components/workflows/workflow-toolbar"
@@ -114,6 +122,8 @@ interface WorkflowEditorProps {
 }
 
 export interface WorkflowEditorHandle {
+  /** The canvas as a blueprint, as it is right now. */
+  getBlueprint: () => WorkflowBlueprint
   autoLayout: () => void
   undo: () => void
   redo: () => void
@@ -160,771 +170,95 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
     [humanIntervention],
   )
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(
-    blueprint.nodes.map((n) => ({
-      id: n.id,
-      type: n.type,
-      position: n.position,
-      data: n.data,
-    } as Node)),
-  )
-  const [edges, setEdges, onEdgesChange] = useEdgesState(
-    blueprint.edges.map((e) => ({
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      sourceHandle: e.sourceHandle ?? undefined,
-      targetHandle: e.targetHandle ?? undefined,
-    } as Edge)),
-  )
+  // --- The graph: the canvas as loaded, then React Flow's node and edge state ---
+  const [initial] = useState(() => ({
+    nodes: blueprintNodes(blueprint),
+    edges: blueprintEdges(blueprint),
+  }))
+  const [nodes, setNodes, onNodesChange] = useNodesState(initial.nodes)
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges)
+
+  // --- UI state that is not part of the graph ---
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
-  const [contextMenu, setContextMenu] = useState<
-    | { type: "node"; x: number; y: number; nodeId: string }
-    | { type: "pane"; x: number; y: number }
-    | null
-  >(null)
+  const [contextMenu, setContextMenu] = useCanvasContextMenu()
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false)
   const [testNodeTarget, setTestNodeTarget] = useState<{ nodeId: string; nodeType: WorkflowNodeType; label: string } | null>(null)
 
-  // --- Canvas search state ---
-  const [searchOpen, setSearchOpen] = useState(false)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [searchIndex, setSearchIndex] = useState(0)
+  // --- One hook per concern ---
+  const history = useCanvasHistory({
+    nodes,
+    edges,
+    setNodes,
+    setEdges,
+    initialNodes: initial.nodes,
+    initialEdges: initial.edges,
+  })
+  const editing = useCanvasEditing({
+    nodes,
+    edges,
+    setNodes,
+    setEdges,
+    selectedNodeId,
+    setSelectedNodeId,
+  })
+  const search = useCanvasSearch(nodes, rfInstanceRef)
+  const overlays = useCanvasOverlays(setNodes)
+  const connections = useCanvasConnections({
+    nodes,
+    edges,
+    setNodes,
+    setEdges,
+    rfInstanceRef,
+    onNodeAdded: addRecentNode,
+  })
+  const sync = useBlueprintSync(nodes, edges, blueprint.viewport, onBlueprintChange)
+  const getBlueprint = sync.serialize
 
-  // --- Run overlay state (for viewing past runs on canvas) ---
-  const [hasRunOverlay, setHasRunOverlay] = useState(false)
-
-  // --- Undo/Redo history ---
-  const initialNodesRef = useRef(
-    blueprint.nodes.map((n) => ({
-      id: n.id,
-      type: n.type,
-      position: n.position,
-      data: n.data,
-    } as Node)),
-  )
-  const initialEdgesRef = useRef(
-    blueprint.edges.map((e) => ({
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      sourceHandle: e.sourceHandle,
-      targetHandle: e.targetHandle,
-    })),
-  )
-  const { pushState, undo, redo, canUndo, canRedo } = useWorkflowHistory(
-    initialNodesRef.current,
-    initialEdgesRef.current,
-  )
-
-  // Track whether we are currently restoring from history to avoid re-pushing
-  const isRestoringRef = useRef(false)
-
-  // Clipboard for copy/paste (stored in ref to avoid re-renders)
-  const copiedNodesRef = useRef<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] })
-
-  // Push nodes/edges to history whenever they change (skipped during restore)
-  useEffect(() => {
-    if (isRestoringRef.current) {
-      isRestoringRef.current = false
-      return
-    }
-    pushState(nodes, edges)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, edges])
-
-  // Normalize edges: convert null sourceHandle/targetHandle to undefined
-  // (React Flow Edge type allows null, but useEdgesState infers stricter types)
-  const toSafeEdges = useCallback(
-    (raw: Edge[]) =>
-      raw.map((e) => ({
-        ...e,
-        sourceHandle: e.sourceHandle ?? undefined,
-        targetHandle: e.targetHandle ?? undefined,
-      })),
-    [],
-  )
-
-  const handleUndo = useCallback(() => {
-    const snapshot = undo()
-    if (!snapshot) return
-    isRestoringRef.current = true
-    setNodes(snapshot.nodes)
-    setEdges(toSafeEdges(snapshot.edges))
-  }, [undo, setNodes, setEdges, toSafeEdges])
-
-  const handleRedo = useCallback(() => {
-    const snapshot = redo()
-    if (!snapshot) return
-    isRestoringRef.current = true
-    setNodes(snapshot.nodes)
-    setEdges(toSafeEdges(snapshot.edges))
-  }, [redo, setNodes, setEdges, toSafeEdges])
-
-  // Delete selected nodes/edges handler
-  const handleDeleteSelected = useCallback(() => {
-    // Get currently selected nodes
-    const selectedNodes = nodes.filter((n) => n.selected)
-    // Get currently selected edges
-    const selectedEdges = edges.filter((e) => e.selected)
-
-    if (selectedNodes.length === 0 && selectedEdges.length === 0) return
-
-    // Check for protected node types (start, end)
-    for (const node of selectedNodes) {
-      if (node.type === "start") {
-        toast.error(t("errorCannotDeleteStart"))
-        return
-      }
-      if (node.type === "end") {
-        toast.error(t("errorCannotDeleteEnd"))
-        return
-      }
-    }
-
-    const deletedNodeIds = new Set(selectedNodes.map((n) => n.id))
-    const deletedEdgeIds = new Set(selectedEdges.map((e) => e.id))
-
-    // Remove selected nodes
-    if (deletedNodeIds.size > 0) {
-      setNodes((nds) => nds.filter((n) => !deletedNodeIds.has(n.id)))
-      // Remove edges connected to deleted nodes
-      setEdges((eds) =>
-        eds.filter(
-          (e) =>
-            !deletedNodeIds.has(e.source) &&
-            !deletedNodeIds.has(e.target) &&
-            !deletedEdgeIds.has(e.id),
-        ),
-      )
-    } else if (deletedEdgeIds.size > 0) {
-      // Only edges selected, no nodes
-      setEdges((eds) => eds.filter((e) => !deletedEdgeIds.has(e.id)))
-    }
-
-    // Clear selection if deleted node was the config-panel selected node
-    if (selectedNodeId && deletedNodeIds.has(selectedNodeId)) {
-      setSelectedNodeId(null)
-    }
-  }, [nodes, edges, selectedNodeId, setNodes, setEdges, t])
-
-  // Delete a specific node by ID (used by config panel)
-  const handleDeleteNode = useCallback(
-    (nodeId: string) => {
-      const node = nodes.find((n) => n.id === nodeId)
-      if (!node) return
-
-      if (node.type === "start") {
-        toast.error(t("errorCannotDeleteStart"))
-        return
-      }
-      if (node.type === "end") {
-        toast.error(t("errorCannotDeleteEnd"))
-        return
-      }
-
-      setNodes((nds) => nds.filter((n) => n.id !== nodeId))
-      setEdges((eds) =>
-        eds.filter((e) => e.source !== nodeId && e.target !== nodeId),
-      )
-
-      if (selectedNodeId === nodeId) {
-        setSelectedNodeId(null)
-      }
-    },
-    [nodes, selectedNodeId, setNodes, setEdges, t],
-  )
-
-  // --- Copy selected nodes into the clipboard ref ---
-  const handleCopySelected = useCallback(() => {
-    const selectedNodes = nodes.filter((n) => n.selected)
-    if (selectedNodes.length === 0) return
-
-    const selectedIds = new Set(selectedNodes.map((n) => n.id))
-    // Only copy edges that connect two selected nodes (internal edges)
-    const internalEdges = edges.filter(
-      (e) => selectedIds.has(e.source) && selectedIds.has(e.target),
-    )
-
-    copiedNodesRef.current = {
-      nodes: selectedNodes.map((n) => ({ ...n, data: { ...n.data } })),
-      edges: internalEdges.map((e) => ({ ...e })),
-    }
-  }, [nodes, edges])
-
-  // --- Paste copied nodes with offset and new IDs ---
-  const handlePaste = useCallback(() => {
-    const { nodes: copiedNodes, edges: copiedEdges } = copiedNodesRef.current
-    if (copiedNodes.length === 0) return
-
-    // Build old-id -> new-id mapping
-    const idMap = new Map<string, string>()
-    const now = Date.now()
-    for (let i = 0; i < copiedNodes.length; i++) {
-      const oldId = copiedNodes[i].id
-      const nodeType = copiedNodes[i].type ?? "node"
-      idMap.set(oldId, `${nodeType}_${now}_${i}`)
-    }
-
-    // Create new nodes with offset position; skip start/end (singleton constraint)
-    const newNodes: Node[] = []
-    for (const cn of copiedNodes) {
-      if (cn.type === "start" || cn.type === "end") continue
-      newNodes.push({
-        ...cn,
-        id: idMap.get(cn.id)!,
-        position: { x: cn.position.x + 50, y: cn.position.y + 50 },
-        data: { ...cn.data },
-        selected: true,
-      })
-    }
-
-    if (newNodes.length === 0) return
-
-    const newNodeIds = new Set(newNodes.map((n) => n.id))
-
-    // Recreate internal edges with new IDs
-    const newEdges: Edge[] = []
-    for (const ce of copiedEdges) {
-      const newSource = idMap.get(ce.source)
-      const newTarget = idMap.get(ce.target)
-      // Only create edge if both endpoints were pasted (start/end filtering)
-      if (newSource && newTarget && newNodeIds.has(newSource) && newNodeIds.has(newTarget)) {
-        newEdges.push({
-          ...ce,
-          id: `e-${newSource}-${ce.sourceHandle ?? "default"}-${newTarget}-${ce.targetHandle ?? "default"}`,
-          source: newSource,
-          target: newTarget,
-        })
-      }
-    }
-
-    // Deselect existing nodes, add pasted nodes as selected
-    setNodes((nds) => [
-      ...nds.map((n) => (n.selected ? { ...n, selected: false } : n)),
-      ...newNodes,
-    ])
-    setEdges((eds) => [...eds, ...newEdges])
-  }, [setNodes, setEdges])
-
-  // --- Duplicate = copy + paste in one step ---
-  const handleDuplicateSelected = useCallback(() => {
-    handleCopySelected()
-    handlePaste()
-  }, [handleCopySelected, handlePaste])
-
-  // --- Select all nodes ---
-  const handleSelectAll = useCallback(() => {
-    setNodes((nds) => nds.map((n) => (n.selected ? n : { ...n, selected: true })))
+  const showShortcuts = useCallback(() => setShortcutsDialogOpen(true), [])
+  const clearSelection = useCallback(() => {
+    setNodes((nds) => nds.map((n) => (n.selected ? { ...n, selected: false } : n)))
+    setSelectedNodeId(null)
   }, [setNodes])
-
-  // --- Canvas search logic ---
-  const searchMatches = useMemo(() => {
-    if (!searchQuery.trim()) return []
-    const q = searchQuery.toLowerCase()
-    return nodes.filter((node) => {
-      // Match against node type name (e.g. "llm", "start", "conditionBranch")
-      const typeLabel = (node.type ?? "").toLowerCase()
-      // Also check the node ID
-      const nodeId = node.id.toLowerCase()
-
-      // Search node data values (prompt_template, variable names, output_variable, etc.)
-      const dataStr = node.data
-        ? Object.entries(node.data)
-            .filter(([key]) => key !== "runStatus" && key !== "_runOverlay" && key !== "_validationState")
-            .map(([, value]) => {
-              if (typeof value === "string") return value
-              if (Array.isArray(value)) {
-                return value
-                  .map((item) => {
-                    if (typeof item === "string") return item
-                    if (item && typeof item === "object") {
-                      return Object.values(item).filter((v) => typeof v === "string").join(" ")
-                    }
-                    return ""
-                  })
-                  .join(" ")
-              }
-              return ""
-            })
-            .join(" ")
-            .toLowerCase()
-        : ""
-
-      return typeLabel.includes(q) || nodeId.includes(q) || dataStr.includes(q)
-    })
-  }, [nodes, searchQuery])
-
-  // Reset search index when matches change
-  useEffect(() => {
-    if (searchIndex >= searchMatches.length) {
-      setSearchIndex(0)
-    }
-  }, [searchMatches.length, searchIndex])
-
-  const handleSearchOpen = useCallback(() => {
-    setSearchOpen(true)
-  }, [])
-
-  const handleSearchClose = useCallback(() => {
-    setSearchOpen(false)
-    setSearchQuery("")
-    setSearchIndex(0)
-  }, [])
-
-  // --- Run overlay handlers (view past run results on canvas) ---
-  const handleViewRunOnCanvas = useCallback((overlayResults: Record<string, NodeRunResult>) => {
-    setNodes(prevNodes => prevNodes.map(node => {
-      const result = overlayResults[node.id]
-      if (!result) return node
-
-      const truncate = (v: unknown): string | null => {
-        if (v == null) return null
-        const s = typeof v === "string" ? v : JSON.stringify(v)
-        return s.length > 120 ? s.slice(0, 120) + "..." : s
-      }
-
-      return {
-        ...node,
-        data: {
-          ...node.data,
-          runStatus: result.status,
-          _runOverlay: {
-            durationMs: result.duration_ms ?? null,
-            inputPreview: truncate(result.input_preview),
-            outputPreview: truncate(result.output),
-            runError: result.error ?? null,
-          },
-        },
-      }
-    }))
-    setHasRunOverlay(true)
-  }, [setNodes])
-
-  const clearRunOverlay = useCallback(() => {
-    setNodes(prevNodes => prevNodes.map(node => {
-      if (!node.data.runStatus && !node.data._runOverlay) return node
-      const data = { ...node.data } as Record<string, unknown>
-      delete data.runStatus
-      delete data._runOverlay
-      return { ...node, data }
-    }))
-    setHasRunOverlay(false)
-  }, [setNodes])
-
-  // --- Validation overlay handlers ---
-
-  const applyValidationOverlay = useCallback((result: ValidationResult) => {
-    // Build a map of node_id -> NodeValidationState from the validation result
-    const overlay: Record<string, NodeValidationState> = {}
-
-    // The error field is a global error (not node-specific), shown in toolbar
-    // The warnings array has node_id that maps to specific nodes
-    for (const w of result.warnings) {
-      if (!w.node_id) continue
-      if (!overlay[w.node_id]) {
-        overlay[w.node_id] = { errors: [], warnings: [] }
-      }
-      overlay[w.node_id].warnings.push(w.message)
-    }
-
-    // Invalid settings name their step: mark it with the field and the reason.
-    for (const e of result.field_errors ?? []) {
-      if (!e.node_id) continue
-      if (!overlay[e.node_id]) {
-        overlay[e.node_id] = { errors: [], warnings: [] }
-      }
-      overlay[e.node_id].errors.push(`${fieldOfLoc(e.loc)}: ${e.message}`)
-    }
-
-    // If there's a global error and the result is invalid, mark it on relevant nodes if any
-    if (result.error && !result.valid) {
-      // Global error doesn't have a node_id — it shows in the toolbar popover
-      // We still apply any per-node warnings from above
-    }
-
-    setNodes(currentNodes =>
-      currentNodes.map(node => {
-        const state = overlay[node.id]
-        if (state) {
-          return { ...node, data: { ...node.data, _validationState: state } }
-        }
-        // Clear any previous validation state for nodes with no issues
-        if (node.data._validationState) {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { _validationState, ...rest } = node.data as Record<string, unknown>
-          return { ...node, data: rest }
-        }
-        return node
-      }),
-    )
-  }, [setNodes])
-
-  const clearValidationOverlay = useCallback(() => {
-    setNodes(currentNodes =>
-      currentNodes.map(node => {
-        if (node.data._validationState) {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { _validationState, ...rest } = node.data as Record<string, unknown>
-          return { ...node, data: rest }
-        }
-        return node
-      }),
-    )
-  }, [setNodes])
-
-  const handleSearchQueryChange = useCallback((query: string) => {
-    setSearchQuery(query)
-    setSearchIndex(0)
-  }, [])
-
-  const handleSearchNext = useCallback(() => {
-    if (searchMatches.length === 0) return
-    const nextIndex = (searchIndex + 1) % searchMatches.length
-    setSearchIndex(nextIndex)
-    const targetNode = searchMatches[nextIndex]
-    if (targetNode && rfInstanceRef.current) {
-      rfInstanceRef.current.fitView({
-        nodes: [{ id: targetNode.id }],
-        duration: 300,
-        padding: 1.5,
-        maxZoom: 1.2,
-      })
-    }
-  }, [searchMatches, searchIndex])
-
-  const handleSearchPrev = useCallback(() => {
-    if (searchMatches.length === 0) return
-    const prevIndex = (searchIndex - 1 + searchMatches.length) % searchMatches.length
-    setSearchIndex(prevIndex)
-    const targetNode = searchMatches[prevIndex]
-    if (targetNode && rfInstanceRef.current) {
-      rfInstanceRef.current.fitView({
-        nodes: [{ id: targetNode.id }],
-        duration: 300,
-        padding: 1.5,
-        maxZoom: 1.2,
-      })
-    }
-  }, [searchMatches, searchIndex])
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement
-      const tag = target?.tagName
-      const modKey = e.metaKey || e.ctrlKey
-      const key = e.key.toLowerCase()
-
-      // Cmd+F: open canvas search — intercept even inside inputs
-      if (modKey && key === "f" && !e.shiftKey) {
-        e.preventDefault()
-        handleSearchOpen()
-        return
-      }
-
-      // Don't intercept when typing in an input/textarea or contentEditable
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return
-      if (target?.isContentEditable) return
-
-      // Undo: Cmd+Z (without Shift)
-      if (modKey && key === "z" && !e.shiftKey) {
-        e.preventDefault()
-        handleUndo()
-        return
-      }
-
-      // Redo: Cmd+Shift+Z or Cmd+Y
-      if (modKey && ((key === "z" && e.shiftKey) || key === "y")) {
-        e.preventDefault()
-        handleRedo()
-        return
-      }
-
-      // Copy: Cmd+C
-      if (modKey && key === "c" && !e.shiftKey) {
-        e.preventDefault()
-        handleCopySelected()
-        return
-      }
-
-      // Paste: Cmd+V
-      if (modKey && key === "v" && !e.shiftKey) {
-        e.preventDefault()
-        handlePaste()
-        return
-      }
-
-      // Select all: Cmd+A
-      if (modKey && key === "a" && !e.shiftKey) {
-        e.preventDefault()
-        handleSelectAll()
-        return
-      }
-
-      // Duplicate: Cmd+D
-      if (modKey && key === "d" && !e.shiftKey) {
-        e.preventDefault()
-        handleDuplicateSelected()
-        return
-      }
-
-      // Show shortcuts dialog: ?
-      if (e.key === "?" && !modKey) {
-        e.preventDefault()
-        setShortcutsDialogOpen(true)
-        return
-      }
-
-      // Escape: close search first, then deselect all nodes and close config panel
-      if (e.key === "Escape") {
-        e.preventDefault()
-        if (searchOpen) {
-          handleSearchClose()
-          return
-        }
-        setNodes((nds) => nds.map((n) => (n.selected ? { ...n, selected: false } : n)))
-        setSelectedNodeId(null)
-        return
-      }
-
-      // Delete selected nodes/edges: Backspace or Delete
-      if (e.key === "Backspace" || e.key === "Delete") {
-        e.preventDefault()
-        handleDeleteSelected()
-      }
-    }
-    window.addEventListener("keydown", handler)
-    return () => window.removeEventListener("keydown", handler)
-  }, [handleUndo, handleRedo, handleDeleteSelected, handleCopySelected, handlePaste, handleSelectAll, handleDuplicateSelected, setNodes, searchOpen, handleSearchOpen, handleSearchClose])
+  useCanvasShortcuts({
+    undo: history.undo,
+    redo: history.redo,
+    deleteSelected: editing.deleteSelected,
+    copySelected: editing.copySelected,
+    paste: editing.paste,
+    selectAll: editing.selectAll,
+    duplicateSelected: editing.duplicateSelected,
+    showShortcuts,
+    searchOpen: search.open,
+    openSearch: search.openSearch,
+    closeSearch: search.closeSearch,
+    clearSelection,
+  })
 
   // Notify parent of undo/redo state changes
+  const { canUndo, canRedo } = history
   useEffect(() => {
     onUndoRedoChange?.(canUndo, canRedo)
   }, [canUndo, canRedo, onUndoRedoChange])
 
   // Track which node types exist for palette dimming
-  const existingNodeTypes = useMemo(() => {
-    const types = new Set<string>()
-    for (const n of nodes) {
-      if (n.type) types.add(n.type)
-    }
-    return types
-  }, [nodes])
-
-  // Build search match ID set + current match ID for styling
-  const searchMatchIds = useMemo(() => new Set(searchMatches.map((n) => n.id)), [searchMatches])
-  const searchCurrentId = searchMatches.length > 0 ? searchMatches[searchIndex]?.id ?? null : null
-  const isSearchActive = searchOpen && searchQuery.trim().length > 0
+  const existingNodeTypes = useMemo(() => nodeTypesOnCanvas(nodes), [nodes])
 
   // Derived nodes with run status + overlay + search highlighting merged — pure derivation, no state mutation
+  const showRunStatus = nodeResults != null && (runPanelOpen || isRunning)
   const displayNodes = useMemo(() => {
-    let result = nodes
-
-    // Apply run status overlays
-    if (nodeResults && (runPanelOpen || isRunning)) {
-      result = result.map((node) => {
-        const runResult = nodeResults[node.id]
-        const newStatus = runResult?.status
-        if (!newStatus) return node
-
-        // Build overlay data for duration badge & tooltip
-        const truncate = (v: unknown): string | null => {
-          if (v == null) return null
-          const s = typeof v === "string" ? v : JSON.stringify(v)
-          return s.length > 120 ? s.slice(0, 120) + "..." : s
-        }
-        const _runOverlay = {
-          durationMs: runResult.duration_ms ?? null,
-          inputPreview: truncate(runResult.input_preview),
-          outputPreview: truncate(runResult.output),
-          runError: runResult.error ?? null,
-        }
-
-        // Skip update if status and overlay haven't changed
-        const prev = node.data._runOverlay as typeof _runOverlay | undefined
-        if (
-          node.data.runStatus === newStatus &&
-          prev?.durationMs === _runOverlay.durationMs &&
-          prev?.runError === _runOverlay.runError
-        ) {
-          return node
-        }
-
-        return { ...node, data: { ...node.data, runStatus: newStatus, _runOverlay } }
-      })
-    }
-
-    // Apply search highlighting via className/style
-    if (isSearchActive) {
-      result = result.map((node) => {
-        const isMatch = searchMatchIds.has(node.id)
-        const isCurrent = node.id === searchCurrentId
-        if (isCurrent) {
-          return {
-            ...node,
-            className: "!opacity-100 [&>div]:ring-2 [&>div]:ring-primary [&>div]:ring-offset-1",
-            style: { ...node.style, opacity: 1 },
-          }
-        }
-        if (isMatch) {
-          return {
-            ...node,
-            className: "!opacity-100 [&>div]:ring-2 [&>div]:ring-primary/40",
-            style: { ...node.style, opacity: 1 },
-          }
-        }
-        // Non-matching: dim
-        return {
-          ...node,
-          className: "",
-          style: { ...node.style, opacity: 0.25 },
-        }
-      })
-    } else {
-      // Clear any leftover search styles
-      result = result.map((node) => {
-        if (node.className || (node.style && node.style.opacity != null)) {
-          const style = { ...node.style }
-          delete style.opacity
-          return { ...node, className: undefined, style: Object.keys(style).length > 0 ? style : undefined }
-        }
-        return node
-      })
-    }
-
-    return result
-  }, [nodes, nodeResults, runPanelOpen, isRunning, isSearchActive, searchMatchIds, searchCurrentId])
+    const withStatus = showRunStatus && nodeResults ? withLiveRunStatus(nodes, nodeResults) : nodes
+    return highlightSearch(withStatus, {
+      active: search.active,
+      matchIds: search.matchIds,
+      currentId: search.currentId,
+    })
+  }, [nodes, nodeResults, showRunStatus, search.active, search.matchIds, search.currentId])
 
   // Derived edges: animate when source is completed and target is running
   const displayEdges = useMemo(() => {
-    if (!nodeResults || (!runPanelOpen && !isRunning)) return edges
-    return edges.map((edge) => {
-      const sourceStatus = nodeResults[edge.source]?.status
-      const targetStatus = nodeResults[edge.target]?.status
-      const shouldAnimate = sourceStatus === "completed" && (targetStatus === "running" || targetStatus === "retrying")
-      if (!shouldAnimate && !edge.animated) return edge
-      return { ...edge, animated: shouldAnimate }
-    })
-  }, [edges, nodeResults, runPanelOpen, isRunning])
-
-  // Sync blueprint out when nodes/edges change (debounced)
-  // Use a ref for the callback so that callback identity changes (caused by
-  // parent re-renders after save) don't re-trigger the sync effect and
-  // spuriously mark the form dirty again.
-  const onBlueprintChangeRef = useRef(onBlueprintChange)
-  onBlueprintChangeRef.current = onBlueprintChange
-
-  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  useEffect(() => {
-    if (syncTimer.current) clearTimeout(syncTimer.current)
-    syncTimer.current = setTimeout(() => {
-      // v2 blueprint: run-time overlay fields are stripped by the serializer.
-      onBlueprintChangeRef.current(
-        serializeBlueprint(
-          nodes as CanvasNode[],
-          edges,
-          blueprint.viewport ?? { x: 0, y: 0, zoom: 1 },
-        ) as unknown as WorkflowBlueprint,
-      )
-    }, 300)
-    return () => {
-      if (syncTimer.current) clearTimeout(syncTimer.current)
-    }
-    // Only sync when nodes/edges actually change — NOT on callback identity change
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, edges])
-
-  const onConnect = useCallback(
-    (params: Connection) => {
-      setEdges((eds) =>
-        addEdge(
-          {
-            ...params,
-            id: `e-${params.source}-${params.sourceHandle ?? "default"}-${params.target}-${params.targetHandle ?? "default"}`,
-          },
-          eds,
-        ),
-      )
-    },
-    [setEdges],
-  )
-
-  // Connection validation: don't connect to Start, don't connect from End
-  const isValidConnection = useCallback(
-    (connection: Connection | { source: string; target: string }) => {
-      // No self-connections
-      if (connection.source === connection.target) return false
-
-      const targetNode = nodes.find((n) => n.id === connection.target)
-      const sourceNode = nodes.find((n) => n.id === connection.source)
-      // Can't connect TO a Start node or FROM an End node
-      if (targetNode?.type === "start") return false
-      if (sourceNode?.type === "end") return false
-
-      // No duplicate edges (same source → target, same handles)
-      const srcHandle = (connection as Connection).sourceHandle ?? null
-      const tgtHandle = (connection as Connection).targetHandle ?? null
-      const duplicate = edges.some(
-        (e) =>
-          e.source === connection.source &&
-          e.target === connection.target &&
-          (e.sourceHandle ?? null) === srcHandle &&
-          (e.targetHandle ?? null) === tgtHandle,
-      )
-      if (duplicate) return false
-
-      return true
-    },
-    [nodes, edges],
-  )
-
-  // Drop handler for palette drag-and-drop
-  const onDrop = useCallback(
-    (event: React.DragEvent) => {
-      event.preventDefault()
-      const nodeType = event.dataTransfer.getData("application/reactflow-node-type") as WorkflowNodeType
-      if (!nodeType) return
-
-      // Single Start/End validation
-      if (nodeType === "start" && nodes.some((n) => n.type === "start")) {
-        toast.error(t("errorDuplicateStart"))
-        return
-      }
-      if (nodeType === "end" && nodes.some((n) => n.type === "end")) {
-        toast.error(t("errorDuplicateEnd"))
-        return
-      }
-
-      // Convert screen coordinates to flow coordinates (zoom-aware)
-      const rfInstance = rfInstanceRef.current
-      if (!rfInstance) return
-
-      const position = rfInstance.screenToFlowPosition({
-        x: event.clientX,
-        y: event.clientY,
-      })
-      // Offset to center the node at the drop point (node width ~220px, height ~60px)
-      position.x -= 110
-      position.y -= 30
-
-      const newNode: Node = {
-        id: `${nodeType}_${Date.now()}`,
-        type: nodeType,
-        position,
-        data: defaultNodeData(nodeType),
-      }
-
-      setNodes((nds) => [...nds, newNode])
-      addRecentNode(nodeType)
-    },
-    [setNodes, nodes, t, addRecentNode],
-  )
-
-  const onDragOver = useCallback((event: React.DragEvent) => {
-    event.preventDefault()
-    event.dataTransfer.dropEffect = "move"
-  }, [])
+    if (!showRunStatus || !nodeResults) return edges
+    return withRunAnimation(edges, nodeResults)
+  }, [edges, nodeResults, showRunStatus])
 
   const onNodeClick: NodeMouseHandler = useCallback((_event, node) => {
     setSelectedNodeId(node.id)
@@ -933,32 +267,20 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
   const onPaneClick = useCallback(() => {
     setSelectedNodeId(null)
     setContextMenu(null)
-  }, [])
+  }, [setContextMenu])
 
   const onNodeContextMenu = useCallback(
     (event: React.MouseEvent, node: Node) => {
       event.preventDefault()
       setContextMenu({ type: "node", x: event.clientX, y: event.clientY, nodeId: node.id })
     },
-    [],
+    [setContextMenu],
   )
 
   const onPaneContextMenu = useCallback((event: MouseEvent | React.MouseEvent) => {
     event.preventDefault()
     setContextMenu({ type: "pane", x: event.clientX, y: event.clientY })
-  }, [])
-
-  // Close context menu on scroll or click outside
-  useEffect(() => {
-    if (!contextMenu) return
-    const close = () => setContextMenu(null)
-    window.addEventListener("click", close)
-    window.addEventListener("scroll", close, true)
-    return () => {
-      window.removeEventListener("click", close)
-      window.removeEventListener("scroll", close, true)
-    }
-  }, [contextMenu])
+  }, [setContextMenu])
 
   const handleNodeDataUpdate = useCallback(
     (nodeId: string, data: Record<string, unknown>) => {
@@ -985,17 +307,23 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
     })
   }, [nodes, edges, setNodes])
 
+  const { undo, redo } = history
+  const { applyRunOverlay, clearRunOverlay, applyValidationOverlay, clearValidationOverlay } = overlays
   useImperativeHandle(ref, () => ({
+    getBlueprint,
     autoLayout: handleAutoLayout,
-    undo: handleUndo,
-    redo: handleRedo,
+    undo,
+    redo,
     canUndo,
     canRedo,
-    applyRunOverlay: handleViewRunOnCanvas,
+    applyRunOverlay,
     clearRunOverlay,
     applyValidationOverlay,
     clearValidationOverlay,
-  }), [handleAutoLayout, handleUndo, handleRedo, canUndo, canRedo, handleViewRunOnCanvas, clearRunOverlay, applyValidationOverlay, clearValidationOverlay])
+  }), [getBlueprint, handleAutoLayout, undo, redo, canUndo, canRedo, applyRunOverlay, clearRunOverlay, applyValidationOverlay, clearValidationOverlay])
+
+  const contextNode =
+    contextMenu?.type === "node" ? nodes.find((n) => n.id === contextMenu.nodeId) : undefined
 
   return (
     <HiddenNodeTypesContext.Provider value={hiddenNodeTypes}>
@@ -1004,7 +332,17 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
       <NodePalette existingNodeTypes={existingNodeTypes} recentNodes={recentNodes} />
 
       {/* Center: React Flow canvas */}
-      <div className="flex-1 min-w-0 relative" ref={reactFlowWrapper}>
+      <div
+        className="flex-1 min-w-0 relative"
+        ref={reactFlowWrapper}
+        // For tests: whether the canvas has handed its last change to the
+        // page and to undo history (both follow a change after a pause).
+        data-testid="workflow-canvas"
+        data-sync-pending={sync.pending}
+        data-sync-reports={sync.reports}
+        data-history-pending={history.pending}
+        data-history-revision={history.revision}
+      >
         <ReactFlow
           nodes={displayNodes}
           edges={displayEdges}
@@ -1013,12 +351,12 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
           defaultEdgeOptions={{ type: "default" }}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          isValidConnection={isValidConnection}
+          onConnect={connections.onConnect}
+          isValidConnection={connections.isValidConnection}
           snapToGrid
           snapGrid={[16, 16]}
-          onDrop={onDrop}
-          onDragOver={onDragOver}
+          onDrop={connections.onDrop}
+          onDragOver={connections.onDragOver}
           onNodeClick={onNodeClick}
           onNodeContextMenu={onNodeContextMenu}
           onPaneContextMenu={onPaneContextMenu}
@@ -1045,18 +383,18 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
 
         {/* Canvas search bar */}
         <CanvasSearchBar
-          open={searchOpen}
-          query={searchQuery}
-          matchCount={searchMatches.length}
-          currentIndex={searchIndex}
-          onQueryChange={handleSearchQueryChange}
-          onNext={handleSearchNext}
-          onPrev={handleSearchPrev}
-          onClose={handleSearchClose}
+          open={search.open}
+          query={search.query}
+          matchCount={search.matchCount}
+          currentIndex={search.index}
+          onQueryChange={search.changeQuery}
+          onNext={search.next}
+          onPrev={search.prev}
+          onClose={search.closeSearch}
         />
 
         {/* Run overlay banner */}
-        {hasRunOverlay && (
+        {overlays.hasRunOverlay && (
           <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-card/95 backdrop-blur shadow-sm">
             <span className="text-xs text-muted-foreground">{t("runReplayActive")}</span>
             <button
@@ -1071,136 +409,64 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
         )}
 
         {/* Node context menu */}
-        {contextMenu?.type === "node" && (() => {
-          const ctxNode = nodes.find((n) => n.id === contextMenu.nodeId)
-          const isStartOrEnd = ctxNode?.type === "start" || ctxNode?.type === "end"
-          return (
-            <div
-              className="fixed z-50 min-w-[160px] rounded-md border border-border bg-popover p-1 shadow-md animate-in fade-in-0 zoom-in-95"
-              style={{ left: contextMenu.x, top: contextMenu.y }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <button
-                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs text-foreground hover:bg-accent/50 transition-colors"
-                onClick={() => {
-                  setSelectedNodeId(contextMenu.nodeId)
-                  setContextMenu(null)
-                }}
-              >
-                <Settings className="h-3.5 w-3.5" />
-                {t("contextMenuConfigure")}
-              </button>
-              <button
-                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs text-foreground hover:bg-accent/50 transition-colors"
-                onClick={() => {
-                  if (ctxNode) {
-                    const nType = ctxNode.type as WorkflowNodeType
-                    setTestNodeTarget({
-                      nodeId: ctxNode.id,
-                      nodeType: nType,
-                      label: t(`nodeType_${nType}` as Parameters<typeof t>[0]),
-                    })
-                  }
-                  setContextMenu(null)
-                }}
-              >
-                <Beaker className="h-3.5 w-3.5" />
-                {t("contextMenuTestNode")}
-              </button>
-              <button
-                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs text-foreground hover:bg-accent/50 transition-colors"
-                onClick={() => {
-                  if (ctxNode) {
-                    copiedNodesRef.current = {
-                      nodes: [{ ...ctxNode, data: { ...ctxNode.data } }],
-                      edges: [],
-                    }
-                  }
-                  setContextMenu(null)
-                }}
-              >
-                <Copy className="h-3.5 w-3.5" />
-                {t("contextMenuCopy")}
-              </button>
-              <button
-                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs text-foreground hover:bg-accent/50 transition-colors"
-                onClick={() => {
-                  handleDuplicateSelected()
-                  setContextMenu(null)
-                }}
-              >
-                <Clipboard className="h-3.5 w-3.5" />
-                {t("contextMenuDuplicate")}
-              </button>
-              {!isStartOrEnd && (
-                <>
-                  <div className="my-1 h-px bg-border" />
-                  <button
-                    className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs text-destructive hover:bg-destructive/10 transition-colors"
-                    onClick={() => {
-                      handleDeleteNode(contextMenu.nodeId)
-                      setContextMenu(null)
-                    }}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    {t("contextMenuDelete")}
-                  </button>
-                </>
-              )}
-            </div>
-          )
-        })()}
+        {contextMenu?.type === "node" && (
+          <NodeContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            canDelete={!(contextNode?.type === "start" || contextNode?.type === "end")}
+            onConfigure={() => {
+              setSelectedNodeId(contextMenu.nodeId)
+              setContextMenu(null)
+            }}
+            onTest={() => {
+              if (contextNode) {
+                const nType = contextNode.type as WorkflowNodeType
+                setTestNodeTarget({
+                  nodeId: contextNode.id,
+                  nodeType: nType,
+                  label: t(`nodeType_${nType}` as Parameters<typeof t>[0]),
+                })
+              }
+              setContextMenu(null)
+            }}
+            onCopy={() => {
+              if (contextNode) editing.copyNode(contextNode)
+              setContextMenu(null)
+            }}
+            onDuplicate={() => {
+              editing.duplicateSelected()
+              setContextMenu(null)
+            }}
+            onDelete={() => {
+              editing.deleteNode(contextMenu.nodeId)
+              setContextMenu(null)
+            }}
+          />
+        )}
 
         {/* Pane context menu (right-click on empty canvas) */}
         {contextMenu?.type === "pane" && (
-          <div
-            className="fixed z-50 min-w-[160px] rounded-md border border-border bg-popover p-1 shadow-md animate-in fade-in-0 zoom-in-95"
-            style={{ left: contextMenu.x, top: contextMenu.y }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              disabled={copiedNodesRef.current.nodes.length === 0}
-              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs text-foreground hover:bg-accent/50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              onClick={() => {
-                handlePaste()
-                setContextMenu(null)
-              }}
-            >
-              <Clipboard className="h-3.5 w-3.5" />
-              {t("contextMenuPaste")}
-            </button>
-            <button
-              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs text-foreground hover:bg-accent/50 transition-colors"
-              onClick={() => {
-                handleSelectAll()
-                setContextMenu(null)
-              }}
-            >
-              <MousePointerSquareDashed className="h-3.5 w-3.5" />
-              {t("contextMenuSelectAll")}
-            </button>
-            <div className="my-1 h-px bg-border" />
-            <button
-              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs text-foreground hover:bg-accent/50 transition-colors"
-              onClick={() => {
-                rfInstanceRef.current?.fitView({ duration: 300, padding: 0.4 })
-                setContextMenu(null)
-              }}
-            >
-              <Maximize2 className="h-3.5 w-3.5" />
-              {t("contextMenuFitView")}
-            </button>
-            <button
-              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs text-foreground hover:bg-accent/50 transition-colors"
-              onClick={() => {
-                handleAutoLayout()
-                setContextMenu(null)
-              }}
-            >
-              <LayoutGrid className="h-3.5 w-3.5" />
-              {t("contextMenuAutoLayout")}
-            </button>
-          </div>
+          <PaneContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            canPaste={editing.hasClipboard()}
+            onPaste={() => {
+              editing.paste()
+              setContextMenu(null)
+            }}
+            onSelectAll={() => {
+              editing.selectAll()
+              setContextMenu(null)
+            }}
+            onFitView={() => {
+              rfInstanceRef.current?.fitView({ duration: 300, padding: 0.4 })
+              setContextMenu(null)
+            }}
+            onAutoLayout={() => {
+              handleAutoLayout()
+              setContextMenu(null)
+            }}
+          />
         )}
 
       </div>
@@ -1229,7 +495,7 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
           node={selectedNode}
           allNodes={nodes}
           onUpdate={handleNodeDataUpdate}
-          onDelete={handleDeleteNode}
+          onDelete={editing.deleteNode}
           onClose={() => setSelectedNodeId(null)}
         />
       ) : null}

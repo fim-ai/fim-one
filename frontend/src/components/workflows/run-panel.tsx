@@ -724,7 +724,10 @@ export function RunPanel({
   const showTabs = isRunning || hasResults
 
   return (
-    <div className="flex flex-col h-full w-[420px] shrink-0 border-l border-border bg-background/95 backdrop-blur-sm overflow-hidden">
+    <div
+      data-testid="run-panel"
+      className="flex flex-col h-full w-[420px] shrink-0 border-l border-border bg-background/95 backdrop-blur-sm overflow-hidden"
+    >
       {/* Row 1: Title + action buttons */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-border shrink-0">
         <h3 className="text-sm font-semibold text-foreground">

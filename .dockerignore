@@ -19,6 +19,10 @@ htmlcov/
 node_modules/
 frontend/.next/
 frontend/.next-build/
+frontend/.next-e2e/
+frontend/.e2e-state/
+frontend/test-results/
+frontend/playwright-report/
 
 # Data (mounted as volumes, not baked into image)
 data/
