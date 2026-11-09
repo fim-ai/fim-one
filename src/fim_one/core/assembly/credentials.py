@@ -31,8 +31,9 @@ Database connectors are a separate case: their tools run raw SQL on the
 owner's database account with no per-caller scoping, so only the owner gets
 the connection config (``owner_only``).
 
-A lookup that fails is refused with ``credential_unavailable``; it never
-falls through to the owner's credential.
+A lookup that fails, or a stored credential that cannot be decrypted, is
+refused with ``credential_unavailable``; it never falls through to the
+owner's credential or to a bare call.
 """
 
 from __future__ import annotations
@@ -195,11 +196,36 @@ def _secrets_left_in_auth_config(conn: Any) -> dict[str, Any]:
     return {key: config[key] for key in _AUTH_CONFIG_SECRET_KEYS if config.get(key)}
 
 
-def _read(ciphertext: str) -> dict[str, Any]:
-    """A stored credential blob as the dict it holds."""
-    from fim_one.core.security.encryption import decrypt_credential
+class _UnreadableError(Exception):
+    """A stored credential blob could not be decrypted or parsed."""
 
-    return decrypt_credential(ciphertext)
+
+def _read(ciphertext: str) -> dict[str, Any]:
+    """A stored credential blob as the dict it holds.
+
+    Strict where ``decrypt_credential`` is lenient: that one answers ``{}``
+    for a blob it cannot read (a rotated key, a damaged row), which here
+    would pass for "nothing saved" and send the call out with someone
+    else's credential, or with none. An unreadable blob raises instead.
+    """
+    import json
+
+    try:
+        if ciphertext.startswith("{"):
+            # Rows written before the encryption key was configured.
+            value = json.loads(ciphertext)
+        else:
+            from cryptography.fernet import Fernet
+
+            from fim_one.core.security.encryption import get_credential_key
+
+            plaintext = Fernet(get_credential_key()).decrypt(ciphertext.encode("utf-8"))
+            value = json.loads(plaintext.decode("utf-8"))
+    except Exception as exc:
+        raise _UnreadableError from exc
+    if not isinstance(value, dict):
+        raise _UnreadableError
+    return value
 
 
 async def _connector_credentials(
@@ -255,6 +281,9 @@ async def _connector_credentials(
             )
         except AssemblyRefusal as refusal:
             answers[index] = refusal
+        except _UnreadableError:
+            logger.warning("A stored credential of connector %r cannot be read", _name(conn))
+            answers[index] = _credential_unavailable("Connector", conn)
     return answers
 
 
@@ -263,8 +292,8 @@ def _connector_answer(
 ) -> ResolvedCredential:
     is_owner = _is_owner(principal, conn)
     may_borrow = is_owner or bool(getattr(conn, "allow_fallback", True))
-    # A row of the user's own decides, even one that reads back empty: the
-    # owner's is not tried in its place.
+    # A row of the user's own decides, even a blank one: the owner's is not
+    # tried in its place. (One that cannot be read at all raises.)
     personal = _read(personal_blob) if personal_blob is not None else None
     if personal:
         return ResolvedCredential(source=CredentialSource.PERSONAL, connector=personal)
@@ -361,16 +390,68 @@ async def _mcp_credentials(
                 answers[index] = _credential_unavailable("MCP server", server)
             return answers
 
+    try:
+        unreadable = await _servers_with_unreadable_secrets(db, [s for _, s in servers])
+    except Exception:
+        logger.warning("Failed to re-read stored MCP secrets", exc_info=True)
+        unreadable = {server.id for _, server in servers}
+
     for index, server in servers:
         try:
-            answers[index] = _mcp_answer(principal, server, personal_rows.get(server.id))
+            answers[index] = _mcp_answer(
+                principal,
+                server,
+                personal_rows.get(server.id),
+                stored_unreadable=server.id in unreadable,
+            )
         except AssemblyRefusal as refusal:
             answers[index] = refusal
+        except _UnreadableError:
+            logger.warning("A stored credential of MCP server %r cannot be read", _name(server))
+            answers[index] = _credential_unavailable("MCP server", server)
     return answers
 
 
+async def _servers_with_unreadable_secrets(db: AsyncSession, servers: Sequence[Any]) -> set[str]:
+    """Ids of the servers whose own ``env`` or ``headers`` cannot be read.
+
+    The row's attributes cannot tell: the column type reads a blob it cannot
+    decrypt as ``{}``. Only a server that shows an empty dict is re-read as
+    stored, so this costs a query only when there is something to doubt.
+    """
+    suspects = [s.id for s in servers if s.env == {} or s.headers == {}]
+    if not suspects:
+        return set()
+
+    from sqlalchemy import Text, select, type_coerce
+
+    from fim_one.db.models.mcp_server import MCPServer
+
+    rows = (
+        await db.execute(
+            select(
+                MCPServer.id, type_coerce(MCPServer.env, Text), type_coerce(MCPServer.headers, Text)
+            ).where(MCPServer.id.in_(suspects))
+        )
+    ).all()
+    unreadable: set[str] = set()
+    for server_id, env_blob, headers_blob in rows:
+        for blob in (env_blob, headers_blob):
+            if blob is None:
+                continue
+            try:
+                _read(blob)
+            except _UnreadableError:
+                unreadable.add(server_id)
+    return unreadable
+
+
 def _mcp_answer(
-    principal: Principal, server: Any, personal_blobs: tuple[str | None, str | None] | None
+    principal: Principal,
+    server: Any,
+    personal_blobs: tuple[str | None, str | None] | None,
+    *,
+    stored_unreadable: bool = False,
 ) -> ResolvedCredential:
     if personal_blobs is not None:
         env = _read(personal_blobs[0]) if personal_blobs[0] is not None else None
@@ -391,6 +472,10 @@ def _mcp_answer(
             server,
             "environment variables" if server.transport == "stdio" else "HTTP headers",
         )
+    if stored_unreadable:
+        # What the owner stored cannot be read: opening the server without
+        # it would be a different connection from the one configured.
+        raise _UnreadableError
     if not server.env and not server.headers:
         # The owner, or anyone the owner lends to, and nothing is stored.
         return ResolvedCredential(source=CredentialSource.NONE)

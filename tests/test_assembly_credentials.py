@@ -131,15 +131,12 @@ class TestApiConnector:
         assert got.source is CredentialSource.NONE
         assert got.connector == {}
 
-    async def test_an_unreadable_row_of_ones_own_does_not_borrow_the_owners(
+    async def test_a_blank_row_of_ones_own_does_not_borrow_the_owners(
         self, session: AsyncSession
     ) -> None:
-        """A personal row that reads back empty is not replaced by the owner's."""
+        """A personal row decides even when it holds nothing."""
         await _store(session, None, {"default_token": "owner"})
-        session.add(
-            ConnectorCredential(connector_id=CID, user_id=OTHER, credentials_blob="not-a-token")
-        )
-        await session.commit()
+        await _store(session, OTHER, {})
 
         got = await resolve_credential(
             session, provisional_principal(OTHER), _connector(allow_fallback=True)
@@ -149,6 +146,51 @@ class TestApiConnector:
 
         refusal = await _refusal(session, OTHER, _connector(allow_fallback=False))
         assert refusal.error_code == "credential_required"
+
+    @pytest.mark.parametrize("allow_fallback", [True, False])
+    async def test_a_row_of_ones_own_that_cannot_be_decrypted_is_refused(
+        self, session: AsyncSession, allow_fallback: bool
+    ) -> None:
+        """It read as empty: the call went out bare with fallback on, and was
+        reported as "save your own credential" with it off."""
+        await _store(session, None, {"default_token": "owner"})
+        session.add(
+            ConnectorCredential(connector_id=CID, user_id=OTHER, credentials_blob="not-a-token")
+        )
+        await session.commit()
+
+        refusal = await _refusal(session, OTHER, _connector(allow_fallback=allow_fallback))
+
+        assert (refusal.error_code, refusal.status_code) == ("credential_unavailable", 503)
+
+    async def test_an_owners_credential_that_cannot_be_decrypted_is_refused(
+        self, session: AsyncSession
+    ) -> None:
+        """It read as empty and the owner's call went out with no credential."""
+        session.add(
+            ConnectorCredential(connector_id=CID, user_id=None, credentials_blob="not-a-token")
+        )
+        await session.commit()
+
+        for user_id in (OWNER, OTHER):
+            refusal = await _refusal(session, user_id, _connector(allow_fallback=True))
+            assert refusal.error_code == "credential_unavailable"
+
+    async def test_a_plaintext_row_from_before_encryption_is_still_read(
+        self, session: AsyncSession
+    ) -> None:
+        session.add(
+            ConnectorCredential(
+                connector_id=CID, user_id=None, credentials_blob='{"default_token": "legacy"}'
+            )
+        )
+        await session.commit()
+
+        got = await resolve_credential(
+            session, provisional_principal(OWNER), _connector(allow_fallback=False)
+        )
+
+        assert got.connector == {"default_token": "legacy"}
 
     async def test_a_failed_lookup_is_refused_not_downgraded(self) -> None:
         broken = AsyncMock()
@@ -508,3 +550,75 @@ class TestManyResourcesOneLookup:
         first = answers[0]
         assert not isinstance(first, AssemblyRefusal)
         assert first.connector == {"default_token": "owner-0"}
+
+
+class TestMcpSecretThatCannotBeDecrypted:
+    """An unreadable blob reads as ``{}`` through the column type."""
+
+    async def _damage(self, session: AsyncSession, table: str, column: str) -> None:
+        from sqlalchemy import text
+
+        await session.execute(text(f"UPDATE {table} SET {column} = 'not-a-token'"))
+        await session.commit()
+        session.expire_all()
+
+    async def test_ones_own_unreadable_credential_does_not_become_the_owners(
+        self, session: AsyncSession
+    ) -> None:
+        """With fallback on it silently became ``owner_fallback``."""
+        await _save_mcp(session, OTHER, env={"API_KEY": "mine"})
+        await self._damage(session, "mcp_server_credentials", "env_blob")
+
+        refusal = await _refusal(session, OTHER, _mcp(transport="stdio", allow_fallback=True))
+
+        assert (refusal.error_code, refusal.status_code) == ("credential_unavailable", 503)
+
+    @pytest.mark.parametrize("user_id", [OWNER, OTHER])
+    async def test_the_owners_unreadable_secret_does_not_become_no_secret(
+        self, session: AsyncSession, user_id: str
+    ) -> None:
+        """The server was opened with nothing, recorded as ``none``."""
+        from fim_one.db.models.mcp_server import MCPServer
+
+        session.add(
+            MCPServer(
+                id="srv-1",
+                user_id=OWNER,
+                name="shared-server",
+                transport="stdio",
+                command="npx",
+                env={"API_KEY": "owner-key"},
+                allow_fallback=True,
+            )
+        )
+        await session.commit()
+        await self._damage(session, "mcp_servers", "env")
+        server = await session.get(MCPServer, "srv-1")
+        assert server is not None and server.env == {}
+
+        refusal = await _refusal(session, user_id, server)
+
+        assert refusal.error_code == "credential_unavailable"
+
+    async def test_a_server_that_really_stores_an_empty_object_is_opened(
+        self, session: AsyncSession
+    ) -> None:
+        from fim_one.db.models.mcp_server import MCPServer
+
+        session.add(
+            MCPServer(
+                id="srv-1",
+                user_id=OWNER,
+                name="shared-server",
+                transport="stdio",
+                command="npx",
+                env={},
+                allow_fallback=True,
+            )
+        )
+        await session.commit()
+        server = await session.get(MCPServer, "srv-1")
+
+        got = await resolve_credential(session, provisional_principal(OWNER), server)
+
+        assert got.source is CredentialSource.NONE
