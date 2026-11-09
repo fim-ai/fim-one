@@ -1818,18 +1818,12 @@ async def _resolve_tools(
             logger.warning("Failed to load connector tools", exc_info=True)
 
     elif user_id and not agent_cfg:
-        # No-agent mode: auto-discover all visible connectors (progressive mode).
+        # No-agent mode: auto-discover every connector the caller can use
+        # (progressive mode). Credentials, the fallback gate and the call
+        # record are the same as in a chat with an agent.
         try:
-            from sqlalchemy import select
             from sqlalchemy.orm import selectinload
 
-            from fim_one.core.security.encryption import (
-                decrypt_db_config,
-            )
-            from fim_one.core.tool.connector import build_connector_meta_tool
-            from fim_one.core.tool.connector.database.meta_tool import (
-                build_database_meta_tool as _ad_build_db_meta,
-            )
             from fim_one.db import create_session
             from fim_one.db.models.connector import Connector as ConnectorModel
             from fim_one.db.models.database_schema import (
@@ -1848,83 +1842,21 @@ async def _resolve_tools(
                         ),
                     ),
                 )
-
-            if _ad_connectors:
-                # API connectors — use progressive mode (single meta-tool)
-                _ad_api_connectors = [c for c in _ad_connectors if c.type != "database"]
-                if _ad_api_connectors:
-                    meta_tool = build_connector_meta_tool(_ad_api_connectors)
-                    tools.register(meta_tool)
-                    logger.info(
-                        "Auto-discovered %d API connectors (progressive mode)",
-                        len(_ad_api_connectors),
-                    )
-
-                # Database connectors — use progressive mode (single meta-tool)
-                _ad_db_collected: list[tuple[Any, dict[str, Any], list[Any]]] = []
-                from fim_one.core.security.connector_credentials import (
-                    db_raw_sql_tool_allowed,
-                )
-
-                for _ad_db_conn in _ad_connectors:
-                    if _ad_db_conn.type == "database" and _ad_db_conn.db_config:
-                        # Raw-SQL DB tools are owner-only (see agent-mode gate):
-                        # a subscriber must not get raw SQL on the owner's
-                        # privileged account.
-                        if not db_raw_sql_tool_allowed(_ad_db_conn, user_id):
-                            logger.info(
-                                "Skipping raw-SQL DB connector %r for non-owner "
-                                "caller (owner-only)",
-                                _ad_db_conn.name,
-                            )
-                            continue
-                        try:
-                            config = decrypt_db_config(_ad_db_conn.db_config)
-                            schema_tables = []
-                            for schema_obj in _ad_db_conn.database_schemas or []:
-                                if not schema_obj.is_visible:
-                                    continue
-                                cols = []
-                                for col in schema_obj.columns or []:
-                                    if not col.is_visible:
-                                        continue
-                                    cols.append(
-                                        {
-                                            "column_name": col.column_name,
-                                            "data_type": col.data_type,
-                                            "is_nullable": col.is_nullable,
-                                            "is_primary_key": col.is_primary_key,
-                                            "display_name": col.display_name,
-                                            "description": col.description,
-                                            "is_pii": col.is_pii,
-                                        }
-                                    )
-                                schema_tables.append(
-                                    {
-                                        "table_name": schema_obj.table_name,
-                                        "display_name": schema_obj.display_name,
-                                        "description": schema_obj.description,
-                                        "column_count": len(cols),
-                                        "columns": cols,
-                                    }
-                                )
-                            _ad_db_collected.append((_ad_db_conn, config, schema_tables))
-                        except Exception:
-                            logger.warning(
-                                "Failed to load DB connector tools: %s",
-                                _ad_db_conn.name,
-                                exc_info=True,
-                            )
-
-                if _ad_db_collected:
-                    _ad_db_meta = _ad_build_db_meta(
-                        _ad_db_collected,
-                    )
-                    tools.register(_ad_db_meta)
-                    logger.info(
-                        "Auto-discovered %d DB connectors (progressive mode)",
-                        len(_ad_db_collected),
-                    )
+                _ad_ctx = _tool_context(user_id, None, conversation_id)
+                for _ad_tool in await connector_tools(
+                    _ad_session,
+                    _ad_ctx,
+                    [c for c in _ad_connectors if c.type != "database"],
+                    mode="progressive",
+                ):
+                    tools.register(_ad_tool)
+                for _ad_db_tool in await database_tools(
+                    _ad_session,
+                    _ad_ctx,
+                    [c for c in _ad_connectors if c.type == "database"],
+                    mode="progressive",
+                ):
+                    tools.register(_ad_db_tool)
         except Exception:
             logger.warning("Failed to auto-discover connectors", exc_info=True)
 

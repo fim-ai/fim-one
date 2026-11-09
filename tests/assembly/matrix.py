@@ -1168,14 +1168,6 @@ def _kb_ignores_switch(_entry: str, cell: Cell, _so_far: Outcome) -> Outcome | N
     return Outcome(exposed=True) if cell.role == "owner" and not cell.is_active else None
 
 
-def _noagent_connector_unauthenticated(_entry: str, cell: Cell, so_far: Outcome) -> Outcome | None:
-    if not (sees(cell.role, cell.resource) and cell.is_active):
-        return None
-    # Offered to everyone who can see it, called with no credential at all
-    # (also when the rule would refuse for want of one), and not recorded.
-    return Outcome(exposed=True, credential_source="none", logged=False, confirmed=True)
-
-
 def _not_recorded(_entry: str, _cell: Cell, so_far: Outcome) -> Outcome | None:
     return _replace(so_far, logged=False) if so_far.exposed else None
 
@@ -1262,29 +1254,6 @@ KNOWN_DEVIATIONS: tuple[Deviation, ...] = (
         today=_kb_ignores_switch,
     ),
     Deviation(
-        name="noagent-connector-unauthenticated",
-        entries=("chat_noagent",),
-        resources=API_CONNECTORS,
-        what=(
-            "Auto-discovered connectors resolve no credential: every call goes out "
-            "unauthenticated, for the owner too, and a subscriber with no personal "
-            "credential and fallback off is offered the connector anyway. No call "
-            "record is written."
-        ),
-        ref="S9; design §1.2 row 'chat-0', §1.5; B5",
-        removed_in="C1 phase 2",
-        today=_noagent_connector_unauthenticated,
-    ),
-    Deviation(
-        name="noagent-database-not-recorded",
-        entries=("chat_noagent",),
-        resources=("db",),
-        what="The auto-discovered database tool is built without the call-record callback.",
-        ref="S9; design §1.5",
-        removed_in="C1 phase 2",
-        today=_not_recorded,
-    ),
-    Deviation(
         name="noagent-no-confirmation",
         entries=("chat_noagent",),
         resources=API_CONNECTORS,
@@ -1328,7 +1297,7 @@ KNOWN_DEVIATIONS: tuple[Deviation, ...] = (
     ),
     Deviation(
         name="fallback-gate-on-connector-without-auth",
-        entries=("chat_agent", "sub_agent", "wf_agent_node"),
+        entries=("chat_agent", "chat_noagent", "sub_agent", "wf_agent_node"),
         resources=("api_none",),
         what=(
             "A connector that needs no credential is hidden from a non-owner unless "
