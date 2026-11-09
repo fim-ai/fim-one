@@ -435,6 +435,23 @@ class WorkflowRunService:
                 raise RunRefusedError("workflow_rate_limited", 429, rate_error)
         return principal, parsed
 
+    async def would_refuse(
+        self, workflow: Any, caller_id: str | None, mode: RunMode
+    ) -> RunRefusedError | None:
+        """The refusal a run started now would get from :meth:`authorize`.
+
+        ``None`` when it would pass. Read-only: the same identity, account,
+        quota, plan and blueprint checks, with no run created and no
+        rate-limit budget used. A run can therefore still be refused for
+        what is only decided when it starts: the concurrent-run and
+        runs-per-minute limits, and a trigger key's single-flight rule.
+        """
+        try:
+            await self.authorize(workflow, caller_id, mode)
+        except RunRefusedError as exc:
+            return exc
+        return None
+
     # -- runs -----------------------------------------------------------------
 
     async def start_run(

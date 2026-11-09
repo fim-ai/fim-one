@@ -1368,7 +1368,18 @@ async def run_workflow(
     When ``body.dry_run`` is ``True``, parse and validate the blueprint,
     compute the topological execution order, and return a JSON response
     with the planned execution plan — no nodes are actually executed.
+    A dry run is ``valid`` only if a real run by the caller would pass the
+    run service's checks (account, quota, plan, switched-off steps);
+    otherwise ``errors`` and ``error_code`` say why. It creates no run and
+    uses no rate-limit budget, so it does not predict the concurrent-run
+    and runs-per-minute limits.
     """
+    from fim_one.core.workflow.run_service import (
+        RunMode,
+        RunRefusedError,
+        get_run_service,
+    )
+
     wf = await _get_accessible_workflow(workflow_id, current_user.id, db)
 
     # --- Dry-run mode: validate + return execution plan, no execution ---
@@ -1385,6 +1396,7 @@ async def run_workflow(
             dry_result = WorkflowDryRunResponse(
                 valid=False,
                 errors=["Blueprint is empty or has no nodes"],
+                error_code="blueprint_empty",
             )
             return ApiResponse(data=dry_result.model_dump())  # type: ignore[return-value]
 
@@ -1397,13 +1409,23 @@ async def run_workflow(
                 # Parse errors name nodes; other users only learn that it
                 # is invalid.
                 errors=[str(exc) if is_author else "The workflow blueprint is invalid"],
+                error_code="invalid_blueprint",
             )
             return ApiResponse(data=dry_result.model_dump())  # type: ignore[return-value]
+
+        # What a real run by this caller would be refused for, if anything.
+        refusal = await get_run_service().would_refuse(
+            wf, current_user.id, RunMode.INTERACTIVE
+        )
+        refusal_errors = [refusal.detail] if refusal else []
+        refusal_code = refusal.error_code if refusal else None
 
         if not is_author:
             # The plan, warnings and topology describe the blueprint, which
             # only its author sees.
-            dry_result = WorkflowDryRunResponse(valid=True, errors=[])
+            dry_result = WorkflowDryRunResponse(
+                valid=refusal is None, errors=refusal_errors, error_code=refusal_code
+            )
             return ApiResponse(data=dry_result.model_dump())  # type: ignore[return-value]
 
         bp_warnings = _validate(parsed)
@@ -1427,8 +1449,9 @@ async def run_workflow(
         ]
 
         dry_result = WorkflowDryRunResponse(
-            valid=True,
-            errors=[],
+            valid=refusal is None,
+            errors=refusal_errors,
+            error_code=refusal_code,
             warnings=[
                 BlueprintWarningItem(
                     node_id=w.node_id,
@@ -1445,12 +1468,6 @@ async def run_workflow(
         return ApiResponse(data=dry_result.model_dump())  # type: ignore[return-value]
 
     # --- Normal execution mode (SSE streaming) ---
-    from fim_one.core.workflow.run_service import (
-        RunMode,
-        RunRefusedError,
-        get_run_service,
-    )
-
     try:
         started = await get_run_service().start_run(
             wf,

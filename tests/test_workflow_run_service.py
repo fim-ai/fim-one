@@ -395,6 +395,107 @@ async def test_approval_step_refused_while_switched_off(
 
 
 # ---------------------------------------------------------------------------
+# Dry run: the answer a real run would get, without starting one
+# ---------------------------------------------------------------------------
+
+
+async def _dry_run(w: World, user: User) -> dict[str, Any]:
+    async with w.factory() as db:
+        resp = await wf_api.run_workflow(
+            w.wf.id,
+            WorkflowRunRequest(inputs={}, dry_run=True),
+            MagicMock(),
+            current_user=user,
+            db=db,
+        )
+    data: dict[str, Any] = resp.data  # type: ignore[attr-defined]
+    return data
+
+
+async def _assert_nothing_started(w: World) -> None:
+    """A dry run creates no run, starts no engine and uses no rate-limit budget."""
+    assert await _runs(w) == []
+    assert w.engines == []
+    limiter = rs.get_run_service().rate_limiter
+    assert not any(limiter._active_runs.values())
+    assert not any(limiter._run_timestamps.values())
+
+
+@pytest.mark.asyncio
+async def test_dry_run_of_a_runnable_workflow_is_valid(world: World) -> None:
+    for user in (world.author, world.subscriber):
+        data = await _dry_run(world, user)
+        assert (data["valid"], data["errors"], data["error_code"]) == (True, [], None)
+    await _assert_nothing_started(world)
+
+
+@pytest.mark.asyncio
+async def test_dry_run_reports_a_switched_off_step(world: World) -> None:
+    """A workflow whose real run is refused for a switched-off Human
+    Intervention step is not reported as valid."""
+    async with world.factory() as s:
+        wf = await s.get(Workflow, world.wf.id)
+        assert wf is not None
+        wf.blueprint = APPROVAL_BLUEPRINT
+        await s.commit()
+
+    own = await _dry_run(world, world.author)
+    assert own["valid"] is False
+    assert own["error_code"] == "human_intervention_disabled"
+    assert "switched off" in own["errors"][0]
+    # The author still gets the plan beside the refusal.
+    assert [p["node_id"] for p in own["execution_plan"]] == ["start_1", "human_1", "end_1"]
+
+    theirs = await _dry_run(world, world.subscriber)
+    assert theirs["valid"] is False
+    assert theirs["error_code"] == "human_intervention_disabled"
+    assert theirs["execution_plan"] == []
+    await _assert_nothing_started(world)
+
+    # The real run gives the same answer.
+    assert (await _drive("interactive", world)).refused == "human_intervention_disabled"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        "token_quota_exceeded",
+        "subscription_required",
+        "workflow_owner_inactive",
+        "account_disabled",
+    ],
+)
+async def test_dry_run_reports_what_a_real_run_is_refused_for(
+    scenario: str, world: World
+) -> None:
+    quota = (100, 50) if scenario == "token_quota_exceeded" else (0, 0)
+    if scenario in ("workflow_owner_inactive", "account_disabled"):
+        disabled = world.author if scenario == "workflow_owner_inactive" else world.subscriber
+        async with world.factory() as s:
+            user = await s.get(User, disabled.id)
+            assert user is not None
+            user.is_active = False
+            await s.commit()
+
+    with (
+        patch("fim_one.web.api.chat._get_quota_status", new=AsyncMock(return_value=quota)),
+        patch(
+            "fim_one.web.services.quota_enforcer.is_user_unentitled",
+            new=AsyncMock(return_value=scenario == "subscription_required"),
+        ),
+    ):
+        data = await _dry_run(world, world.subscriber)
+        real = await _drive("interactive", world)
+
+    assert data["valid"] is False
+    assert data["error_code"] == scenario
+    assert len(data["errors"]) == 1
+    assert real.refused == scenario
+    await _assert_nothing_started(world)
+
+
+# ---------------------------------------------------------------------------
 # Batch runs and the concurrent-run limit
 # ---------------------------------------------------------------------------
 

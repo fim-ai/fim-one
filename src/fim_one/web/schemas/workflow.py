@@ -202,6 +202,9 @@ class WorkflowDryRunResponse(BaseModel):
 
     valid: bool
     errors: list[str] = Field(default_factory=list)
+    # Why a real run would be refused, when it would be (the code that run
+    # would answer with); ``None`` when ``valid``.
+    error_code: str | None = None
     warnings: list[BlueprintWarningItem] = Field(default_factory=list)
     node_count: int = 0
     edge_count: int = 0
