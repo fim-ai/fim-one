@@ -24,7 +24,7 @@ flowchart TD
     TR --- WF["<b>Workflows</b><br/>static recipe (DAG),<br/>run_workflow on demand"]
 ```
 
-Six capability sources converge into one registry. The agent draws from all of them equally. The last two are a matched pair: a **Skill** is a *dynamic recipe* (an SOP the LLM interprets step by step), and a **Workflow** is a *static recipe* (a deterministic graph that runs the same way every time). Both are pulled through a tool — `read_skill` and `run_workflow` respectively — and neither contains the other; they are peers consumed by the same runtime.
+Six capability sources converge into one registry. The agent draws from all of them equally. Skills and Workflows are optional modules, off by default: until an administrator enables them under Admin → Settings → Modules, agents see neither. The last two are a matched pair: a **Skill** is a *dynamic recipe* (an SOP the LLM interprets step by step), and a **Workflow** is a *static recipe* (a deterministic graph that runs the same way every time). Both are pulled through a tool — `read_skill` and `run_workflow` respectively — and neither contains the other; they are peers consumed by the same runtime.
 
 ## Six capability sources
 
@@ -38,7 +38,7 @@ Conditional. When an agent has bound `kb_ids`, the generic `kb_retrieve` tool is
 
 ### Connector
 
-`ConnectorToolAdapter` wraps enterprise system actions as tools. Each action becomes a tool named `{connector}__{action}`, categorized as `connector`. The adapter adds HTTP proxy with auth injection (bearer, API key, basic), operation-level access control (read/write/admin), response truncation, and audit logging. For direct database access, `DatabaseToolAdapter` provides schema-aware SQL execution with optional read-only enforcement. Connectors are the bridge between AI and legacy systems -- the core differentiator. See [Connector Architecture](/architecture/connector-architecture) for the full design.
+`ConnectorToolAdapter` wraps enterprise system actions as tools. Each action becomes a tool named `{connector}__{action}`, categorized as `connector`. The adapter adds HTTP proxy with auth injection (bearer, API key, basic), a per-action confirmation flag, response truncation, and audit logging. For direct database access, `DatabaseToolAdapter` provides schema-aware SQL execution, read-only by default. Connectors are the bridge between AI and legacy systems -- the core differentiator. See [Connector Architecture](/architecture/connector-architecture) for the full design.
 
 ### MCP
 
@@ -56,7 +56,7 @@ For a deeper look at why Skills are global (not Agent-bound) and how they intera
 
 A Workflow is the **static recipe** to a Skill's dynamic one: a deterministic DAG an agent reaches for when a sub-task must run identically every time and leave an audit trail (scheduled reconciliations, multi-step approval-free pipelines). Like Skills, runnable Workflows are loaded globally per user by visibility — independent of agent selection — and exposed through a single `run_workflow(name, inputs)` tool, with each workflow's input fields advertised as a compact system-prompt stub. The LLM pulls one by name when a task maps onto it.
 
-Only Workflows that are **active** and **free of human-approval (`HUMAN_INTERVENTION`) nodes** are inline-runnable — a gate that blocks for minutes or hours cannot sit inside an agent turn, so those Workflows remain trigger-only from the Workflows page. Inline runs execute as the workflow owner (subscribed Workflows use the publisher's bound credentials), persist a `WorkflowRun` for the audit trail, and are protected by a re-entrancy guard plus a nesting-depth cap so a Workflow's `AGENT` node can never start an unbounded call cycle.
+Only Workflows that are **active** and **free of human-approval (`HUMAN_INTERVENTION`) nodes** are inline-runnable — a gate that blocks for minutes or hours cannot sit inside an agent turn, so those Workflows remain trigger-only from the Workflows page. Inline runs execute as the user chatting with the agent: their connector and MCP credentials, their token quota, and the author's environment variables only when they are the author. Each run persists a `WorkflowRun` for the audit trail and is protected by a re-entrancy guard plus a nesting-depth cap so a Workflow's `AGENT` node can never start an unbounded call cycle.
 
 ## Per-request tool assembly
 
@@ -91,20 +91,20 @@ The eight steps:
 8. **Runtime selection.** If the total tool count exceeds 12, a lightweight LLM call picks the most relevant subset (up to 6) for this specific query. A `request_tools` meta-tool is automatically registered, allowing the LLM to dynamically load additional tools mid-conversation if the initial selection missed a needed tool. Selection failure is non-fatal -- the agent falls back to the full set. See [Progressive Disclosure](/architecture/progressive-disclosure).
 9. **Hook registration.** The agent's declared hooks (from `model_config_json.hooks`) are instantiated and attached to a `HookRegistry`. Each chosen tool call will be wrapped: `PreToolUse` hooks can block or rewrite args before execution; `PostToolUse` hooks can rewrite the observation before it returns to the LLM. Hooks run **outside the LLM loop** and cannot be bypassed by agent instructions — see [Hook System](/architecture/hook-system).
 
-The result: the agent sees exactly the tools it needs, no more. A simple agent with no connectors and no KB might see 5 tools. A Hub agent connected to 3 enterprise systems with a grounded knowledge base and 2 MCP servers might see 30 -- but after selection, only the 6 most relevant make it into the context.
+The result: the agent sees exactly the tools it needs, no more. A simple agent with no connectors and no KB might see 5 tools. An agent connected to 3 enterprise systems with a grounded knowledge base and 2 MCP servers might see 30 -- but after selection, only the 6 most relevant make it into the context.
 
 ## When to use what
 
 | Need | Use | Why |
 |------|-----|-----|
 | General computation, code execution, text transforms | Built-in Tool | Always available, no config needed |
-| Enterprise system integration (ERP, CRM, OA) | Connector | Auth governance, audit trail, operation-level access control |
+| Enterprise system integration (ERP, CRM, OA) | Connector | Auth governance, audit trail, per-action confirmation |
 | Knowledge retrieval with citations and evidence | Knowledge Base | RAG pipeline, grounded generation, confidence scoring |
 | Third-party tool ecosystem | MCP | Standard protocol, process isolation, community servers |
 | Organizational policies, SOPs, handling procedures | Skill (dynamic recipe) | Global by default, progressive loading, visibility-scoped |
-| A deterministic, repeatable multi-step process invoked mid-conversation | Workflow (static recipe) | Same output every run, audit trail, runs as owner; human-gated ones stay trigger-only |
+| A deterministic, repeatable multi-step process invoked mid-conversation | Workflow (static recipe) | Same output every run, audit trail, runs as the chatting user; human-gated ones stay trigger-only |
 | Delegating tasks to specialist agents | CallAgent | Semantic agent routing, full tool inheritance, parallel execution |
-| Direct database access | Database Connector | Schema-aware SQL, optional read-only enforcement |
+| Direct database access | Database Connector | Schema-aware SQL, read-only by default |
 | Custom internal tooling | MCP or Built-in | MCP for process isolation; built-in for tight integration |
 
 The categories are not mutually exclusive. A single agent can use all five capability sources in one conversation -- loading a Skill for the complaint handling SOP, querying a knowledge base for policy documents, calling a connector to check the ERP, delegating analysis to a specialist agent (in Auto mode), and using a built-in tool to format the results.
@@ -113,7 +113,7 @@ The categories are not mutually exclusive. A single agent can use all five capab
 
 The tool system and execution engines are independent concerns. The LLM-driven engines (ReAct and DAG) consume tools from the same `ToolRegistry`. The choice of engine affects how tools are orchestrated, not which tools are available.
 
-**ReAct** is an iterative tool loop. The agent reasons, picks a tool, observes the result, and repeats until done. It excels at exploratory, conversational tasks where the next step depends on the previous result. The loop runs up to 50 iterations with per-iteration context management via ContextGuard. See [ReAct Engine](/architecture/react-engine) for implementation details.
+**ReAct** is an iterative tool loop. The agent reasons, picks a tool, observes the result, and repeats until done. It excels at exploratory, conversational tasks where the next step depends on the previous result. The loop runs up to 20 iterations by default (`REACT_MAX_ITERATIONS`) with per-iteration context management via ContextGuard. See [ReAct Engine](/architecture/react-engine) for implementation details.
 
 **DAG** decomposes a goal into 2-6 parallel steps. Each step runs an independent ReAct agent. A PlanAnalyzer evaluates whether the goal was achieved; if not, the pipeline re-plans autonomously (up to 3 rounds). DAG excels at tasks with clear subtasks that can run concurrently -- "search three sources and compare results" finishes in the time of one search, not three. See [DAG Engine](/architecture/dag-engine) for the full pipeline.
 
@@ -157,7 +157,7 @@ Two reads of the same picture: **tools are pulled, not pushed** (a Skill or Work
 
 **Startup.** `start.sh` runs Alembic migrations, launches the FastAPI server, discovers built-in tools, and establishes MCP server connections for any pre-configured global servers.
 
-**Per-request.** JWT authentication, agent configuration lookup, tool assembly (the 8-step pipeline above), engine selection (ReAct or DAG based on agent config), execution with SSE streaming, and result persistence.
+**Per-request.** JWT authentication, agent configuration lookup, tool assembly (the 9-step pipeline above), engine selection (ReAct or DAG based on agent config), execution with SSE streaming, and result persistence.
 
 **Cross-cutting concerns.** [Context management](/architecture/context-management) (5-layer token budget) protects every LLM call from overflow. The [Hook System](/architecture/hook-system) wraps every tool call with platform-controlled `PreToolUse` / `PostToolUse` logic — the mechanism behind human-in-the-loop approval (`FeishuGateHook`), audit logging, and read-only-mode enforcement. Audit logging tracks every connector tool invocation. Sandbox isolation contains code execution tools. The two-LLM architecture (smart + fast) optimizes cost across planning, execution, and synthesis.
 

@@ -24,7 +24,7 @@ Consensus across that framing: **graph does not replace loop**. Graph designs **
 | Usage | Example | Role |
 |---|---|---|
 | **Control-flow graph** | LangGraph `StateGraph`: conditional edges, retries, interrupt/resume | State machine for who runs next |
-| **Task dependency graph** | Claude Code Tasks `blockedBy`; FIM One `depends_on` | Schedule and parallelize work |
+| **Task dependency graph** | Claude Code Tasks `blockedBy`; FIM One `dependencies` | Schedule and parallelize work |
 | **Knowledge graph** | Entities and typed relations | Retrieval / memory (not orchestration) |
 
 This page is about the first two (orchestration).
@@ -67,7 +67,7 @@ FIM One already spans the control spectrum; chat "Planner mode" is only one slic
 |---|---|---|
 | Classic visual Workflow | **Workflow Engine** (design-time blueprint) | Strong |
 | Control-flow graph + HITL + durable state | Workflow human steps + confirmation gates; partial on chat DAG | Medium |
-| Task dependency graph + parallel schedule | **DAGPlanner** (`depends_on`, topological fan-out) | Strong on scheduling; weaker on mid-graph HITL |
+| Task dependency graph + parallel schedule | **DAGPlanner** (`dependencies`, topological fan-out) | Strong on scheduling; weaker on mid-graph HITL |
 | Single agent loop + checklist memory | **ReAct** (`update_plan`, tools, `ask_user_question`) | Strong |
 | Runtime LLM-drawn plan every turn | **DAGPlanner** (not Dify; not LangGraph design-time DSL) | Distinct product |
 
@@ -98,7 +98,7 @@ Same family (explicit multi-step topology). Different species.
 | Dimension | Graph engineering (typical) | FIM One DAG (chat) |
 |---|---|---|
 | **Who draws the graph** | Developer / implementer (stable topology) | **LLM at runtime** (new graph per goal) |
-| **Edge meaning** | Often **control flow** (where next, including cycles) | Mostly **dependency / data** (`depends_on`, acyclic run) |
+| **Edge meaning** | Often **control flow** (where next, including cycles) | Mostly **dependency / data** (`dependencies`, acyclic run) |
 | **Correction** | Edge-level retry, human node, resume same graph | **PlanAnalyzer → replan** (often a **new** graph) |
 | **Node depth** | Node may be a full agent loop | **Already full ReAct per step**: `DAGExecutor` runs `agent.run()` with a multi-iteration tool loop (default cap from `DAG_STEP_MAX_ITERATIONS`, commonly 15). Default model is registry **general** (not infrastructure fast); `model_hint` can escalate to reasoning or demote to fast. Tool cache, step/citation verification, and source evidence ship with each step. Step agents set `enable_plan_tool=False` (no `update_plan` board inside a step) because the unit of work is already a focused sub-task. |
 | **Shared state** | First-class typed state + checkpoint narrative | Step results + memory/compact; step checkpoints exist |
@@ -116,7 +116,7 @@ flowchart TB
   end
   subgraph fimdag["FIM One DAG chat path"]
     G[User goal] --> P[LLM Planner]
-    P --> J[JSON depends_on DAG]
+    P --> J[JSON dependencies DAG]
     J --> E[Topological executor]
     E --> Z[PlanAnalyzer]
     Z -->|not achieved / recoverable| P
@@ -132,7 +132,7 @@ Concrete takeaways, not slogans. Ordered by leverage.
 | # | Graph engineering idea | Apply to | Direction |
 |---|---|---|---|
 | 1 | **Graph over loop, not instead of** | Product + Auto routing | Default UX stays **ReAct** (loop + `update_plan` + `ask_user_question`). Use DAG/Workflow when topology earns cost. |
-| 2 | **Heterogeneous deep nodes** | DAG | **Already the status quo.** Each step is a full ReAct agent (`agent.run`, multi-iteration tools, general-or-better model by default), not a one-shot LLM call. Remaining knobs are optional (e.g. plan board on long steps), not a structural gap. |
+| 2 | **Heterogeneous deep nodes** | DAG | **Already the status quo.** Each step is a full ReAct agent (`agent.run`, multi-iteration tools, general-or-better model by default), not a one-shot LLM call. The one exception is a step the planner tags `llm_direct` (pure transformation of upstream outputs), which runs as a single tool-less call. Remaining knobs are optional (e.g. plan board on long steps), not a structural gap. |
 | 3 | **Interrupt / resume as edges** | DAG + ReAct | Mid-run clarification belongs in the **outer** loop or as a first-class wait state. Avoid fake DAG steps that "ask the user" in text and then replan as "goal not achieved". |
 | 4 | **Controlled cycles vs whole-graph replan** | DAG | Prefer step-local retry / partial carryover (already partly true for completed steps) over dumping all step text as a failed final answer. |
 | 5 | **Typed shared state along edges** | DAG + Workflow | Stronger contracts for step I/O (schema, deliverables) reduce Analyzer false confidence and answer/source drift. |
@@ -210,7 +210,7 @@ Both are genuine Agents — the core loop is identical: **Perceive → Reason �
 | Dimension | Claude Code Teams | FIM One DAG |
 |---|---|---|
 | **Parallel model** | Leader spawns SubAgents, assigns tasks via messages | Topological sort auto-parallelizes independent steps |
-| **Task graph** | TaskList with `blockedBy` / `blocks` edges (dynamic DAG) | Static JSON DAG with `depends_on` edges |
+| **Task graph** | TaskList with `blockedBy` / `blocks` edges (dynamic DAG) | Static JSON DAG with `dependencies` edges |
 | **Coordination** | Explicit message passing (SendMessage / Broadcast) | Implicit dependency edges — no messages, just data flow |
 | **Agent lifecycle** | Dynamic pool — agents spawned on demand, shut down when done | Per-step **ReAct agents** (fresh agent per step via `_resolve_agent`); each step runs a full multi-iteration tool loop |
 | **Feedback & correction** | Each SubAgent retries autonomously; Leader re-assigns on failure | PlanAnalyzer evaluates outcomes → Re-Planning loop (up to 3 rounds); completed steps can carry into the next plan |
@@ -247,7 +247,7 @@ All structured LLM call sites in the DAG pipeline (Planner, Analyzer, Tool Selec
 
 | Level | Condition | How it works |
 |---|---|---|
-| **Native FC** | `llm.abilities["tool_call"]` | Forces a virtual tool call; extracts from `tool_calls[0].arguments` |
+| **Native FC** | `llm.abilities["tool_call"]` (and `tool_choice` not disabled) | Forces a virtual tool call; extracts from `tool_calls[0].arguments` |
 | **JSON Mode** | `llm.abilities["json_mode"]` | Sets `response_format={"type":"json_object"}`; parses with `extract_json()` |
 | **Plain text** | always available | Parses free-form content with `extract_json()`, then optional `regex_fallback()` |
 

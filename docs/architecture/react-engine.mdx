@@ -8,17 +8,17 @@ For how this loop sits next to DAG scheduling, Workflow blueprints, and industry
 
 ## The architecture
 
-The ReAct engine implements a two-phase execution model. The first phase is an iterative tool-use loop: the agent repeatedly asks the LLM for an action, executes any requested tool, appends the observation, and continues until the LLM signals "done." The second phase is answer synthesis: a separate streaming LLM call that reads the full execution trace and produces the user-facing response.
+The ReAct engine implements a two-phase execution model. The first phase is an iterative tool-use loop: the agent repeatedly asks the LLM for an action, executes any requested tool, appends the observation, and continues until the LLM signals "done." The second phase is answer delivery: `stream_answer()` streams the user-facing response. When the loop ended on the `finish` signal (the chat path, `REACT_FINISH_SIGNAL` default on) it continues the same message history as one more streamed turn; when the loop already wrote a final answer, that text is replayed as is; only when neither applies does it fall back to a separate synthesis call over the execution trace.
 
-This split is deliberate. Tool iterations are optimized for speed — every LLM call in the loop uses non-streaming `chat()`, because the user does not need to see partial JSON actions or intermediate reasoning tokens. Answer generation is optimized for UX — it uses streaming `stream_chat()` so the user sees tokens appearing in real time. The result is the best of both worlds: fast tool execution with responsive answer delivery.
+This split is deliberate. Tool iterations are optimized for speed — in JSON mode every LLM call in the loop uses non-streaming `chat()`, because the user does not need to see partial JSON actions; in native function-calling mode the loop uses `stream_chat()` so reasoning tokens reach the client as `thinking` deltas. Answer generation is optimized for UX — it uses streaming `stream_chat()` so the user sees tokens appearing in real time. The result is the best of both worlds: fast tool execution with responsive answer delivery.
 
 ```mermaid
 flowchart TD
-    A["User query"] --> B["Tool loop<br/>(non-streaming chat() x N)"]
+    A["User query"] --> B["Tool loop<br/>(LLM call x N)"]
     B -->|"tool_call"| E["Execute tool"]
     E --> F{"Cycle<br/>detected?"}
     F -->|"No"| B
-    F -->|"Yes"| G["Inject warning:<br/>try different approach"]
+    F -->|"Yes"| G["Warn, then refuse<br/>repeated calls"]
     G --> B
     B -->|"done signal"| H{"tools ≥<br/>threshold?"}
     H -->|"Yes (once)"| I["Completion checklist:<br/>verify answer"]
@@ -27,9 +27,9 @@ flowchart TD
     C --> D["SSE token stream → frontend"]
 ```
 
-The tool loop produces an `AgentResult` containing the full conversation history — system prompt, user query, every assistant message, every tool result. The `stream_answer()` method distills this trace into a concise, coherent answer. Tool results are truncated to 2,000 characters each in the synthesis context, keeping the prompt lean even after complex multi-tool workflows.
+The tool loop produces an `AgentResult` containing the full conversation history — system prompt, user query, every assistant message, every tool result. The `stream_answer()` method distills this trace into a concise, coherent answer. In the synthesis fallback, tool results are truncated to 8,000 characters each (`REACT_TOOL_OBS_TRUNCATION`), keeping the prompt lean even after complex multi-tool workflows.
 
-**Model binding.** The LLM is injected into `ReActAgent.__init__()` and stored as `self._llm`. Every call within a single `run()` invocation — all tool loop iterations and the final answer synthesis — uses this same instance. The model does not change between iterations. To use a different model, a new `ReActAgent` must be constructed. In DAG mode, `DAGExecutor._resolve_agent()` exploits this pattern: it creates a fresh agent per step (selecting the model from `ModelRegistry` based on `step.model_hint`) immediately before that step's ReAct loop begins. See [DAG Engine — Per-step override](/architecture/dag-engine#multi-llm-architecture) for details.
+**Model binding.** Two LLMs are injected into `ReActAgent.__init__()`: `llm` (stored as `self._llm`) and an optional `fast_llm`. Tool-decision iterations and tool selection run on the fast model when one is given (`self._tool_llm = fast_llm or llm`); `stream_answer()` uses the primary `llm`. Neither changes between iterations. To use a different model, a new `ReActAgent` must be constructed. In DAG mode, `DAGExecutor._resolve_agent()` exploits this pattern: it creates a fresh agent per step (selecting the model from `ModelRegistry` based on `step.model_hint`) immediately before that step's ReAct loop begins. See [DAG Engine — Per-step override](/architecture/dag-engine#multi-llm-architecture) for details.
 
 ## Dual-mode execution
 
@@ -47,7 +47,7 @@ Mode selection is automatic. The property `_native_mode_active` returns `True` o
 | System prompt | Embeds full tool descriptions in text | Tools passed via `tools` parameter |
 | Parallel tool calls | One tool per iteration | Multiple via `asyncio.gather` |
 | Parse failure handling | Retry with reformat prompt | N/A (structured by API) |
-| Loop LLM calls | Non-streaming `chat()` | Non-streaming `chat()` |
+| Loop LLM calls | Non-streaming `chat()` | Streaming `stream_chat()` |
 | Best for | Models without tool-call support | GPT-4, Claude, and similar |
 
 Both modes share the same answer synthesis phase — `stream_answer()` works identically regardless of how the tool loop ran.
@@ -58,7 +58,7 @@ Any call site that needs the LLM to return data conforming to a JSON schema uses
 
 The function implements a 3-level degradation chain, attempting each level in order based on the LLM's advertised capabilities:
 
-**Level 1: Native Function Calling.** Uses the LLM's `tool_call` / `tool_choice` API to force a structured response. Available when `abilities["tool_call"] = True`. If the LLM returns `tool_calls`, the arguments are extracted directly. If parsing fails, falls through to the next level.
+**Level 1: Native Function Calling.** Uses the LLM's `tool_call` / `tool_choice` API to force a structured response. Available when `abilities["tool_call"]` is true and `tool_choice` is not disabled. If the LLM returns `tool_calls`, the arguments are extracted directly. If parsing fails, falls through to the next level.
 
 **Level 2: JSON Mode.** Sets `response_format={"type": "json_object"}` to constrain the LLM's output format. Available when `abilities["json_mode"] = True`. If the response cannot be parsed, retries once with a reformat prompt ("Your previous response could not be parsed as valid JSON..."), then falls through.
 
@@ -99,9 +99,9 @@ The result is a `StructuredCallResult` containing the parsed value, the raw dict
 
 ## Tool selection
 
-When an agent has access to many tools — common in Hub mode where multiple connectors each expose several actions — injecting every tool's full schema into the conversation context is wasteful. A connector hub with 20 tools consumes roughly 5K tokens in tool descriptions alone, crowding out space for conversation history and tool results.
+When an agent has access to many tools — common when an agent is bound to several connectors that each expose several actions — injecting every tool's full schema into the conversation context is wasteful. An agent with 20 tools consumes roughly 5K tokens in tool descriptions alone, crowding out space for conversation history and tool results.
 
-The engine addresses this with a lightweight selection phase. When the total number of registered tools exceeds `TOOL_SELECTION_THRESHOLD` (12), the agent runs a preliminary LLM call before entering the main loop. This call receives a compact catalog — approximately 80 characters per tool, containing only the name and a one-line description, no parameter schemas — and picks the most relevant tools for the current query, up to `_TOOL_SELECTION_MAX` (6).
+The engine addresses this with a lightweight selection phase. When the total number of registered tools exceeds `TOOL_SELECTION_THRESHOLD` (12), the agent selects a subset before entering the main loop. It first tries a keyword match between the query and the tool names and descriptions; when no tool clearly dominates, it runs a selection call on the fast LLM. This call receives a compact catalog — approximately 80 characters per tool, containing only the name and a one-line description, no parameter schemas — and picks the most relevant tools for the current query, up to `_TOOL_SELECTION_MAX` (6). Pinned tools (`read_skill`, `update_plan`, and in chat `web_search` and `ask_user_question`) and the `request_tools` meta-tool are added on top.
 
 The selection uses `structured_llm_call` with a simple schema (`{"tools": ["tool_name_1", "tool_name_2"]}`), so it benefits from the same 3-level degradation. The selected tool names are used to build a filtered `ToolRegistry` that the main loop uses for both system prompt construction and tool execution.
 
@@ -119,13 +119,13 @@ sequenceDiagram
     participant Hooks as HookRegistry
     participant Tool as Tool Registry
 
-    loop Each iteration (max 50)
+    loop Each iteration (max 20 by default)
         Agent->>CG: check_and_compact(messages)
         CG-->>Agent: messages (within budget)
-        Agent->>LLM: chat(messages) [non-streaming]
+        Agent->>LLM: chat(messages) or stream_chat(messages)
         LLM-->>Agent: response
         alt tool_call action
-            Agent->>Hooks: run_pre_tool_use_hooks(ctx)
+            Agent->>Hooks: run_pre_tool(ctx)
             alt hook blocks
                 Hooks-->>Agent: allow=False, error="..."
                 Agent->>Agent: append block message, continue
@@ -133,11 +133,11 @@ sequenceDiagram
                 Hooks-->>Agent: allow=True, modified_args?
                 Agent->>Tool: execute(tool_name, args)
                 Tool-->>Agent: observation
-                Agent->>Hooks: run_post_tool_use_hooks(ctx, result)
+                Agent->>Hooks: run_post_tool(ctx)
                 Hooks-->>Agent: modified_result?
-                Agent->>Agent: cycle check (hash args)
+                Agent->>Agent: cycle check (hash args, before the call runs)
                 opt identical call ≥ threshold
-                    Agent->>Agent: inject "try different approach" warning
+                    Agent->>Agent: warn at 2 identical calls, refuse from 3
                 end
                 Agent->>Agent: append observation, continue
             end
@@ -157,7 +157,7 @@ sequenceDiagram
 
 **Native mode loop.** The LLM's response may contain one or more `tool_calls`. All tool calls in a single response are executed in parallel via `asyncio.gather`, and all tool result messages are appended before any other message. This ordering constraint is critical — the OpenAI API (and compatible providers) requires that `tool` messages immediately follow the `assistant` message that produced the `tool_calls`. Inserting any other message (such as a user interrupt) between them would break the protocol. When no `tool_calls` are present, the response is treated as the final answer.
 
-**Max iterations.** The default limit is 50 iterations. If the loop exhausts this limit without producing a `final_answer`, the agent synthesizes a fallback response from the accumulated step results — a summary of which tools were called and whether they succeeded or failed. This is a safety net, not a normal exit path.
+**Max iterations.** The web app defaults to 20 iterations (`REACT_MAX_ITERATIONS`; the `ReActAgent` library default is 50), and DAG steps to 15 (`DAG_STEP_MAX_ITERATIONS`). If the loop exhausts this limit without producing a `final_answer`, the agent synthesizes a fallback response from the accumulated step results — a summary of which tools were called and whether they succeeded or failed. This is a safety net, not a normal exit path.
 
 [Context Management](/architecture/context-management) explains how ContextGuard enforces the token budget on every iteration, including the hint system that tells the compaction LLM to preserve recent reasoning chains.
 
@@ -173,7 +173,7 @@ Every tool call in the iteration loop is wrapped by two hook points:
   - **Rewrite** the observation (e.g. truncate a 200 KB SQL result to a 4 KB summary)
   - **Trigger side effects** (write to `ConnectorCallLog`, update usage counters)
 
-Hooks run **outside the LLM loop** — nothing the LLM says or does can skip them. This is the deterministic enforcement layer for policies that cannot be trusted to a prompt instruction: human-in-the-loop approval (`FeishuGateHook`), audit logging, rate limiting, and read-only-mode guards. See [Hook System](/architecture/hook-system) for the full design.
+Hooks run **outside the LLM loop** — nothing the LLM says or does can skip them. This is the deterministic enforcement layer for policies that cannot be trusted to a prompt instruction: today human-in-the-loop approval (`FeishuGateHook`); the same layer can carry audit logging, rate limiting, and read-only-mode guards. See [Hook System](/architecture/hook-system) for the full design.
 
 The same hook points exist in the [DAG engine](/architecture/dag-engine) — each DAG step runs its own ReAct loop, so hooks apply uniformly regardless of which execution engine is driving the tool call.
 
@@ -196,7 +196,7 @@ This costs ~100 tokens per injection (no extra LLM call) and has no effect on sh
 
 Self-reflection asks the LLM whether it is going in circles — but the LLM often answers "no" and keeps looping. Cycle detection is a deterministic alternative that cannot be bypassed.
 
-After every tool execution, the agent hashes the `(tool_name, arguments)` pair. When the same hash appears `_CYCLE_DETECTION_THRESHOLD` times (default: **3**, configurable via `REACT_CYCLE_DETECTION_THRESHOLD`), a warning message is injected into the conversation:
+Before each tool call runs, the agent hashes the `(tool_name, arguments)` pair. On the 2nd identical call (`REACT_CYCLE_DETECTION_THRESHOLD`, default **2**) the call still runs and a warning message is injected into the conversation. From the 3rd (`REACT_CYCLE_BLOCK_THRESHOLD`, default **3**) the call is refused and the refusal is returned as the tool result. Three consecutive rounds in which every call was refused (`REACT_STALL_ROUNDS`) end the run with a summary of the steps taken. A second counter tracks calls per URL host and path, ignoring the query string, and warns at 8 and refuses at 15 (`REACT_ENDPOINT_WARN_THRESHOLD` / `REACT_ENDPOINT_BLOCK_THRESHOLD`). The warning reads:
 
 > You have called `{tool}` with identical arguments N times and received the same result. Please try a different approach or tool.
 
@@ -214,9 +214,9 @@ When the agent has used at least `_COMPLETION_CHECK_MIN_TOOLS` tools (default: *
 
 The checklist is an internal exchange. The turn that answers it is verification, not the answer — accepting it verbatim is what leaks "Let me verify: 1. ... ✓" into the chat. So that turn is consumed internally and the agent is asked once more for the user-facing answer, which is what `stream_answer()` streams. If the agent instead decides something is missing, it resumes the tool-call loop and its later answer is taken as-is.
 
-The checklist fires at most once per run, does not trigger for simple conversational responses (no tools used), and is skipped when the remaining iteration budget cannot cover both the verification turn and the answer turn.
+The checklist fires at most once per run, does not trigger for simple conversational responses (no tools used), and is skipped when the remaining iteration budget cannot cover both the verification turn and the answer turn, or when the inline final answer is longer than `REACT_COMPLETION_CHECK_SKIP_CHARS` (default 800). An open `update_plan` item forces the check regardless of tool count.
 
-The threshold prevents unnecessary latency on simple tasks — a single tool call (e.g., running a quick calculation) does not warrant verification, while a multi-tool investigation benefits from a final sanity check. Set `REACT_COMPLETION_CHECK_MIN_TOOLS=1` for always-on verification.
+The threshold prevents unnecessary latency on simple tasks — a single tool call (e.g., running a quick calculation) does not warrant verification, while a multi-tool investigation benefits from a final sanity check. Set `REACT_COMPLETION_CHECK_MIN_TOOLS=1` and raise `REACT_COMPLETION_CHECK_SKIP_CHARS` for always-on verification.
 
 The feature is enabled by default (`completion_check=True` on `ReActAgent`) and can be disabled per agent instance. DAG steps inherit the default — each step gets its own one-shot checklist.
 
@@ -224,7 +224,7 @@ The feature is enabled by default (`completion_check=True` on `ReActAgent`) and 
 
 The separation between the tool loop and answer synthesis is a core architectural decision. Tool iterations produce raw data — JSON actions, tool observations, error messages. The user needs a coherent, well-formatted answer, not a dump of the agent's internal trace.
 
-`stream_answer()` builds a synthesis prompt from two components. The system prompt instructs the LLM to act as a synthesizer: present results directly, use markdown formatting, avoid meta-commentary ("based on the tool output..."), and match the language of the original query. The user message contains the original question and a formatted execution trace — each tool call and its result, with tool results truncated to 2,000 characters.
+On the synthesis fallback path, `stream_answer()` builds a synthesis prompt from two components. The system prompt instructs the LLM to act as a synthesizer: present results directly, use markdown formatting, avoid meta-commentary ("based on the tool output..."), and match the language of the original query. The user message contains the original question and a formatted execution trace — each tool call and its result, with tool results truncated to 8,000 characters.
 
 The synthesis call uses `stream_chat()`, yielding tokens incrementally. The web layer wraps these tokens in SSE `answer` events with `delta` status so the frontend can render them as they arrive.
 
@@ -242,7 +242,7 @@ The drain timing differs between modes because of the tool-call ordering constra
 
 Injected messages are marked as `pinned=True`, ensuring they survive any subsequent compaction by ContextGuard. See [Pinned Messages](/architecture/context-management#pinned-messages) for how the pinning mechanism prevents compaction from discarding critical messages.
 
-When a `final_answer` is pending but injected messages have arrived, the agent suppresses the final answer and continues looping so it can address the user's follow-up. Multiple injections from the same drain are combined into a single `[USER INTERRUPT]` message — this prevents the LLM from seeing a fragmented sequence of short messages and encourages it to address all follow-ups holistically.
+When a `final_answer` is pending but injected messages have arrived, the agent suppresses the final answer and continues looping so it can address the user's follow-up. Each injected message is appended as its own pinned `[USER INTERRUPT]` user message, capped at 25,000 characters (`REACT_MAX_INJECT_CHARS`); only the last one carries the instruction to acknowledge and adjust.
 
 ## Error handling and fallbacks
 
@@ -265,7 +265,7 @@ flowchart TD
 
 **Extended thinking.** Models like DeepSeek R1 return reasoning content in a separate `reasoning_content` field rather than in the JSON body. The engine checks for this and uses it as a fallback when the JSON `reasoning` field is empty.
 
-**Rich content.** When a tool produces HTML or markdown artifacts, the observation sent to the LLM is replaced with a short summary (`"[Artifact generated: filename] The content is rendered as a preview in the UI..."`). This prevents the LLM from echoing large HTML blobs in its final answer — a common failure mode where the model helpfully pastes back the entire tool output.
+**Rich content.** In native mode, when a tool produces HTML or markdown artifacts, the observation sent to the LLM is replaced with a short summary (`"[Artifact generated: filename] The content is rendered as a preview in the UI..."`). This prevents the LLM from echoing large HTML blobs in its final answer — a common failure mode where the model helpfully pastes back the entire tool output.
 
 ## SSE event protocol
 
@@ -278,7 +278,7 @@ sequenceDiagram
     participant UI as Frontend
 
     Agent->>SSE: step {type: "thinking", status: "start"}
-    Note over Agent: LLM call (non-streaming)
+    Note over Agent: LLM call
     Agent->>SSE: step {type: "thinking", status: "done", reasoning}
     Agent->>SSE: step {type: "iteration", status: "start", tool_name, tool_args}
     Note over Agent: Tool execution

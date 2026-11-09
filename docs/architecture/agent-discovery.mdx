@@ -12,16 +12,16 @@ Every chat request in FIM One starts with a question: **is an Agent selected?** 
 
 - **Connectors**: only the Agent's bound `connector_ids` are loaded as tools.
 - **Knowledge Bases**: only the Agent's bound `kb_ids` are injected as retrieval tools.
-- **Skills**: globally available — all active Skills visible to the user are injected, because Skills are organizational SOPs, not Agent-specific knowledge. (See [Skills as Global SOPs](#skills-as-global-sops) below.)
-- **MCP Servers**: always user-scoped — all active MCP servers visible to the user are loaded in both modes.
+- **Skills**: globally available when the Skills module is enabled (it is off by default) — all active Skills visible to the user are injected, because Skills are organizational SOPs, not Agent-specific knowledge. (See [Skills as Global SOPs](#skills-as-global-sops) below.)
+- **MCP Servers**: only the Agent's bound `mcp_server_ids` are loaded; an Agent with none bound gets no MCP tools.
 - **Instructions**: the Agent's `instructions` field defines the persona and behavioral guidelines injected into the system prompt.
 
 **Global Auto-Discovery Mode** activates when no Agent is selected (e.g., a new chat). The system auto-discovers everything accessible to the user:
 
-- **Connectors**: all Connectors visible to the user (own + org-shared + Market-subscribed) are loaded.
-- **Knowledge Bases**: all accessible KBs are available for retrieval via `kb_retrieve`.
+- **Connectors**: all Connectors visible to the user (own + subscribed from an organization or the Market) are loaded.
+- **Knowledge Bases**: the user's own KBs are available for retrieval via `kb_retrieve` (knowledge bases cannot be shared).
 - **Skills**: all active Skills visible to the user are injected as SOP stubs.
-- **MCP Servers**: same as agent-constrained — all active servers visible to the user.
+- **MCP Servers**: all active servers visible to the user.
 - **Instructions**: a generic assistant persona is used.
 
 The branching happens inside `_resolve_tools()`, which is called on every chat request:
@@ -35,7 +35,7 @@ flowchart TD
     AC --> SK["Inject Global Skills<br/>(both modes)"]
     AD --> SK
 
-    SK --> MCP["Load User MCP Servers<br/>(both modes)"]
+    SK --> MCP["Load MCP Servers<br/>(agent-bound, or all visible)"]
     MCP --> TR["<b>ToolRegistry</b>"]
     TR --> EE["Execution Engine<br/>(ReAct or DAG)"]
 ```
@@ -52,7 +52,7 @@ The two modes differ in **scope**, not in kind. Both produce a `ToolRegistry` �
 |---|---|---|
 | Connectors (API) | `resolve_visibility()` — all visible to user | `ConnectorMetaTool` (progressive) |
 | Connectors (DB) | `resolve_visibility()` — all visible to user | `DatabaseMetaTool` (progressive) |
-| Knowledge Bases | All accessible KBs | `kb_retrieve` |
+| Knowledge Bases | The user's own KBs | `kb_retrieve` |
 | Skills | `resolve_visibility()` — all active | `read_skill` (progressive stubs) |
 | MCP Servers | `resolve_visibility()` — all user-visible | `MCPServerMetaTool` (progressive) |
 | Agents | `resolve_visibility()` — all active, non-builder | `call_agent` (delegation catalog) |
@@ -65,11 +65,11 @@ The two modes differ in **scope**, not in kind. Both produce a `ToolRegistry` �
 | Connectors | Only `agent.connector_ids` | `ConnectorMetaTool` or legacy per-action |
 | Knowledge Bases | Only `agent.kb_ids` | `GroundedRetrieveTool` / `KBRetrieveTool` |
 | Skills | Global — **not constrained by Agent** | `read_skill` |
-| MCP Servers | User-scoped — **not constrained by Agent** | `MCPServerMetaTool` (progressive) |
+| MCP Servers | Only `agent.mcp_server_ids` | `MCPServerMetaTool` (progressive) |
 | Agent Delegation | Not available — agents are specialized | _(disabled)_ |
 | Built-in Tools | `agent.tool_categories` filter | Subset by category |
 
-The key asymmetry: Connectors and Knowledge Bases are scoped by the Agent, but Skills and MCP Servers remain global in both modes. `CallAgentTool` (agent delegation) is only available in Auto-Discovery mode — it is **not** registered when a specific Agent is selected. This is a security measure: a marketplace agent could otherwise use `call_agent` to invoke other agents and access their private prompts. Skills are organizational rules (everyone follows the same SOPs), while Connectors and KBs are capability bindings (different agents connect to different systems).
+The key asymmetry: Connectors, Knowledge Bases and MCP Servers are scoped by the Agent, but Skills remain global in both modes. `CallAgentTool` (agent delegation) is only available in Auto-Discovery mode — it is **not** registered when a specific Agent is selected. This is a security measure: a marketplace agent could otherwise use `call_agent` to invoke other agents and access their private prompts. Skills are organizational rules (everyone follows the same SOPs), while Connectors and KBs are capability bindings (different agents connect to different systems).
 
 ## Everything is a tool
 
@@ -139,7 +139,7 @@ This means:
 - **Users can start chatting immediately** without configuring an Agent.
 - **The system auto-discovers available resources** and exposes them as tools.
 - **Agents become lightweight personas** that can be created quickly — just write instructions and optionally bind specific Connectors and KBs.
-- **Resource management is decoupled** from Agent management. Publishing a Connector to an organization makes it available everywhere — in auto-discovery mode, in Agent binding dropdowns, and in agent delegation resolution.
+- **Resource management is decoupled** from Agent management. Publishing a Connector to an organization makes it available to every member who subscribes to it — in auto-discovery mode, in Agent binding dropdowns, and in agent delegation resolution.
 
 ## Agent Delegation
 
@@ -150,7 +150,7 @@ FIM One supports delegating tasks to specialist agents via `CallAgentTool` — b
 | Aspect | Auto Mode (no agent selected) | Agent-Selected Mode |
 |---|---|---|
 | `call_agent` | Enabled — delegates to any visible agent | **Disabled** — not registered |
-| Tool scope | All visible Connectors, KB, Skills, MCP | Only the Agent's bound resources + global Skills/MCP |
+| Tool scope | All visible Connectors, KB, Skills, MCP | Only the Agent's bound resources + global Skills |
 | Orchestration | System LLM dynamically picks the best agent per iteration | Agent uses its own tools directly |
 | Use case | General queries, cross-domain tasks | Focused specialist tasks |
 
@@ -196,24 +196,22 @@ flowchart TD
 
 ## Visibility model
 
-All resource discovery — in both modes — is governed by a unified visibility model with three tiers:
+All resource discovery — in both modes — is governed by a unified visibility model with two tiers:
 
 | Tier | Description | Example |
 |---|---|---|
 | **Own** | Created by the user. Always visible. | A Connector you built for your team's API |
-| **Organization-shared** | Resources with `visibility: "org"` from the user's organization(s). Visible to all approved org members. | A company-wide ERP Connector published by IT |
-| **Market-subscribed** | Resources installed from the FIM One Market. Visible to the subscriber. | A community-built Slack Connector you installed |
+| **Subscribed** | Resources published to one of the user's organizations or to the Market that the user has subscribed to. Visible while the resource is still shared and approved. Org membership alone grants nothing. | A company-wide ERP Connector published by IT, or a community-built Slack Connector you installed |
 
-The `resolve_visibility()` function in `web/visibility.py` builds a SQL filter that includes all three tiers in a single query:
+The `resolve_visibility()` function in `web/visibility.py` builds a SQL filter that covers both tiers in a single query:
 
 ```python
 conditions = [
     model.user_id == user_id,                    # own resources
-    and_(model.visibility == "org",              # org-shared
-         model.org_id.in_(user_org_ids),
-         or_(model.publish_status == None,
+    and_(model.id.in_(subscribed_ids),           # subscribed, and still shared
+         model.visibility == "org",
+         or_(model.publish_status.is_(None),
              model.publish_status == "approved")),
-    model.id.in_(subscribed_ids),                # Market-subscribed
 ]
 ```
 
@@ -225,7 +223,7 @@ This same filter is used everywhere:
 - MCP server resolution
 - Agent configuration lookup (ensuring a user can only select Agents visible to them)
 
-The uniformity means that **publishing a Connector to an organization automatically makes it available** in auto-discovery mode, in Agent binding dropdowns, and in agent delegation resolution — no special wiring required. The visibility model is the single source of truth for "what can this user access."
+The uniformity means that **a Connector published to an organization becomes available to its subscribers** in auto-discovery mode, in Agent binding dropdowns, and in agent delegation resolution — no special wiring required. The visibility model is the single source of truth for "what can this user access."
 
 ## Relationship map
 
@@ -242,6 +240,7 @@ flowchart TD
         TR --> BUILT["Built-in Tools"]
         TR --> CALL["call_agent<br/>→ Delegate Agent"]
         TR --> READ["read_skill<br/>→ SOP text"]
+        TR --> RUNWF["run_workflow<br/>→ Workflow run"]
     end
 
     subgraph WF_EXEC["Workflow Execution (fixed DAG)"]
@@ -249,12 +248,10 @@ flowchart TD
         WF --> WF_AGENT["AGENT Node"]
         WF --> WF_LLM["LLM Node"]
         WF --> WF_CONN["CONNECTOR Node"]
-        WF --> WF_KB["KB_RETRIEVAL Node"]
+        WF --> WF_KB["KNOWLEDGE_RETRIEVAL Node"]
         WF --> WF_MCP["MCP Node"]
-        WF --> WF_HTTP["HTTP Node"]
-        WF --> WF_CODE["CODE Node"]
-        WF --> WF_HUMAN["HUMAN Node"]
-        WF --> WF_SUB["SUB_WORKFLOW Node"]
+        WF --> WF_COND["CONDITION_BRANCH Node"]
+        WF --> WF_HUMAN["HUMAN_INTERVENTION Node"]
     end
 
     SKILLS["Skills<br/>(Global SOPs)"] -.->|"injected into<br/>system prompt"| AGENT
@@ -264,21 +261,21 @@ flowchart TD
 Key takeaways from the diagram:
 
 - **Agent and Workflow are parallel paradigms.** Both can use Connectors, Knowledge Bases, and MCP Servers — but through different mechanisms. Agents use them as tools in a `ToolRegistry`; Workflows use them as typed DAG nodes.
-- **Workflow can orchestrate Agents** via the `AGENT` node — a Workflow step can invoke a full Agent with its own ReAct/DAG loop. The reverse is not true: Agents cannot directly invoke Workflows (only indirectly via API/webhook triggers).
+- **Workflow can orchestrate Agents** via the `AGENT` node — a Workflow step can invoke a full Agent with its own ReAct/DAG loop. The reverse also works: an Agent can run a Workflow through the `run_workflow` tool when the Workflows module is enabled, except workflows that contain a Human Intervention step.
 - **Skills are injected into Agents only.** Skills are system prompt text — they guide Agent behavior. Workflows don't consume Skills because Workflow nodes execute deterministic logic, not LLM-guided reasoning.
 - **Shared resources, different access patterns.** A Connector can be called by an Agent (via `ConnectorToolAdapter`), by a Workflow (via `CONNECTOR` node), or by both in the same business process — e.g., a Workflow triggers an Agent that queries the same Connector the Workflow also uses in a later step.
 
 ## Workflow Engine — the other execution paradigm
 
-While this document focuses on Agent-driven chat execution, FIM One includes a full **Workflow Engine** — a visual DAG editor with 26 node types for fixed-process automation.
+While this document focuses on Agent-driven chat execution, FIM One includes a full **Workflow Engine** — a visual DAG editor with 9 node types for fixed-process automation. It is an optional module, off by default.
 
 | Aspect | Agent (Chat) | Workflow |
 |---|---|---|
 | Orchestration | LLM decides next step dynamically | Fixed DAG defined at design time |
 | Best for | Exploratory tasks, conversations, flexible reasoning | Approval chains, scheduled ETL, multi-step automations |
-| Can call | Connectors, KB, MCP, Built-in Tools, Delegated Agents, Skills | Agents, Connectors, KB, MCP, LLM, HTTP, Code, Human approval, Sub-Workflows |
+| Can call | Connectors, KB, MCP, Built-in Tools, Delegated Agents, Skills, Workflows (`run_workflow`) | Agents, Connectors, KB, MCP, LLM, Human approval |
 | Trigger | User message in chat | Manual, cron schedule, or API/webhook |
-| Nesting | One-level delegation (Auto mode → delegated Agent) | Arbitrary DAG depth via SUB_WORKFLOW nodes |
+| Nesting | One-level delegation (Auto mode → delegated Agent) | No sub-workflow nesting |
 
 The two paradigms are complementary. Use Agents when the task is open-ended ("analyze this quarter's sales data and recommend actions"). Use Workflows when the process is known ("every Monday, pull new invoices from ERP, run compliance checks, and route exceptions to a human reviewer"). A Workflow can invoke an Agent for any step that needs flexible reasoning within an otherwise fixed pipeline.
 
