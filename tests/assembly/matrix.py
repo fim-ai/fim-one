@@ -1182,10 +1182,6 @@ def _agent_entry_unchecked(_entry: str, cell: Cell, _so_far: Outcome) -> Outcome
     return Outcome(exposed=sees(cell.role, "agent"))
 
 
-def _not_recorded(_entry: str, _cell: Cell, so_far: Outcome) -> Outcome | None:
-    return _replace(so_far, logged=False) if so_far.exposed else None
-
-
 def _not_confirmed(_entry: str, _cell: Cell, so_far: Outcome) -> Outcome | None:
     return _replace(so_far, confirmed=False) if so_far.exposed else None
 
@@ -1285,15 +1281,6 @@ KNOWN_DEVIATIONS: tuple[Deviation, ...] = (
         ref="N7; B16, B17",
         removed_in="C1 phase 4",
         today=_never_connected,
-    ),
-    Deviation(
-        name="mcp-calls-not-recorded",
-        entries=("chat_agent", "chat_noagent", "wf_mcp_node"),
-        resources=MCP_SERVERS,
-        what="An MCP tool call leaves no call record, from any entry point.",
-        ref="S10; design §1.5; B8",
-        removed_in="C1 phase 2",
-        today=_not_recorded,
     ),
     Deviation(
         name="workflow-entry-own-inactive-code",

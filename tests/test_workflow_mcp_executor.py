@@ -82,6 +82,9 @@ class FakeMCPToolAdapter:
         self._output = output
         self.name = f"server__{original_name}"
 
+    def record_calls(self, on_call_complete: Any, *, server_id: str | None) -> None:
+        """The call record is covered in test_mcp_call_log.py."""
+
     async def run(self, **kwargs: Any) -> str:
         return self._output
 

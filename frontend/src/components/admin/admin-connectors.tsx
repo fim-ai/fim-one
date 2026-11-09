@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useTranslations } from "next-intl"
-import { Activity, ArrowUpRight, CheckCircle, Clock, Plug } from "lucide-react"
+import { Activity, ArrowUpRight, CheckCircle, Clock, Plug, Server } from "lucide-react"
 import { useDateFormatter } from "@/hooks/use-date-formatter"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -95,9 +95,11 @@ export function AdminConnectors() {
     ? stats.recent_days.map((d) => ({ ...d, label: formatDateLabel(d.date) }))
     : []
 
+  // The call log holds MCP calls next to connector calls; an MCP server is
+  // marked so that it is not read as a connector of the same name.
   const topConnectors = stats
     ? stats.top_connectors.map((c) => ({
-        name: c.connector_name,
+        name: c.kind === "mcp" ? t("mcpServerName", { name: c.connector_name }) : c.connector_name,
         calls: c.call_count,
       }))
     : []
@@ -193,9 +195,17 @@ export function AdminConnectors() {
             {stats.top_actions.map((action, i) => (
               <div key={i} className="flex items-center justify-between px-4 py-2.5">
                 <div className="flex items-center gap-2">
-                  <Plug className="h-4 w-4 text-muted-foreground shrink-0" />
+                  {action.kind === "mcp" ? (
+                    <Server className="h-4 w-4 text-muted-foreground shrink-0" />
+                  ) : (
+                    <Plug className="h-4 w-4 text-muted-foreground shrink-0" />
+                  )}
                   <span className="text-sm text-foreground">
-                    <span className="text-muted-foreground">{action.connector_name}</span>
+                    <span className="text-muted-foreground">
+                      {action.kind === "mcp"
+                        ? t("mcpServerName", { name: action.connector_name })
+                        : action.connector_name}
+                    </span>
                     {" / "}
                     <span className="font-medium">{action.action_name}</span>
                   </span>

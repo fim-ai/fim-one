@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 import fim_one.db.models  # noqa: F401
 from fim_one.core.assembly.calls import call_recorder
+from fim_one.core.assembly.credentials import CredentialSource
 from fim_one.core.assembly.principal import Binding, CallContext, provisional_principal
 from fim_one.db.base import Base
 from fim_one.db.models.connector_call_log import ConnectorCallLog
@@ -53,7 +54,14 @@ def _ctx() -> CallContext:
 async def test_a_connector_call_is_attributed_to_who_made_it_and_where(
     factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    record = call_recorder(_ctx(), kind="connector")
+    record = call_recorder(
+        _ctx(),
+        kind="connector",
+        credential_source={
+            "conn-1": CredentialSource.PERSONAL,
+            "conn-2": CredentialSource.OWNER_FALLBACK,
+        },
+    )
 
     await record(
         connector_id="conn-1",
@@ -73,12 +81,16 @@ async def test_a_connector_call_is_attributed_to_who_made_it_and_where(
     assert (row.user_id, row.conversation_id, row.agent_id) == ("u-1", "conv-1", "agent-1")
     assert (row.request_method, row.response_status, row.success) == ("GET", 200, True)
     assert row.scope_rules_applied is None
+    # What was called, where the call entered, and whose credential it used.
+    assert (row.resource_kind, row.mcp_server_id) == ("connector", None)
+    assert (row.entry, row.workflow_run_id) == ("chat", None)
+    assert row.credential_source == "personal"
 
 
 async def test_a_database_call_keeps_the_fences_it_ran_under(
     factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    record = call_recorder(_ctx(), kind="database")
+    record = call_recorder(_ctx(), kind="database", credential_source=CredentialSource.OWNER)
 
     await record(
         connector_id="db-1",
@@ -92,6 +104,7 @@ async def test_a_database_call_keeps_the_fences_it_ran_under(
 
     (row,) = await _rows(factory)
     assert row.scope_rules_applied == '{"read_only": true}'
+    assert (row.resource_kind, row.credential_source) == ("database", "owner")
 
 
 async def test_a_record_that_cannot_be_written_does_not_fail_the_call() -> None:

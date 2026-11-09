@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import logging
 import re
-from collections.abc import Callable, Coroutine
+import time
+from collections.abc import Awaitable, Callable, Coroutine
 from typing import Any
 
 from fim_one.core.tool.base import BaseTool
 from fim_one.core.tool.truncation import truncate_tool_output
+
+logger = logging.getLogger(__name__)
+
+# How much of a failed call's output is kept in its record.
+_ERROR_MESSAGE_MAX_CHARS = 500
 
 
 def _sanitize_tool_name(name: str) -> str:
@@ -51,6 +58,24 @@ class MCPToolAdapter(BaseTool):
         )
         self._original_name = tool_def["name"]
         self._call_fn = call_fn
+        self._on_call_complete: Callable[..., Awaitable[None]] | None = None
+        self._server_id: str | None = None
+
+    def record_calls(
+        self,
+        on_call_complete: Callable[..., Awaitable[None]],
+        *,
+        server_id: str | None,
+    ) -> None:
+        """Report every call this tool makes to *on_call_complete*.
+
+        Set by whoever connected the server for a user's run. The adapter is
+        the one place a call passes through whichever way the tool is
+        offered (on its own, behind the ``mcp`` meta-tool, from a workflow
+        step), so the record is taken here.
+        """
+        self._on_call_complete = on_call_complete
+        self._server_id = server_id
 
     # ------------------------------------------------------------------
     # Tool protocol
@@ -79,9 +104,36 @@ class MCPToolAdapter(BaseTool):
 
     async def run(self, **kwargs: Any) -> str:
         """Call the MCP server's ``tools/call`` endpoint and extract text."""
-        result = await self._call_fn(self._original_name, kwargs)
-        output = self._extract_text(result)
-        return truncate_tool_output(output)
+        started = time.monotonic_ns()
+        success = False
+        error_message: str | None = None
+        try:
+            result = await self._call_fn(self._original_name, kwargs)
+            output = self._extract_text(result)
+            success = not _result_is_error(result)
+            if not success:
+                error_message = output[:_ERROR_MESSAGE_MAX_CHARS]
+            return truncate_tool_output(output)
+        except Exception as exc:
+            error_message = f"{type(exc).__name__}: {exc}"[:_ERROR_MESSAGE_MAX_CHARS]
+            raise
+        finally:
+            if self._on_call_complete is not None:
+                try:
+                    # Named like a database call (``db://name/action``). The
+                    # server's real URL is not recorded: it can carry a secret.
+                    await self._on_call_complete(
+                        mcp_server_id=self._server_id,
+                        connector_name=self._server_name,
+                        action_name=self._original_name,
+                        request_method="MCP",
+                        request_url=f"mcp://{self._server_name}/{self._original_name}",
+                        response_time_ms=(time.monotonic_ns() - started) // 1_000_000,
+                        success=success,
+                        error_message=error_message,
+                    )
+                except Exception:
+                    logger.debug("on_call_complete callback failed", exc_info=True)
 
     # ------------------------------------------------------------------
     # Helpers

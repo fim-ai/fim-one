@@ -52,7 +52,6 @@ import time
 import uuid
 from collections.abc import AsyncGenerator, Sequence
 from contextlib import suppress
-from dataclasses import replace
 from datetime import UTC, date, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -1207,21 +1206,6 @@ def _use_context(
     )
 
 
-def _tool_context(
-    user_id: str | None,
-    agent_cfg: dict[str, Any] | None,
-    conversation_id: str | None,
-) -> CallContext:
-    """The context a chat turn's connector tools are built and recorded under.
-
-    Call records name the agent only where the config carries ``agent_id``.
-    The catalogue entry a ``call_agent`` delegate is built from does not, so
-    a delegate's calls are recorded without one.
-    """
-    ctx = _use_context(user_id, agent_cfg, conversation_id=conversation_id)
-    return replace(ctx, agent_id=agent_cfg.get("agent_id") if agent_cfg else None)
-
-
 async def _resolve_agent_config(
     agent_id: str | None,
     conversation_id: str | None,
@@ -1632,8 +1616,16 @@ async def _resolve_tools(
     agent_cfg: dict[str, Any] | None,
     conversation_id: str | None = None,
     user_id: str | None = None,
+    *,
+    entry: Entry | None = None,
 ) -> ToolRegistry:
-    """Build tool registry, optionally scoped to a per-conversation sandbox."""
+    """Build tool registry, optionally scoped to a per-conversation sandbox.
+
+    *entry* names where the tools will be used when that is not a chat turn
+    (a ``call_agent`` delegate); it is what their call records carry.
+    """
+    # The context connector and MCP tools are built and recorded under.
+    _tool_ctx = _use_context(user_id, agent_cfg, conversation_id=conversation_id, entry=entry)
     sandbox_root = _conversation_sandbox_root(conversation_id)
     sandbox_config = agent_cfg.get("sandbox_config") if agent_cfg else None
     # Per-conversation uploads dir so generated images are isolated and
@@ -1809,7 +1801,6 @@ async def _resolve_tools(
 
                 # The caller's credential decides whether each connector is
                 # offered, and every call is recorded (core/assembly/toolset).
-                _tool_ctx = _tool_context(user_id, agent_cfg, conversation_id)
                 for _conn_tool in await connector_tools(
                     session,
                     _tool_ctx,
@@ -1852,17 +1843,16 @@ async def _resolve_tools(
                         ),
                     ),
                 )
-                _ad_ctx = _tool_context(user_id, None, conversation_id)
                 for _ad_tool in await connector_tools(
                     _ad_session,
-                    _ad_ctx,
+                    _tool_ctx,
                     [c for c in _ad_connectors if c.type != "database"],
                     mode="progressive",
                 ):
                     tools.register(_ad_tool)
                 for _ad_db_tool in await database_tools(
                     _ad_session,
-                    _ad_ctx,
+                    _tool_ctx,
                     [c for c in _ad_connectors if c.type == "database"],
                     mode="progressive",
                 ):
@@ -2080,9 +2070,7 @@ async def _resolve_tools(
 
             if _user_servers:
                 tools._pending_mcp_servers = list(_user_servers)  # type: ignore[attr-defined]
-                tools._mcp_call_context = _tool_context(  # type: ignore[attr-defined]
-                    user_id, agent_cfg, conversation_id
-                )
+                tools._mcp_call_context = _tool_ctx  # type: ignore[attr-defined]
     except Exception:
         logger.warning("Failed to load MCP server configs", exc_info=True)
 
@@ -2128,7 +2116,9 @@ async def _resolve_tools(
                 async def _sub_agent_tool_resolver(
                     sub_cfg: dict[str, Any], conv_id: str | None
                 ) -> Any:
-                    return await _resolve_tools(sub_cfg, conv_id, user_id=user_id)
+                    return await _resolve_tools(
+                        sub_cfg, conv_id, user_id=user_id, entry="sub_agent"
+                    )
 
                 async def _sub_agent_llm_resolver(
                     sub_cfg: dict[str, Any],

@@ -96,6 +96,27 @@ async def test_every_call_leaves_a_record(
     assert [(r.connector_id, r.user_id, r.success) for r in rows] == [
         (scene.ids["api_bearer"], scene.actor, True)
     ]
+    assert (rows[0].entry, rows[0].credential_source) == ("chat_noagent", "owner")
     # The database tool records through the same writer (its fence audit
     # rides on that record); there is no database to query here.
     assert database_tool is not None and database_tool._on_call_complete is not None
+
+
+async def test_a_delegates_call_is_recorded_under_the_delegate(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """A ``call_agent`` delegate's calls name the delegate and how it was entered.
+
+    They used to be recorded with no agent at all, like a call made with no
+    agent selected.
+    """
+    scene = await m.seed_scene(factory, m.SceneKey("owner", True, True, False))
+    with m.outside_world(factory) as out:
+        tools = await _tools(scene, None)
+        await tools.get("call_agent").run(agent_id=scene.carrier_agent_id, task="go")
+        delegate_tools: Any = out.agents_built[-1]["tools"]
+        await _ping(delegate_tools, scene)
+
+    async with factory() as s:
+        (row,) = (await s.execute(select(ConnectorCallLog))).scalars().all()
+    assert (row.entry, row.agent_id) == ("sub_agent", scene.carrier_agent_id)

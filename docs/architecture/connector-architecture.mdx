@@ -77,7 +77,7 @@ API and database connectors are records in the database. A connector that is cre
 | Concern | What FIM One does |
 |---|---|
 | Read-only SQL | Database connectors reject anything but `SELECT` unless the owner switches `read_only` off |
-| Call log | Every connector call is recorded (time, user, connector, action, request method and URL, status, duration) |
+| Call log | Every connector, database and MCP call is recorded: time, user, where it came from (chat, a delegated agent, a workflow step), the connector or MCP server, the action or tool, status, duration, and whose credential it used |
 | Per-user credentials | Each user stores their own credential; the owner's is used only when the owner allows fallback (see [Sharing and credentials](/architecture/sharing-and-credentials)) |
 | Confirmation gate | Actions marked `requires_confirmation` (or every tool call, when the agent is set to confirm all) pause for human approval, in chat (`awaiting_confirmation` SSE event) or in a Feishu approval card |
 | Circuit breaker | Repeated failures against a connector stop further calls for a cool-down period |

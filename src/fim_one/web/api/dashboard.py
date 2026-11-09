@@ -190,13 +190,19 @@ async def get_dashboard_stats(
     )
     agent_conversations_today: int = agent_conv_today_result.scalar_one()
 
-    # connector_calls_today: total call-log entries today across visible connectors
+    # connector_calls_today: the user's connector calls today. The log also
+    # holds MCP calls, which are not counted here. (``connector_id`` cannot
+    # tell them apart: it is also empty once a connector is deleted.)
     connector_calls_today_result = await db.execute(
         select(func.count())
         .select_from(ConnectorCallLog)
         .where(
             ConnectorCallLog.user_id == current_user.id,
             ConnectorCallLog.created_at >= today_start,
+            or_(
+                ConnectorCallLog.resource_kind.is_(None),
+                ConnectorCallLog.resource_kind != "mcp",
+            ),
         )
     )
     connector_calls_today: int = connector_calls_today_result.scalar_one()

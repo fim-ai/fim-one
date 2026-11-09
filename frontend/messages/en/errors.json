@@ -96,6 +96,8 @@
   "mcp_server_not_found": "MCP server not found.",
   "resource_inactive": "This resource has been switched off by its owner.",
   "owner_only": "Only the owner can use this resource.",
+  "credential_required": "This resource needs your own credentials: its owner has switched fallback off. Save your own credentials for it.",
+  "credential_unavailable": "The credentials for this resource could not be loaded. Try again shortly.",
 
   "session_expired": "Session expired, please log in again.",
   "session_required": "This action requires signing in to your account; API keys cannot be used.",

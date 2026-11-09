@@ -15,7 +15,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Literal
 
 from .calls import call_recorder
-from .credentials import resolve_credential
+from .credentials import CredentialSource, resolve_credential
 from .errors import AssemblyRefusal
 from .visibility import ResourceKind, authorize_use
 
@@ -60,7 +60,8 @@ async def connector_tools(
     """
     from fim_one.core.tool.connector import ConnectorToolAdapter, build_connector_meta_tool
 
-    record = call_recorder(ctx, kind="connector")
+    sources: dict[str, CredentialSource] = {}
+    record = call_recorder(ctx, kind="connector", credential_source=sources)
     callable_connectors: list[tuple[Any, dict[str, Any]]] = []
     for conn in connectors:
         try:
@@ -70,6 +71,7 @@ async def connector_tools(
                 raise
             logger.info("Skipping connector %r: %s", conn.name, refusal.error_code)
             continue
+        sources[conn.id] = credential.source
         callable_connectors.append((conn, credential.connector or {}))
 
     if mode == "progressive":
@@ -165,7 +167,8 @@ async def database_tools(
     from fim_one.core.tool.connector.database.adapter import DatabaseToolAdapter
     from fim_one.core.tool.connector.database.meta_tool import build_database_meta_tool
 
-    record = call_recorder(ctx, kind="database")
+    # Only the owner gets this far, on the config stored with the connector.
+    record = call_recorder(ctx, kind="database", credential_source=CredentialSource.OWNER)
     databases: list[tuple[Any, dict[str, Any], list[Any]]] = []
     for conn in connectors:
         if not conn.db_config:
@@ -278,12 +281,18 @@ async def mcp_tools(
     from fim_one.db import create_session
 
     client = MCPClient()
+    sources: dict[str, CredentialSource] = {}
+    record = call_recorder(ctx, kind="mcp", credential_source=sources)
     connected: dict[str, list[Any]] = {}
     for server in servers:
         try:
             async with create_session() as db:
                 credential = await resolve_credential(db, ctx.principal, server)
-            connected[server.name] = await _connect_mcp_server(client, server, credential)
+            adapters = await _connect_mcp_server(client, server, credential)
+            sources[server.id] = credential.source
+            for adapter in adapters:
+                adapter.record_calls(record, server_id=server.id)
+            connected[server.name] = adapters
         except Exception as exc:
             if strict:
                 await client.disconnect_all()

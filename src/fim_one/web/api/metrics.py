@@ -303,7 +303,10 @@ async def get_connector_usage(
     _admin: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
-    """Per-connector call statistics for the given period."""
+    """Per-connector call statistics for the given period.
+
+    MCP servers called in the period are listed too, with ``kind="mcp"``.
+    """
     if period not in _VALID_PERIODS:
         period = "7d"
     cutoff = _period_cutoff(period)
@@ -311,7 +314,9 @@ async def get_connector_usage(
     rows = (
         await db.execute(
             select(
+                ConnectorCallLog.resource_kind,
                 ConnectorCallLog.connector_id,
+                ConnectorCallLog.mcp_server_id,
                 ConnectorCallLog.connector_name,
                 func.count().label("total_calls"),
                 func.sum(
@@ -324,7 +329,9 @@ async def get_connector_usage(
             )
             .where(ConnectorCallLog.created_at >= cutoff)
             .group_by(
+                ConnectorCallLog.resource_kind,
                 ConnectorCallLog.connector_id,
+                ConnectorCallLog.mcp_server_id,
                 ConnectorCallLog.connector_name,
             )
             .order_by(func.count().desc())
@@ -333,7 +340,8 @@ async def get_connector_usage(
 
     connectors = [
         ConnectorUsageItem(
-            connector_id=r.connector_id,
+            kind=r.resource_kind or "connector",
+            connector_id=r.connector_id or r.mcp_server_id or "",
             connector_name=r.connector_name,
             total_calls=r.total_calls,
             success_rate=_safe_rate(int(r.success_count), r.total_calls),
