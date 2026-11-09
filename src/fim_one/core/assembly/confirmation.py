@@ -20,6 +20,13 @@ A channel is usable when it implements
 which platform it is. Only the explicitly bound channel is considered: an
 approval never borrows the completion-notification channel or some other
 channel of the organization.
+
+Who may decide is fixed when the request is created and written on the row
+(``eligible_scope``, ``eligible_user_id``, ``org_id``); changing the agent's
+settings afterwards does not move a request in flight. :meth:`may_decide`
+reads the row and nothing else, for the portal and for a channel callback
+alike. Rows written before the columns existed have no scope and fall back
+to the agent's current setting.
 """
 
 from __future__ import annotations
@@ -40,7 +47,13 @@ from fim_one.core.channels.resolve import resolve_org_channel
 from fim_one.core.hooks.base import PreToolUseHook
 from fim_one.core.hooks.inline_confirmation import emit_inline_confirmation
 
-from .errors import CONFIRMATION_UNDELIVERABLE, AssemblyRefusal
+from .errors import (
+    CONFIRMATION_ALREADY_DECIDED,
+    CONFIRMATION_FORBIDDEN,
+    CONFIRMATION_NOT_FOUND,
+    CONFIRMATION_UNDELIVERABLE,
+    AssemblyRefusal,
+)
 from .principal import Binding, Principal, provisional_principal
 
 __all__ = [
@@ -49,10 +62,12 @@ __all__ = [
     "ApprovalGateHook",
     "ConfirmationService",
     "ConfirmationSpec",
+    "Decision",
     "RequiresConfirmationFn",
     "SessionFactory",
     "confirmation_required",
     "create_approval_gate_hook",
+    "record_decision",
 ]
 
 logger = logging.getLogger(__name__)
@@ -68,6 +83,10 @@ ConfirmationKind = Literal["confirmation", "user_question", "workflow_approval"]
 EligibleScope = Literal["initiator", "agent_owner", "org_members", "assignee"]
 Delivery = Literal["auto", "inline_only", "channel_only"]
 WaitOutcome = Literal["approve", "reject", "expired"]
+Decision = Literal["approve", "reject"]
+
+# Scopes that name one eligible user.
+_SINGLE_USER_SCOPES = ("initiator", "agent_owner", "assignee")
 
 DEFAULT_TIMEOUT_SECONDS = 120
 DEFAULT_POLL_INTERVAL_SECONDS = 1.5
@@ -222,6 +241,8 @@ class ConfirmationService:
             user_id=spec.initiator.user_id or None,
             # One named approver, or NULL when the scope is a group.
             approver_user_id=spec.eligible_user_id,
+            eligible_scope=spec.eligible_scope,
+            eligible_user_id=spec.eligible_user_id,
             # NULL, never an empty string: the column is a foreign key.
             org_id=spec.org_id or None,
             channel_id=channel_row.id if channel_row is not None else None,
@@ -298,6 +319,206 @@ class ConfirmationService:
                 await session.commit()
         except Exception:  # pragma: no cover - defensive
             logger.exception("Failed to mark confirmation %s expired", confirmation_id)
+
+    # ------------------------------------------------------------------
+    # Deciding
+    # ------------------------------------------------------------------
+
+    async def may_decide(self, db: Any, row: Any, actor: Principal) -> bool:
+        """Whether *actor* may decide *row*, by what the row says.
+
+        ``initiator``, ``agent_owner`` and ``assignee`` name one user;
+        ``org_members`` is any member of the row's organization. A platform
+        administrator may always decide. A row with no scope (written
+        before the scope was recorded) is judged by the agent's current
+        setting, the rule that applied when it was written.
+        """
+        if actor.is_admin:
+            return True
+        scope = row.eligible_scope
+        if scope is None:
+            return await self._may_decide_by_agent_setting(db, row, actor)
+        if scope in _SINGLE_USER_SCOPES:
+            return bool(row.eligible_user_id) and row.eligible_user_id == actor.user_id
+        if scope == "org_members":
+            return bool(row.org_id) and row.org_id in actor.org_ids
+        logger.warning("confirmation %s has unknown eligible_scope %r", row.id, scope)
+        return False
+
+    async def _may_decide_by_agent_setting(self, db: Any, row: Any, actor: Principal) -> bool:
+        from sqlalchemy import select
+
+        from fim_one.db.models.agent import Agent
+
+        if row.kind == "user_question":
+            return bool(row.user_id) and row.user_id == actor.user_id
+        if not row.agent_id:
+            return False
+        agent = (
+            await db.execute(select(Agent).where(Agent.id == row.agent_id))
+        ).scalar_one_or_none()
+        if agent is None:
+            return False
+        scope = str(getattr(agent, "confirmation_approver_scope", "initiator") or "initiator")
+        scope = scope.lower()
+        if scope == "initiator":
+            return bool(row.user_id) and row.user_id == actor.user_id
+        if scope == "agent_owner":
+            return bool(agent.user_id) and agent.user_id == actor.user_id
+        if scope == "org_members":
+            return bool(agent.org_id) and agent.org_id in actor.org_ids
+        logger.warning("agent %s has unknown confirmation_approver_scope %r", agent.id, scope)
+        return False
+
+    async def decide(
+        self,
+        db: Any,
+        *,
+        confirmation_id: str,
+        actor: Principal,
+        decision: Decision,
+        note: str | None = None,
+        external_actor: str | None = None,
+    ) -> Any:
+        """Record *actor*'s decision on a pending request; returns the row.
+
+        Raises :class:`AssemblyRefusal`: ``confirmation_not_found`` (404;
+        also for a question, which is answered, not decided),
+        ``confirmation_already_decided`` (409, ``detail_args["status"]``
+        says how) or ``confirmation_forbidden`` (403). Two decisions racing
+        for one row: exactly one wins, the other sees "already decided".
+        """
+        from sqlalchemy import select
+
+        from fim_one.db.models.channel import ConfirmationRequest
+
+        row = (
+            await db.execute(
+                select(ConfirmationRequest).where(ConfirmationRequest.id == confirmation_id)
+            )
+        ).scalar_one_or_none()
+        if row is None or row.kind == "user_question":
+            raise AssemblyRefusal(CONFIRMATION_NOT_FOUND, 404, "Confirmation request not found.")
+        if row.status != "pending":
+            raise _already_decided(row.status)
+        if not await self.may_decide(db, row, actor):
+            raise AssemblyRefusal(
+                CONFIRMATION_FORBIDDEN,
+                403,
+                "You are not authorised to respond to this confirmation.",
+            )
+
+        final_status, newly_applied, _payload = await record_decision(
+            db,
+            confirmation_id=confirmation_id,
+            decision=decision,
+            decided_by=actor.user_id,
+            external_actor=external_actor,
+            note=note,
+        )
+        if final_status is None:
+            raise AssemblyRefusal(CONFIRMATION_NOT_FOUND, 404, "Confirmation request not found.")
+        if not newly_applied:
+            raise _already_decided(final_status)
+        await db.refresh(row)
+        return row
+
+    async def pending_for(self, db: Any, actor: Principal, *, kind: str | None = None) -> list[Any]:
+        """Pending requests *actor* may decide, newest first.
+
+        By the row only: an administrator sees those naming them like
+        anyone else, not everything.
+        """
+        from sqlalchemy import and_, or_, select
+
+        from fim_one.db.models.channel import ConfirmationRequest
+
+        eligible = or_(
+            and_(
+                ConfirmationRequest.eligible_scope.in_(_SINGLE_USER_SCOPES),
+                ConfirmationRequest.eligible_user_id == actor.user_id,
+            ),
+            and_(
+                ConfirmationRequest.eligible_scope == "org_members",
+                ConfirmationRequest.org_id.in_(sorted(actor.org_ids)),
+            ),
+        )
+        stmt = select(ConfirmationRequest).where(ConfirmationRequest.status == "pending", eligible)
+        if kind is not None:
+            stmt = stmt.where(ConfirmationRequest.kind == kind)
+        result = await db.execute(stmt.order_by(ConfirmationRequest.created_at.desc()))
+        return list(result.scalars().all())
+
+
+def _already_decided(status: str) -> AssemblyRefusal:
+    return AssemblyRefusal(
+        CONFIRMATION_ALREADY_DECIDED,
+        409,
+        f"Confirmation is already {status}.",
+        {"status": status},
+    )
+
+
+async def record_decision(
+    db: Any,
+    *,
+    confirmation_id: str,
+    decision: Decision,
+    decided_by: str | None = None,
+    external_actor: str | None = None,
+    note: str | None = None,
+) -> tuple[str | None, bool, dict[str, Any] | None]:
+    """Flip a pending row to ``approved`` / ``rejected`` and say whether this call did it.
+
+    Authorisation is the caller's business (:meth:`ConfirmationService.decide`);
+    this is the write. A conditional ``UPDATE ... WHERE status='pending'``
+    lets concurrent deciders race cleanly on SQLite and PostgreSQL alike:
+    one update changes the row, the rest see a rowcount of zero.
+
+    Returns ``(final_status, newly_applied, payload)``: ``(None, False,
+    None)`` when there is no such row.
+    """
+    from sqlalchemy import CursorResult, select, update
+
+    from fim_one.db.models.channel import ConfirmationRequest
+
+    now = datetime.now(UTC)
+    values: dict[str, Any] = {
+        "status": "approved" if decision == "approve" else "rejected",
+        "responded_at": now,
+        "decided_by_user_id": decided_by,
+        "decision_note": note,
+    }
+    if decided_by is not None:
+        # The column that said who may decide now says who did; readers of
+        # the API response rely on it.
+        values["approver_user_id"] = decided_by
+    if external_actor is not None:
+        values["responded_by_open_id"] = external_actor
+
+    result = cast(
+        CursorResult[Any],
+        await db.execute(
+            update(ConfirmationRequest)
+            .where(
+                ConfirmationRequest.id == confirmation_id,
+                ConfirmationRequest.status == "pending",
+            )
+            .values(**values)
+        ),
+    )
+    await db.commit()
+    newly_applied = (result.rowcount or 0) == 1
+
+    row = (
+        await db.execute(
+            select(ConfirmationRequest).where(ConfirmationRequest.id == confirmation_id)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return (None, False, None)
+    payload = dict(row.payload) if isinstance(row.payload, dict) else None
+    return (str(row.status), newly_applied, payload)
 
 
 def _aware(moment: datetime) -> datetime:

@@ -470,3 +470,67 @@ async def test_sse_emits_awaiting_confirmation(
     finally:
         unregister_confirmation_bridge()
         await clear_all_queues()
+
+
+# ---------------------------------------------------------------------------
+# Who may decide is fixed when the request is created (B11)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_changing_the_agent_scope_does_not_move_a_request_in_flight(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """The request was created for its initiator; the agent is then switched
+    to agent_owner. The initiator still decides it, the owner still cannot."""
+    from fim_one.core.assembly.confirmation import ConfirmationService, ConfirmationSpec
+    from fim_one.core.assembly.principal import Binding, provisional_principal
+
+    owner = await _mk_user(session_factory, username="owner")
+    alice = await _mk_user(session_factory, username="alice")
+    org = await _mk_org(session_factory, owner=owner, extra_members=[alice])
+    agent = await _mk_agent(session_factory, owner=owner, org=org, scope="initiator")
+
+    row = await ConfirmationService(session_factory).request(
+        ConfirmationSpec(
+            kind="confirmation",
+            initiator=provisional_principal(alice.id),
+            binding=Binding(kind="agent", id=agent.id, owner_id=owner.id, org_id=org.id),
+            org_id=org.id,
+            title="Approval Required",
+            description=None,
+            payload={"tool_name": "jira.createIssue", "tool_args": {}},
+            eligible_scope="initiator",
+            eligible_user_id=alice.id,
+            delivery="inline_only",
+            channel_id=None,
+            timeout_seconds=60,
+        )
+    )
+    async with session_factory() as db:
+        stored = await db.get(Agent, agent.id)
+        assert stored is not None
+        stored.confirmation_approver_scope = "agent_owner"
+        await db.commit()
+
+    denied = await client.post(
+        f"/api/confirmations/{row.id}/respond",
+        json={"decision": "approve"},
+        headers=_bearer(owner),
+    )
+    assert denied.status_code == 403, denied.text
+    allowed = await client.post(
+        f"/api/confirmations/{row.id}/respond",
+        json={"decision": "approve", "reason": "looks right"},
+        headers=_bearer(alice),
+    )
+    assert allowed.status_code == 200, allowed.text
+
+    async with session_factory() as db:
+        final = (
+            await db.execute(select(ConfirmationRequest).where(ConfirmationRequest.id == row.id))
+        ).scalar_one()
+        assert final.status == "approved"
+        assert final.decided_by_user_id == alice.id
+        assert final.decision_note == "looks right"

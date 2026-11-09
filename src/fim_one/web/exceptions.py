@@ -17,9 +17,12 @@ Usage::
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import HTTPException
+
+if TYPE_CHECKING:
+    from fim_one.core.assembly.errors import AssemblyRefusal
 
 
 class AppError(HTTPException):
@@ -43,3 +46,18 @@ class AppError(HTTPException):
         self.error_code = error_code
         self.detail_args = detail_args or {}
         super().__init__(status_code=status_code, detail=detail)
+
+    @classmethod
+    def from_refusal(cls, refusal: AssemblyRefusal) -> AppError:
+        """The same code, status and detail as a refusal from the assembly layer.
+
+        For endpoints that catch the refusal themselves (to add to it, or
+        because they run under a router without the app's handlers); one
+        that lets it propagate gets the same response from ``app.py``.
+        """
+        return cls(
+            refusal.error_code,
+            status_code=refusal.status_code,
+            detail=refusal.detail,
+            detail_args=refusal.detail_args,
+        )

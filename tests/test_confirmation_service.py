@@ -430,3 +430,342 @@ class TestFeishuCarrier:
         channel = FeishuChannel({"app_id": "a", "app_secret": "s"})
         assert channel.parse_decision({"type": "url_verification", "challenge": "x"}) is None
         assert channel.parse_decision({}) is None
+
+
+# ---------------------------------------------------------------------------
+# Who may decide: one table, three entries
+# ---------------------------------------------------------------------------
+
+# (scope, actor) -> may decide. ``initiator`` is the member who asked;
+# ``owner`` owns the agent; ``admin`` is a platform administrator outside
+# the organization.
+DECIDERS = ("initiator", "owner", "member2", "outsider", "admin")
+MAY_DECIDE: dict[tuple[str, str], bool] = {
+    ("initiator", "initiator"): True,
+    ("initiator", "owner"): False,
+    ("initiator", "member2"): False,
+    ("initiator", "outsider"): False,
+    ("initiator", "admin"): True,
+    ("agent_owner", "initiator"): False,
+    ("agent_owner", "owner"): True,
+    ("agent_owner", "member2"): False,
+    ("agent_owner", "outsider"): False,
+    ("agent_owner", "admin"): True,
+    ("org_members", "initiator"): True,
+    ("org_members", "owner"): True,
+    ("org_members", "member2"): True,
+    ("org_members", "outsider"): False,
+    ("org_members", "admin"): True,
+    ("assignee", "initiator"): False,
+    ("assignee", "owner"): False,
+    ("assignee", "member2"): True,  # the assignee
+    ("assignee", "outsider"): False,
+    ("assignee", "admin"): True,
+}
+SIGNING_KEY = "signing-key"
+
+
+@pytest.fixture()
+async def deciders(
+    factory: async_sessionmaker[AsyncSession], world: dict[str, Any]
+) -> dict[str, Any]:
+    """A second member, an administrator, Feishu bindings and a signed channel."""
+    member2, admin = str(uuid.uuid4()), str(uuid.uuid4())
+    async with factory() as db:
+        db.add(User(id=member2, username="member2", email="m2@x.io"))
+        db.add(User(id=admin, username="admin", email="admin@x.io", is_admin=True))
+        await db.flush()
+        db.add(
+            OrgMembership(id=str(uuid.uuid4()), org_id=world["org"], user_id=member2, role="member")
+        )
+        from fim_one.db.models.oauth_binding import UserOAuthBinding
+
+        users = {
+            "initiator": world["member"],
+            "owner": world["owner"],
+            "member2": member2,
+            "outsider": world["outsider"],
+            "admin": admin,
+        }
+        for name, uid in users.items():
+            db.add(UserOAuthBinding(user_id=uid, provider="feishu", oauth_id=f"ou_{name}"))
+        signed = Channel(
+            id=str(uuid.uuid4()),
+            name="signed",
+            type="feishu",
+            org_id=world["org"],
+            created_by=world["owner"],
+            config={
+                "app_id": "cli",
+                "app_secret": "s",
+                "chat_id": "oc_signed",
+                "encrypt_key": SIGNING_KEY,
+            },
+        )
+        db.add(signed)
+        await db.commit()
+    return {**world, "users": users, "signed_channel": signed.id}
+
+
+def _eligible_user(scope: str, d: dict[str, Any]) -> str | None:
+    return {
+        "initiator": d["users"]["initiator"],
+        "agent_owner": d["users"]["owner"],
+        "assignee": d["users"]["member2"],
+    }.get(scope)
+
+
+async def _request_with_scope(
+    factory: async_sessionmaker[AsyncSession], d: dict[str, Any], scope: str, **kw: Any
+) -> Any:
+    spec = _spec(
+        d,
+        initiator=provisional_principal(d["users"]["initiator"]),
+        eligible_scope=scope,
+        eligible_user_id=_eligible_user(scope, d),
+        **kw,
+    )
+    return await ConfirmationService(factory).request(spec)
+
+
+async def _principal(factory: async_sessionmaker[AsyncSession], user_id: str) -> Any:
+    from fim_one.core.assembly.principal import AuthMethod, resolve_principal
+
+    async with factory() as db:
+        return await resolve_principal(db, user_id=user_id, auth=AuthMethod.SESSION)
+
+
+@pytest.fixture()
+async def api(factory: async_sessionmaker[AsyncSession]) -> AsyncIterator[Any]:
+    """Both routers that decide confirmations, on the test engine."""
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+
+    from fim_one.db import get_session
+    from fim_one.web.api.channels import router as channels_router
+    from fim_one.web.api.confirmations import router as confirmations_router
+
+    app = FastAPI()
+    app.include_router(confirmations_router)
+    app.include_router(channels_router)
+
+    async def _override_session() -> AsyncIterator[AsyncSession]:
+        async with factory() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = _override_session
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        yield client
+
+
+def _bearer(user_id: str) -> dict[str, str]:
+    from fim_one.web.auth import create_access_token
+
+    return {"Authorization": f"Bearer {create_access_token(user_id, f'{user_id}@x.io')}"}
+
+
+def _signed(payload: dict[str, Any]) -> tuple[bytes, dict[str, str]]:
+    import hashlib
+    import json
+
+    body = json.dumps(payload).encode()
+    ts, nonce = "1700000000", "n0nce"
+    digest = hashlib.sha256()
+    for part in (ts.encode(), nonce.encode(), SIGNING_KEY.encode(), body):
+        digest.update(part)
+    return body, {
+        "X-Lark-Request-Timestamp": ts,
+        "X-Lark-Request-Nonce": nonce,
+        "X-Lark-Signature": digest.hexdigest(),
+        "Content-Type": "application/json",
+    }
+
+
+@pytest.fixture(autouse=True)
+def _jwt_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JWT_SECRET_KEY", "test-jwt-secret-c1p3-long-enough-for-hs256")
+
+
+class TestMayDecideTable:
+    @pytest.mark.parametrize(("scope", "actor"), sorted(MAY_DECIDE), ids=lambda v: str(v))
+    async def test_the_rule_itself(
+        self,
+        factory: async_sessionmaker[AsyncSession],
+        deciders: dict[str, Any],
+        scope: str,
+        actor: str,
+    ) -> None:
+        row = await _request_with_scope(factory, deciders, scope)
+        principal = await _principal(factory, deciders["users"][actor])
+        async with factory() as db:
+            assert (
+                await ConfirmationService(factory).may_decide(db, row, principal)
+                is MAY_DECIDE[(scope, actor)]
+            )
+
+    @pytest.mark.parametrize(("scope", "actor"), sorted(MAY_DECIDE), ids=lambda v: str(v))
+    async def test_through_the_portal(
+        self,
+        factory: async_sessionmaker[AsyncSession],
+        deciders: dict[str, Any],
+        api: Any,
+        scope: str,
+        actor: str,
+    ) -> None:
+        row = await _request_with_scope(factory, deciders, scope)
+        headers = _bearer(deciders["users"][actor])
+
+        seen = await api.get(f"/api/confirmations/{row.id}", headers=headers)
+        resp = await api.post(
+            f"/api/confirmations/{row.id}/respond", json={"decision": "approve"}, headers=headers
+        )
+
+        allowed = MAY_DECIDE[(scope, actor)]
+        assert seen.status_code == (200 if allowed else 403), seen.text
+        assert resp.status_code == (200 if allowed else 403), resp.text
+        stored = await _row(factory, row.id)
+        if allowed:
+            assert stored.status == "approved"
+            assert stored.decided_by_user_id == deciders["users"][actor]
+            assert stored.approver_user_id == deciders["users"][actor]
+        else:
+            # (The bare router app renders HTTPException without error_code.)
+            assert "not authorised" in resp.json()["detail"]
+            assert stored.status == "pending" and stored.decided_by_user_id is None
+
+    @pytest.mark.parametrize(("scope", "actor"), sorted(MAY_DECIDE), ids=lambda v: str(v))
+    async def test_through_the_channel_callback(
+        self,
+        factory: async_sessionmaker[AsyncSession],
+        deciders: dict[str, Any],
+        api: Any,
+        scope: str,
+        actor: str,
+    ) -> None:
+        send = AsyncMock(return_value=ChannelSendResult(ok=True))
+        with patch.object(FeishuChannel, "send_interactive_card", send):
+            row = await _request_with_scope(
+                factory, deciders, scope, channel_id=deciders["signed_channel"]
+            )
+        assert row.mode == "channel"
+
+        body, headers = _signed(
+            {
+                "action": {"value": {"confirmation_id": row.id, "decision": "reject"}},
+                "open_id": f"ou_{actor}",
+            }
+        )
+        resp = await api.post(
+            f"/api/channels/{deciders['signed_channel']}/callback", content=body, headers=headers
+        )
+
+        assert resp.status_code == 200, resp.text
+        stored = await _row(factory, row.id)
+        if MAY_DECIDE[(scope, actor)]:
+            assert stored.status == "rejected"
+            assert stored.decided_by_user_id == deciders["users"][actor]
+            assert stored.responded_by_open_id == f"ou_{actor}"
+            assert "card" in resp.json()
+        else:
+            assert stored.status == "pending"
+            assert resp.json()["toast"]["type"] == "error"
+            assert "card" not in resp.json()
+
+
+class TestDecide:
+    async def test_the_row_not_the_agents_current_setting_decides(
+        self, factory: async_sessionmaker[AsyncSession], deciders: dict[str, Any]
+    ) -> None:
+        """B11: changing the agent after the request does not move it."""
+        row = await _request_with_scope(factory, deciders, "initiator")
+        async with factory() as db:
+            agent = await db.get(Agent, "agent-1")
+            assert agent is not None
+            agent.confirmation_approver_scope = "agent_owner"
+            await db.commit()
+
+        service = ConfirmationService(factory)
+        initiator = await _principal(factory, deciders["users"]["initiator"])
+        owner = await _principal(factory, deciders["users"]["owner"])
+        async with factory() as db:
+            assert await service.may_decide(db, row, owner) is False
+            decided = await service.decide(
+                db, confirmation_id=row.id, actor=initiator, decision="approve", note="go"
+            )
+        assert decided.status == "approved"
+        assert decided.decision_note == "go"
+        assert decided.decided_by_user_id == initiator.user_id
+
+    async def test_a_row_without_a_scope_follows_the_agents_setting(
+        self, factory: async_sessionmaker[AsyncSession], deciders: dict[str, Any]
+    ) -> None:
+        """Rows written before the scope was recorded: the earlier rule."""
+        row = await _request_with_scope(factory, deciders, "initiator")
+        async with factory() as db:
+            stored = await db.get(ConfirmationRequest, row.id)
+            assert stored is not None
+            stored.eligible_scope = None
+            stored.eligible_user_id = None
+            agent = await db.get(Agent, "agent-1")
+            assert agent is not None
+            agent.confirmation_approver_scope = "agent_owner"
+            await db.commit()
+
+        service = ConfirmationService(factory)
+        initiator = await _principal(factory, deciders["users"]["initiator"])
+        owner = await _principal(factory, deciders["users"]["owner"])
+        async with factory() as db:
+            legacy = await db.get(ConfirmationRequest, row.id)
+            assert await service.may_decide(db, legacy, initiator) is False
+            assert await service.may_decide(db, legacy, owner) is True
+
+    async def test_second_decision_loses(
+        self, factory: async_sessionmaker[AsyncSession], deciders: dict[str, Any]
+    ) -> None:
+        row = await _request_with_scope(factory, deciders, "org_members")
+        service = ConfirmationService(factory)
+        first = await _principal(factory, deciders["users"]["initiator"])
+        second = await _principal(factory, deciders["users"]["member2"])
+        async with factory() as db:
+            await service.decide(db, confirmation_id=row.id, actor=first, decision="approve")
+            with pytest.raises(AssemblyRefusal) as exc:
+                await service.decide(db, confirmation_id=row.id, actor=second, decision="reject")
+        assert exc.value.error_code == "confirmation_already_decided"
+        assert exc.value.detail_args == {"status": "approved"}
+
+    async def test_unknown_and_question_rows(
+        self, factory: async_sessionmaker[AsyncSession], deciders: dict[str, Any]
+    ) -> None:
+        service = ConfirmationService(factory)
+        actor = await _principal(factory, deciders["users"]["admin"])
+        question = await service.request(
+            _spec(deciders, kind="user_question", payload={"questions": []})
+        )
+        async with factory() as db:
+            for missing in ("nope", question.id):
+                with pytest.raises(AssemblyRefusal) as exc:
+                    await service.decide(
+                        db, confirmation_id=missing, actor=actor, decision="approve"
+                    )
+                assert exc.value.error_code == "confirmation_not_found"
+
+    async def test_pending_for_lists_what_the_actor_may_decide(
+        self, factory: async_sessionmaker[AsyncSession], deciders: dict[str, Any]
+    ) -> None:
+        service = ConfirmationService(factory)
+        mine = await _request_with_scope(factory, deciders, "initiator")
+        org = await _request_with_scope(factory, deciders, "org_members")
+        assigned = await _request_with_scope(factory, deciders, "assignee")
+        decided = await _request_with_scope(factory, deciders, "initiator")
+        initiator = await _principal(factory, deciders["users"]["initiator"])
+        member2 = await _principal(factory, deciders["users"]["member2"])
+        admin = await _principal(factory, deciders["users"]["admin"])
+        async with factory() as db:
+            await service.decide(
+                db, confirmation_id=decided.id, actor=initiator, decision="approve"
+            )
+            assert {r.id for r in await service.pending_for(db, initiator)} == {mine.id, org.id}
+            assert {r.id for r in await service.pending_for(db, member2)} == {org.id, assigned.id}
+            # An administrator may decide anything, but is not shown everything.
+            assert await service.pending_for(db, admin) == []
+            assert await service.pending_for(db, initiator, kind="workflow_approval") == []
