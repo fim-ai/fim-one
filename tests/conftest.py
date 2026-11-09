@@ -91,7 +91,20 @@ def mock_agent(mock_llm: FakeLLM, tool_registry: ToolRegistry) -> ReActAgent:
     return ReActAgent(llm=mock_llm, tools=tool_registry, max_iterations=5)
 
 
+@pytest.fixture(autouse=True)
+def _human_intervention_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Start every test with the Human Intervention switch at its default (off).
+
+    The switch is read from the environment, so a developer's exported
+    ``WORKFLOW_HUMAN_INTERVENTION_ENABLED`` would otherwise decide what the
+    workflow tests see.
+    """
+    monkeypatch.delenv("WORKFLOW_HUMAN_INTERVENTION_ENABLED", raising=False)
+
+
 @pytest.fixture()
-def human_intervention_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+def human_intervention_enabled(
+    _human_intervention_default: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Switch Human Intervention workflow nodes on (they are off by default)."""
     monkeypatch.setenv("WORKFLOW_HUMAN_INTERVENTION_ENABLED", "true")
