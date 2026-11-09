@@ -29,6 +29,12 @@ interface WorkflowDocumentOptions {
   blueprintRef: MutableRefObject<WorkflowBlueprint>
   /** Called when the blueprint was loaded or changed, to validate it again. */
   onBlueprintChanged: () => void
+  /**
+   * The canvas as it is right now, or null when there is none. The canvas
+   * reports its changes after a short pause; a save reads it directly so
+   * that it never sends a blueprint older than what is on screen.
+   */
+  readCanvas?: () => WorkflowBlueprint | null
 }
 
 /**
@@ -42,6 +48,7 @@ export function useWorkflowDocument({
   user,
   blueprintRef,
   onBlueprintChanged,
+  readCanvas,
 }: WorkflowDocumentOptions) {
   const t = useTranslations("workflows")
   const tError = useTranslations("errors")
@@ -155,6 +162,9 @@ export function useWorkflowDocument({
     const isAutoSave = isAutoSavingRef.current
     // Only show saving indicator for manual saves
     if (!isAutoSave) setIsSaving(true)
+    // Edits the canvas has not reported yet are part of what is saved.
+    const canvas = readCanvas?.()
+    if (canvas) blueprintRef.current = withVariablesOf(canvas, blueprintRef.current)
     try {
       const updated = await workflowApi.update(workflow.id, {
         name: workflow.name,
@@ -184,7 +194,7 @@ export function useWorkflowDocument({
       if (!isAutoSave) setIsSaving(false)
       isAutoSavingRef.current = false
     }
-  }, [workflow, t, tError, blueprintRef])
+  }, [workflow, t, tError, blueprintRef, readCanvas])
 
   /** Take a changed blueprint: mark unsaved, validate, and save after a pause. */
   const applyBlueprint = useCallback((bp: WorkflowBlueprint) => {

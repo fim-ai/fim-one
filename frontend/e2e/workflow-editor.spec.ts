@@ -246,9 +246,8 @@ test("build, save, reload and run a workflow that uses every offered node type",
 
   // --- Save ----------------------------------------------------------------
   await test.step("save", async () => {
-    // The canvas hands its state to the page 300 ms after the last change,
-    // and Save sends what the page holds: wait that out.
-    await page.waitForTimeout(500)
+    // Straight after the last edge: Save must include it, although the
+    // canvas reports its changes to the page only after a short pause.
     await saveWorkflow(page)
   })
   const saved = await fetchBlueprint(request, seeded.session, workflowId)
@@ -449,7 +448,6 @@ test("workflow variables survive opening and editing the canvas", async ({ page,
 
   const panel = await openConfig(page, "llm")
   await panel.getByPlaceholder(PROMPT_HINT).fill("Hello again")
-  await page.waitForTimeout(500)
   await saveWorkflow(page)
 
   const stored = await fetchBlueprint(request, seeded.session, workflowId)

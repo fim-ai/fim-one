@@ -77,11 +77,13 @@ export default function WorkflowEditorPage() {
   // --- State, one hook per concern ---
   const panels = useOpenPanels<EditorPanel>()
   const validation = useWorkflowValidation(workflowId, blueprintRef, editorRef)
+  const readCanvas = useCallback(() => editorRef.current?.getBlueprint() ?? null, [])
   const doc = useWorkflowDocument({
     workflowId,
     user,
     blueprintRef,
     onBlueprintChanged: validation.triggerValidation,
+    readCanvas,
   })
   const { workflow, setWorkflow, isLoadingWorkflow, setIsDirty } = doc
   const run = useWorkflowRun(workflow?.id ?? null)

@@ -131,6 +131,46 @@ describe("useWorkflowDocument", () => {
     expect(api.update.mock.calls[0][1].blueprint).toEqual(canvasOf("third"))
   })
 
+  describe("saving what is on the canvas", () => {
+    // The canvas reports a change 300 ms after it happened. Save used to
+    // send the last report, so an edit made just before Save was left out.
+    it("sends the canvas as it is, not the last report", async () => {
+      let onCanvas = canvasOf("first")
+      const { result, blueprintRef } = await mountDocument(canvasOf("first"), {
+        readCanvas: () => onCanvas,
+      })
+      act(() => result.current.changeBlueprint(canvasOf("reported")))
+      onCanvas = canvasOf("typed just now")
+      await act(() => result.current.save())
+      expect(api.update.mock.calls[0][1].blueprint).toEqual(canvasOf("typed just now"))
+      expect(blueprintRef.current).toEqual(canvasOf("typed just now"))
+      expect(result.current.isDirty).toBe(false)
+
+      // The canvas's own report of the same state arrives later: nothing to save.
+      act(() => result.current.changeBlueprint(canvasOf("typed just now")))
+      expect(result.current.isDirty).toBe(false)
+    })
+
+    it("keeps the workflow variables on that path too", async () => {
+      const { result } = await mountDocument(
+        { ...canvasOf("first"), variables: [REGION] },
+        { readCanvas: () => canvasOf("typed just now") },
+      )
+      await act(() => result.current.save())
+      expect(api.update.mock.calls[0][1].blueprint).toEqual({
+        ...canvasOf("typed just now"),
+        variables: [REGION],
+      })
+    })
+
+    it("saves the last report when there is no canvas to read", async () => {
+      const { result } = await mountDocument(canvasOf("first"), { readCanvas: () => null })
+      act(() => result.current.changeBlueprint(canvasOf("reported")))
+      await act(() => result.current.save())
+      expect(api.update.mock.calls[0][1].blueprint).toEqual(canvasOf("reported"))
+    })
+  })
+
   describe("workflow variables", () => {
     // The canvas serializes nodes, edges and the viewport only. A workflow
     // that has variables used to lose them at the first canvas report.

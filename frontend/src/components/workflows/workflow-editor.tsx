@@ -122,6 +122,8 @@ interface WorkflowEditorProps {
 }
 
 export interface WorkflowEditorHandle {
+  /** The canvas as a blueprint, as it is right now. */
+  getBlueprint: () => WorkflowBlueprint
   autoLayout: () => void
   undo: () => void
   redo: () => void
@@ -209,7 +211,7 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
     rfInstanceRef,
     onNodeAdded: addRecentNode,
   })
-  useBlueprintSync(nodes, edges, blueprint.viewport, onBlueprintChange)
+  const getBlueprint = useBlueprintSync(nodes, edges, blueprint.viewport, onBlueprintChange)
 
   const showShortcuts = useCallback(() => setShortcutsDialogOpen(true), [])
   const clearSelection = useCallback(() => {
@@ -307,6 +309,7 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
   const { undo, redo } = history
   const { applyRunOverlay, clearRunOverlay, applyValidationOverlay, clearValidationOverlay } = overlays
   useImperativeHandle(ref, () => ({
+    getBlueprint,
     autoLayout: handleAutoLayout,
     undo,
     redo,
@@ -316,7 +319,7 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
     clearRunOverlay,
     applyValidationOverlay,
     clearValidationOverlay,
-  }), [handleAutoLayout, undo, redo, canUndo, canRedo, applyRunOverlay, clearRunOverlay, applyValidationOverlay, clearValidationOverlay])
+  }), [getBlueprint, handleAutoLayout, undo, redo, canUndo, canRedo, applyRunOverlay, clearRunOverlay, applyValidationOverlay, clearValidationOverlay])
 
   const contextNode =
     contextMenu?.type === "node" ? nodes.find((n) => n.id === contextMenu.nodeId) : undefined
