@@ -127,3 +127,39 @@ async def test_a_record_that_cannot_be_written_does_not_fail_the_call_and_is_rep
     assert warning.getMessage() == "Failed to record a connector call: RuntimeError"
     # The payload is not in the log, by text or by traceback.
     assert "SECRET" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("message", "stored"),
+    [
+        (
+            "ConnectError: all attempts failed for https://mcp.example.com/sse?api_key=SECRET&x=1",
+            "ConnectError: all attempts failed for https://mcp.example.com/sse",
+        ),
+        (
+            "[MCP Error] GET https://user:SECRET@api.example.com:8443/v1/items#frag returned 500",
+            "[MCP Error] GET https://api.example.com:8443/v1/items returned 500",
+        ),
+        (
+            "redirected from 'http://a.test/x?token=SECRET' to (http://b.test/y?token=SECRET)",
+            "redirected from 'http://a.test/x' to (http://b.test/y)",
+        ),
+        ("Request exceeded 30 seconds", "Request exceeded 30 seconds"),
+    ],
+)
+async def test_urls_in_an_error_message_are_stored_without_their_secrets(
+    factory: async_sessionmaker[AsyncSession], message: str, stored: str
+) -> None:
+    """The message of a failed call quotes the URL, query string and all."""
+    await call_recorder(_ctx(), kind="mcp")(
+        mcp_server_id="srv-1",
+        connector_name="files",
+        action_name="read_file",
+        request_method="MCP",
+        request_url="mcp://files/read_file",
+        success=False,
+        error_message=message,
+    )
+
+    (row,) = await _rows(factory)
+    assert row.error_message == stored
