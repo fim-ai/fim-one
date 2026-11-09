@@ -46,6 +46,7 @@ def _adapter(response_extract: str | None) -> ConnectorToolAdapter:
         action_request_body_template=None,
         action_response_extract=response_extract,
         action_requires_confirmation=False,
+        on_call_complete=None,
     )
 
 

@@ -35,6 +35,7 @@ def _make_adapter(
         action_response_extract=None,
         action_requires_confirmation=False,
         auth_credentials=auth_credentials,
+        on_call_complete=None,
     )
 
 

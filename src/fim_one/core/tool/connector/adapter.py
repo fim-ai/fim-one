@@ -56,7 +56,10 @@ class ConnectorToolAdapter(BaseTool):
         auth_credentials: dict[str, str] | None = None,
         connector_id: str | None = None,
         action_id: str | None = None,
-        on_call_complete: Callable[..., Awaitable[None]] | None = None,
+        *,
+        # Required, so that building a tool whose calls leave no record is
+        # something a caller writes out (``None``), not something it forgets.
+        on_call_complete: Callable[..., Awaitable[None]] | None,
     ) -> None:
         safe_connector = re.sub(r"[^a-zA-Z0-9]", "_", connector_name.lower()).strip("_")
         safe_action = re.sub(r"[^a-zA-Z0-9]", "_", action_name.lower()).strip("_")

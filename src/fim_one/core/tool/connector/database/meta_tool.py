@@ -460,7 +460,8 @@ class DatabaseMetaTool(BaseTool):
 
 def build_database_meta_tool(
     db_connectors: list[tuple[Any, dict[str, Any], list[dict[str, Any]]]],
-    on_call_complete: Callable[..., Awaitable[None]] | None = None,
+    *,
+    on_call_complete: Callable[..., Awaitable[None]] | None,
 ) -> DatabaseMetaTool:
     """Build a DatabaseMetaTool from a list of database connector tuples.
 
@@ -473,7 +474,8 @@ def build_database_meta_tool(
             - ``decrypted_db_config``: Decrypted database config dict.
             - ``schema_tables``: List of table dicts with columns (same format as
               ``DatabaseToolAdapter.create_tools``).
-        on_call_complete: Optional async callback for call logging.
+        on_call_complete: Async callback that records each call; ``None`` only
+            for a tool whose calls are deliberately not recorded.
 
     Returns:
         A fully configured DatabaseMetaTool instance.

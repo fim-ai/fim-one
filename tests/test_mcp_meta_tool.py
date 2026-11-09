@@ -81,7 +81,6 @@ def _make_adapter(
 def _make_meta_tool(
     stubs: list[MCPServerStub] | None = None,
     adapters: dict[str, dict[str, MagicMock]] | None = None,
-    on_call_complete: AsyncMock | None = None,
 ) -> MCPServerMetaTool:
     if stubs is None:
         stubs = [
@@ -153,7 +152,6 @@ def _make_meta_tool(
     return MCPServerMetaTool(
         stubs=stubs,
         adapters=adapters,
-        on_call_complete=on_call_complete,
     )
 
 
@@ -550,24 +548,6 @@ class TestEdgeCases:
 
 
 # ---------------------------------------------------------------------------
-# Test: on_call_complete callback
-# ---------------------------------------------------------------------------
-
-
-class TestOnCallComplete:
-    """Verify the on_call_complete callback is stored and accessible."""
-
-    def test_on_call_complete_stored(self) -> None:
-        callback = AsyncMock()
-        tool = _make_meta_tool(on_call_complete=callback)
-        assert tool._on_call_complete is callback
-
-    def test_on_call_complete_none_by_default(self) -> None:
-        tool = _make_meta_tool()
-        assert tool._on_call_complete is None
-
-
-# ---------------------------------------------------------------------------
 # Test: build_mcp_meta_tool factory
 # ---------------------------------------------------------------------------
 
@@ -661,14 +641,6 @@ class TestBuildMcpMetaTool:
 
         # The adapter should be stored keyed by original name
         assert meta_tool._adapters["filesystem"]["read_file"] is adapter
-
-    def test_on_call_complete_forwarded(self) -> None:
-        callback = AsyncMock()
-        adapter = self._make_mock_adapter()
-        meta_tool = build_mcp_meta_tool(
-            {"filesystem": [adapter]}, on_call_complete=callback
-        )
-        assert meta_tool._on_call_complete is callback
 
     def test_adapter_empty_description_becomes_none(self) -> None:
         """When adapter._description is empty string, the stub description should be None."""

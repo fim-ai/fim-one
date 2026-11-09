@@ -103,6 +103,7 @@ class TestCreateTools:
             connector_id="test-123",
             db_config=sample_db_config,
             schema_tables=sample_schema_tables,
+            on_call_complete=None,
         )
         assert len(tools) == 3
 
@@ -116,6 +117,7 @@ class TestCreateTools:
             connector_id="test-123",
             db_config=sample_db_config,
             schema_tables=sample_schema_tables,
+            on_call_complete=None,
         )
         names = {t.name for t in tools}
         assert "my_test_db__list_tables" in names
@@ -132,6 +134,7 @@ class TestCreateTools:
             connector_id="test-123",
             db_config=sample_db_config,
             schema_tables=sample_schema_tables,
+            on_call_complete=None,
         )
         for tool in tools:
             assert tool.category == "database"
@@ -146,6 +149,7 @@ class TestCreateTools:
             connector_id="test-123",
             db_config=sample_db_config,
             schema_tables=sample_schema_tables,
+            on_call_complete=None,
         )
         query_tool = [t for t in tools if "query" in t.name][0]
         schema = query_tool.parameters_schema
@@ -162,6 +166,7 @@ class TestCreateTools:
             connector_id="test-123",
             db_config=sample_db_config,
             schema_tables=sample_schema_tables,
+            on_call_complete=None,
         )
         describe_tool = [t for t in tools if "describe" in t.name][0]
         schema = describe_tool.parameters_schema
@@ -177,6 +182,7 @@ class TestCreateTools:
             connector_id="test-123",
             db_config=sample_db_config,
             schema_tables=sample_schema_tables,
+            on_call_complete=None,
         )
         list_tool = [t for t in tools if "list_tables" in t.name][0]
         schema = list_tool.parameters_schema
@@ -197,6 +203,7 @@ class TestListTablesTool:
             connector_id="test-123",
             db_config=sample_db_config,
             schema_tables=sample_schema_tables,
+            on_call_complete=None,
         )
         list_tool = [t for t in tools if "list_tables" in t.name][0]
         result = await list_tool.run()
@@ -220,6 +227,7 @@ class TestDescribeTableTool:
             connector_id="test-123",
             db_config=sample_db_config,
             schema_tables=sample_schema_tables,
+            on_call_complete=None,
         )
         describe_tool = [t for t in tools if "describe" in t.name][0]
         result = await describe_tool.run(table_name="users")
@@ -243,6 +251,7 @@ class TestQueryToolDescription:
             connector_id="test-123",
             db_config=sample_db_config,
             schema_tables=sample_schema_tables,
+            on_call_complete=None,
         )
         query_tool = [t for t in tools if "query" in t.name][0]
         desc = query_tool.description
@@ -259,6 +268,7 @@ class TestQueryToolDescription:
             connector_id="test-123",
             db_config=sample_db_config,
             schema_tables=sample_schema_tables,
+            on_call_complete=None,
         )
         query_tool = [t for t in tools if "query" in t.name][0]
         assert "read-only" in query_tool.description
@@ -283,6 +293,7 @@ class TestQueryToolDescription:
             connector_id="test-123",
             db_config=config,
             schema_tables=sample_schema_tables,
+            on_call_complete=None,
         )
         query_tool = [t for t in tools if "query" in t.name][0]
         assert "read-write" in query_tool.description
@@ -301,6 +312,7 @@ class TestToolDisplayNames:
             connector_id="test-123",
             db_config=sample_db_config,
             schema_tables=sample_schema_tables,
+            on_call_complete=None,
         )
         display_names = {t.display_name for t in tools}
         assert "My Production DB: List Tables" in display_names

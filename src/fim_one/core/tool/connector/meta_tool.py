@@ -349,7 +349,7 @@ def build_connector_meta_tool(
     connectors: list[Any],
     *,
     resolved_credentials: dict[str, dict[str, Any]] | None = None,
-    on_call_complete: Callable[..., Awaitable[None]] | None = None,
+    on_call_complete: Callable[..., Awaitable[None]] | None,
 ) -> ConnectorMetaTool:
     """Build a ConnectorMetaTool from a list of ORM Connector objects.
 
@@ -359,7 +359,8 @@ def build_connector_meta_tool(
     Args:
         connectors: List of ORM Connector objects (with ``.actions`` loaded).
         resolved_credentials: Mapping of connector_id → decrypted credentials dict.
-        on_call_complete: Optional async callback for call logging.
+        on_call_complete: Async callback that records each call; ``None`` only
+            for a tool whose calls are deliberately not recorded.
 
     Returns:
         A fully configured ConnectorMetaTool instance.

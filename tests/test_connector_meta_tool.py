@@ -526,6 +526,7 @@ class TestBuildConnectorMetaTool:
         meta_tool = build_connector_meta_tool(
             [conn],
             resolved_credentials={"conn-1": {"token": "abc"}},
+            on_call_complete=None,
         )
 
         assert isinstance(meta_tool, ConnectorMetaTool)
@@ -534,12 +535,12 @@ class TestBuildConnectorMetaTool:
 
     def test_sanitizes_connector_name(self) -> None:
         conn = self._make_mock_connector(name="My Awesome API!")
-        meta_tool = build_connector_meta_tool([conn])
+        meta_tool = build_connector_meta_tool([conn], on_call_complete=None)
         assert "my_awesome_api" in meta_tool.connector_names
 
     def test_sanitizes_action_names(self) -> None:
         conn = self._make_mock_connector()
-        meta_tool = build_connector_meta_tool([conn])
+        meta_tool = build_connector_meta_tool([conn], on_call_complete=None)
         result = meta_tool._discover("salesforce_crm")
         assert "get_contacts" in result
         assert "create_lead" in result
@@ -558,12 +559,13 @@ class TestBuildConnectorMetaTool:
                 "c1": {"token": "sf-token"},
                 "c2": {"token": "slack-token"},
             },
+            on_call_complete=None,
         )
         assert meta_tool.stub_count == 2
         assert sorted(meta_tool.connector_names) == ["salesforce", "slack"]
 
     def test_empty_connectors_list(self) -> None:
-        meta_tool = build_connector_meta_tool([])
+        meta_tool = build_connector_meta_tool([], on_call_complete=None)
         assert meta_tool.stub_count == 0
         assert meta_tool.connector_names == []
 
@@ -573,6 +575,7 @@ class TestBuildConnectorMetaTool:
         meta_tool = build_connector_meta_tool(
             [conn],
             resolved_credentials={"conn-1": creds},
+            on_call_complete=None,
         )
         config = meta_tool._connector_configs.get("salesforce_crm", {})
         assert config.get("auth_credentials") == creds
@@ -618,7 +621,7 @@ class TestConnectorNameDeduplication:
         conn_a = self._make_mock_connector("aaaa-1111", "智合API")
         conn_b = self._make_mock_connector("bbbb-2222", "测试API")
 
-        tool = build_connector_meta_tool([conn_a, conn_b])
+        tool = build_connector_meta_tool([conn_a, conn_b], on_call_complete=None)
 
         names = list(tool._stubs.keys())
         assert len(names) == 2, f"Expected 2 stubs, got {len(names)}: {names}"
@@ -632,7 +635,7 @@ class TestConnectorNameDeduplication:
         conn_a = self._make_mock_connector("aaaa-1111", "Salesforce")
         conn_b = self._make_mock_connector("bbbb-2222", "Stripe")
 
-        tool = build_connector_meta_tool([conn_a, conn_b])
+        tool = build_connector_meta_tool([conn_a, conn_b], on_call_complete=None)
 
         names = list(tool._stubs.keys())
         assert names == ["salesforce", "stripe"]
