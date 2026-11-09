@@ -90,5 +90,9 @@
   "db_password_required": "Die Verbindungseinstellungen wurden geändert. Geben Sie das Passwort erneut ein, um den Test durchzuführen.",
   "session_required": "Diese Aktion erfordert die Anmeldung bei Ihrem Konto; API-Schlüssel können nicht verwendet werden.",
   "api_key_scope_denied": "Die Bereiche dieses API-Schlüssels erlauben diese Anfrage nicht.",
-  "api_key_scope_escalation": "Ein API-Schlüssel kann keinen Schlüssel mit umfassenderen Bereichen als seinen eigenen erstellen."
+  "api_key_scope_escalation": "Ein API-Schlüssel kann keinen Schlüssel mit umfassenderen Bereichen als seinen eigenen erstellen.",
+  "ip_not_allowed": "Der Zugriff von Ihrer IP-Adresse ist nicht zulässig. Wenden Sie sich an Ihren Administrator.",
+  "ip_rule_self_lockout": "Diese Änderung würde Ihre eigene Adresse ({ip}) blockieren, daher wurde sie nicht gespeichert.",
+  "2fa_too_many_attempts": "Zu viele falsche Codes. Warten Sie 15 Minuten und melden Sie sich erneut an.",
+  "approval_channel_denied": "Der Genehmigungskanal muss zu einer Organisation gehören, deren Mitglied Sie sind."
 }

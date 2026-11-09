@@ -393,31 +393,33 @@ FIM One从`LLM_BASE_URL`解析提供商（加上配置时的显式提供商字�
 
 ---
 
-## 平台
+## Platform
 
-| 变量 | 必需 | 默认值 | 描述 |
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| `DATABASE_URL` | 否 | `sqlite+aiosqlite:///./data/fim_one.db` | 数据库连接字符串。**SQLite**（零配置）：`sqlite+aiosqlite:///./data/fim_one.db`。**PostgreSQL**（生产环境）：`postgresql+asyncpg://user:pass@localhost:5432/fim_one`。Docker Compose自动配置PostgreSQL。 |
-| `JWT_SECRET_KEY` | 否 | `CHANGE_ME` | JWT令牌签名的密钥。占位符值`CHANGE_ME`（或任何旧版默认值）会在首次启动时触发自动生成安全的256位随机密钥，并写回`.env`。在生产环境中显式设置以保持令牌在重启和副本间的有效性。 |
-| `FIM_BCRYPT_COST` | 否 | `12` | bcrypt工作因子用于密码哈希，范围限制在4-31。默认值12在现代CPU上每次哈希耗时约200ms；在弱硬件上降低该值，在安全加固的部署中提高该值。 |
-| `CORS_ORIGINS` | 否 | — | 逗号分隔的额外允许CORS源列表，超出默认localhost条目。当前端运行在非localhost域名上时需要（例如`https://app.example.com`）。 |
-| `UPLOADS_DIR` | 否 | `./uploads` | 上传文件的目录 |
-| `EXPORT_FONT_DIR` | 否 | *（自动检测）* | 存放`NotoSansSC-Regular.ttf` / `NotoSansSC-Bold.ttf`的目录，用于PDF导出。使用`python scripts/fetch_export_fonts.py`获取；Docker镜像已内置。没有可嵌入的TrueType CJK字体时，PDF导出会回退到非嵌入式CID字体，导致间距降级且无粗体。 |
-| `MAX_UPLOAD_SIZE_MB` | 否 | `50` | 最大文件上传大小（单位：MB，后端强制） |
-| `NEXT_PUBLIC_MAX_UPLOAD_SIZE_MB` | 否 | `50` | 前端UI显示的最大文件上传大小。**构建时变量**——必须与`MAX_UPLOAD_SIZE_MB`匹配。 |
-| `MCP_SERVERS` | 否 | — | MCP服务器配置的JSON数组（需要`uv sync --extra mcp`） |
-| `ALLOW_STDIO_MCP` | 否 | `false` | 允许stdio MCP服务器。仅在受信任的本地部署中设置为`true` |
-| `ALLOWED_STDIO_COMMANDS` | 否 | `npx,uvx,node,python,python3,deno,bun` | stdio MCP服务器允许的基础命令的逗号分隔列表。仅在`ALLOW_STDIO_MCP=true`时生效 |
-| `LOG_LEVEL` | 否 | `INFO` | 日志级别：`DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` |
-| `REDIS_URL` | 否 | — | Redis连接URL用于跨工作进程中断中继。**当`WORKERS>1`时必需**——没有它，中流中断/注入请求可能会命中不同的工作进程而无声失败。由Docker Compose自动配置。 |
-| `WORKERS` | 否 | `1` | Uvicorn工作进程数。`1`是安全的，不需要外部服务。对于生产多工作进程，使用PostgreSQL（SQLite是单写入器）。SQLite在轻负载下适合本地开发。身份验证、OAuth和文件操作完全支持多工作进程（基于JWT）。Docker Compose自动配置PostgreSQL和Redis。 |
+| `DATABASE_URL` | No | `sqlite+aiosqlite:///./data/fim_one.db` | 数据库连接字符串。**SQLite**（零配置）：`sqlite+aiosqlite:///./data/fim_one.db`。**PostgreSQL**（生产环境）：`postgresql+asyncpg://user:pass@localhost:5432/fim_one`。Docker Compose 自动配置 PostgreSQL。 |
+| `JWT_SECRET_KEY` | No | `CHANGE_ME` | JWT 令牌签名的密钥。占位符值 `CHANGE_ME`（或任何旧版默认值）在首次启动时触发自动生成安全的 256 位随机密钥，该密钥会写回到 `.env`。在生产环境中显式设置，以保持令牌在重启和副本间的有效性。 |
+| `FIM_BCRYPT_COST` | No | `12` | bcrypt 工作因子用于密码哈希，范围限制在 4-31。默认值 12 在现代 CPU 上每次哈希耗时约 200ms；在弱硬件上降低该值，在安全加固的部署中提高该值。 |
+| `CORS_ORIGINS` | No | — | 逗号分隔的额外允许 CORS 源列表，超出默认的 localhost 条目。当前端运行在非 localhost 域上时需要（例如 `https://app.example.com`）。 |
+| `IP_RULES_ENFORCED` | No | `true` | 对 API 请求应用管理员安全下的 IP 规则。拒绝规则阻止匹配的客户端；任何活跃的允许规则阻止不匹配任何规则的每个客户端。设置为 `false` 可在规则锁定管理员时恢复，无需删除规则。 |
+| `FORWARDED_ALLOW_IPS` | No | `127.0.0.1` | uvicorn 读取：代理地址或 CIDR，其 `X-Forwarded-For` 被信任。在反向代理通过 Docker 网络到达容器时，添加该网络（例如 `127.0.0.1,172.16.0.0/12`）；否则每个请求都显示来自代理，IP 规则匹配代理，登录历史记录它。 |
+| `UPLOADS_DIR` | No | `./uploads` | 上传文件的目录 |
+| `EXPORT_FONT_DIR` | No | *（自动检测）* | 存放 `NotoSansSC-Regular.ttf` / `NotoSansSC-Bold.ttf` 用于 PDF 导出的目录。使用 `python scripts/fetch_export_fonts.py` 获取；Docker 镜像已包含。没有可嵌入的 TrueType CJK 字体时，PDF 导出会回退到非嵌入式 CID 字体，间距降级且无粗体。 |
+| `MAX_UPLOAD_SIZE_MB` | No | `50` | 最大文件上传大小（以 MB 为单位，后端强制执行） |
+| `NEXT_PUBLIC_MAX_UPLOAD_SIZE_MB` | No | `50` | 前端 UI 中显示的最大文件上传大小。**构建时变量** —— 必须与 `MAX_UPLOAD_SIZE_MB` 匹配。 |
+| `MCP_SERVERS` | No | — | MCP 服务器配置的 JSON 数组（需要 `uv sync --extra mcp`） |
+| `ALLOW_STDIO_MCP` | No | `false` | 允许 stdio MCP 服务器。仅在受信任的本地部署中设置为 `true`。 |
+| `ALLOWED_STDIO_COMMANDS` | No | `npx,uvx,node,python,python3,deno,bun` | stdio MCP 服务器允许的基础命令的逗号分隔列表。仅在 `ALLOW_STDIO_MCP=true` 时有效。 |
+| `LOG_LEVEL` | No | `INFO` | 日志级别：`DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` |
+| `REDIS_URL` | No | — | Redis 连接 URL 用于跨工作进程中断中继。**当 `WORKERS>1` 时必需** —— 没有它，中流中断/注入请求可能会命中不同的工作进程并静默失败。由 Docker Compose 自动配置。 |
+| `WORKERS` | No | `1` | Uvicorn 工作进程数。`1` 是安全的，无需外部服务。对于生产多工作进程，使用 PostgreSQL（SQLite 是单写入器）。SQLite 在轻负载下适合本地开发。身份验证、OAuth 和文件操作完全支持多工作进程（基于 JWT）。Docker Compose 自动配置 PostgreSQL 和 Redis。 |
 
 <Warning>
 **多工作进程检查清单**（`WORKERS>1`）：
-- **停止（中止流式传输）**——始终有效，无需额外配置（信号在同一TCP连接上传输）。
-- **注入（中流后续）**——**需要`REDIS_URL`**。没有Redis，注入请求可能落在不同的工作进程上，该进程不知道正在运行的执行，导致无声失败。
-- **生产环境**：使用PostgreSQL（`DATABASE_URL`）。SQLite的单写入器锁在并发写入下可能导致争用。
-- **本地开发**：SQLite+多工作进程在轻使用下可以接受；如果使用注入功能，只需添加`REDIS_URL`。
+- **停止（中止流式传输）** —— 始终有效，无需额外配置（信号在同一 TCP 连接上传输）。
+- **注入（中流后续）** —— **需要 `REDIS_URL`**。没有 Redis，注入请求可能会落在没有运行执行知识的不同工作进程上，导致静默失败。
+- **生产环境**：使用 PostgreSQL（`DATABASE_URL`）。SQLite 的单写入器锁在并发写入下可能导致争用。
+- **本地开发**：SQLite + 多工作进程在轻使用下没问题；如果使用注入功能，只需添加 `REDIS_URL`。
 </Warning>
 
 ## 工作流运行保留

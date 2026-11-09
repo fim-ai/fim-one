@@ -395,26 +395,28 @@ Wird für Login-Codes und E-Mail-Benachrichtigungen verwendet. Das `email_send` 
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `DATABASE_URL` | No | `sqlite+aiosqlite:///./data/fim_one.db` | Datenbankverbindungszeichenfolge. **SQLite** (keine Konfiguration erforderlich): `sqlite+aiosqlite:///./data/fim_one.db`. **PostgreSQL** (Produktion): `postgresql+asyncpg://user:pass@localhost:5432/fim_one`. Docker Compose konfiguriert PostgreSQL automatisch. |
-| `JWT_SECRET_KEY` | No | `CHANGE_ME` | Geheimer Schlüssel zum Signieren von JWT-Token. Der Platzhalterwert `CHANGE_ME` (oder ein anderer älterer Standardwert) löst beim ersten Start die automatische Generierung eines sicheren 256-Bit-Zufallsschlüssels aus, der in `.env` zurückgeschrieben wird. Legen Sie ihn in der Produktion explizit fest, um Token über Neustarts und Replikas hinweg gültig zu halten. |
-| `FIM_BCRYPT_COST` | No | `12` | bcrypt-Arbeitsfaktor für Passwort-Hashing, begrenzt auf 4-31. Der Standard 12 benötigt etwa 200ms pro Hash auf modernen CPUs; reduzieren Sie ihn auf schwacher Hardware, erhöhen Sie ihn für sicherheitsverstärkte Bereitstellungen. |
+| `DATABASE_URL` | No | `sqlite+aiosqlite:///./data/fim_one.db` | Datenbankverbindungszeichenfolge. **SQLite** (nullkonfiguriert): `sqlite+aiosqlite:///./data/fim_one.db`. **PostgreSQL** (Produktion): `postgresql+asyncpg://user:pass@localhost:5432/fim_one`. Docker Compose konfiguriert PostgreSQL automatisch. |
+| `JWT_SECRET_KEY` | No | `CHANGE_ME` | Geheimer Schlüssel zum Signieren von JWT-Token. Der Platzhalterwert `CHANGE_ME` (oder ein anderer veralteter Standard) löst beim ersten Start die automatische Generierung eines sicheren 256-Bit-Zufallsschlüssels aus, der in `.env` zurückgeschrieben wird. Legen Sie ihn in der Produktion explizit fest, um Token über Neustarts und Replikas hinweg gültig zu halten. |
+| `FIM_BCRYPT_COST` | No | `12` | bcrypt-Arbeitsfaktor für Passwort-Hashing, begrenzt auf 4-31. Der Standard 12 kostet etwa 200 ms pro Hash auf modernen CPUs; senken Sie ihn auf schwacher Hardware, erhöhen Sie ihn für sicherheitsverstärkte Bereitstellungen. |
 | `CORS_ORIGINS` | No | — | Kommagetrennte Liste zusätzlicher zulässiger CORS-Ursprünge über die Standard-Localhost-Einträge hinaus. Erforderlich, wenn das Frontend auf einer Nicht-Localhost-Domain ausgeführt wird (z. B. `https://app.example.com`). |
+| `IP_RULES_ENFORCED` | No | `true` | Wenden Sie die IP-Regeln unter Admin-Sicherheit auf API-Anfragen an. Eine Ablehnungsregel blockiert übereinstimmende Clients; jede aktive Zulassungsregel blockiert jeden Client, der keine Übereinstimmung hat. Setzen Sie auf `false`, um sich von einer Regel zu erholen, die Administratoren aussperrt, ohne Regeln zu löschen. |
+| `FORWARDED_ALLOW_IPS` | No | `127.0.0.1` | Von uvicorn gelesen: Proxy-Adressen oder CIDRs, deren `X-Forwarded-For` vertraut wird. Hinter einem Reverse Proxy, der den Container über ein Docker-Netzwerk erreicht, fügen Sie dieses Netzwerk hinzu (z. B. `127.0.0.1,172.16.0.0/12`); andernfalls scheint jede Anfrage vom Proxy zu stammen, IP-Regeln stimmen mit dem Proxy überein, und die Anmeldungshistorie zeichnet ihn auf. |
 | `UPLOADS_DIR` | No | `./uploads` | Verzeichnis für hochgeladene Dateien |
-| `EXPORT_FONT_DIR` | No | *(automatisch erkannt)* | Verzeichnis mit `NotoSansSC-Regular.ttf` / `NotoSansSC-Bold.ttf` für PDF-Export. Rufen Sie mit `python scripts/fetch_export_fonts.py` ab; Docker-Images bündeln es bereits. Ohne eine einbettbare TrueType-CJK-Schriftart fällt der PDF-Export auf eine nicht eingebettete CID-Schriftart mit verschlechtertem Abstand und ohne Fettdruck zurück. |
-| `MAX_UPLOAD_SIZE_MB` | No | `50` | Maximale Dateigröße für Upload in Megabyte (Backend-Erzwingung) |
-| `NEXT_PUBLIC_MAX_UPLOAD_SIZE_MB` | No | `50` | Maximale Dateigröße für Upload in der Frontend-UI. **Build-Zeit-Variable** — muss mit `MAX_UPLOAD_SIZE_MB` übereinstimmen. |
+| `EXPORT_FONT_DIR` | No | *(automatisch erkannt)* | Verzeichnis mit `NotoSansSC-Regular.ttf` / `NotoSansSC-Bold.ttf` für PDF-Export. Abrufen mit `python scripts/fetch_export_fonts.py`; Docker-Images enthalten es bereits. Ohne eine einbettbare TrueType-CJK-Schriftart fällt der PDF-Export auf eine nicht eingebettete CID-Schriftart mit verschlechtertem Abstand und ohne Fettdruck zurück. |
+| `MAX_UPLOAD_SIZE_MB` | No | `50` | Maximale Dateigröße beim Hochladen in Megabyte (Backend-Durchsetzung) |
+| `NEXT_PUBLIC_MAX_UPLOAD_SIZE_MB` | No | `50` | Maximale Dateigröße beim Hochladen in der Frontend-Benutzeroberfläche. **Build-Zeit-Variable** — muss mit `MAX_UPLOAD_SIZE_MB` übereinstimmen. |
 | `MCP_SERVERS` | No | — | JSON-Array von MCP-Serverkonfigurationen (erfordert `uv sync --extra mcp`) |
-| `ALLOW_STDIO_MCP` | No | `false` | Stdio-MCP-Server zulassen. Setzen Sie auf `true` nur für vertrauenswürdige lokale Bereitstellungen |
-| `ALLOWED_STDIO_COMMANDS` | No | `npx,uvx,node,python,python3,deno,bun` | Kommagetrennte Liste zulässiger Basisbefehle für Stdio-MCP-Server. Wirksam nur, wenn `ALLOW_STDIO_MCP=true` |
+| `ALLOW_STDIO_MCP` | No | `false` | Erlauben Sie stdio-MCP-Server. Setzen Sie auf `true` nur für vertrauenswürdige lokale Bereitstellungen. |
+| `ALLOWED_STDIO_COMMANDS` | No | `npx,uvx,node,python,python3,deno,bun` | Kommagetrennte Liste zulässiger Basisbefehle für stdio-MCP-Server. Wirksam nur, wenn `ALLOW_STDIO_MCP=true`. |
 | `LOG_LEVEL` | No | `INFO` | Protokollierungsstufe: `DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` |
-| `REDIS_URL` | No | — | Redis-Verbindungs-URL für Worker-übergreifendes Interrupt-Relay. **Erforderlich, wenn `WORKERS>1`** — ohne diese können Mid-Stream-Interrupt-/Inject-Anfragen einen anderen Worker treffen und stillschweigend fehlschlagen. Wird von Docker Compose automatisch konfiguriert. |
-| `WORKERS` | No | `1` | Uvicorn-Worker-Prozesse. `1` ist sicher und benötigt keine externen Dienste. Für Multi-Worker-Produktion verwenden Sie PostgreSQL (SQLite ist Single-Writer). SQLite funktioniert für lokale Entwicklung unter leichter Last. Authentifizierung, OAuth und Dateivorgänge sind vollständig Multi-Worker-sicher (JWT-basiert). Docker Compose konfiguriert automatisch sowohl PostgreSQL als auch Redis. |
+| `REDIS_URL` | No | — | Redis-Verbindungs-URL für Cross-Worker-Interrupt-Relay. **Erforderlich, wenn `WORKERS>1`** — ohne sie können Mid-Stream-Interrupt-/Inject-Anfragen einen anderen Worker treffen und stillschweigend fehlschlagen. Wird von Docker Compose automatisch konfiguriert. |
+| `WORKERS` | No | `1` | Uvicorn-Worker-Prozesse. `1` ist sicher und benötigt keine externen Dienste. Für produktive Multi-Worker verwenden Sie PostgreSQL (SQLite ist Single-Writer). SQLite funktioniert für lokale Entwicklung unter leichter Last. Authentifizierung, OAuth und Dateivorgänge sind vollständig Multi-Worker-sicher (JWT-basiert). Docker Compose konfiguriert automatisch sowohl PostgreSQL als auch Redis. |
 
 <Warning>
 **Multi-Worker-Checkliste** (`WORKERS>1`):
-- **Stoppen (Streaming abbrechen)** — funktioniert immer, keine zusätzliche Konfiguration erforderlich (Signal wird über die gleiche TCP-Verbindung übertragen).
-- **Inject (Mid-Stream-Folgeanfrage)** — **erfordert `REDIS_URL`**. Ohne Redis kann die Inject-Anfrage auf einem anderen Worker landen, der keine Kenntnis der laufenden Ausführung hat, was zu stillschweigendem Fehlschlag führt.
-- **Produktion**: verwenden Sie PostgreSQL (`DATABASE_URL`). SQLites Single-Writer-Lock kann unter gleichzeitigen Schreibvorgängen zu Konflikten führen.
+- **Stopp (Streaming abbrechen)** — funktioniert immer, keine zusätzliche Konfiguration erforderlich (Signal reist über die gleiche TCP-Verbindung).
+- **Inject (Mid-Stream-Folgemaßnahme)** — **erfordert `REDIS_URL`**. Ohne Redis kann die Inject-Anfrage auf einem anderen Worker landen, der keine Kenntnis der laufenden Ausführung hat, was zu einem stillen Fehler führt.
+- **Produktion**: Verwenden Sie PostgreSQL (`DATABASE_URL`). Die Single-Writer-Sperre von SQLite kann unter gleichzeitigen Schreibvorgängen zu Konflikten führen.
 - **Lokale Entwicklung**: SQLite + Multi-Worker ist für leichte Nutzung in Ordnung; fügen Sie einfach `REDIS_URL` hinzu, wenn Sie die Inject-Funktion verwenden.
 </Warning>
 
