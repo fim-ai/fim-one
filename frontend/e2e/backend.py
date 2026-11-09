@@ -64,6 +64,12 @@ def _configure_environment() -> tuple[Path, int]:
         if key.startswith(_SCRUBBED_PREFIXES):
             del os.environ[key]
 
+    # The stub lives on loopback; a proxy configured in the shell must not
+    # be asked to reach it.
+    no_proxy = [h for h in os.environ.get("NO_PROXY", "").split(",") if h]
+    os.environ["NO_PROXY"] = ",".join(dict.fromkeys([*no_proxy, "127.0.0.1", "localhost"]))
+    os.environ["no_proxy"] = os.environ["NO_PROXY"]
+
     os.environ.update(
         {
             # litellm calls load_dotenv() on import; keep the repo's .env out.
