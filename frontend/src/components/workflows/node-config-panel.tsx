@@ -1,7 +1,8 @@
 "use client"
 
-import { useState, useCallback, useMemo } from "react"
+import { useState, useCallback, useEffect, useMemo } from "react"
 import { useTranslations } from "next-intl"
+import { toast } from "sonner"
 import { Beaker, ChevronDown, MessageSquare, Plus, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,6 +24,10 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { connectorApi } from "@/lib/api"
+import { getErrorMessage } from "@/lib/error-utils"
+import type { ConnectorResponse } from "@/types/connector"
+import { actionOptions, connectorOptions } from "./node-config/connector-options"
 import { VariablePicker } from "./variable-picker"
 import { TestNodeDialog } from "./test-node-dialog"
 import type { Node } from "@xyflow/react"
@@ -46,6 +51,15 @@ export function NodeConfigPanel({ workflowId, node, allNodes, onUpdate, onDelete
     (field: string, value: unknown) => {
       if (!node) return
       onUpdate(node.id, { ...node.data, [field]: value })
+    },
+    [node, onUpdate],
+  )
+
+  // Several fields in one edit (one change, one undo step)
+  const updateFields = useCallback(
+    (patch: Record<string, unknown>) => {
+      if (!node) return
+      onUpdate(node.id, { ...node.data, ...patch })
     },
     [node, onUpdate],
   )
@@ -117,6 +131,7 @@ export function NodeConfigPanel({ workflowId, node, allNodes, onUpdate, onDelete
             nodeType={nodeType}
             data={node.data as Record<string, unknown>}
             updateField={updateField}
+            updateFields={updateFields}
             otherNodes={otherNodes}
           />
 
@@ -388,10 +403,11 @@ interface NodeConfigFieldsProps {
   nodeType: WorkflowNodeType
   data: Record<string, unknown>
   updateField: (field: string, value: unknown) => void
+  updateFields: (patch: Record<string, unknown>) => void
   otherNodes: Node[]
 }
 
-function NodeConfigFields({ nodeType, data, updateField, otherNodes }: NodeConfigFieldsProps) {
+function NodeConfigFields({ nodeType, data, updateField, updateFields, otherNodes }: NodeConfigFieldsProps) {
   const t = useTranslations("workflows")
 
   switch (nodeType) {
@@ -408,7 +424,7 @@ function NodeConfigFields({ nodeType, data, updateField, otherNodes }: NodeConfi
     case "knowledgeRetrieval":
       return <KnowledgeRetrievalConfig data={data} updateField={updateField} t={t} otherNodes={otherNodes} />
     case "connector":
-      return <ConnectorConfig data={data} updateField={updateField} t={t} otherNodes={otherNodes} />
+      return <ConnectorConfig data={data} updateField={updateField} updateFields={updateFields} t={t} otherNodes={otherNodes} />
     case "humanIntervention":
       return <HumanInterventionConfig data={data} updateField={updateField} t={t} otherNodes={otherNodes} />
     case "mcp":
@@ -421,6 +437,7 @@ function NodeConfigFields({ nodeType, data, updateField, otherNodes }: NodeConfi
 type ConfigProps = {
   data: Record<string, unknown>
   updateField: (field: string, value: unknown) => void
+  updateFields?: (patch: Record<string, unknown>) => void
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   t: any
   otherNodes: Node[]
@@ -948,9 +965,37 @@ function KnowledgeRetrievalConfig({ data, updateField, t, otherNodes }: ConfigPr
   )
 }
 
-function ConnectorConfig({ data, updateField, t, otherNodes }: ConfigProps) {
+function ConnectorConfig({ data, updateField, updateFields, t, otherNodes }: ConfigProps) {
+  const tError = useTranslations("errors")
   const parameters = (data.parameters ?? {}) as Record<string, string>
   const paramEntries = Object.entries(parameters)
+  const connectorId = (data.connector_id as string | undefined) ?? ""
+  const actionId = (data.action_id as string | undefined) ?? ""
+
+  // Connectors this user can use, with their actions
+  const [connectors, setConnectors] = useState<ConnectorResponse[]>([])
+  useEffect(() => {
+    let cancelled = false
+    connectorApi
+      .list(1, 100)
+      .then((res) => {
+        if (!cancelled) setConnectors(res.items)
+      })
+      .catch((err) => {
+        if (!cancelled) toast.error(getErrorMessage(err, tError))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [tError])
+  const connectorChoices = useMemo(
+    () => connectorOptions(connectors, connectorId),
+    [connectors, connectorId],
+  )
+  const actionChoices = useMemo(
+    () => actionOptions(connectors, connectorId, actionId),
+    [connectors, connectorId, actionId],
+  )
 
   const addParam = () => {
     updateField("parameters", { ...parameters, "": "" })
@@ -979,21 +1024,30 @@ function ConnectorConfig({ data, updateField, t, otherNodes }: ConfigProps) {
       <div className="space-y-1.5">
         <label className="text-xs font-medium">{t("configSelectConnector")}</label>
         <Select
-          value={(data.connector_id ?? "__default__") as string}
-          onValueChange={(v) => updateField("connector_id", v === "__default__" ? "" : v)}
+          value={connectorId || "__default__"}
+          onValueChange={(v) => {
+            const next = v === "__default__" ? "" : v
+            // An action belongs to one connector: a new connector clears it.
+            if (next !== connectorId) updateFields?.({ connector_id: next, action_id: "" })
+          }}
         >
           <SelectTrigger className="w-full h-7 text-xs">
             <SelectValue placeholder={t("configConnectorPlaceholder")} />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__default__">{t("configConnectorPlaceholder")}</SelectItem>
+            {connectorChoices.map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
       <div className="space-y-1.5">
         <label className="text-xs font-medium">{t("configSelectAction")}</label>
         <Select
-          value={((data.action_id as string | undefined) || "__default__")}
+          value={actionId || "__default__"}
           onValueChange={(v) => updateField("action_id", v === "__default__" ? "" : v)}
         >
           <SelectTrigger className="w-full h-7 text-xs">
@@ -1001,6 +1055,11 @@ function ConnectorConfig({ data, updateField, t, otherNodes }: ConfigProps) {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__default__">{t("configActionPlaceholder")}</SelectItem>
+            {actionChoices.map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
