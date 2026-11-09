@@ -13,9 +13,10 @@ import math
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.assembly.visibility import is_shared_clause
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_user
 from fim_one.web.dependency_analyzer import resolve_solution_dependencies
@@ -244,13 +245,9 @@ async def browse_market(
     for rtype in types_to_query:
         model_cls, info_fn, active_status = model_map[rtype]
         q = select(model_cls).where(
-            model_cls.visibility == "org",
             model_cls.org_id == browse_org_id,
-            # Only show approved / no-review-needed resources
-            or_(
-                model_cls.publish_status == None,  # noqa: E711 — no review needed
-                model_cls.publish_status == "approved",
-            ),
+            # Only show shared resources: approved or no review needed
+            is_shared_clause(model_cls),
         )
         if active_status:
             q = q.where(model_cls.status == active_status)
@@ -376,11 +373,7 @@ async def subscribe_resource(
             select(model_cls).where(
                 model_cls.id == body.resource_id,
                 model_cls.org_id == MARKET_ORG_ID,
-                model_cls.visibility == "org",
-                or_(
-                    model_cls.publish_status == None,  # noqa: E711
-                    model_cls.publish_status == "approved",
-                ),
+                is_shared_clause(model_cls),
             )
         )
         if res_result.scalar_one_or_none() is None:
@@ -400,11 +393,7 @@ async def subscribe_resource(
             select(model_cls).where(
                 model_cls.id == body.resource_id,
                 model_cls.org_id == body.org_id,
-                model_cls.visibility == "org",
-                or_(
-                    model_cls.publish_status == None,  # noqa: E711
-                    model_cls.publish_status == "approved",
-                ),
+                is_shared_clause(model_cls),
             )
         )
         if res_result.scalar_one_or_none() is None:
