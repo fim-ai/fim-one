@@ -106,3 +106,71 @@ async def test_get_messages_loads_and_trims(monkeypatch):
     assert result[0].content == "I'm Alice"
     assert result[1].role == "assistant"
     assert result[1].content == "Hello Alice!"
+
+
+class _Row:
+    def __init__(self, idx: int, role: str, content: str) -> None:
+        self.id = f"row-{idx}"
+        self.role = role
+        self.content = content
+        self.metadata_ = None
+
+
+class _RowsSession:
+    """Async-context session whose only query returns the given rows."""
+
+    def __init__(self, rows: list[_Row]) -> None:
+        self._rows = rows
+
+    async def __aenter__(self) -> _RowsSession:
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+    async def execute(self, stmt: object) -> _RowsSession:
+        return self
+
+    def scalars(self) -> _RowsSession:
+        return self
+
+    def all(self) -> list[_Row]:
+        return self._rows
+
+
+@pytest.mark.asyncio
+async def test_long_history_is_summarised_in_parts_that_fit_the_summariser(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Load-time compaction never sends the summariser more than its budget.
+
+    The whole stored conversation is handed to the summariser on load, so
+    this is where a small fast model used to overflow first.
+    """
+    from fim_one.core.memory.compact import CompactUtils
+
+    from .fake_llm import FakeLLM, answer
+
+    rows = [
+        _Row(i, "user" if i % 2 == 0 else "assistant", f"MARK-{i} " + "x" * 1_200)
+        for i in range(80)
+    ]
+    rows.append(_Row(80, "user", "the current question"))
+    monkeypatch.setattr("fim_one.db.create_session", lambda: _RowsSession(rows))
+
+    llm = FakeLLM([answer(f"S{i}") for i in range(1, 50)])  # window not declared
+    mem = DbMemory(
+        conversation_id="conv",
+        max_tokens=4_000,
+        compact_llm=llm,
+        compact_input_budget=5_520,
+    )
+
+    result = await mem.get_messages()
+
+    assert llm.chat_call_count > 1
+    for call in llm.chat_calls:
+        assert CompactUtils.estimate_messages_tokens(call.messages) <= 5_520
+    assert mem.was_compacted
+    assert any("[Conversation summary]" in str(m.content) for m in result)
+    assert CompactUtils.estimate_messages_tokens(result) <= 4_000

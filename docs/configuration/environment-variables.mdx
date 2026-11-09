@@ -218,9 +218,10 @@ Controls the automatic context window management that prevents conversations fro
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `CONTEXT_GUARD_DEFAULT_BUDGET` | No | `32000` | Default token budget for context window management. When the conversation exceeds this, older messages are compacted |
+| `CONTEXT_GUARD_DEFAULT_BUDGET` | No | `32000` | Default token budget for context window management. When the conversation exceeds this, older messages are compacted. Also the per-request input budget assumed for a summarising model that declares no context size outside the chat path |
 | `CONTEXT_GUARD_MAX_MSG_CHARS` | No | `50000` | Hard character limit on any single message. Messages exceeding this are truncated as a safety net |
 | `CONTEXT_GUARD_KEEP_RECENT` | No | `4` | Number of most recent messages to preserve when compacting conversation history |
+| `CONTEXT_GUARD_MAX_COMPACT_CHUNKS` | No | `8` | Maximum summary requests for one compaction. History larger than the fast model's window is summarised in consecutive parts; beyond this many parts, the first part and the most recent ones are kept and the middle is dropped |
 
 ### Content Guardrails
 

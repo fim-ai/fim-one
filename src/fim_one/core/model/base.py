@@ -101,6 +101,16 @@ class BaseLLM(ABC):
         return None
 
     @property
+    def max_output_tokens(self) -> int | None:
+        """Return the output-token reserve of a default request, if known.
+
+        The part of the context window a request sets aside for the reply.
+        Paired with :attr:`context_size` it gives the room left for input,
+        which is what model-aware token budgets are computed from.
+        """
+        return None
+
+    @property
     def abilities(self) -> dict[str, bool]:
         """Declare model capabilities.
 

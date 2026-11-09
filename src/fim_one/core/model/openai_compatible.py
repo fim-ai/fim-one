@@ -549,6 +549,10 @@ class OpenAICompatibleLLM(BaseLLM):
         return self._context_size
 
     @property
+    def max_output_tokens(self) -> int | None:
+        return self._default_max_tokens
+
+    @property
     def api_key(self) -> str:
         return self._api_key
 

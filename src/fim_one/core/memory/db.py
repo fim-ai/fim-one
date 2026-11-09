@@ -353,6 +353,10 @@ class DbMemory(BaseMemory):
             heuristic truncation.
         user_id: Optional user ID for reconstructing vision content from
             uploaded image files.
+        compact_input_budget: Input tokens *compact_llm* can take per
+            request.  Defaults to the window *compact_llm* declares, else
+            ``CONTEXT_GUARD_DEFAULT_BUDGET``.  A history larger than this
+            is summarised in parts.
     """
 
     def __init__(
@@ -362,12 +366,14 @@ class DbMemory(BaseMemory):
         compact_llm: BaseLLM | None = None,
         user_id: str | None = None,
         usage_tracker: UsageTracker | None = None,
+        compact_input_budget: int | None = None,
     ) -> None:
         self._conversation_id = conversation_id
         self._max_tokens = max_tokens
         self._compact_llm = compact_llm
         self._user_id = user_id
         self._usage_tracker = usage_tracker
+        self._compact_input_budget = compact_input_budget
         # Compact tracking — set after get_messages() runs.
         self.was_compacted: bool = False
         self._original_count: int = 0
@@ -519,6 +525,7 @@ class DbMemory(BaseMemory):
                     self._compact_llm,
                     self._max_tokens,
                     usage_tracker=self._usage_tracker,
+                    summary_input_budget=self._compact_input_budget,
                 )
             else:
                 compacted = CompactUtils.smart_truncate(messages, self._max_tokens)

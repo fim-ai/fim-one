@@ -298,6 +298,8 @@ class FakeLLM(BaseLLM):
         abilities: Capability map. Defaults to :data:`NO_NATIVE_TOOLS`.
         model_id: Value reported by the ``model_id`` property.
         context_size: Value reported by the ``context_size`` property.
+        max_output_tokens: Value reported by the ``max_output_tokens``
+            property.
     """
 
     def __init__(
@@ -307,6 +309,7 @@ class FakeLLM(BaseLLM):
         abilities: dict[str, bool] | None = None,
         model_id: str | None = None,
         context_size: int | None = None,
+        max_output_tokens: int | None = None,
     ) -> None:
         self._responses: list[FakeResponse] = [
             _coerce_turn(r) for r in (responses or [])
@@ -314,6 +317,7 @@ class FakeLLM(BaseLLM):
         self._abilities = abilities
         self._model_id = model_id
         self._context_size = context_size
+        self._max_output_tokens = max_output_tokens
         #: Every request received, in order.
         self.calls: list[FakeCall] = []
 
@@ -459,6 +463,10 @@ class FakeLLM(BaseLLM):
     @property
     def context_size(self) -> int | None:
         return self._context_size
+
+    @property
+    def max_output_tokens(self) -> int | None:
+        return self._max_output_tokens
 
 
 # ---------------------------------------------------------------------------

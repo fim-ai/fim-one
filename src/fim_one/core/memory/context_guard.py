@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from fim_one.core.model.types import ChatMessage
 
+from .budget import BUDGET_SAFETY_FACTOR, compute_input_budget, llm_input_budget
 from .compact import SUMMARY_PREFIX, CompactUtils
 from .work_card import WorkCard
 
@@ -24,25 +24,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-#: Fraction of the raw model window (``context_size - max_output_tokens``)
-#: actually budgeted for input.  Token counts are estimated with a character
-#: heuristic (:meth:`CompactUtils.estimate_tokens`) that can under-estimate
-#: real tokenizer counts by ~10%; without headroom the compaction trigger
-#: sits exactly on the API hard limit and any under-estimate becomes an
-#: HTTP 400 rescued only by the one-shot overflow retry.
-BUDGET_SAFETY_FACTOR = 0.92
-
-
-def compute_input_budget(context_size: int, max_output: int) -> int:
-    """Usable input token budget for a model window.
-
-    ``(context_size - max_output) * BUDGET_SAFETY_FACTOR``, floored at
-    4 000 tokens.  The system prompt is NOT subtracted — ContextGuard
-    estimates the full message list (system prompt included) dynamically,
-    so a static reserve would double-count it.
-    """
-    budget = int((context_size - max_output) * BUDGET_SAFETY_FACTOR)
-    return max(budget, 4_000)
+# The budget arithmetic lives in :mod:`.budget`; re-exported here because
+# this module is where callers have always imported it from.
+__all__ = [
+    "BUDGET_SAFETY_FACTOR",
+    "ContextGuard",
+    "compute_input_budget",
+    "llm_input_budget",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -157,6 +146,10 @@ class ContextGuard:
             :meth:`check_and_compact`.
         max_message_chars: Maximum character length for any single message
             content.  Messages exceeding this are truncated.
+        compact_input_budget: Input tokens *compact_llm* can take per
+            request.  Defaults to the window *compact_llm* declares, else
+            ``CONTEXT_GUARD_DEFAULT_BUDGET``.  History larger than this is
+            summarised in parts (:meth:`CompactUtils.summarize_history`).
     """
 
     # Module-level defaults, configurable via environment variables.
@@ -171,12 +164,14 @@ class ContextGuard:
         max_message_chars: int = _MAX_MSG_CHARS,
         usage_tracker: UsageTracker | None = None,
         custom_compact_prompt: str | None = None,
+        compact_input_budget: int | None = None,
     ) -> None:
         self._compact_llm = compact_llm
         self._default_budget = default_budget
         self.max_message_chars = max_message_chars
         self._usage_tracker = usage_tracker
         self._custom_compact_prompt = custom_compact_prompt
+        self._compact_input_budget = compact_input_budget
         #: Optional sink invoked with the full message list right before a
         #: lossy compaction (LLM summary or smart_truncate) replaces it.
         #: Wired by ``ReActAgent`` to ``AgentWorkspace.save_transcript`` so
@@ -244,6 +239,13 @@ class ContextGuard:
         # 4. Fallback: smart_truncate.
         return CompactUtils.smart_truncate(messages, effective_budget)
 
+    @property
+    def compact_input_budget(self) -> int:
+        """Input tokens the summariser can take per request."""
+        if self._compact_input_budget:
+            return self._compact_input_budget
+        return llm_input_budget(self._compact_llm)
+
     def set_transcript_sink(
         self,
         sink: Callable[[list[ChatMessage]], Any] | None,
@@ -296,19 +298,10 @@ class ContextGuard:
     ) -> tuple[list[ChatMessage], list[ChatMessage]]:
         """Split *compactable* into ``(old, recent)`` without orphaning tools.
 
-        A naive ``[-keep_recent:]`` slice can land between an assistant
-        ``tool_calls`` message and its ``role="tool"`` results.  Summarising
-        the assistant turn away while keeping the tool results produces a
-        conversation that starts with orphan tool messages — OpenAI and
-        Anthropic both reject that with HTTP 400.  Walk the boundary left
-        until the recent slice no longer starts with a tool message, so the
-        tool_use/tool_result pair stays intact on the kept side.
+        See :meth:`CompactUtils.split_on_tool_boundary`, which the load-time
+        compaction in :meth:`CompactUtils.llm_compact` shares.
         """
-        old = compactable[:-keep_recent]
-        recent = compactable[-keep_recent:]
-        while recent and recent[0].role == "tool" and old:
-            recent.insert(0, old.pop())
-        return old, recent
+        return CompactUtils.split_on_tool_boundary(compactable, keep_recent)
 
     async def _llm_compact_with_hint(
         self,
@@ -360,40 +353,21 @@ class ContextGuard:
                 compactable, keep_recent,
             )
 
-        # Build the text block to summarise.  Include extended-thinking so a
-        # clue the model surfaced only in a reasoning block survives the
-        # summary instead of being silently dropped (the summariser can only
-        # preserve what it is shown).
-        lines: list[str] = []
-        for msg in old_messages:
-            prefix = msg.role.capitalize()
-            if msg.reasoning_content:
-                lines.append(f"{prefix} (thinking): {msg.reasoning_content}")
-            lines.append(f"{prefix}: {CompactUtils.content_as_text(msg.content)}")
-        history_text = "\n".join(lines)
-
-        try:
-            assert self._compact_llm is not None
-            result = await self._compact_llm.chat([
-                ChatMessage(role="system", content=prompt),
-                ChatMessage(role="user", content=history_text),
-            ])
-            raw_content = result.message.content
-            summary = (raw_content if isinstance(raw_content, str) else "").strip()
-            # Strip <analysis> scratchpad blocks used by structured prompts.
-            summary = re.sub(
-                r"<analysis>.*?</analysis>", "", summary, flags=re.DOTALL,
-            ).strip()
-            if self._usage_tracker and result.usage:
-                await self._usage_tracker.record(result.usage)
-        except Exception:
-            logger.warning(
-                "ContextGuard LLM compact failed, falling back to truncation",
-                exc_info=True,
-            )
-            return CompactUtils.smart_truncate(messages, budget)
-
+        # Summarise the old turns.  The history is cut into parts when it
+        # does not fit the summariser's own window (the fast model is often
+        # smaller than the model this guard protects).
+        assert self._compact_llm is not None
+        summary = await CompactUtils.summarize_history(
+            old_messages,
+            self._compact_llm,
+            prompt,
+            input_budget=self.compact_input_budget,
+            usage_tracker=self._usage_tracker,
+        )
         if not summary:
+            logger.warning(
+                "ContextGuard LLM compact produced no summary, falling back to truncation",
+            )
             return CompactUtils.smart_truncate(messages, budget)
 
         # I.15 — Structured Work Card:
