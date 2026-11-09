@@ -189,7 +189,7 @@ class CallAgentTool(BaseTool):
         instructions = agent_cfg.get("instructions") or ""
 
         # ``agent_id``/``user_id`` are what make the hooks above effective:
-        # FeishuGateHook keys off ``HookContext.agent_id`` to load the
+        # ApprovalGateHook keys off ``HookContext.agent_id`` to load the
         # delegate's row (and its ``require_confirmation_for_all``), and
         # bows out entirely when it is absent.  Passing the registry without
         # these would leave the gate a no-op.

@@ -6,6 +6,7 @@ from typing import Any
 
 __all__ = [
     "ACCOUNT_DISABLED",
+    "CONFIRMATION_UNDELIVERABLE",
     "CREDENTIAL_REQUIRED",
     "CREDENTIAL_UNAVAILABLE",
     "OWNER_ONLY",
@@ -22,6 +23,7 @@ RESOURCE_INACTIVE = "resource_inactive"
 OWNER_ONLY = "owner_only"
 CREDENTIAL_REQUIRED = "credential_required"
 CREDENTIAL_UNAVAILABLE = "credential_unavailable"
+CONFIRMATION_UNDELIVERABLE = "confirmation_undeliverable"
 
 
 class AssemblyRefusal(Exception):  # noqa: N818 - a refusal is an outcome, not a fault

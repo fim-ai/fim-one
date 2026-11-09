@@ -539,8 +539,7 @@ class _FakeEngine:
 @contextmanager
 def outside_world(factory: async_sessionmaker[AsyncSession]) -> Iterator[Outside]:
     """Patch the database factory, HTTP, MCP, the model loop and the gates."""
-    from fim_one.core.agent.hooks import HookResult
-    from fim_one.core.hooks.feishu_gate_hook import FeishuGateHook
+    from fim_one.core.assembly.confirmation import ConfirmationService
     from fim_one.core.mcp.adapter import MCPToolAdapter
     from fim_one.core.workflow import run_service as rs
 
@@ -604,9 +603,12 @@ def outside_world(factory: async_sessionmaker[AsyncSession]) -> Iterator[Outside
         async def run(self, _query: str) -> Any:
             return SimpleNamespace(answer="done", iterations=1, usage=None)
 
-    async def _asked(self: Any, *, context: Any, **_kwargs: Any) -> HookResult:
-        out.gate_asked.append(str(context.tool_name))
-        return HookResult(allow=True)
+    async def _asked(_self: Any, spec: Any) -> Any:
+        out.gate_asked.append(str(spec.payload.get("tool_name")))
+        return SimpleNamespace(id="asked", mode="inline")
+
+    async def _approved(_self: Any, _confirmation_id: str, **_kwargs: Any) -> str:
+        return "approve"
 
     with ExitStack() as stack:
         for target, value in (
@@ -630,8 +632,8 @@ def outside_world(factory: async_sessionmaker[AsyncSession]) -> Iterator[Outside
             ("fim_one.web.deps._cached_registry_version", -1),
         ):
             stack.enter_context(patch(target, value))
-        stack.enter_context(patch.object(FeishuGateHook, "_run_inline_flow", _asked))
-        stack.enter_context(patch.object(FeishuGateHook, "_run_channel_flow", _asked))
+        stack.enter_context(patch.object(ConfirmationService, "request", _asked))
+        stack.enter_context(patch.object(ConfirmationService, "wait", _approved))
         stack.enter_context(
             patch.object(rs, "_default_service", rs.WorkflowRunService(engine_factory=_FakeEngine))
         )

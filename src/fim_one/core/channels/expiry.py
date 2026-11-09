@@ -1,7 +1,7 @@
 """Periodic sweeper for stale ``ConfirmationRequest`` rows.
 
 A confirmation card can sit in a Feishu group for an arbitrarily long
-time — the normal consumer, ``FeishuGateHook.wait_for_decision``,
+time — the normal consumer, ``ConfirmationService.wait``,
 polls with its own timeout, but rows produced by the Approval
 Playground (or by a hook whose agent aborted before polling completed)
 stay ``pending`` forever.  That leaves clickable buttons in the chat

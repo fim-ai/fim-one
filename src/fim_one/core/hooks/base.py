@@ -1,7 +1,7 @@
 """Thin OO wrappers over :mod:`fim_one.core.agent.hooks` primitives.
 
 The core ``HookRegistry`` treats hooks as plain callables + metadata.  For
-more complex, stateful integration hooks (e.g. ``FeishuGateHook`` which
+more complex, stateful integration hooks (e.g. ``ApprovalGateHook`` which
 holds a DB session factory and a channel lookup) we prefer a class-based
 interface with :meth:`should_trigger` and :meth:`execute` — this module
 provides the abstract bases and the adapters that let a class instance

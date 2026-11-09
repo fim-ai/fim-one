@@ -663,8 +663,19 @@ class TestAsHook:
 
         assert len(registry) == 1
         listed = registry.list_hooks(HookPoint.PRE_TOOL_USE)
-        assert listed[0].name == "feishu_gate"
+        assert listed[0].name == "approval_gate"
         assert listed[0].priority == 10
+
+    def test_the_former_names_are_the_same_objects(self) -> None:
+        from fim_one.core.assembly.confirmation import (
+            ApprovalGateHook,
+            create_approval_gate_hook,
+        )
+        from fim_one.core.hooks import feishu_gate_hook
+
+        assert FeishuGateHook is ApprovalGateHook
+        assert create_feishu_gate_hook is create_approval_gate_hook
+        assert feishu_gate_hook.FeishuGateHook is ApprovalGateHook
 
 
 class TestChannelOrgBoundary:

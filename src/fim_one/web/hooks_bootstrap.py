@@ -13,12 +13,13 @@ commit ``f76d1e38``): an agent may declare hooks in its
 
     {
       "hooks": {
-        "class_hooks": ["feishu_gate"]
+        "class_hooks": ["approval_gate"]
       }
     }
 
 Each name is resolved against :data:`_HOOK_FACTORIES`.  Unknown names are
 skipped with a warning — a single stale entry must NEVER break chat.
+``feishu_gate`` is the approval gate's former name and still resolves to it.
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ from collections.abc import Callable
 from typing import Any, Protocol, runtime_checkable
 
 from fim_one.core.agent.hooks import Hook, HookRegistry
-from fim_one.core.hooks import FeishuGateHook, create_feishu_gate_hook
+from fim_one.core.assembly.confirmation import ApprovalGateHook, create_approval_gate_hook
 
 logger = logging.getLogger(__name__)
 
@@ -68,19 +69,24 @@ HookFactoryFn = Callable[..., Any]
 # ---------------------------------------------------------------------------
 
 
-def _build_feishu_gate(session_factory: SessionFactory, **_: Any) -> Hook:
-    """Wrap :func:`create_feishu_gate_hook` into a core ``Hook`` instance."""
-    class_hook: FeishuGateHook = create_feishu_gate_hook(
+def _build_approval_gate(session_factory: SessionFactory, **_: Any) -> Hook:
+    """Wrap :func:`create_approval_gate_hook` into a core ``Hook`` instance."""
+    class_hook: ApprovalGateHook = create_approval_gate_hook(
         session_factory=session_factory
     )
     return class_hook.as_hook()
 
 
+#: The approval gate's key, and the key it had before it was renamed. Agent
+#: rows saved earlier may still list the old one.
+APPROVAL_GATE = "approval_gate"
+_APPROVAL_GATE_ALIASES = frozenset({APPROVAL_GATE, "feishu_gate"})
+
 #: Registry of supported hook names → factories.  Extend for v0.9 by
 #: appending new entries (``"allow_list": _build_allow_list``, ...).
 #: Keys are user-facing — don't rename without a migration story.
 _HOOK_FACTORIES: dict[str, Callable[..., Hook]] = {
-    "feishu_gate": _build_feishu_gate,
+    name: _build_approval_gate for name in sorted(_APPROVAL_GATE_ALIASES)
 }
 
 
@@ -97,7 +103,7 @@ async def build_hook_registry_for_agent(
 
     The agent's ``model_config_json`` may hold::
 
-        {"hooks": {"class_hooks": ["feishu_gate", ...]}}
+        {"hooks": {"class_hooks": ["approval_gate", ...]}}
 
     Any missing or malformed key is tolerated — this function NEVER
     raises on bad config; it degrades to an empty registry and logs a
@@ -124,12 +130,12 @@ async def build_hook_registry_for_agent(
     # unused attachment is ~one dict lookup per tool call. This removes
     # the requirement that users hand-edit ``model_config_json.hooks``.
     try:
-        default_gate = _build_feishu_gate(session_factory=session_factory)
+        default_gate = _build_approval_gate(session_factory=session_factory)
         registry.register(default_gate)
-        logger.debug("Auto-registered feishu_gate hook for agent")
+        logger.debug("Auto-registered approval_gate hook for agent")
     except Exception:  # pragma: no cover - defensive
         logger.exception(
-            "Failed to auto-register feishu_gate hook; continuing without it"
+            "Failed to auto-register approval_gate hook; continuing without it"
         )
 
     raw_config: Any = getattr(agent, "model_config_json", None)
@@ -179,7 +185,7 @@ async def build_hook_registry_for_agent(
         if not name:
             continue
 
-        if name == "feishu_gate":
+        if name in _APPROVAL_GATE_ALIASES:
             # Already auto-registered above. Silently skip duplicate.
             continue
 

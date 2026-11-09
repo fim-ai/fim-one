@@ -1,7 +1,7 @@
 """Inline confirmation respond endpoint.
 
 When an agent hits a tool flagged ``requires_confirmation=True``, the
-``FeishuGateHook`` creates a ``ConfirmationRequest(mode='inline')`` row
+approval gate creates a ``ConfirmationRequest`` row with ``mode='inline'``
 (or ``mode='channel'`` if routed to Feishu) and blocks its poll until
 someone flips the status.
 

@@ -303,7 +303,7 @@ async def test_approval(
     user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> TestApprovalResponse:
-    """Simulate a ``FeishuGateHook`` round-trip.
+    """Simulate a ``ApprovalGateHook`` round-trip.
 
     Creates a real ``ConfirmationRequest`` row in ``pending`` state, sends
     the production approval card to the channel's chat, and returns the

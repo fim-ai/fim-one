@@ -17,11 +17,17 @@ import hashlib
 import json
 import logging
 import time
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 
-from .base import BaseChannel, ChannelSendResult, CompletionSummary
+from .base import (
+    ApprovalRequestSummary,
+    BaseChannel,
+    CarrierDecision,
+    ChannelSendResult,
+    CompletionSummary,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -245,6 +251,48 @@ class FeishuChannel(BaseChannel):
             }
         )
 
+    # -- Approvals (``ApprovalCarrier``) --
+
+    def approval_target(self) -> str | None:
+        """The group chat approval cards are posted to, if one is configured."""
+        chat_id = str(self.config.get("chat_id") or "").strip()
+        return chat_id or None
+
+    async def send_approval(
+        self, chat_target: str, request: ApprovalRequestSummary
+    ) -> ChannelSendResult:
+        """Post *request* as an interactive card with Approve / Reject buttons."""
+        card = build_confirmation_card(
+            confirmation_id=request.confirmation_id,
+            title=request.title,
+            summary=request.summary,
+            approver_hint=request.approver_hint,
+            tool_name=request.tool_name,
+            tool_args_preview=request.tool_args_preview,
+        )
+        return await self.send_interactive_card(chat_target, card)
+
+    def parse_decision(self, body: dict[str, Any]) -> CarrierDecision | None:
+        """The Approve / Reject click a callback body carries, if it is one."""
+        action_value, open_id = _card_action(body)
+        if action_value is None:
+            return None
+
+        decision_raw = action_value.get("decision") or action_value.get("action")
+        raw = str(decision_raw).lower() if decision_raw else None
+        decision: Literal["approve", "reject"] | None = None
+        if raw in ("approve", "approved", "yes"):
+            decision = "approve"
+        elif raw in ("reject", "rejected", "no", "deny"):
+            decision = "reject"
+
+        confirmation_id = action_value.get("confirmation_id")
+        return CarrierDecision(
+            confirmation_id=str(confirmation_id) if confirmation_id else None,
+            decision=decision,
+            actor=open_id,
+        )
+
     async def send_completion(
         self,
         summary: CompletionSummary,
@@ -435,71 +483,68 @@ class FeishuChannel(BaseChannel):
                 },
             }
 
-        # 2. Card action — either the new schema ("schema=2.0", nested
-        #    under "event.action") or the legacy schema (flat "action.value").
-        action_value: dict[str, Any] | None = None
-        open_id: str | None = None
-
-        # Legacy schema.
-        if isinstance(body.get("action"), dict):
-            legacy_action = body["action"]
-            raw_value = legacy_action.get("value")
-            if isinstance(raw_value, dict):
-                action_value = raw_value
-            elif isinstance(raw_value, str):
-                try:
-                    parsed = json.loads(raw_value)
-                    if isinstance(parsed, dict):
-                        action_value = parsed
-                except json.JSONDecodeError:
-                    pass
-            open_id = body.get("open_id") or body.get("operator_id")
-
-        # New schema (event.action.value).
-        event_obj = body.get("event") if isinstance(body.get("event"), dict) else None
-        if action_value is None and isinstance(event_obj, dict):
-            nested_action = event_obj.get("action")
-            if isinstance(nested_action, dict):
-                raw_value = nested_action.get("value")
-                if isinstance(raw_value, dict):
-                    action_value = raw_value
-            operator = event_obj.get("operator")
-            if isinstance(operator, dict):
-                open_id = operator.get("open_id") or operator.get("union_id")
-
-        if action_value is None:
+        # 2. Card action (Approve / Reject button click).
+        decision = self.parse_decision(body)
+        if decision is None:
             return {
                 "response": {},
                 "event": {
                     "kind": "unknown",
                     "action": None,
                     "confirmation_id": None,
-                    "open_id": open_id,
+                    "open_id": _card_action(body)[1],
                 },
             }
-
-        decision_raw = action_value.get("decision") or action_value.get("action")
-        decision = str(decision_raw).lower() if decision_raw else None
-        if decision in ("approve", "approved", "yes"):
-            decision = "approve"
-        elif decision in ("reject", "rejected", "no", "deny"):
-            decision = "reject"
-        else:
-            decision = None
-
-        confirmation_id = action_value.get("confirmation_id")
 
         return {
             "response": {},
             "event": {
                 "kind": "card_action",
-                "action": decision,
-                "confirmation_id": (
-                    str(confirmation_id) if confirmation_id else None
-                ),
-                "open_id": open_id,
+                "action": decision.decision,
+                "confirmation_id": decision.confirmation_id,
+                "open_id": decision.actor,
             },
         }
+
+
+def _card_action(body: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
+    """The button payload and the clicker's ``open_id`` of a card-action callback.
+
+    Either the new schema ("schema=2.0", nested under ``event.action``) or
+    the legacy one (flat ``action.value``). The payload is ``None`` when the
+    body is not a card action.
+    """
+    action_value: dict[str, Any] | None = None
+    open_id: str | None = None
+
+    # Legacy schema.
+    if isinstance(body.get("action"), dict):
+        legacy_action = body["action"]
+        raw_value = legacy_action.get("value")
+        if isinstance(raw_value, dict):
+            action_value = raw_value
+        elif isinstance(raw_value, str):
+            try:
+                parsed = json.loads(raw_value)
+                if isinstance(parsed, dict):
+                    action_value = parsed
+            except json.JSONDecodeError:
+                pass
+        open_id = body.get("open_id") or body.get("operator_id")
+
+    # New schema (event.action.value).
+    event_obj = body.get("event") if isinstance(body.get("event"), dict) else None
+    if action_value is None and isinstance(event_obj, dict):
+        nested_action = event_obj.get("action")
+        if isinstance(nested_action, dict):
+            raw_value = nested_action.get("value")
+            if isinstance(raw_value, dict):
+                action_value = raw_value
+        operator = event_obj.get("operator")
+        if isinstance(operator, dict):
+            open_id = operator.get("open_id") or operator.get("union_id")
+
+    return action_value, open_id
 
 
 def build_confirmation_card(

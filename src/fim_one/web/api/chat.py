@@ -3533,7 +3533,7 @@ async def react_endpoint(
             # Load any class_hooks declared on this agent's ``model_config_json``
             # and hand the resulting HookRegistry to ReAct.  The session factory
             # (``create_session``) is independent of the per-request session
-            # so hooks can open/commit their own transactions (FeishuGateHook
+            # so hooks can open/commit their own transactions (ApprovalGateHook
             # polls the ``confirmation_requests`` table from a background
             # task while the request is still streaming).
             from fim_one.db import create_session as _create_hook_session

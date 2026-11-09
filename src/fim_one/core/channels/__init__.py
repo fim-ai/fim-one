@@ -11,12 +11,22 @@ the ``channels`` table.
 
 from __future__ import annotations
 
-from .base import BaseChannel, ChannelSendResult, CompletionSummary
+from .base import (
+    ApprovalCarrier,
+    ApprovalRequestSummary,
+    BaseChannel,
+    CarrierDecision,
+    ChannelSendResult,
+    CompletionSummary,
+)
 from .feishu import FeishuChannel
 from .registry import CHANNEL_TYPES, get_channel_class, build_channel
 
 __all__ = [
+    "ApprovalCarrier",
+    "ApprovalRequestSummary",
     "BaseChannel",
+    "CarrierDecision",
     "ChannelSendResult",
     "CompletionSummary",
     "FeishuChannel",

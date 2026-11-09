@@ -6,9 +6,10 @@ encrypt_key) are encrypted at-rest via ``EncryptedJSON`` so the raw values
 never sit on disk in plaintext.
 
 A **ConfirmationRequest** is a pending human-in-the-loop gate record created
-by ``FeishuGateHook`` when a tool marked ``requires_confirmation=True`` is
-about to run.  The hook blocks until the callback endpoint flips the status
-to ``approved`` or ``rejected``.
+by the confirmation service (``fim_one.core.assembly.confirmation``) when a
+tool marked ``requires_confirmation=True`` is about to run.  The approval
+gate blocks until the callback endpoint flips the status to ``approved`` or
+``rejected``.
 """
 
 from __future__ import annotations
@@ -65,10 +66,11 @@ class Channel(UUIDPKMixin, TimestampMixin, Base):
 class ConfirmationRequest(UUIDPKMixin, TimestampMixin, Base):
     """A pending human-in-the-loop approval for a tool call.
 
-    Created by ``FeishuGateHook`` before a sensitive tool is invoked.  The
-    callback endpoint (``/api/channels/{id}/callback``) flips ``status`` to
-    ``approved`` or ``rejected`` when the card button is clicked; the hook
-    polls until the terminal state is reached (or ``expired`` by timeout).
+    Created by the confirmation service before a sensitive tool is invoked.
+    The callback endpoint (``/api/channels/{id}/callback``) flips ``status``
+    to ``approved`` or ``rejected`` when the card button is clicked; the
+    approval gate polls until the terminal state is reached (or ``expired``
+    by timeout).
     """
 
     __tablename__ = "confirmation_requests"

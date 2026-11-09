@@ -1,7 +1,7 @@
-"""In-process bridge between ``FeishuGateHook`` (core) and the chat SSE stream.
+"""In-process bridge between the confirmation service (core) and the chat SSE stream.
 
-The core ``FeishuGateHook`` handles the "inline" confirmation path by
-committing a ``ConfirmationRequest(mode='inline')`` row and then calling
+The core ``ConfirmationService`` handles the "inline" confirmation path by
+committing a ``ConfirmationRequest`` row with ``mode='inline'`` and then calling
 :func:`fim_one.core.hooks.emit_inline_confirmation`, which fires whatever
 listener was registered via ``set_inline_confirmation_listener``.
 
@@ -38,10 +38,10 @@ from collections.abc import AsyncIterator
 from datetime import datetime, timedelta, timezone
 from typing import Any, TYPE_CHECKING
 
-from fim_one.core.hooks import set_inline_confirmation_listener
-from fim_one.core.hooks.feishu_gate_hook import (
+from fim_one.core.assembly.confirmation import (
     DEFAULT_TIMEOUT_SECONDS as _HOOK_DEFAULT_TIMEOUT_SECONDS,
 )
+from fim_one.core.hooks import set_inline_confirmation_listener
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from fim_one.db.models.channel import ConfirmationRequest

@@ -7,13 +7,14 @@ renders an interactive question card; the user's selections come back as
 the tool result and the run continues in the same turn.
 
 Mechanically this reuses the inline-confirmation pipeline end to end
-(the same machinery ``FeishuGateHook`` uses for approve/reject gates):
+(the same machinery the approval gate uses for approve/reject):
 
-1. ``run()`` validates the questions and commits a
-   ``ConfirmationRequest(kind="user_question", mode="inline")`` row.
-2. It fires :func:`fim_one.core.hooks.emit_inline_confirmation`; the web
-   layer's SSE bridge turns the row into an ``awaiting_user_question``
-   frame mid-stream.
+1. ``run()`` validates the questions and asks
+   :class:`fim_one.core.assembly.confirmation.ConfirmationService` for a
+   ``kind="user_question"`` request, delivered inline.
+2. The service fires :func:`fim_one.core.hooks.emit_inline_confirmation`;
+   the web layer's SSE bridge turns the row into an
+   ``awaiting_user_question`` frame mid-stream.
 3. It polls the row until the answer endpoint
    (``POST /api/confirmations/{id}/answer``) flips it to ``answered`` /
    ``dismissed``, or the timeout expires.
@@ -32,7 +33,6 @@ __fim_origin__ = "https://github.com/fim-ai/fim-one"
 
 import asyncio
 import logging
-import uuid
 from datetime import UTC, datetime
 from typing import Any, Callable
 
@@ -301,9 +301,9 @@ class AskUserQuestionTool(BaseTool):
         except ValueError as exc:
             return f"[Error] {exc}"
 
-        question_id = str(uuid.uuid4())
         try:
-            row = await self._create_request_row(question_id, questions)
+            # Records the request and fires the SSE-bound listener.
+            row = await self._create_request_row(questions)
         except Exception:
             logger.exception("ask_user_question: failed to create request row")
             return (
@@ -311,12 +311,7 @@ class AskUserQuestionTool(BaseTool):
                 "Continue with your best judgment and state your assumptions."
             )
 
-        # Fire the SSE-bound listener (best-effort — never raises).
-        from fim_one.core.hooks.inline_confirmation import emit_inline_confirmation
-
-        await emit_inline_confirmation(row)
-
-        outcome, response = await self._await_answer(question_id)
+        outcome, response = await self._await_answer(str(row.id))
         if outcome == "answered":
             response = response or {}
             answers = response.get("answers")
@@ -340,13 +335,12 @@ class AskUserQuestionTool(BaseTool):
         )
 
     # ------------------------------------------------------------------
-    # DB helpers — mirror FeishuGateHook's inline flow.
+    # DB helpers
     # ------------------------------------------------------------------
 
-    async def _create_request_row(
-        self, question_id: str, questions: list[dict[str, Any]]
-    ) -> Any:
-        from fim_one.db.models.channel import ConfirmationRequest
+    async def _create_request_row(self, questions: list[dict[str, Any]]) -> Any:
+        from fim_one.core.assembly.confirmation import ConfirmationService, ConfirmationSpec
+        from fim_one.core.assembly.principal import provisional_principal
 
         payload: dict[str, Any] = {
             "kind": "user_question",
@@ -355,24 +349,25 @@ class AskUserQuestionTool(BaseTool):
             "conversation_id": self._conversation_id or "",
             "timeout_seconds": self._timeout_seconds,
         }
-        async with self._session_factory() as session:
-            row = ConfirmationRequest(
-                id=question_id,
-                agent_id=self._agent_id,
-                user_id=self._user_id,
-                # Only the initiator may answer their own question.
-                approver_user_id=self._user_id,
-                org_id=self._org_id or None,
-                channel_id=None,
-                mode="inline",
+        return await ConfirmationService(self._session_factory).request(
+            ConfirmationSpec(
                 kind="user_question",
-                status="pending",
+                initiator=provisional_principal(self._user_id),
+                binding=None,
+                org_id=self._org_id or None,
+                title="Question for the user",
+                description=None,
                 payload=payload,
+                # Only the initiator may answer their own question.
+                eligible_scope="initiator",
+                eligible_user_id=self._user_id,
+                delivery="inline_only",
+                channel_id=None,
+                timeout_seconds=self._timeout_seconds,
+                conversation_id=self._conversation_id or None,
+                agent_id=self._agent_id,
             )
-            session.add(row)
-            await session.commit()
-            await session.refresh(row)
-            return row
+        )
 
     async def _await_answer(
         self, question_id: str
