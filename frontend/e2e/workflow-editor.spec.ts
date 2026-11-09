@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises"
+import { readFile, writeFile } from "node:fs/promises"
 
 import { expect, test, type Page } from "@playwright/test"
 
@@ -453,4 +453,85 @@ test("workflow variables survive opening and editing the canvas", async ({ page,
   const stored = await fetchBlueprint(request, seeded.session, workflowId)
   expect(stored.nodes.find((n) => n.type === "llm")?.data.prompt_template).toBe("Hello again")
   expect(stored.variables).toEqual([region])
+})
+
+test("restoring a version and importing a file replace what is on the canvas", async ({
+  page,
+  request,
+}, testInfo) => {
+  const workflowId = await createLinearWorkflow(request, seeded.session, "Versions workflow", "first")
+  await page.goto(`/workflows/${workflowId}`)
+  await expect(canvasNodes(page)).toHaveCount(3)
+
+  // Two saves, two versions: "second", then "third".
+  for (const prompt of ["second", "third"]) {
+    const panel = await openConfig(page, "llm")
+    await panel.getByPlaceholder(PROMPT_HINT).fill(prompt)
+    await saveWorkflow(page)
+  }
+  await expect(nodeOfType(page, "llm")).toContainText("third")
+
+  await test.step("restore the earlier version", async () => {
+    await page.getByTestId("workflow-more-menu").click()
+    await page.getByRole("menuitem", { name: "Version History" }).click()
+    const sheet = page.getByRole("dialog")
+    await sheet.getByRole("button", { name: "Restore" }).last().click()
+    await page.getByRole("alertdialog").getByRole("button", { name: "Restore" }).click()
+    await expect(page.getByText("Version restored successfully")).toBeVisible()
+
+    // The canvas shows the restored graph, and so does the settings panel.
+    await expect(nodeOfType(page, "llm")).toContainText("second")
+    const panel = await openConfig(page, "llm")
+    await expect(panel.getByPlaceholder(PROMPT_HINT)).toHaveValue("second")
+
+    // Touching the canvas afterwards does not put the old graph back.
+    await page.locator(".react-flow__pane").click({ position: { x: 20, y: 20 } })
+    await page.waitForTimeout(800)
+    await expect(page.getByText("Unsaved changes")).toHaveCount(0)
+    const stored = await fetchBlueprint(request, seeded.session, workflowId)
+    expect(stored.nodes.find((n) => n.type === "llm")?.data.prompt_template).toBe("second")
+  })
+
+  await test.step("import a file", async () => {
+    const file = testInfo.outputPath("import.json")
+    await writeFile(
+      file,
+      JSON.stringify({
+        workflow: {
+          name: "Imported",
+          blueprint: {
+            schema_version: 2,
+            nodes: [
+              { id: "start_1", type: "start", position: { x: 100, y: 100 }, data: { variables: [] } },
+              {
+                id: "agent_9",
+                type: "agent",
+                position: { x: 420, y: 100 },
+                data: { agent_id: "", prompt_template: "from the file", output_variable: "agent_result" },
+              },
+              { id: "end_1", type: "end", position: { x: 740, y: 100 }, data: { output_mapping: {} } },
+            ],
+            edges: [
+              { id: "i1", source: "start_1", target: "agent_9", sourceHandle: "source", targetHandle: "target" },
+            ],
+            viewport: { x: 0, y: 0, zoom: 1 },
+          },
+        },
+      }),
+    )
+    await page.getByTestId("workflow-more-menu").click()
+    const chooser = page.waitForEvent("filechooser")
+    await page.getByRole("menuitem", { name: "Import", exact: true }).click()
+    await (await chooser).setFiles(file)
+
+    await expect(page.getByText("Workflow imported")).toBeVisible()
+    await expect(nodeOfType(page, "agent")).toHaveCount(1)
+    await expect(nodeOfType(page, "llm")).toHaveCount(0)
+    await expect(canvasEdges(page)).toHaveCount(1)
+    await expect(page.getByText("Unsaved changes")).toBeVisible()
+
+    await saveWorkflow(page)
+    const stored = await fetchBlueprint(request, seeded.session, workflowId)
+    expect(stored.nodes.map((n) => n.id).sort()).toEqual(["agent_9", "end_1", "start_1"])
+  })
 })

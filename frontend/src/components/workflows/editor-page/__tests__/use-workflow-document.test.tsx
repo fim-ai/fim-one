@@ -171,6 +171,74 @@ describe("useWorkflowDocument", () => {
     })
   })
 
+  describe("replacing the whole blueprint", () => {
+    // The canvas keeps its own state once mounted. Import and version
+    // restore used to change the blueprint behind it and leave the canvas
+    // showing (and later saving) the old graph.
+    it("a version restore reloads the workflow and tells the canvas to start over", async () => {
+      const { result, blueprintRef } = await mountDocument(canvasOf("third"))
+      act(() => result.current.changeBlueprint(canvasOf("unsaved edit")))
+      const before = result.current.canvasRevision
+      api.get.mockResolvedValue(workflowWith(canvasOf("restored")))
+      act(() => result.current.reloadAfterRestore())
+      await waitFor(() => expect(result.current.canvasRevision).toBe(before + 1))
+      expect(blueprintRef.current).toEqual(canvasOf("restored"))
+      expect(result.current.workflow?.blueprint).toEqual(canvasOf("restored"))
+      expect(result.current.isDirty).toBe(false)
+
+      // The remounted canvas reports the restored graph: still nothing to save.
+      act(() => result.current.changeBlueprint(canvasOf("restored")))
+      expect(result.current.isDirty).toBe(false)
+    })
+
+    it("a restore drops the automatic save of what it replaced", async () => {
+      const { result } = await mountDocument(canvasOf("third"))
+      vi.useFakeTimers()
+      act(() => result.current.changeBlueprint(canvasOf("unsaved edit")))
+      api.get.mockResolvedValue(workflowWith(canvasOf("restored")))
+      act(() => result.current.reloadAfterRestore())
+      await act(() => vi.advanceTimersByTimeAsync(6000))
+      expect(api.update).not.toHaveBeenCalled()
+    })
+
+    it("an imported file replaces the blueprint and tells the canvas to start over", async () => {
+      const { result, blueprintRef } = await mountDocument(canvasOf("first"))
+      const before = result.current.canvasRevision
+      const imported = { ...canvasOf("imported"), variables: [REGION] }
+      act(() => result.current.importFromText(JSON.stringify({ format: "x", workflow: { blueprint: imported } })))
+      expect(result.current.canvasRevision).toBe(before + 1)
+      expect(blueprintRef.current).toEqual(imported)
+      expect(result.current.workflow?.blueprint).toEqual(imported)
+      expect(result.current.isDirty).toBe(true)
+      expect(toast.success).toHaveBeenCalledWith("workflowImported")
+
+      // The canvas reports the imported graph; the file's variables stay.
+      act(() => result.current.changeBlueprint(canvasOf("imported")))
+      expect(blueprintRef.current.variables).toEqual([REGION])
+    })
+
+    it("accepts a bare { blueprint } file", async () => {
+      const { result, blueprintRef } = await mountDocument(canvasOf("first"))
+      act(() => result.current.importFromText(JSON.stringify({ blueprint: canvasOf("bare") })))
+      expect(blueprintRef.current).toEqual(canvasOf("bare"))
+    })
+
+    it.each([
+      ["not JSON", "{oops", "workflowImportFailed"],
+      ["JSON without a blueprint", JSON.stringify({ hello: 1 }), "importInvalidFormat"],
+      ["a blueprint without node and edge lists", JSON.stringify({ blueprint: { nodes: "x" } }), "importInvalidBlueprint"],
+    ])("refuses %s and says so, leaving the canvas alone", async (_what, text, message) => {
+      const { result, blueprintRef } = await mountDocument(canvasOf("first"))
+      const before = result.current.canvasRevision
+      act(() => result.current.importFromText(text))
+      expect(toast.error).toHaveBeenCalledWith(message)
+      expect(toast.success).not.toHaveBeenCalled()
+      expect(result.current.canvasRevision).toBe(before)
+      expect(blueprintRef.current).toEqual(canvasOf("first"))
+      expect(result.current.isDirty).toBe(false)
+    })
+  })
+
   describe("workflow variables", () => {
     // The canvas serializes nodes, edges and the viewport only. A workflow
     // that has variables used to lose them at the first canvas report.

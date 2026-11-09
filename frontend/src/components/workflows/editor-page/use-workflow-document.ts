@@ -66,6 +66,10 @@ export function useWorkflowDocument({
   // vs. overlay-only updates (validation badges, run overlays) that shouldn't
   // mark the form dirty.
   const savedBlueprintRef = useRef<string>("")
+  // Counts the times the blueprint was replaced as a whole (import, version
+  // restore). The canvas keeps its own node state once mounted, so the page
+  // keys the editor on this to have it start over from the new blueprint.
+  const [canvasRevision, setCanvasRevision] = useState(0)
 
   // Clean up the auto-save timer on unmount
   useEffect(() => {
@@ -273,6 +277,39 @@ export function useWorkflowDocument({
     }
   }, [workflow, t])
 
+  /** Replace the blueprint being edited with the one in an exported file's text. */
+  const importFromText = useCallback(
+    (text: string) => {
+      let data: unknown
+      try {
+        data = JSON.parse(text)
+      } catch {
+        toast.error(t("workflowImportFailed"))
+        return
+      }
+      // Support both envelope format { workflow: { blueprint } } and legacy { blueprint }
+      const blueprint = blueprintOfImport(data)
+      if (!blueprint) {
+        toast.error(t("importInvalidFormat"))
+        return
+      }
+      if (!Array.isArray(blueprint.nodes) || !Array.isArray(blueprint.edges)) {
+        toast.error(t("importInvalidBlueprint"))
+        return
+      }
+      blueprintRef.current = blueprint
+      setWorkflow((prev) =>
+        prev ? { ...prev, blueprint } : prev,
+      )
+      // The canvas starts over from the imported blueprint; its first report
+      // then validates it and schedules the save like any other edit.
+      setCanvasRevision((n) => n + 1)
+      setIsDirty(true)
+      toast.success(t("workflowImported"))
+    },
+    [t, blueprintRef],
+  )
+
   const importFromFile = useCallback(() => {
     const input = document.createElement("input")
     input.type = "file"
@@ -281,25 +318,13 @@ export function useWorkflowDocument({
       const file = (e.target as HTMLInputElement).files?.[0]
       if (!file) return
       try {
-        const text = await file.text()
-        const data = JSON.parse(text)
-        // Support both envelope format { workflow: { blueprint } } and legacy { blueprint }
-        const blueprint = blueprintOfImport(data)
-        if (blueprint) {
-          blueprintRef.current = blueprint
-          // Force re-render by updating workflow state
-          setWorkflow((prev) =>
-            prev ? { ...prev, blueprint } : prev,
-          )
-          setIsDirty(true)
-          toast.success(t("workflowImported"))
-        }
+        importFromText(await file.text())
       } catch {
         toast.error(t("workflowImportFailed"))
       }
     }
     input.click()
-  }, [t, blueprintRef])
+  }, [t, importFromText])
 
   const duplicate = useCallback(async () => {
     if (!workflow) return
@@ -335,6 +360,13 @@ export function useWorkflowDocument({
         const bp = data.blueprint ?? emptyBlueprint()
         blueprintRef.current = bp
         savedBlueprintRef.current = JSON.stringify(bp)
+        // What was on the canvas is superseded: drop its pending save and
+        // have the canvas start over from the restored blueprint.
+        if (autoSaveTimerRef.current) {
+          clearTimeout(autoSaveTimerRef.current)
+          autoSaveTimerRef.current = null
+        }
+        setCanvasRevision((n) => n + 1)
         setIsDirty(false)
         setLastSavedAt(new Date())
         onBlueprintChanged()
@@ -353,6 +385,7 @@ export function useWorkflowDocument({
     isDirty,
     setIsDirty,
     lastSavedAt,
+    canvasRevision,
     changeName,
     changeIcon,
     changeDescription,
@@ -362,6 +395,7 @@ export function useWorkflowDocument({
     changeVariables,
     exportToFile,
     importFromFile,
+    importFromText,
     duplicate,
     deleteWorkflow,
     reloadAfterRestore,

@@ -263,6 +263,9 @@ export default function WorkflowEditorPage() {
       />
 
       <WorkflowEditor
+        // A new key when the blueprint was replaced as a whole (import,
+        // version restore): the canvas starts over from it.
+        key={doc.canvasRevision}
         ref={editorRef}
         workflowId={workflowId}
         blueprint={workflow.blueprint}
