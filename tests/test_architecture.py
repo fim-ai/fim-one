@@ -170,3 +170,127 @@ class TestDbModelsImportsWithoutWeb:
             "importing core.{agent,model,planner} pulled in the web layer:\n"
             f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
+
+
+def _source_lines(path: Path) -> list[tuple[int, str]]:
+    return list(enumerate(path.read_text(encoding="utf-8").splitlines(), start=1))
+
+
+def _occurrences(needle: str, files: list[Path]) -> list[str]:
+    return [
+        f"{py.relative_to(SRC)}:{lineno}: {needle}"
+        for py in files
+        for lineno, line in _source_lines(py)
+        if needle in line
+    ]
+
+
+# Reading a credential, deciding on fallback, writing a call record or
+# building a connector / MCP tool: none of it in the entry points.
+ENTRY_POINT_GATE = (
+    "allow_fallback",
+    "decrypt_credential(",
+    "decrypt_db_config(",
+    "resolve_connector_credentials(",
+    "ConnectorCallLog(",
+    "MCPServerCredential",
+    "ConnectorToolAdapter(",
+    "build_connector_meta_tool(",
+    "build_database_meta_tool(",
+    "build_mcp_meta_tool(",
+)
+# The workflow's own env vars (not a connector or MCP credential) are
+# decrypted where the run identity is decided.
+ENTRY_POINT_EXCEPTIONS = frozenset({("core/workflow/run_service.py", "decrypt_credential(")})
+
+# constructor -> the files that may call it, besides core/assembly/toolset.py
+# (its own definition, and callers that are not a user's run).
+TOOL_CONSTRUCTORS: dict[str, frozenset[str]] = {
+    "ConnectorToolAdapter(": frozenset(
+        {
+            "core/tool/connector/adapter.py",
+            # the connector meta-tool builds one adapter per executed action
+            "core/tool/connector/meta_tool.py",
+        }
+    ),
+    "build_connector_meta_tool(": frozenset({"core/tool/connector/meta_tool.py"}),
+    "build_database_meta_tool(": frozenset({"core/tool/connector/database/meta_tool.py"}),
+    "DatabaseToolAdapter.create_tools(": frozenset(),
+    "build_mcp_meta_tool(": frozenset({"core/mcp/meta_tool.py"}),
+    "MCPClient(": frozenset(
+        {
+            "core/mcp/client.py",
+            "web/deps.py",  # instance-level servers from the MCP_SERVERS env var
+            "web/api/mcp_servers.py",  # the owner's "test connection"
+        }
+    ),
+}
+
+
+class TestCredentialsAndCallRecordsLiveInTheAssemblyLayer:
+    """Chat and workflow nodes ask ``core.assembly``; they do not carry copies.
+
+    S9 was a second, incomplete copy of the connector assembly (no
+    credentials, no call record), and N1 two copies of the MCP credential
+    rule that were wrong in different ways. These text gates keep the rule
+    and the record in one place: comments count, so a rule is not described
+    where it is not implemented.
+    """
+
+    def test_entry_points_hold_no_copy(self) -> None:
+        entry_points = [SRC / "web" / "api" / "chat.py", *sorted((CORE / "workflow").rglob("*.py"))]
+        offenders = [
+            hit
+            for needle in ENTRY_POINT_GATE
+            for hit in _occurrences(needle, entry_points)
+            if (hit.split(":", 1)[0], needle) not in ENTRY_POINT_EXCEPTIONS
+        ]
+        assert not offenders, (
+            "chat.py and core/workflow must go through fim_one.core.assembly "
+            "(credentials, toolset, calls):\n  " + "\n  ".join(offenders)
+        )
+
+    def test_user_run_tools_are_built_only_by_the_toolset(self) -> None:
+        files = [py for py in sorted(SRC.rglob("*.py")) if "migrations" not in py.parts]
+        offenders: list[str] = []
+        for needle, callers in TOOL_CONSTRUCTORS.items():
+            allowed = callers | {"core/assembly/toolset.py"}
+            offenders += [
+                hit for hit in _occurrences(needle, files) if hit.split(":", 1)[0] not in allowed
+            ]
+        assert not offenders, (
+            "connector, database and MCP tools for a user's run are built in "
+            "core/assembly/toolset.py, where the credential is resolved and the "
+            "call record wired:\n  " + "\n  ".join(offenders)
+        )
+
+    def test_call_records_have_one_writer(self) -> None:
+        files = [py for py in sorted(SRC.rglob("*.py")) if "migrations" not in py.parts]
+        allowed = {"core/assembly/calls.py", "db/models/connector_call_log.py"}
+        offenders = [
+            hit
+            for hit in _occurrences("ConnectorCallLog(", files)
+            if hit.split(":", 1)[0] not in allowed
+        ]
+        assert not offenders, (
+            "call records are written by core/assembly/calls.py:\n  " + "\n  ".join(offenders)
+        )
+
+    def test_database_configs_are_decrypted_for_the_owner_only(self) -> None:
+        files = [py for py in sorted(SRC.rglob("*.py")) if "migrations" not in py.parts]
+        allowed = {
+            "core/security/encryption.py",
+            "core/assembly/credentials.py",
+            # owner-only configuration paths, not a user's run
+            "core/tool/builtin/db_builder.py",
+            "web/api/db_connectors.py",
+        }
+        offenders = [
+            hit
+            for hit in _occurrences("decrypt_db_config(", files)
+            if hit.split(":", 1)[0] not in allowed
+        ]
+        assert not offenders, (
+            "a database connector's config is decrypted by resolve_credential(), "
+            "which gives it to the owner only:\n  " + "\n  ".join(offenders)
+        )
