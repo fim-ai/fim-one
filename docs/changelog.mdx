@@ -10,6 +10,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ## [Unreleased]
 
+### Fixed
+
+- **Long conversations stay within the context window whatever models an agent mixes.** The chat context budget now comes from the models a turn runs on (the agent's own model and fast model, or the active model group) instead of the system default model, and the conversation is kept within the smaller of the two windows, since both models read it. When the history to condense is larger than the fast model's window, it is summarised in consecutive parts; it used to go out as one oversized request that the provider rejected, after which older turns were dropped without a summary. A model with no context size configured is budgeted as the system model for its role (`LLM_CONTEXT_SIZE`, 128,000 by default). `CONTEXT_GUARD_MAX_COMPACT_CHUNKS` (default 8) caps the summary requests per compaction.
+
 ## [v0.9.4] - 2026-11-09
 
 ### Added

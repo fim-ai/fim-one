@@ -45,25 +45,32 @@ flowchart TD
 
 ### Layer 5 — Budget Configuration
 
-The budget is computed from two values:
+The budget is computed from two values of the model in use:
 
 ```
-usable_input_tokens = context_size - max_output_tokens
+usable_input_tokens = (context_size - max_output_tokens) × 0.92
 ```
 
-With defaults: `128,000 - 64,000 = 64,000 tokens`.
+With defaults: `(128,000 - 64,000) × 0.92 = 58,880 tokens`. The 8% margin absorbs the error of heuristic token estimation, so compaction triggers before the provider's hard limit.
 
 No static system prompt reserve is subtracted. The system prompt (agent instructions, tool descriptions, formatting overhead) is included in the message list that ContextGuard estimates dynamically — subtracting a fixed reserve on top would double-count it and waste budget. A typical system prompt consumes 3K-5K tokens; agents with many tools or long instructions may use more. ContextGuard accounts for the actual size automatically.
 
-Budget values can come from three sources, resolved in priority order:
+The values come from the models a chat turn resolved: the agent's own model and fast model when it sets them, otherwise the active model group, otherwise the system default. Each resolved model reports its own `context_size` and `max_output_tokens`, so two agents on different models get different budgets in the same deployment.
 
-1. **Database ModelConfig** — per-model `context_size` and `max_output_tokens` set by the admin.
-2. **Environment variables** — `LLM_CONTEXT_SIZE` and `LLM_MAX_OUTPUT_TOKENS`.
+A model with no context size configured (the field left empty in its model configuration) falls back to the system budget for its role, resolved in priority order:
+
+1. **System ModelConfig for the role** — `context_size` and `max_output_tokens` of the system `general` or `fast` model set by the admin.
+2. **Environment variables** — `LLM_CONTEXT_SIZE` / `FAST_LLM_CONTEXT_SIZE` and `LLM_MAX_OUTPUT_TOKENS`.
 3. **Hardcoded defaults** — 128K context, 64K output.
 
-The main LLM and fast LLM have independent budgets. DAG step execution uses the fast LLM's budget; ReAct mode uses the main LLM's budget. This matters because operators often pair a large-context model for ReAct (where history accumulates) with a smaller, faster model for DAG steps (where each step starts fresh).
+The main LLM and fast LLM have independent budgets, and which one applies depends on who reads the message list:
 
-A floor of 4,000 tokens is enforced — if misconfigured values would produce a smaller budget, the system clamps to 4K rather than failing silently.
+- **ReAct mode** sends one message list to both models: the fast model decides tool calls, the main model writes the final answer (and the fast model stands in when the main model is unavailable). The list is budgeted against the **smaller** of the two budgets, so any mix of windows stays within both. When a legal, medical or similar domain query escalates the turn to the reasoning model, that model's window replaces the main model's in the comparison.
+- **DAG mode** budgets history loading and planning against the main model, and each step against the model that runs it (the general model by default, or the one the step's `model_hint` selects).
+
+At startup the backend logs a warning when the system fast model's window is smaller than the general model's budget: nothing overflows, but conversations compact earlier than the general model alone would need.
+
+A floor of 4,000 tokens is enforced — if misconfigured values would produce a smaller budget, the system clamps to 4K rather than failing silently. One misconfiguration is handled before the floor: when the output reserve is as large as the window itself (a small model whose max output tokens was left at the 64K default), half the window is reserved instead. Set the model's max output tokens to get an exact budget.
 
 ### Layer 4 — DbMemory
 
@@ -76,7 +83,7 @@ On load, `DbMemory`:
 1. Queries all `user` and `assistant` messages for the conversation, ordered by creation time.
 2. Drops the trailing user message (the current query, which the agent will re-append).
 3. Reconstructs image attachments — user messages that included images store metadata (`file_id`, `mime_type`) in the database, and `DbMemory` rebuilds the base64 data-URLs from disk so the LLM can "see" images from earlier turns.
-4. Compacts: if a `compact_llm` was provided, uses `CompactUtils.llm_compact()`. Otherwise, falls back to `CompactUtils.smart_truncate()`.
+4. Compacts: if a `compact_llm` was provided, uses `CompactUtils.llm_compact()`. Otherwise, falls back to `CompactUtils.smart_truncate()`. The whole stored conversation is the input here, so this is where the history most often exceeds the summarising model's window; it is then summarised in parts (see [Chunked compaction input](#chunked-compaction-input)).
 
 After compaction, `DbMemory` sets tracking flags (`was_compacted`, `_original_count`, `_compacted_count`) that the SSE layer uses to emit a `compact` event to the frontend.
 
@@ -105,6 +112,19 @@ Each hint maps to a carefully worded system prompt that tells the compaction LLM
 
 If LLM compaction fails (network error, empty response, any exception), ContextGuard falls back to `smart_truncate` silently. The agent never sees the failure. This is a deliberate reliability choice: better to lose some context via heuristic truncation than to crash the iteration.
 
+#### Chunked compaction input
+
+The summariser is the fast model, and its window can be smaller than the history it is asked to condense: a large main model paired with a small fast one, or a long stored conversation loaded by `DbMemory`. Sending that history as one request overflows the summariser, and compaction degrades to truncation exactly when it is needed.
+
+`CompactUtils.summarize_history()` is the single summarising step behind `ContextGuard`, `DbMemory` and the DAG planner-input summary. It takes the summariser's own input budget (from the window that model declares) and guarantees no request exceeds it:
+
+1. History that fits goes out as one request, as before.
+2. Longer history is cut into consecutive parts. A tool call and its results always land in the same part; only a single exchange larger than a whole part is split, and an over-long message is cut rather than dropped.
+3. The parts are folded in order: the first is summarised on its own, and each later request carries the summary so far (capped at 10K tokens, or a quarter of the summariser's budget if smaller) plus the next part, and asks for one updated summary in the same format.
+4. `CONTEXT_GUARD_MAX_COMPACT_CHUNKS` (default 8) bounds the number of requests. History needing more parts keeps the first part and the most recent ones, and the summariser is told there is a gap.
+
+If the compact prompt alone leaves no room for history in the summariser's window, or any part fails, the result is the same `smart_truncate` fallback. The split only concerns the text the summariser reads: the message list kept for the main model still never starts with tool results whose tool call was summarised away.
+
 ### Layer 2 — CompactUtils
 
 `CompactUtils` is a stateless utility class — no instances, no state, just pure functions. It provides three capabilities that layers 3 and 4 build on.
@@ -118,7 +138,7 @@ If LLM compaction fails (network error, empty response, any exception), ContextG
 
 **`smart_truncate`** is the heuristic fallback. It keeps pinned messages unconditionally, then walks backward through non-pinned messages, accumulating until the budget is exhausted. The result is a suffix of the conversation that fits. It also ensures the result never starts with an assistant message — an orphaned assistant turn with no preceding user message confuses LLMs.
 
-**`llm_compact`** is the LLM-powered path. It splits messages into three groups — system messages (always kept), pinned messages (always kept), and compactable messages. The oldest compactable messages are summarized into a single `[Conversation summary]` system message; the most recent 4 messages are kept verbatim. If the compacted result is still too long, it falls back to `smart_truncate` on the compacted output — belt and suspenders.
+**`llm_compact`** is the LLM-powered path. It splits messages into three groups — system messages (always kept), pinned messages (always kept), and compactable messages. The oldest compactable messages are summarized into a single `[Conversation summary]` system message (in parts when they exceed the summariser's window); the most recent 4 messages are kept verbatim, more when the cut would otherwise separate a tool call from its results. If the compacted result is still too long, it falls back to `smart_truncate` on the compacted output — belt and suspenders.
 
 ### Layer 1 — Memory Implementations
 
@@ -211,7 +231,7 @@ flowchart TD
 
 **Phase 1 — History loading.** DbMemory loads and compacts conversation history, same as ReAct. The compacted history is formatted into a text block prefixed with `"Previous conversation:"`.
 
-**Phase 2 — Enriched query construction.** The history text and current query are combined into an `enriched_query`. If this exceeds 16K tokens, it is LLM-summarized using the `planner_input` hint prompt. The 16K threshold is chosen because the planner needs to read the entire query in a single pass — unlike ReAct, there is no iterative compaction during planning.
+**Phase 2 — Enriched query construction.** The history text and current query are combined into an `enriched_query`. If this exceeds 16K tokens, it is LLM-summarized using the `planner_input` hint prompt, in parts when the history exceeds the fast model's window. The 16K threshold is chosen because the planner needs to read the entire query in a single pass — unlike ReAct, there is no iterative compaction during planning.
 
 **Phase 3 — Planning.** The planner receives a 2-message prompt: system prompt plus enriched query. No ContextGuard here — the enriched query is already size-controlled by the 16K check.
 
