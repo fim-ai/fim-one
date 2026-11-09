@@ -434,3 +434,25 @@ test("canvas editing: copy, paste, undo, redo, delete, search and the context me
     await expect(nodeOfType(page, "start")).toHaveCount(1)
   })
 })
+
+test("workflow variables survive opening and editing the canvas", async ({ page, request }) => {
+  const region = { name: "region", type: "string", default_value: "eu", description: "" }
+  const workflowId = await createLinearWorkflow(request, seeded.session, "Variables workflow", "Hello", [
+    region,
+  ])
+  await page.goto(`/workflows/${workflowId}`)
+  await expect(canvasNodes(page)).toHaveCount(3)
+
+  // Opening is not an edit.
+  await page.waitForTimeout(800)
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0)
+
+  const panel = await openConfig(page, "llm")
+  await panel.getByPlaceholder(PROMPT_HINT).fill("Hello again")
+  await page.waitForTimeout(500)
+  await saveWorkflow(page)
+
+  const stored = await fetchBlueprint(request, seeded.session, workflowId)
+  expect(stored.nodes.find((n) => n.type === "llm")?.data.prompt_template).toBe("Hello again")
+  expect(stored.variables).toEqual([region])
+})

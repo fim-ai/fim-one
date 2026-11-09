@@ -139,6 +139,7 @@ export async function createLinearWorkflow(
   session: Session,
   name: string,
   prompt = "Say {{start_1.topic}}",
+  variables?: Array<Record<string, unknown>>,
 ): Promise<string> {
   const created = await api<{ data: { id: string } }>(
     request,
@@ -174,6 +175,7 @@ export async function createLinearWorkflow(
           { id: "e2", source: "llm_1", target: "end_1", sourceHandle: "source", targetHandle: "target" },
         ],
         viewport: { x: 0, y: 0, zoom: 1 },
+        ...(variables ? { variables } : {}),
       },
     },
   )
@@ -181,6 +183,7 @@ export async function createLinearWorkflow(
 }
 
 export interface StoredBlueprint {
+  variables?: Array<Record<string, unknown>> | null
   nodes: Array<{ id: string; type: string; data: Record<string, unknown> }>
   edges: Array<{ source: string; target: string; sourceHandle?: string | null }>
 }

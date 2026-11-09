@@ -15,6 +15,7 @@ import {
   inputSchemaOf,
   nodeLabelOf,
   outputSchemaOf,
+  withVariablesOf,
 } from "./blueprint-derived"
 
 /** Idle time after the last edit before the workflow saves itself. */
@@ -185,8 +186,8 @@ export function useWorkflowDocument({
     }
   }, [workflow, t, tError, blueprintRef])
 
-  /** The canvas (or the variables panel) produced a new blueprint. */
-  const changeBlueprint = useCallback((bp: WorkflowBlueprint) => {
+  /** Take a changed blueprint: mark unsaved, validate, and save after a pause. */
+  const applyBlueprint = useCallback((bp: WorkflowBlueprint) => {
     blueprintRef.current = bp
 
     // Compare against last-saved snapshot to avoid false dirty flags from
@@ -209,12 +210,23 @@ export function useWorkflowDocument({
     }, AUTO_SAVE_DELAY_MS)
   }, [onBlueprintChanged, save, blueprintRef])
 
+  /**
+   * The canvas changed. It knows nodes, edges and the viewport; the
+   * workflow variables are edited elsewhere and are kept as they are.
+   */
+  const changeBlueprint = useCallback(
+    (canvas: WorkflowBlueprint) => {
+      applyBlueprint(withVariablesOf(canvas, blueprintRef.current))
+    },
+    [applyBlueprint, blueprintRef],
+  )
+
   const changeVariables = useCallback(
     (variables: WorkflowVariable[]) => {
       const updated = { ...blueprintRef.current, variables }
-      changeBlueprint(updated)
+      applyBlueprint(updated)
     },
-    [changeBlueprint, blueprintRef],
+    [applyBlueprint, blueprintRef],
   )
 
   // Keyboard shortcuts (Cmd+S to save immediately, cancels pending auto-save)

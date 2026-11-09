@@ -75,3 +75,22 @@ export function blueprintOfImport(data: unknown): WorkflowBlueprint | undefined 
   const file = data as { workflow?: { blueprint?: WorkflowBlueprint }; blueprint?: WorkflowBlueprint }
   return file?.workflow?.blueprint ?? file?.blueprint
 }
+
+/**
+ * `canvas` with the workflow variables of `current`.
+ *
+ * The canvas serializes nodes, edges and the viewport only. Workflow
+ * variables live in the same blueprint but are edited in their own panel,
+ * so a blueprint coming from the canvas takes them from the one in use.
+ * `variables` goes last, where the server puts it, so an unchanged
+ * blueprint still compares equal to the stored one.
+ */
+export function withVariablesOf(
+  canvas: WorkflowBlueprint,
+  current: WorkflowBlueprint,
+): WorkflowBlueprint {
+  if (current.variables === undefined) return canvas
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { variables: _own, ...rest } = canvas
+  return { ...rest, variables: current.variables }
+}
