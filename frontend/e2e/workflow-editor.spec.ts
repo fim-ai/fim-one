@@ -466,6 +466,8 @@ test("restoring a version and importing a file replace what is on the canvas", a
   request,
 }, testInfo) => {
   const workflowId = await createLinearWorkflow(request, seeded.session, "Versions workflow", "first")
+  // The page's clock can be moved forward, to let pauses run out without waiting.
+  await page.clock.install()
   await page.goto(`/workflows/${workflowId}`)
   await expect(canvasNodes(page)).toHaveCount(3)
 
@@ -477,7 +479,11 @@ test("restoring a version and importing a file replace what is on the canvas", a
   }
   await expect(nodeOfType(page, "llm")).toContainText("third")
 
-  await test.step("restore the earlier version", async () => {
+  await test.step("restore the earlier version, with an edit still waiting to be saved", async () => {
+    const editing = await openConfig(page, "llm")
+    await editing.getByPlaceholder(PROMPT_HINT).fill("not saved yet")
+    await expect(page.getByText("Unsaved changes")).toBeVisible()
+
     await page.getByTestId("workflow-more-menu").click()
     await page.getByRole("menuitem", { name: "Version History" }).click()
     const sheet = page.getByRole("dialog")
@@ -490,9 +496,11 @@ test("restoring a version and importing a file replace what is on the canvas", a
     const panel = await openConfig(page, "llm")
     await expect(panel.getByPlaceholder(PROMPT_HINT)).toHaveValue("second")
 
-    // Touching the canvas afterwards does not put the old graph back.
+    // Neither the automatic save that was pending when Restore was clicked
+    // (its five seconds run out here) nor touching the canvas afterwards
+    // puts the old graph back.
     await page.locator(".react-flow__pane").click({ position: { x: 20, y: 20 } })
-    await page.waitForTimeout(800)
+    await page.clock.fastForward(6000)
     await expect(page.getByText("Unsaved changes")).toHaveCount(0)
     const stored = await fetchBlueprint(request, seeded.session, workflowId)
     expect(stored.nodes.find((n) => n.type === "llm")?.data.prompt_template).toBe("second")

@@ -598,6 +598,132 @@ describe("useWorkflowDocument", () => {
       expect(result.current.isDirty).toBe(false)
     })
 
+    // The pending automatic save was cancelled only once the reload had
+    // answered, so it could fire during the restore request or the reload,
+    // and a save already in flight landed after the restore: the canvas
+    // showed the restored graph, the toolbar "Saved", the server the old one.
+    it("nothing is saved between asking to restore and the restored workflow being loaded", async () => {
+      const canvas = { current: canvasOf("edited") }
+      const { result, blueprintRef } = await mountDocument(canvasOf("first"), {
+        readCanvas: () => canvas.current,
+      })
+      vi.useFakeTimers()
+      act(() => result.current.changeBlueprint(canvasOf("edited")))
+      await act(() => vi.advanceTimersByTimeAsync(4900))
+
+      await act(() => result.current.beginRestore())
+      // The restore request is on its way; the five seconds run out meanwhile.
+      await act(() => vi.advanceTimersByTimeAsync(1000))
+      expect(api.update).not.toHaveBeenCalled()
+
+      const reload = deferred<WorkflowResponse>()
+      api.get.mockReturnValueOnce(reload.promise)
+      act(() => result.current.reloadAfterRestore())
+      await act(() => vi.advanceTimersByTimeAsync(10000))
+      await act(() => result.current.save()) // not even by hand
+      expect(api.update).not.toHaveBeenCalled()
+
+      await act(async () => {
+        reload.resolve(workflowWith(canvasOf("restored")))
+      })
+      expect(blueprintRef.current).toEqual(canvasOf("restored"))
+      expect(result.current.isDirty).toBe(false)
+      await act(() => vi.advanceTimersByTimeAsync(10000))
+      expect(api.update).not.toHaveBeenCalled()
+    })
+
+    it("the reload alone already stops the pending automatic save", async () => {
+      const { result } = await mountDocument(canvasOf("first"), { readCanvas: () => canvasOf("edited") })
+      vi.useFakeTimers()
+      act(() => result.current.changeBlueprint(canvasOf("edited")))
+      await act(() => vi.advanceTimersByTimeAsync(4900))
+      const reload = deferred<WorkflowResponse>()
+      api.get.mockReturnValueOnce(reload.promise)
+      act(() => result.current.reloadAfterRestore())
+      await act(() => vi.advanceTimersByTimeAsync(200))
+      expect(api.update).not.toHaveBeenCalled()
+    })
+
+    it("a restore waits for the save in flight before it asks the server", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      act(() => result.current.changeBlueprint(canvasOf("edited")))
+      const put = deferred<WorkflowResponse>()
+      api.update.mockReturnValueOnce(put.promise)
+      let saving!: Promise<void>
+      act(() => {
+        saving = result.current.save()
+      })
+      let mayRestore = false
+      let begun!: Promise<void>
+      act(() => {
+        begun = result.current.beginRestore().then(() => {
+          mayRestore = true
+        })
+      })
+      await act(async () => {
+        await Promise.resolve()
+      })
+      expect(mayRestore).toBe(false)
+      await act(async () => {
+        put.resolve(workflowWith(canvasOf("edited")))
+        await saving
+        await begun
+      })
+      expect(mayRestore).toBe(true)
+    })
+
+    it("an answer to a save from before the restore is ignored", async () => {
+      const { result, blueprintRef } = await mountDocument(canvasOf("first"))
+      act(() => result.current.changeBlueprint(canvasOf("edited")))
+      const put = deferred<WorkflowResponse>()
+      api.update.mockReturnValueOnce(put.promise)
+      let saving!: Promise<void>
+      act(() => {
+        saving = result.current.save()
+      })
+      api.get.mockResolvedValue(workflowWith(canvasOf("restored")))
+      act(() => result.current.reloadAfterRestore())
+      await waitFor(() => expect(blueprintRef.current).toEqual(canvasOf("restored")))
+      await act(async () => {
+        put.resolve(workflowWith(canvasOf("edited"), "Other name"))
+        await saving
+      })
+      expect(result.current.workflow?.name).toBe("Flow")
+      expect(result.current.workflow?.blueprint).toEqual(canvasOf("restored"))
+      // "Saved" still means the restored graph: reporting it is not an edit.
+      act(() => result.current.changeBlueprint(canvasOf("restored")))
+      expect(result.current.isDirty).toBe(false)
+    })
+
+    it("when the restore fails, what was pending is saved after the pause again", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      vi.useFakeTimers()
+      act(() => result.current.changeBlueprint(canvasOf("edited")))
+      await act(() => result.current.beginRestore())
+      await act(() => vi.advanceTimersByTimeAsync(6000))
+      expect(api.update).not.toHaveBeenCalled()
+      act(() => result.current.cancelRestore())
+      expect(result.current.isDirty).toBe(true)
+      await act(() => vi.advanceTimersByTimeAsync(5000))
+      expect(api.update).toHaveBeenCalledTimes(1)
+      expect(api.update.mock.calls[0][1].blueprint).toEqual(canvasOf("edited"))
+    })
+
+    it("when the restored workflow cannot be loaded, saving stays off and the page says to reload", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      vi.useFakeTimers()
+      act(() => result.current.changeBlueprint(canvasOf("edited")))
+      api.get.mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      await act(async () => {
+        result.current.reloadAfterRestore()
+      })
+      expect(toast.error).toHaveBeenLastCalledWith("versionRestoreReloadFailed")
+      expect(result.current.isDirty).toBe(false)
+      await act(() => vi.advanceTimersByTimeAsync(10000))
+      await act(() => result.current.save())
+      expect(api.update).not.toHaveBeenCalled()
+    })
+
     it("a restore drops the automatic save of what it replaced", async () => {
       const { result } = await mountDocument(canvasOf("third"))
       vi.useFakeTimers()

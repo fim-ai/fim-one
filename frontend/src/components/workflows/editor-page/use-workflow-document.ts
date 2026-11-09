@@ -547,26 +547,56 @@ export function useWorkflowDocument({
     setIsDirty(false)
   }, [cancelAutoSave])
 
+  /**
+   * A version is about to be restored on the server. From here until the
+   * restored workflow is loaded, nothing this page holds may be saved: it
+   * would overwrite the version being restored. Resolves once no save is
+   * pending or in flight; call it before asking the server to restore.
+   */
+  const beginRestore = useCallback(async () => {
+    suspendedRef.current = true
+    cancelAutoSave()
+    while (inFlightRef.current) await inFlightRef.current
+  }, [cancelAutoSave])
+
+  /** The restore did not happen: saving resumes, including what was pending. */
+  const cancelRestore = useCallback(() => {
+    suspendedRef.current = false
+    noteEdit()
+  }, [noteEdit])
+
   /** Reload the workflow from the server after a version restore. */
   const reloadAfterRestore = useCallback(() => {
+    // The server now holds the restored version. Whatever is on the canvas
+    // is superseded from this moment, not from when the reload answers: no
+    // save may start, and one that somehow still answers is ignored.
+    suspendedRef.current = true
+    cancelAutoSave()
+    epochRef.current += 1
+    const epoch = epochRef.current
     workflowApi
       .get(workflowId)
       .then((data) => {
+        if (epochRef.current !== epoch) return
         setWorkflow(data)
         const bp = data.blueprint ?? emptyBlueprint()
         blueprintRef.current = bp
         savedRef.current = currentSnapshot()
         trackNodeTypes(bp)
-        // What was on the canvas is superseded: drop its pending save and
-        // have the canvas start over from the restored blueprint.
-        cancelAutoSave()
+        // The canvas starts over from the restored blueprint.
         setCanvasRevision((n) => n + 1)
         setIsDirty(false)
         setLastSavedAt(new Date())
+        suspendedRef.current = false
         onBlueprintChangedRef.current()
       })
       .catch((err) => {
-        toastWorkflowError(err, t("workflowUpdateFailed"), tError, t)
+        if (epochRef.current !== epoch) return
+        // Restored on the server, but still the old graph here. Saving stays
+        // off (it would undo the restore) and the edits it replaced are no
+        // longer "unsaved changes" to warn about; the page has to be reloaded.
+        setIsDirty(false)
+        toastWorkflowError(err, t("versionRestoreReloadFailed"), tError, t)
       })
   }, [workflowId, t, tError, blueprintRef, trackNodeTypes, setWorkflow, currentSnapshot, cancelAutoSave])
 
@@ -593,6 +623,8 @@ export function useWorkflowDocument({
     duplicate,
     deleteWorkflow,
     discardChanges,
+    beginRestore,
+    cancelRestore,
     reloadAfterRestore,
   }
 }

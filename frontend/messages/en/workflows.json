@@ -516,6 +516,7 @@
   "versionHistoryEmpty": "No versions yet",
   "versionHistoryLoadFailed": "Failed to load version history",
   "versionHistoryRestoreFailed": "Failed to restore version",
+  "versionRestoreReloadFailed": "The version was restored, but the editor could not load it. Reload the page to continue.",
   "versionHistoryRestored": "Version restored successfully",
   "versionHistoryRestore": "Restore",
   "versionHistoryRestoreTitle": "Restore version?",

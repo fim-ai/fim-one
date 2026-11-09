@@ -41,6 +41,13 @@ interface VersionHistorySheetProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onVersionRestored: () => void
+  /**
+   * Called, and awaited, before the server is asked to restore: the editor
+   * stops saving so that it cannot overwrite the version being restored.
+   */
+  onBeforeRestore?: () => Promise<void> | void
+  /** Called when the restore did not happen, so the editor resumes saving. */
+  onRestoreFailed?: () => void
 }
 
 export function VersionHistorySheet({
@@ -48,6 +55,8 @@ export function VersionHistorySheet({
   open,
   onOpenChange,
   onVersionRestored,
+  onBeforeRestore,
+  onRestoreFailed,
 }: VersionHistorySheetProps) {
   const t = useTranslations("workflows")
   const tError = useTranslations("errors")
@@ -107,17 +116,20 @@ export function VersionHistorySheet({
     if (!restoreTarget) return
     setIsRestoring(true)
     try {
+      await onBeforeRestore?.()
       await workflowApi.restoreVersion(workflowId, restoreTarget.id)
-      toast.success(t("versionHistoryRestored"))
-      setRestoreTarget(null)
-      onOpenChange(false)
-      onVersionRestored()
     } catch (err) {
+      onRestoreFailed?.()
       toastWorkflowError(err, t("versionHistoryRestoreFailed"), tError, t)
-    } finally {
       setIsRestoring(false)
+      return
     }
-  }, [workflowId, restoreTarget, t, tError, onOpenChange, onVersionRestored])
+    toast.success(t("versionHistoryRestored"))
+    setRestoreTarget(null)
+    onOpenChange(false)
+    onVersionRestored()
+    setIsRestoring(false)
+  }, [workflowId, restoreTarget, t, tError, onOpenChange, onVersionRestored, onBeforeRestore, onRestoreFailed])
 
   return (
     <>

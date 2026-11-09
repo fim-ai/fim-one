@@ -382,6 +382,8 @@ export default function WorkflowEditorPage() {
         workflowId={workflowId}
         open={panels.isOpen("versionHistory")}
         onOpenChange={panels.setter("versionHistory")}
+        onBeforeRestore={doc.beginRestore}
+        onRestoreFailed={doc.cancelRestore}
         onVersionRestored={doc.reloadAfterRestore}
       />
 
