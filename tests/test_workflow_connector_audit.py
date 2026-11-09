@@ -153,3 +153,31 @@ async def test_a_connector_that_takes_no_credential_runs_for_any_runner_who_sees
 
     assert result.status == NodeStatus.COMPLETED
     assert out.http[-1]["authorization"] is None
+
+
+async def test_an_agent_steps_connector_call_is_recorded_as_a_workflow_call(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """It was recorded as a chat call; the run id follows when the agent step
+    is assembled through the layer itself."""
+    from fim_one.core.workflow.nodes import AgentExecutor
+
+    scene = await m.seed_scene(factory, m.SceneKey("owner", True, True, False))
+    node = WorkflowNodeDef(
+        id="agent_1",
+        type=NodeType.AGENT,
+        data={"agent_id": scene.carrier_agent_id, "prompt_template": "go"},
+    )
+    ctx = ExecutionContext(run_id="run-1", user_id=scene.actor, workflow_id="wf-1")
+    with m.outside_world(factory) as out:
+        result = await AgentExecutor().execute(node, VariableStore(), ctx)
+        assert result.status == NodeStatus.COMPLETED, result.error
+        await out.agents_built[-1]["tools"].get("connector").run(
+            subcommand="execute",
+            connector=scene.names["api_bearer"],
+            action="ping",
+            parameters={},
+        )
+
+    (log,) = await _records(factory)
+    assert (log.entry, log.agent_id) == ("workflow_node", scene.carrier_agent_id)

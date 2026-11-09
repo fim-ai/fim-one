@@ -3069,10 +3069,11 @@ class TestAgentExecutorBindings:
             return "AGENT_LLM"
 
         async def _fake_resolve_tools(
-            cfg: Any, conversation_id: Any = None, user_id: Any = None
+            cfg: Any, conversation_id: Any = None, user_id: Any = None, *, entry: Any = None
         ) -> str:
             captured["tools_cfg"] = cfg
             captured["tools_user"] = user_id
+            captured["tools_entry"] = entry
             return "AGENT_TOOLS"
 
         def _fake_get_tools(*_a: Any, **_k: Any) -> str:
@@ -3149,6 +3150,7 @@ class TestAgentExecutorBindings:
         # Tools resolved against the agent_cfg, attributed to the workflow owner.
         assert captured["tools_cfg"] is agent_cfg
         assert captured["tools_user"] == "owner1"
+        assert captured["tools_entry"] == "workflow_node"
         assert "used_default_tools" not in captured
         assert "used_default_llm" not in captured
         # Query template interpolated from the store.

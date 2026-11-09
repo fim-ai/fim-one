@@ -759,8 +759,12 @@ class AgentExecutor:
                     llm = await get_effective_fast_llm(db)
 
             if agent_cfg is not None:
+                # ``entry``: what this step's connector calls are recorded as.
                 tools = await _resolve_tools(
-                    agent_cfg, conversation_id=None, user_id=context.user_id
+                    agent_cfg,
+                    conversation_id=None,
+                    user_id=context.user_id,
+                    entry="workflow_node",
                 )
             else:
                 tools = get_tools()
