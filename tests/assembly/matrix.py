@@ -797,6 +797,29 @@ def _observe_bound_kb(scene: Scene, asm: Assembled) -> Outcome:
     )
 
 
+async def _kb_tool_reads(tools: Any, kb_id: str) -> bool:
+    """Whether ``kb_retrieve`` with no bound KBs reads *kb_id* when asked to.
+
+    The vector store is faked; the retrieval layer's own owner check is not.
+    """
+    from fim_one.rag.manager import KnowledgeBaseManager
+
+    read: list[str] = []
+
+    class _Manager:
+        async def retrieve(self, _query: str, *, kb_id: str, user_id: str, **_: Any) -> list[Any]:
+            if await KnowledgeBaseManager._resolve_owner_for_caller(kb_id, user_id) is not None:
+                read.append(kb_id)
+            return []
+
+    tool = tools.get("kb_retrieve")
+    if tool is None:
+        return False
+    with patch("fim_one.web.deps.get_kb_manager", lambda: _Manager()):
+        await tool.run(query="anything", kb_id=kb_id)
+    return kb_id in read
+
+
 def _classify(error: str | None) -> str:
     """The refusal code a node error or tool error text amounts to."""
     text = error or ""
@@ -863,7 +886,6 @@ async def probe_chat_agent(
 async def probe_chat_noagent(
     scene: Scene, factory: async_sessionmaker[AsyncSession]
 ) -> dict[str, Outcome]:
-    from fim_one.rag.manager import KnowledgeBaseManager
     from fim_one.web.api import chat
 
     with outside_world(factory) as out:
@@ -872,10 +894,7 @@ async def probe_chat_noagent(
         asm = Assembled(tools, await _chat_hooks(None), None, scene.actor)
 
         results = await _observe_tools(scene, out, factory, asm, _TOOL_RESOURCES)
-        # kb_retrieve with no bound KBs reads whatever the retrieval layer
-        # resolves an owner for.
-        owner = await KnowledgeBaseManager._resolve_owner_for_caller(scene.ids["kb"], scene.actor)
-        results["kb"] = Outcome(exposed=owner is not None)
+        results["kb"] = Outcome(exposed=await _kb_tool_reads(tools, scene.ids["kb"]))
         results["skill"] = Outcome(
             exposed=scene.ids["skill"] in await chat._resolve_user_skill_ids(scene.actor)
         )
@@ -1164,10 +1183,6 @@ def _agent_entry_unchecked(_entry: str, cell: Cell, _so_far: Outcome) -> Outcome
     return Outcome(exposed=sees(cell.role, "agent"))
 
 
-def _kb_ignores_switch(_entry: str, cell: Cell, _so_far: Outcome) -> Outcome | None:
-    return Outcome(exposed=True) if cell.role == "owner" and not cell.is_active else None
-
-
 def _not_recorded(_entry: str, _cell: Cell, so_far: Outcome) -> Outcome | None:
     return _replace(so_far, logged=False) if so_far.exposed else None
 
@@ -1243,15 +1258,6 @@ KNOWN_DEVIATIONS: tuple[Deviation, ...] = (
         ref="N6; design §1.1 row 3; B16",
         removed_in="C1 phase 4",
         today=_agent_entry_unchecked,
-    ),
-    Deviation(
-        name="noagent-kb-ignores-switch",
-        entries=("chat_noagent",),
-        resources=("kb",),
-        what="The owner's switched-off knowledge base is still read by kb_retrieve.",
-        ref="design §1.1 row 'KB chat-0'",
-        removed_in="C1 phase 2 (kb_binding)",
-        today=_kb_ignores_switch,
     ),
     Deviation(
         name="noagent-no-confirmation",

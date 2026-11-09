@@ -1,10 +1,11 @@
-"""The tools a call gets for the connectors it may use.
+"""The tools a call gets for the resources it may use.
 
 These functions are where connector tools are built for a user's run: each
 resolves the acting user's credential (:mod:`.credentials`), leaves out a
 connector the user may not call, and wires the call record (:mod:`.calls`).
 The caller has already decided which connectors are usable
 (:func:`fim_one.core.assembly.visibility.authorize_use`).
+:func:`kb_binding` answers which knowledge bases a call may read.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from .calls import call_recorder
 from .credentials import resolve_credential
 from .errors import AssemblyRefusal
+from .visibility import ResourceKind, authorize_use
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,7 +26,7 @@ if TYPE_CHECKING:
 
     from .principal import CallContext
 
-__all__ = ["ToolMode", "connector_tools", "database_tools"]
+__all__ = ["ToolMode", "connector_tools", "database_tools", "kb_binding"]
 
 logger = logging.getLogger(__name__)
 
@@ -186,3 +188,16 @@ async def database_tools(
         )
     logger.info("Loaded %d DB tools from %d connectors", len(tools), len(databases))
     return tools
+
+
+async def kb_binding(db: AsyncSession, ctx: CallContext, kb_ids: Sequence[str]) -> dict[str, str]:
+    """The knowledge bases in *kb_ids* this call may read, as ``kb_id → owner_id``.
+
+    A knowledge base is not shareable: it is readable while the subject of
+    the call (the binding's owner, else the acting user) owns it and it is
+    switched on. Its content lives under the owner's namespace, which is
+    what retrieval needs the owner id for. Anything else is absent from the
+    result.
+    """
+    decision = await authorize_use(db, ctx, ResourceKind.KNOWLEDGE_BASE, kb_ids)
+    return {kb.id: kb.user_id for kb in decision.usable}

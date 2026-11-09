@@ -76,7 +76,7 @@ from fim_one.core.assembly.principal import (
     Entry,
     provisional_principal,
 )
-from fim_one.core.assembly.toolset import connector_tools, database_tools
+from fim_one.core.assembly.toolset import connector_tools, database_tools, kb_binding
 from fim_one.core.assembly.visibility import ResourceKind, authorize_use, list_usable
 from fim_one.core.agent.workspace import AgentWorkspace
 from fim_one.core.agent.guardrail import (
@@ -1604,21 +1604,15 @@ async def _resolve_bound_kb_owner_map(
     from fim_one.db import create_session as _kb_cs
     from fim_one.db.models.knowledge_base import KnowledgeBase as _KBModel
 
-    kb_owner_map: dict[str, str] = {}
     async with _kb_cs() as _kb_db:
         if agent_owner_id:
             # The agent owner is the subject; the KB rule reads nothing of
             # the caller. A disabled KB is out of service for every agent
             # bound to it.
-            _kb_decision = await authorize_use(
-                _kb_db,
-                _use_context(agent_owner_id, None, entry="chat"),
-                ResourceKind.KNOWLEDGE_BASE,
-                kb_ids,
+            return await kb_binding(
+                _kb_db, _use_context(agent_owner_id, None, entry="chat"), kb_ids
             )
-            for _kb in _kb_decision.usable:
-                kb_owner_map[_kb.id] = _kb.user_id
-            return kb_owner_map
+        kb_owner_map: dict[str, str] = {}
         _kb_result = await _kb_db.execute(
             sa_select(_KBModel.id, _KBModel.user_id).where(
                 _KBModel.id.in_(kb_ids),
@@ -1737,11 +1731,23 @@ async def _resolve_tools(
                 )
             )
     elif user_id:
-        # No bound KBs — keep basic kb_retrieve with user scope
+        # No bound KBs — keep basic kb_retrieve with user scope: the model
+        # names a knowledge base per call, and the caller may read the ones
+        # they own that are switched on.
         from fim_one.core.tool.builtin.kb_retrieve import KBRetrieveTool
 
+        async def _own_kbs(named_kb_ids: Sequence[str]) -> dict[str, str]:
+            from fim_one.db import create_session as _own_kb_cs
+
+            async with _own_kb_cs() as _own_kb_db:
+                return await kb_binding(
+                    _own_kb_db,
+                    _use_context(user_id, None, conversation_id=conversation_id),
+                    named_kb_ids,
+                )
+
         tools = tools.exclude_by_name("kb_retrieve")
-        tools.register(KBRetrieveTool(user_id=user_id))
+        tools.register(KBRetrieveTool(user_id=user_id, kb_resolver=_own_kbs))
 
     # Load connector tools when the agent has bound connectors.
     connector_ids = agent_cfg.get("connector_ids") if agent_cfg else None

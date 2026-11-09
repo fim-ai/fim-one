@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Any
 
 from fim_one.core.tool.base import BaseTool
@@ -33,10 +34,15 @@ class KBRetrieveTool(BaseTool):
         user_id: str | None = None,
         kb_ids: list[str] | None = None,
         kb_owner_map: dict[str, str] | None = None,
+        kb_resolver: Callable[[Sequence[str]], Awaitable[dict[str, str]]] | None = None,
     ) -> None:
         self._user_id = user_id
         self._bound_kb_ids = kb_ids or []
         self._kb_owner_map = kb_owner_map or {}
+        # With no bound knowledge bases the model names one per call. The
+        # resolver answers, at that moment, which of the named ones the
+        # caller may read (``kb_id → owner_id``); the rest are refused.
+        self._kb_resolver = kb_resolver
 
     @property
     def name(self) -> str:
@@ -104,6 +110,18 @@ class KBRetrieveTool(BaseTool):
 
         top_k: int = int(kwargs.get("top_k", 5))
         user_id = self._user_id or os.environ.get("_TOOL_USER_ID", "default")
+
+        if not self._bound_kb_ids and self._kb_resolver is not None:
+            try:
+                readable = await self._kb_resolver(kb_ids)
+            except Exception as exc:
+                return f"[Error] {type(exc).__name__}: {exc}"
+            if not readable:
+                return (
+                    f"[Error] Knowledge base '{kb_ids[0]}' is not available: it does not "
+                    "exist, is not yours, or has been switched off."
+                )
+            kb_ids = [kb_id for kb_id in kb_ids if kb_id in readable]
 
         try:
             from fim_one.web.deps import get_kb_manager
