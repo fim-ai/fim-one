@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   actionOptions,
   connectorOptions,
+  listAllConnectors,
 } from "@/components/workflows/node-config/connector-options"
 import type { ConnectorActionResponse, ConnectorResponse } from "@/types/connector"
 
@@ -110,5 +111,43 @@ describe("actionOptions", () => {
       label: "a-removed",
     })
     expect(actionOptions([], "c-crm", "a-list")).toEqual([{ value: "a-list", label: "a-list" }])
+  })
+})
+
+describe("listAllConnectors", () => {
+  // The listing serves 100 per request. Only the first page used to be
+  // loaded, so a user's 101st connector could not be chosen.
+  it("loads every page", async () => {
+    const pages = [
+      [connector("c-1", "One"), connector("c-2", "Two")],
+      [connector("c-3", "Three")],
+      [connector("c-4", "Four")],
+    ]
+    const calls: Array<[number, number]> = []
+    const all = await listAllConnectors(async (page, size) => {
+      calls.push([page, size])
+      return { items: pages[page - 1], pages: pages.length }
+    })
+    expect(all.map((c) => c.id)).toEqual(["c-1", "c-2", "c-3", "c-4"])
+    expect(calls).toEqual([
+      [1, 100],
+      [2, 100],
+      [3, 100],
+    ])
+  })
+
+  it("asks once when there is one page, or none", async () => {
+    let calls = 0
+    const one = await listAllConnectors(async () => {
+      calls += 1
+      return { items: [crm], pages: 1 }
+    })
+    expect(one).toEqual([crm])
+    const none = await listAllConnectors(async () => {
+      calls += 1
+      return { items: [], pages: 0 }
+    })
+    expect(none).toEqual([])
+    expect(calls).toBe(2)
   })
 })

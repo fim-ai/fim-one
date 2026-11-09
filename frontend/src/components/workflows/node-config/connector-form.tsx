@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { connectorApi } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
 import type { ConnectorResponse } from "@/types/connector"
-import { actionOptions, connectorOptions } from "./connector-options"
+import { actionOptions, connectorOptions, listAllConnectors } from "./connector-options"
 import { InsertVariableBar, OutputVariableField, SectionHeader } from "./fields"
 import type { NodeFormProps } from "./types"
 
@@ -26,10 +26,9 @@ export function ConnectorForm({ data, setField, setFields, otherNodes }: NodeFor
   const [connectors, setConnectors] = useState<ConnectorResponse[]>([])
   useEffect(() => {
     let cancelled = false
-    connectorApi
-      .list(1, 100)
-      .then((res) => {
-        if (!cancelled) setConnectors(res.items)
+    listAllConnectors(connectorApi.list)
+      .then((all) => {
+        if (!cancelled) setConnectors(all)
       })
       .catch((err) => {
         if (!cancelled) toast.error(getErrorMessage(err, tError))
