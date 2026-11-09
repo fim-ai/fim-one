@@ -51,12 +51,15 @@ async def connector_tools(
     *,
     mode: ToolMode,
     strict: bool = False,
+    action_ids: Collection[str] | None = None,
 ) -> list[BaseTool]:
     """Tools for the API connectors in *connectors* (rows with ``actions`` loaded).
 
-    A connector the acting user has no credential for is left out; with
-    *strict* the refusal is raised instead, for a caller that needs this
-    connector or nothing.
+    A connector the acting user has no credential for, or whose tools cannot
+    be built (a base URL the SSRF policy blocks), is left out on its own;
+    with *strict* the refusal or error is raised instead, for a caller that
+    needs this connector or nothing. *action_ids* limits ``legacy`` mode to
+    those actions: a caller that runs one action builds one tool.
     """
     from fim_one.core.tool.connector import ConnectorToolAdapter, build_connector_meta_tool
 
@@ -92,9 +95,10 @@ async def connector_tools(
         ]
 
     tools: list[BaseTool] = []
+    built_for = 0
     for conn, creds in callable_connectors:
-        for action in conn.actions or []:
-            tools.append(
+        try:
+            conn_tools = [
                 ConnectorToolAdapter(
                     connector_name=conn.name,
                     connector_base_url=conn.base_url or "",
@@ -113,8 +117,18 @@ async def connector_tools(
                     action_id=action.id,
                     on_call_complete=record,
                 )
-            )
-    logger.info("Loaded %d API tools from %d connectors", len(tools), len(callable_connectors))
+                for action in conn.actions or []
+                if action_ids is None or action.id in action_ids
+            ]
+        except Exception as exc:
+            if strict:
+                raise
+            # One connector that cannot be built does not cost the others.
+            logger.warning("Skipping connector %r: %s", conn.name, exc)
+            continue
+        tools.extend(conn_tools)
+        built_for += 1
+    logger.info("Loaded %d API tools from %d connectors", len(tools), built_for)
     return tools
 
 

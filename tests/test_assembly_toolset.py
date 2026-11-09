@@ -22,6 +22,7 @@ from fim_one.core.assembly.toolset import (
     mcp_tools,
 )
 from fim_one.core.security.encryption import encrypt_credential, encrypt_db_config
+from fim_one.core.tool.connector import ConnectorToolAdapter
 from fim_one.db.base import Base
 from fim_one.db.models.connector_credential import ConnectorCredential
 
@@ -176,6 +177,45 @@ class TestConnectorTools:
             )
 
         assert caught.value.error_code == "credential_required"
+
+    async def test_legacy_a_connector_that_cannot_be_built_does_not_cost_the_others(
+        self, session: AsyncSession
+    ) -> None:
+        """The SSRF check in the tool's constructor raised out of the loop,
+        and the turn lost every connector and database tool."""
+        blocked = _api("blocked", allow_fallback=True)
+        blocked.base_url = "http://169.254.169.254"
+
+        tools = await connector_tools(
+            session, _ctx(OWNER), [blocked, _api("open", allow_fallback=True)], mode="legacy"
+        )
+
+        assert [t.name for t in tools] == ["open__ping", "open__wipe"]
+        with pytest.raises(ValueError, match="SSRF"):
+            await connector_tools(session, _ctx(OWNER), [blocked], mode="legacy", strict=True)
+
+    async def test_legacy_can_be_limited_to_the_actions_asked_for(
+        self, session: AsyncSession
+    ) -> None:
+        """A workflow step runs one action: it builds one tool, not one per action."""
+        built: list[str] = []
+        real = ConnectorToolAdapter.__init__
+
+        def _counting(self: Any, *args: Any, **kwargs: Any) -> None:
+            built.append(kwargs["action_name"])
+            real(self, *args, **kwargs)
+
+        with patch.object(ConnectorToolAdapter, "__init__", _counting):
+            tools = await connector_tools(
+                session,
+                _ctx(OWNER),
+                [_api("open", allow_fallback=True)],
+                mode="legacy",
+                action_ids=["act-wipe"],
+            )
+
+        assert [t.name for t in tools] == ["open__wipe"]
+        assert built == ["wipe"]
 
 
 class TestDatabaseTools:

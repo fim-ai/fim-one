@@ -1122,8 +1122,13 @@ class ConnectorExecutor:
                 # and the call record all come from core/assembly: the same
                 # rule and the same record as a call made from chat.
                 try:
-                    action_tools = await connector_tools(
-                        db, call_context, [connector], mode="legacy", strict=True
+                    (adapter,) = await connector_tools(
+                        db,
+                        call_context,
+                        [connector],
+                        mode="legacy",
+                        strict=True,
+                        action_ids=[action_id],
                     )
                 except AssemblyRefusal as refused:
                     return NodeResult(
@@ -1132,9 +1137,6 @@ class ConnectorExecutor:
                         error=refused.detail,
                         duration_ms=_ms_since(t0),
                     )
-                adapter = next(
-                    t for t in action_tools if getattr(t, "action_id", None) == action_id
-                )
 
             output = await adapter.run(**params)
             await _store_output(node, store, output)
