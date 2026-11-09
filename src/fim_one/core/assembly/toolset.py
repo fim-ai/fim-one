@@ -265,10 +265,10 @@ async def mcp_tools(
 
     A server the acting user has no credential for, or that cannot be
     connected, is left out. With *strict* it raises instead (the refusal, a
-    :class:`ToolsetError`, or the connection error), after closing what it
-    had opened: for a caller that needs this one server or nothing. The
-    caller disconnects the returned client (``disconnect_all``) when the
-    run ends.
+    :class:`ToolsetError`, or the connection error): for a caller that needs
+    this one server or nothing. Whenever it raises, cancellation included,
+    it first closes what it had opened. The caller disconnects the returned
+    client (``disconnect_all``) when the run ends.
 
     Must be awaited in the coroutine that will also disconnect: the stdio
     client enters an anyio cancel scope that has to be left by the task
@@ -277,10 +277,33 @@ async def mcp_tools(
     if not servers:
         return [], None
 
-    from fim_one.core.mcp import MCPClient, build_mcp_meta_tool
-    from fim_one.db import create_session
+    from fim_one.core.mcp import MCPClient
 
     client = MCPClient()
+    try:
+        return await _open_mcp_servers(client, ctx, servers, mode=mode, strict=strict), client
+    except BaseException:
+        # Nobody else holds the client yet, so nobody else can close it. That
+        # includes cancellation: a workflow step that times out while a
+        # server is connecting is cancelled, not failed.
+        try:
+            await client.disconnect_all()
+        except Exception:
+            logger.warning("Failed to close MCP connections after an error", exc_info=True)
+        raise
+
+
+async def _open_mcp_servers(
+    client: MCPClient,
+    ctx: CallContext,
+    servers: Sequence[Any],
+    *,
+    mode: ToolMode,
+    strict: bool,
+) -> list[BaseTool]:
+    from fim_one.core.mcp import build_mcp_meta_tool
+    from fim_one.db import create_session
+
     sources: dict[str, CredentialSource] = {}
     record = call_recorder(ctx, kind="mcp", credential_source=sources)
     connected: dict[str, list[Any]] = {}
@@ -295,7 +318,6 @@ async def mcp_tools(
             connected[server.name] = adapters
         except Exception as exc:
             if strict:
-                await client.disconnect_all()
                 raise
             if isinstance(exc, AssemblyRefusal):
                 logger.info("Skipping MCP server %r: %s", server.name, exc.error_code)
@@ -307,16 +329,16 @@ async def mcp_tools(
     loaded = sum(len(adapters) for adapters in connected.values())
     if mode == "progressive":
         if not connected:
-            return [], client
+            return []
         logger.info(
             "Loaded MCPServerMetaTool (progressive): %d servers, %d tools consolidated into 1 tool",
             len(connected),
             loaded,
         )
-        return [build_mcp_meta_tool(connected)], client
+        return [build_mcp_meta_tool(connected)]
 
     logger.info("Loaded %d tools from %d user MCP servers", loaded, len(servers))
-    return [tool for adapters in connected.values() for tool in adapters], client
+    return [tool for adapters in connected.values() for tool in adapters]
 
 
 async def kb_binding(db: AsyncSession, ctx: CallContext, kb_ids: Sequence[str]) -> dict[str, str]:

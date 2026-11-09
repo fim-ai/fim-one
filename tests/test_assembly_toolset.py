@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Iterator
+import asyncio
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Any, cast
@@ -239,6 +240,7 @@ class _FakeMCPClient:
     def __init__(self) -> None:
         self.connects: dict[str, dict[str, Any]] = {}
         self.fail: set[str] = set()
+        self.before_connect: dict[str, Callable[[], Awaitable[None]]] = {}
         self.disconnected = 0
 
     async def disconnect_all(self) -> None:
@@ -249,6 +251,8 @@ class _FakeMCPClient:
 
         if name in self.fail:
             raise ConnectionError("refused")
+        if name in self.before_connect:
+            await self.before_connect[name]()
         self.connects[name] = kwargs
 
         async def _call(_tool: str, _arguments: dict[str, Any]) -> Any:
@@ -403,6 +407,56 @@ class TestMcpToolsStrict:
                 [_mcp_server("down", transport="sse", allow_fallback=True)],
                 mode="legacy",
                 strict=True,
+            )
+
+        assert mcp_world.disconnected == 1
+
+
+class TestMcpToolsCloseWhatTheyOpenedWhenCancelled:
+    """A workflow step that times out mid-connect is cancelled, not failed.
+
+    The client was closed on ``Exception`` only, so the cancellation left the
+    servers already opened connected, with nobody holding the client.
+    """
+
+    @pytest.mark.parametrize("strict", [True, False])
+    async def test_cancellation_during_connect(
+        self, mcp_world: _FakeMCPClient, strict: bool
+    ) -> None:
+        async def _cancelled() -> None:
+            raise asyncio.CancelledError
+
+        mcp_world.before_connect["slow"] = _cancelled
+
+        with pytest.raises(asyncio.CancelledError):
+            await mcp_tools(
+                _ctx(OWNER),
+                [
+                    _mcp_server("first", transport="streamable_http", allow_fallback=True),
+                    _mcp_server("slow", transport="sse", allow_fallback=True),
+                ],
+                mode="legacy",
+                strict=strict,
+            )
+
+        assert "first" in mcp_world.connects
+        assert mcp_world.disconnected == 1
+
+    async def test_a_node_timeout_closes_the_client(self, mcp_world: _FakeMCPClient) -> None:
+        async def _hangs() -> None:
+            await asyncio.sleep(30)
+
+        mcp_world.before_connect["slow"] = _hangs
+
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(
+                mcp_tools(
+                    _ctx(OWNER),
+                    [_mcp_server("slow", transport="sse", allow_fallback=True)],
+                    mode="legacy",
+                    strict=True,
+                ),
+                timeout=0.05,
             )
 
         assert mcp_world.disconnected == 1
