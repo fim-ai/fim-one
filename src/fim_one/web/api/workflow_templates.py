@@ -30,7 +30,7 @@ from fim_one.web.schemas.workflow import (
 )
 
 from fim_one.web.api.admin_utils import write_audit
-from fim_one.web.api.workflows import normalize_blueprint
+from fim_one.web.api.workflows import ensure_nodes_enabled, normalize_blueprint
 from fim_one.web.services.feature_flags import require_workflows_enabled
 
 logger = logging.getLogger(__name__)
@@ -126,10 +126,12 @@ async def list_all_templates(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     """List all active templates (built-in + DB-stored), grouped by category."""
+    from fim_one.core.workflow.node_gates import disabled_node_errors
     from fim_one.core.workflow.templates import list_templates as list_builtin
 
-    # 1. Collect built-in templates
-    builtin = list_builtin()
+    # 1. Collect built-in templates. Templates built on a switched-off node
+    # type are not offered (built-in or stored).
+    builtin = [t for t in list_builtin() if not disabled_node_errors(t["blueprint"])]
     items: list[dict[str, Any]] = [
         _builtin_to_response(t).model_dump() for t in builtin
     ]
@@ -142,6 +144,8 @@ async def list_all_templates(
     )
     db_templates = result.scalars().all()
     for tpl in db_templates:
+        if disabled_node_errors(tpl.blueprint):
+            continue
         items.append(_template_to_response(tpl).model_dump())
 
     # 3. Group by category
@@ -213,6 +217,7 @@ async def create_workflow_from_template(
 
     if blueprint is None:
         raise AppError("template_not_found", status_code=404)
+    ensure_nodes_enabled(blueprint)
 
     input_schema, output_schema = _extract_schemas_from_blueprint(blueprint)
 

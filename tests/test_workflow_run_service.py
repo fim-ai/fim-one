@@ -330,6 +330,7 @@ async def test_tokens_billed_to_the_principal(entry: str, world: World) -> None:
         assert ctx.db_session_factory is not None  # approval nodes persist
 
 
+@pytest.mark.usefixtures("human_intervention_enabled")
 @pytest.mark.asyncio
 @pytest.mark.parametrize("entry", ENTRIES)
 async def test_approval_step(entry: str, world: World, real_engine: None) -> None:
@@ -362,6 +363,34 @@ async def test_approval_step(entry: str, world: World, real_engine: None) -> Non
         assert run.id == approvals[0].workflow_run_id
         assert run.user_id == _expected_principal(entry, world)
         assert run.status == "failed"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("entry", ENTRIES)
+async def test_approval_step_refused_while_switched_off(
+    entry: str, world: World, real_engine: None
+) -> None:
+    """With Human Intervention off (the default), a stored workflow that
+    contains the step is refused at every entry point before it starts: no
+    engine, no approval, and the step is not skipped or auto-approved."""
+    async with world.factory() as s:
+        wf = await s.get(Workflow, world.wf.id)
+        assert wf is not None
+        wf.blueprint = APPROVAL_BLUEPRINT
+        await s.commit()
+
+    result = await asyncio.wait_for(_drive(entry, world), timeout=30)
+
+    assert result.refused == "human_intervention_disabled"
+    async with world.factory() as s:
+        assert list((await s.execute(select(WorkflowApproval))).scalars().all()) == []
+    runs = await _runs(world)
+    if entry == "schedule":
+        # Nobody to tell: the refusal is recorded for the author.
+        (run,) = runs
+        assert (run.status, run.error) == ("failed", "human_intervention_disabled")
+    else:
+        assert runs == []
 
 
 # ---------------------------------------------------------------------------

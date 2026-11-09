@@ -381,6 +381,7 @@ async def _run_scheduled(wf) -> None:  # type: ignore[no-untyped-def]
 
 
 class TestScheduledRunGates:
+    @pytest.mark.usefixtures("human_intervention_enabled")
     @pytest.mark.asyncio
     async def test_approval_node_waits_for_a_decision(self, sched_db) -> None:  # type: ignore[no-untyped-def]
         """W1: a scheduled run creates a pending approval and waits for it.

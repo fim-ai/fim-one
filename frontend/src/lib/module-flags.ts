@@ -15,12 +15,23 @@ import { apiFetch, ApiError } from "@/lib/api"
 export interface ModuleFlags {
   skills: boolean
   workflows: boolean
+  /**
+   * Whether the workflow editor offers the Human Intervention node. Set by
+   * the server's ``WORKFLOW_HUMAN_INTERVENTION_ENABLED`` env var, not by an
+   * admin toggle; off by default.
+   */
+  humanIntervention: boolean
 }
 
-const DEFAULT_FLAGS: ModuleFlags = { skills: false, workflows: false }
+const DEFAULT_FLAGS: ModuleFlags = {
+  skills: false,
+  workflows: false,
+  humanIntervention: false,
+}
 
 interface VersionEnvelope {
-  modules?: Partial<ModuleFlags>
+  modules?: Partial<Pick<ModuleFlags, "skills" | "workflows">>
+  workflow_human_intervention?: boolean
 }
 
 /**
@@ -36,6 +47,7 @@ export async function fetchModuleFlags(): Promise<ModuleFlags> {
     return {
       skills: env.modules?.skills === true,
       workflows: env.modules?.workflows === true,
+      humanIntervention: env.workflow_human_intervention === true,
     }
   } catch (err) {
     if (err instanceof ApiError && err.status === 401) return DEFAULT_FLAGS
@@ -86,7 +98,7 @@ export function useModuleFlags(): ModuleFlags & { loaded: boolean } {
  * safe to render the page (loading or enabled), ``false`` once a redirect
  * has been triggered — callers can render a spinner meanwhile.
  */
-export function useModuleGuard(moduleName: keyof ModuleFlags): boolean {
+export function useModuleGuard(moduleName: "skills" | "workflows"): boolean {
   const flags = useModuleFlags()
   const router = useRouter()
   const enabled = flags[moduleName]

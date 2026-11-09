@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { createContext, useContext, useMemo, useState } from "react"
 import { useTranslations } from "next-intl"
 import {
   Play,
@@ -71,6 +71,32 @@ export const itemByType: Record<WorkflowNodeType, NodePaletteItem> = Object.from
   categories.flatMap((cat) => cat.items.map((item) => [item.type, item])),
 ) as Record<WorkflowNodeType, NodePaletteItem>
 
+const NO_HIDDEN_TYPES: ReadonlySet<WorkflowNodeType> = new Set()
+
+/**
+ * Node types this instance does not offer for adding (the editor provides
+ * the set from the server's flags). Nodes of a hidden type that are already
+ * on the canvas still render; only the ways to add a new one go away.
+ */
+export const HiddenNodeTypesContext =
+  createContext<ReadonlySet<WorkflowNodeType>>(NO_HIDDEN_TYPES)
+
+/** Categories of node types that can be added, without the hidden ones. */
+export function offeredCategories(
+  hidden: ReadonlySet<WorkflowNodeType>,
+): NodePaletteCategory[] {
+  if (hidden.size === 0) return categories
+  return categories
+    .map((cat) => ({ ...cat, items: cat.items.filter((item) => !hidden.has(item.type)) }))
+    .filter((cat) => cat.items.length > 0)
+}
+
+/** {@link offeredCategories} for the surrounding editor. */
+export function useOfferedCategories(): NodePaletteCategory[] {
+  const hidden = useContext(HiddenNodeTypesContext)
+  return useMemo(() => offeredCategories(hidden), [hidden])
+}
+
 interface NodePaletteProps {
   existingNodeTypes?: Set<string>
   recentNodes?: WorkflowNodeType[]
@@ -78,6 +104,8 @@ interface NodePaletteProps {
 
 export function NodePalette({ existingNodeTypes, recentNodes = [] }: NodePaletteProps) {
   const t = useTranslations("workflows")
+  const hiddenTypes = useContext(HiddenNodeTypesContext)
+  const offered = useOfferedCategories()
   const [search, setSearch] = useState("")
   const [collapsed, setCollapsed] = useState(false)
 
@@ -106,18 +134,18 @@ export function NodePalette({ existingNodeTypes, recentNodes = [] }: NodePalette
   /** Filtered recently used items */
   const filteredRecent = useMemo(() => {
     return recentNodes
-      .filter((type) => itemByType[type] != null)
+      .filter((type) => itemByType[type] != null && !hiddenTypes.has(type))
       .map((type) => itemByType[type])
       .filter(matchesSearch)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recentNodes, searchLower])
+  }, [recentNodes, searchLower, hiddenTypes])
 
   /** Whether ANY category or recent section has results */
   const hasAnyResults = useMemo(() => {
     if (filteredRecent.length > 0) return true
-    return categories.some((cat) => cat.items.some(matchesSearch))
+    return offered.some((cat) => cat.items.some(matchesSearch))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchLower, filteredRecent.length])
+  }, [searchLower, filteredRecent.length, offered])
 
   const isSingletonDisabled = (type: WorkflowNodeType) => {
     if (type === "start" && existingNodeTypes?.has("start")) return true
@@ -141,7 +169,7 @@ export function NodePalette({ existingNodeTypes, recentNodes = [] }: NodePalette
         </div>
         <ScrollArea className="flex-1 min-h-0 w-full">
           <div className="flex flex-col items-center gap-0.5 pb-2">
-            {categories.flatMap((cat) =>
+            {offered.flatMap((cat) =>
               cat.items.map((item) => {
                 const disabled = isSingletonDisabled(item.type)
                 return (
@@ -249,7 +277,7 @@ export function NodePalette({ existingNodeTypes, recentNodes = [] }: NodePalette
           )}
 
           {/* Category sections */}
-          {categories.map((cat) => {
+          {offered.map((cat) => {
             const filtered = cat.items.filter(matchesSearch)
             if (filtered.length === 0) return null
             return (

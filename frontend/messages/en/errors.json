@@ -111,5 +111,7 @@
   "sensitive_word_duplicate": "This sensitive word already exists.",
   "sensitive_word_not_found": "Sensitive word not found.",
 
+  "human_intervention_disabled": "Human Review steps are switched off on this instance. Remove them from the workflow to continue.",
+
   "someFilesFailedUpload": "Some files failed to upload. Remove them or retry before sending."
 }

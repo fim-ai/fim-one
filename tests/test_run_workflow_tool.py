@@ -163,6 +163,7 @@ async def test_not_found_when_not_in_ids(db: async_sessionmaker[AsyncSession]) -
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("human_intervention_enabled")
 @pytest.mark.asyncio
 async def test_rejects_human_intervention_node(db: async_sessionmaker[AsyncSession]) -> None:
     bp = {

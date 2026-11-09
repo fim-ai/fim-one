@@ -34,6 +34,11 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Protocol
 
+from .node_gates import (
+    HUMAN_INTERVENTION_DISABLED,
+    HUMAN_INTERVENTION_DISABLED_DETAIL,
+    has_disabled_node,
+)
 from .rate_limiter import WorkflowRateLimiter
 from .types import ExecutionContext, NodeResult, NodeStatus, NodeType, WorkflowNodeDef
 
@@ -394,6 +399,13 @@ class WorkflowRunService:
         except BlueprintValidationError as exc:
             raise RunRefusedError(f"invalid_blueprint: {exc}", 400) from None
 
+        if has_disabled_node(parsed.nodes):
+            # Stored before the switch was turned off: refuse the whole run
+            # rather than skip the step.
+            raise RunRefusedError(
+                HUMAN_INTERVENTION_DISABLED, 409, HUMAN_INTERVENTION_DISABLED_DETAIL
+            )
+
         if mode in NO_APPROVAL_MODES and any(
             node.type == NodeType.HUMAN_INTERVENTION for node in parsed.nodes
         ):
@@ -529,6 +541,10 @@ class WorkflowRunService:
         from .variable_store import VariableStore
 
         principal = resolve_principal(workflow, caller_id, RunMode.TEST_NODE)
+        if has_disabled_node([node]):
+            raise RunRefusedError(
+                HUMAN_INTERVENTION_DISABLED, 409, HUMAN_INTERVENTION_DISABLED_DETAIL
+            )
         await self.gate.check(principal)
 
         env_vars = {**author_env_vars(workflow, principal), **env_overrides}

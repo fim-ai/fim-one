@@ -89,3 +89,9 @@ def tool_registry() -> ToolRegistry:
 def mock_agent(mock_llm: FakeLLM, tool_registry: ToolRegistry) -> ReActAgent:
     """Return a ``ReActAgent`` wired to the fake LLM and echo tool registry."""
     return ReActAgent(llm=mock_llm, tools=tool_registry, max_iterations=5)
+
+
+@pytest.fixture()
+def human_intervention_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Switch Human Intervention workflow nodes on (they are off by default)."""
+    monkeypatch.setenv("WORKFLOW_HUMAN_INTERVENTION_ENABLED", "true")

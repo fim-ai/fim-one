@@ -332,7 +332,7 @@ def normalize_blueprint(raw: Any) -> dict[str, Any]:
     from fim_one.core.workflow.blueprint_v2 import BlueprintSchemaError, normalize_for_save
 
     try:
-        return normalize_for_save(raw)
+        blueprint = normalize_for_save(raw)
     except BlueprintSchemaError as exc:
         raise AppError(
             "blueprint_schema_invalid",
@@ -340,6 +340,52 @@ def normalize_blueprint(raw: Any) -> dict[str, Any]:
             detail="The workflow blueprint has invalid fields",
             detail_args={"errors": exc.errors},
         ) from None
+    ensure_nodes_enabled(blueprint)
+    return blueprint
+
+
+def ensure_nodes_enabled(blueprint: Any) -> None:
+    """Refuse to store a blueprint that contains a switched-off node type.
+
+    Called for every blueprint that is about to be written, including the
+    copies made by fork, version restore and create-from-template, which
+    do not pass through :func:`normalize_blueprint`. Answers 422
+    ``human_intervention_disabled``; ``error_args.errors`` lists
+    ``{loc, node_id, label, message}`` per node (the shape
+    ``blueprint_schema_invalid`` uses) and ``error_args.nodes`` their labels.
+    """
+    from fim_one.core.workflow.node_gates import (
+        HUMAN_INTERVENTION_DISABLED,
+        disabled_node_errors,
+    )
+
+    errors = disabled_node_errors(blueprint)
+    if errors:
+        nodes = ", ".join(str(e["label"]) for e in errors)
+        raise AppError(
+            HUMAN_INTERVENTION_DISABLED,
+            status_code=422,
+            detail=(
+                "Human Intervention steps are switched off on this instance. "
+                f"Remove these steps to continue: {nodes}"
+            ),
+            detail_args={"errors": errors, "nodes": nodes},
+        )
+
+
+def _disabled_node_items(blueprint: Any) -> list[BlueprintWarningItem]:
+    """One validation item per switched-off node in *blueprint*."""
+    from fim_one.core.workflow.node_gates import (
+        HUMAN_INTERVENTION_DISABLED,
+        disabled_node_errors,
+    )
+
+    return [
+        BlueprintWarningItem(
+            node_id=e["node_id"], code=HUMAN_INTERVENTION_DISABLED, message=e["message"]
+        )
+        for e in disabled_node_errors(blueprint)
+    ]
 
 
 def _refused(exc: Any) -> AppError:
@@ -561,9 +607,11 @@ async def list_workflow_templates(
     current_user: User = Depends(get_current_user),  # noqa: B008
 ) -> ApiResponse:
     """Return all built-in workflow templates (not stored in DB)."""
+    from fim_one.core.workflow.node_gates import disabled_node_errors
     from fim_one.core.workflow.templates import list_templates
 
-    templates = list_templates()
+    # Templates built on a switched-off node type are not offered.
+    templates = [t for t in list_templates() if not disabled_node_errors(t["blueprint"])]
     return ApiResponse(
         data=[WorkflowTemplateResponse(**t).model_dump() for t in templates]
     )
@@ -583,6 +631,7 @@ async def create_workflow_from_template(
         raise AppError("template_not_found", status_code=404)
 
     blueprint = template["blueprint"]
+    ensure_nodes_enabled(blueprint)
     input_schema, output_schema = _extract_schemas_from_blueprint(blueprint)
 
     wf = Workflow(
@@ -999,6 +1048,7 @@ async def fork_workflow(
     source = await _get_accessible_workflow(workflow_id, current_user.id, db)
     if source.user_id != current_user.id:
         raise AppError("fork_denied", status_code=403, detail="Only the owner can fork this resource")
+    ensure_nodes_enabled(source.blueprint)
 
     fork_name = (body.name if body and body.name else f"{source.name} (Copy)")[:200]
 
@@ -1205,22 +1255,31 @@ async def validate_blueprint_endpoint(
             "field_errors": exc.errors,
             "warnings": [],
         })
+    # Switched-off node types make the blueprint unsaveable; each such node
+    # also gets a warning entry so the canvas marks it.
+    gate_errors = _disabled_node_items(blueprint)
     try:
         parsed = parse_blueprint(blueprint)
         warnings = _validate(parsed)
-        return ApiResponse(data={
-            "valid": True,
+        data: dict[str, Any] = {
+            "valid": not gate_errors,
             "node_count": len(parsed.nodes),
             "edge_count": len(parsed.edges),
             "warnings": [
-                {
-                    "node_id": w.node_id,
-                    "code": w.code,
-                    "message": w.message,
-                }
-                for w in warnings
+                *(w.model_dump() for w in gate_errors),
+                *(
+                    {
+                        "node_id": w.node_id,
+                        "code": w.code,
+                        "message": w.message,
+                    }
+                    for w in warnings
+                ),
             ],
-        })
+        }
+        if gate_errors:
+            data["error"] = "; ".join(w.message for w in gate_errors)
+        return ApiResponse(data=data)
     except BlueprintValidationError as exc:
         return ApiResponse(data={
             "valid": False,
@@ -1268,17 +1327,21 @@ async def validate_workflow(
 
     warnings = _validate(parsed)
     topo_order = topological_sort(parsed)
+    gate_errors = _disabled_node_items(blueprint)
 
     return ApiResponse(data=WorkflowValidateResponse(
-        valid=True,
-        errors=[],
+        valid=not gate_errors,
+        errors=[w.message for w in gate_errors],
         warnings=[
-            BlueprintWarningItem(
-                node_id=w.node_id,
-                code=w.code,
-                message=w.message,
-            )
-            for w in warnings
+            *gate_errors,
+            *(
+                BlueprintWarningItem(
+                    node_id=w.node_id,
+                    code=w.code,
+                    message=w.message,
+                )
+                for w in warnings
+            ),
         ],
         node_count=len(parsed.nodes),
         edge_count=len(parsed.edges),
@@ -1996,6 +2059,7 @@ async def restore_workflow_version(
         raise AppError("workflow_version_not_found", status_code=404)
 
     # Apply the restored blueprint
+    ensure_nodes_enabled(ver.blueprint)
     wf.blueprint = ver.blueprint
     input_schema, output_schema = _extract_schemas_from_blueprint(ver.blueprint)
     wf.input_schema = input_schema

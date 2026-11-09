@@ -46,9 +46,11 @@ import type {
   WorkflowLogEventType,
 } from "@/types/workflow"
 import { usePageTitle } from "@/hooks/use-page-title"
+import { toastWorkflowWriteError } from "@/lib/workflow-errors"
 
 export default function WorkflowEditorPage() {
   const t = useTranslations("workflows")
+  const tError = useTranslations("errors")
   const to = useTranslations("organizations")
   const tc = useTranslations("common")
   const { user, isLoading: authLoading } = useAuth()
@@ -351,14 +353,21 @@ export default function WorkflowEditorPage() {
       savedBlueprintRef.current = JSON.stringify(blueprintRef.current)
       setIsDirty(false)
       setLastSavedAt(new Date())
-    } catch {
-      // Only show error toast for manual saves; auto-save failures are silent
-      if (!isAutoSave) toast.error(t("workflowUpdateFailed"))
+    } catch (err) {
+      // Auto-save failures are silent, except a refusal the author has to
+      // act on (a switched-off step), which would otherwise lose every edit
+      // without a word.
+      toastWorkflowWriteError(
+        err,
+        isAutoSave ? null : t("workflowUpdateFailed"),
+        tError,
+        t,
+      )
     } finally {
       if (!isAutoSave) setIsSaving(false)
       isAutoSavingRef.current = false
     }
-  }, [workflow, t])
+  }, [workflow, t, tError])
 
   const handleBlueprintChange = useCallback((bp: WorkflowBlueprint) => {
     blueprintRef.current = bp
@@ -647,12 +656,12 @@ export default function WorkflowEditorPage() {
       const duplicated = await workflowApi.duplicate(workflow.id)
       toast.success(t("workflowDuplicated"))
       router.push(`/workflows/${duplicated.id}`)
-    } catch {
-      toast.error(t("workflowDuplicateFailed"))
+    } catch (err) {
+      toastWorkflowWriteError(err, t("workflowDuplicateFailed"), tError, t)
     } finally {
       setIsDuplicating(false)
     }
-  }, [workflow, router, t])
+  }, [workflow, router, t, tError])
 
   const handleDelete = useCallback(async () => {
     if (!workflow) return

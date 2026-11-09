@@ -16,6 +16,7 @@
   "workflowCreateFailed": "Failed to create workflow",
   "workflowUpdated": "Workflow saved",
   "workflowUpdateFailed": "Failed to save workflow",
+  "disabledStepsToRemove": "Steps to remove: {nodes}",
   "importWorkflow": "Import Workflow",
   "exportWorkflow": "Export Workflow",
   "duplicateWorkflow": "Duplicate Workflow",

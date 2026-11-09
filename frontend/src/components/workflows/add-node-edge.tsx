@@ -14,7 +14,7 @@ import { Plus, X } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
 import { resolveEdgeLabel } from "./edges/labeled-edge"
-import { categories, itemByType } from "./node-palette"
+import { itemByType, useOfferedCategories } from "./node-palette"
 import type { WorkflowNodeType } from "@/types/workflow"
 
 
@@ -34,6 +34,7 @@ export function AddNodeEdge({
   markerEnd,
 }: EdgeProps) {
   const t = useTranslations("workflows")
+  const categories = useOfferedCategories()
   const { setEdges, setNodes, getNodes } = useReactFlow()
   const [isHovered, setIsHovered] = useState(false)
   const [showPicker, setShowPicker] = useState(false)

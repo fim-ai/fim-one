@@ -28,8 +28,9 @@ import { Beaker, Copy, Trash2, Settings, Clipboard, MousePointerSquareDashed, Ma
 
 import { useWorkflowHistory } from "@/hooks/use-workflow-history"
 import { useRecentNodes } from "@/hooks/use-recent-nodes"
+import { useModuleFlags } from "@/lib/module-flags"
 import { getAutoLayoutedNodes } from "./auto-layout"
-import { NodePalette } from "./node-palette"
+import { HiddenNodeTypesContext, NodePalette } from "./node-palette"
 import { NodeConfigPanel } from "./node-config-panel"
 import { TestNodeDialog } from "./test-node-dialog"
 import { RunPanel } from "./run-panel"
@@ -149,6 +150,14 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const { recentNodes, addRecentNode } = useRecentNodes()
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null)
+
+  // Node types the instance does not offer for adding. Existing nodes of a
+  // hidden type still render, so their author can remove them.
+  const { humanIntervention } = useModuleFlags()
+  const hiddenNodeTypes = useMemo(
+    () => new Set<WorkflowNodeType>(humanIntervention ? [] : ["humanIntervention"]),
+    [humanIntervention],
+  )
 
   const [nodes, setNodes, onNodesChange] = useNodesState(
     blueprint.nodes.map((n) => ({
@@ -979,6 +988,7 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
   }), [handleAutoLayout, handleUndo, handleRedo, canUndo, canRedo, handleViewRunOnCanvas, clearRunOverlay, applyValidationOverlay, clearValidationOverlay])
 
   return (
+    <HiddenNodeTypesContext.Provider value={hiddenNodeTypes}>
     <div className="flex flex-1 min-h-0 overflow-hidden relative">
       {/* Left palette */}
       <NodePalette existingNodeTypes={existingNodeTypes} recentNodes={recentNodes} />
@@ -1234,5 +1244,6 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
         />
       )}
     </div>
+    </HiddenNodeTypesContext.Provider>
   )
 })

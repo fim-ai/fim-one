@@ -41,7 +41,11 @@ async def get_version(
     ``billing_enabled`` flag and the ``modules`` map (soft-shelvable
     Skills / Workflows) are read from ``system_settings`` so the frontend
     can decide what nav and routes to render on initial mount.
+    ``workflow_human_intervention`` mirrors the
+    ``WORKFLOW_HUMAN_INTERVENTION_ENABLED`` env switch so the workflow
+    editor knows whether to offer the Human Intervention node.
     """
+    from fim_one.core.workflow.node_gates import human_intervention_enabled
     from fim_one.web.services.billing_flag import is_billing_enabled
     from fim_one.web.services.feature_flags import are_features_enabled
 
@@ -51,6 +55,7 @@ async def get_version(
         "app_name": "FIM One",
         "billing_enabled": await is_billing_enabled(db),
         "modules": await are_features_enabled(db),
+        "workflow_human_intervention": human_intervention_enabled(),
     }
 
 

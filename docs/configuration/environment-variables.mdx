@@ -436,6 +436,14 @@ Used for login codes and email notifications. The `email_send` built-in tool is 
 
 ---
 
+## Workflow Human Intervention Steps
+
+A Human Intervention (approval) step waits for its decision inside the server process, so a restart loses the wait and the run with it. The step is therefore off unless you enable it.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `WORKFLOW_HUMAN_INTERVENTION_ENABLED` | No | `false` | Accept Human Intervention steps in workflows. While `false`, the editor does not offer the step, saving or importing a workflow that contains one is refused with `human_intervention_disabled` naming the steps, and a workflow that already contains one still opens for editing but is refused at run start. Enable only on a single-process instance where a lost approval wait is acceptable |
+
 ## Workflow Run Retention
 
 Background cleanup task that automatically purges old workflow runs. Per-workflow overrides (configured in the workflow settings UI) take priority over these global defaults.
