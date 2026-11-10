@@ -505,9 +505,10 @@ Every server process stamps the runs it is executing. A run still `running` whos
 | `WORKFLOW_RUN_STALE_SECONDS` | No | `90` | A `running` run with no stamp for this long is taken for dead and closed as failed. Never less than three heartbeats. A blocked event loop does not stop the stamping; a process that cannot reach the database for this long loses its runs |
 | `WORKFLOW_RUN_SWEEP_SECONDS` | No | `30` | How often the recovery sweep runs after the one at startup |
 | `SANDBOX_ORPHAN_MAX_AGE_HOURS` | No | `24` | A run working directory under `data/sandbox` that belongs to no workflow run record (a single-step test, a delegated agent, an evaluation run) is removed once nothing in it has changed for this many hours. Directories of workflow runs are removed when the run has ended |
-| `WORKFLOW_RUN_LEGACY_GRACE_SECONDS` | No | `1800` | Runs that were `running` before the first start of a version with heartbeats carry no mark. They are left alone for this long after a process starts (an old process may still be executing them during a rolling deployment), then closed as failed |
-| `WORKFLOW_MAX_WAITING_RUNS_PER_USER` | No | `20` | How many runs of one user may wait for a decision at the same time. A run that would wait beyond that fails at the step with `workflow_waiting_limit_reached`. `0` removes the limit |
+| `WORKFLOW_RUN_LEGACY_GRACE_SECONDS` | No | `1800` | Runs that were `running` before the first start of a version with heartbeats carry no mark. They are left alone for this long after a process of the new version first finds them (an old process may still be executing them during a rolling deployment; restarts do not restart the wait), then closed as failed |
+| `WORKFLOW_MAX_WAITING_RUNS_PER_USER` | No | `20` | How many runs of one user may wait for a decision at the same time. At the limit, a workflow with a step that waits is refused before it starts with `workflow_waiting_limit_reached`. `0` removes the limit |
 | `WORKFLOW_SUSPEND_STATE_MAX_BYTES` | No | `5242880` | The most a waiting run may keep to go on later (its variables and step outputs, stored encrypted with the credential key). A run that would exceed it fails at the step with `workflow_suspend_state_too_large` |
+| `WORKFLOW_RESUME_SLOT_WAIT_SECONDS` | No | `3600` | How long a run continued after its approval may queue for one of its user's concurrent-run slots. It queues ahead of that user's new runs; after this long without a slot it fails with `workflow_resume_slot_timeout` |
 
 ## Workflow Run Retention
 
