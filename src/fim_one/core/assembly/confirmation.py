@@ -77,6 +77,7 @@ __all__ = [
     "Decision",
     "RequiresConfirmationFn",
     "SessionFactory",
+    "close_requests_of_runs",
     "confirmation_required",
     "create_approval_gate_hook",
     "record_decision",
@@ -564,6 +565,34 @@ async def validate_assignee(
     elif user_id != initiator.user_id:
         raise refuse("cannot be assigned by a user outside any organization")
     return user_id
+
+
+async def close_requests_of_runs(db: Any, run_ids: Any) -> int:
+    """Close the pending requests of workflow runs that are being deleted.
+
+    A request names its run without a foreign key, so deleting the run
+    leaves the row behind; still pending, it would stay in its approver's
+    list with nothing to approve. *run_ids* is a list of run ids or a
+    ``select`` of them. Called before the delete, in the caller's
+    transaction (the caller commits). Returns how many were closed.
+    """
+    from sqlalchemy import CursorResult, update
+
+    from fim_one.db.models.channel import ConfirmationRequest
+
+    result = cast(
+        CursorResult[Any],
+        await db.execute(
+            update(ConfirmationRequest)
+            .where(
+                ConfirmationRequest.workflow_run_id.in_(run_ids),
+                ConfirmationRequest.status == "pending",
+            )
+            .values(status="expired", responded_at=datetime.now(UTC))
+            .execution_options(synchronize_session=False)
+        ),
+    )
+    return int(result.rowcount or 0)
 
 
 def _already_decided(status: str) -> AssemblyRefusal:

@@ -15,6 +15,7 @@ from typing import Any, cast
 from sqlalchemy import CursorResult, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.assembly.confirmation import close_requests_of_runs
 from fim_one.db.models.workflow import Workflow, WorkflowRun
 
 logger = logging.getLogger(__name__)
@@ -111,30 +112,29 @@ class WorkflowRunCleaner:
 
         for wf_id, retention_days in custom_workflows:
             cutoff = datetime.now(UTC) - timedelta(days=retention_days)
-            stmt = (
-                delete(WorkflowRun)
-                .where(
-                    WorkflowRun.workflow_id == wf_id,
-                    WorkflowRun.created_at < cutoff,
-                    WorkflowRun.status.notin_(_ACTIVE_STATUSES),
-                )
+            expired_runs = (
+                WorkflowRun.workflow_id == wf_id,
+                WorkflowRun.created_at < cutoff,
+                WorkflowRun.status.notin_(_ACTIVE_STATUSES),
             )
-            res = cast(CursorResult[Any], await db.execute(stmt))
+            await close_requests_of_runs(db, select(WorkflowRun.id).where(*expired_runs))
+            res = cast(
+                CursorResult[Any], await db.execute(delete(WorkflowRun).where(*expired_runs))
+            )
             deleted += res.rowcount
 
         # 2. All other workflows: use global default
         custom_ids = [wf_id for wf_id, _ in custom_workflows]
         global_cutoff = datetime.now(UTC) - timedelta(days=global_age_days)
 
-        global_stmt = delete(WorkflowRun).where(
+        old_runs = [
             WorkflowRun.created_at < global_cutoff,
             WorkflowRun.status.notin_(_ACTIVE_STATUSES),
-        )
+        ]
         if custom_ids:
-            global_stmt = global_stmt.where(
-                WorkflowRun.workflow_id.notin_(custom_ids)
-            )
-        res = cast(CursorResult[Any], await db.execute(global_stmt))
+            old_runs.append(WorkflowRun.workflow_id.notin_(custom_ids))
+        await close_requests_of_runs(db, select(WorkflowRun.id).where(*old_runs))
+        res = cast(CursorResult[Any], await db.execute(delete(WorkflowRun).where(*old_runs)))
         deleted += res.rowcount
 
         await db.commit()
@@ -189,6 +189,7 @@ class WorkflowRunCleaner:
             ids_to_delete = [row[0] for row in del_result.all()]
 
             if ids_to_delete:
+                await close_requests_of_runs(db, ids_to_delete)
                 stmt = delete(WorkflowRun).where(WorkflowRun.id.in_(ids_to_delete))
                 del_res = cast(CursorResult[Any], await db.execute(stmt))
                 deleted += del_res.rowcount

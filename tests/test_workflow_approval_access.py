@@ -35,6 +35,9 @@ from fim_one.db.models.user import User
 from fim_one.db.models.workflow import Workflow, WorkflowRun
 from fim_one.web.api.workflows import (
     approve_approval,
+    clear_workflow_runs,
+    delete_workflow,
+    delete_workflow_run,
     ensure_assignees_valid,
     list_pending_approvals,
     list_run_approvals,
@@ -455,3 +458,113 @@ class TestRunApprovalListing:
                 run.workflow_id, run.id, current_user=world.colleague, db=session
             )
         assert _ids(seen) == {approval.id}
+
+
+class TestDeletingARunClosesItsApprovals:
+    """A request names its run without a foreign key; it must not outlive the run as pending."""
+
+    @staticmethod
+    async def _finished_run_with_approval(
+        factory: async_sessionmaker[AsyncSession], session: AsyncSession, world: World
+    ) -> ConfirmationRequest:
+        """The author's own run, failed, with the colleague's approval still open."""
+        approval = await _make_approval(
+            factory, session, world, assignee=world.colleague.id, runner=world.author
+        )
+        run = await session.get(WorkflowRun, approval.workflow_run_id)
+        assert run is not None
+        run.status = "failed"
+        await session.commit()
+        return approval
+
+    @staticmethod
+    async def _assert_closed(
+        factory: async_sessionmaker[AsyncSession],
+        session: AsyncSession,
+        world: World,
+        approval: ConfirmationRequest,
+        *,
+        run_deleted_here: bool = True,
+    ) -> None:
+        async with factory() as s:
+            if run_deleted_here:
+                assert await s.get(WorkflowRun, approval.workflow_run_id) is None
+            row = await s.get(ConfirmationRequest, approval.id)
+        assert row is not None
+        assert row.status == "expired" and row.responded_at is not None
+        assert approval.id not in _ids(
+            await list_pending_approvals(current_user=world.colleague, db=session)
+        )
+
+    async def test_deleting_one_run(
+        self, factory: async_sessionmaker[AsyncSession], session: AsyncSession, world: World
+    ) -> None:
+        approval = await self._finished_run_with_approval(factory, session, world)
+        run = await session.get(WorkflowRun, approval.workflow_run_id)
+        assert run is not None
+        await delete_workflow_run(run.workflow_id, run.id, current_user=world.author, db=session)
+        await self._assert_closed(factory, session, world, approval)
+
+    async def test_clearing_a_workflows_runs(
+        self, factory: async_sessionmaker[AsyncSession], session: AsyncSession, world: World
+    ) -> None:
+        approval = await self._finished_run_with_approval(factory, session, world)
+        other = await _make_approval(factory, session, world, assignee=world.colleague.id)
+        run = await session.get(WorkflowRun, approval.workflow_run_id)
+        assert run is not None
+        await clear_workflow_runs(run.workflow_id, current_user=world.author, db=session)
+        await self._assert_closed(factory, session, world, approval)
+        # A run that was not deleted keeps its approval open.
+        async with factory() as s:
+            kept = await s.get(ConfirmationRequest, other.id)
+        assert kept is not None and kept.status == "pending"
+
+    async def test_the_retention_cleanup(
+        self, factory: async_sessionmaker[AsyncSession], session: AsyncSession, world: World
+    ) -> None:
+        """The path the admin "cleanup runs" action and the background job share."""
+        from datetime import UTC, datetime, timedelta
+
+        from fim_one.core.workflow.run_cleanup import WorkflowRunCleaner
+
+        by_age = await self._finished_run_with_approval(factory, session, world)
+        by_count = await self._finished_run_with_approval(factory, session, world)
+        newest = await self._finished_run_with_approval(factory, session, world)
+        old = await session.get(WorkflowRun, by_age.workflow_run_id)
+        middle = await session.get(WorkflowRun, by_count.workflow_run_id)
+        newer = await session.get(WorkflowRun, newest.workflow_run_id)
+        assert old is not None and middle is not None and newer is not None
+        old.created_at = datetime.now(UTC) - timedelta(days=90)
+        # Two runs of one workflow, of which one may stay.
+        middle.created_at = datetime.now(UTC) - timedelta(days=2)
+        newer.workflow_id = middle.workflow_id
+        await session.commit()
+
+        async with factory() as fresh:
+            await WorkflowRunCleaner(max_age_days=30, max_runs_per_workflow=1).cleanup(fresh)
+
+        await self._assert_closed(factory, session, world, by_age)
+        await self._assert_closed(factory, session, world, by_count)
+        async with factory() as s:
+            kept = await s.get(ConfirmationRequest, newest.id)
+        assert kept is not None and kept.status == "pending"
+
+    async def test_deleting_the_workflow(
+        self, factory: async_sessionmaker[AsyncSession], session: AsyncSession, world: World
+    ) -> None:
+        approval = await _make_approval(factory, session, world, assignee=world.colleague.id)
+        run = await session.get(WorkflowRun, approval.workflow_run_id)
+        assert run is not None
+        await delete_workflow(run.workflow_id, current_user=world.author, db=session)
+        # The runs go by the database's cascade, which this SQLite file does not enforce.
+        await self._assert_closed(factory, session, world, approval, run_deleted_here=False)
+
+    async def test_deleting_the_user_the_run_belongs_to(
+        self, factory: async_sessionmaker[AsyncSession], session: AsyncSession, world: World
+    ) -> None:
+        from fim_one.web.services.user_deletion import purge_user_data
+
+        approval = await _make_approval(factory, session, world, assignee=world.colleague.id)
+        await purge_user_data(session, world.runner.id)
+        await session.commit()
+        await self._assert_closed(factory, session, world, approval)

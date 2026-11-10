@@ -25,7 +25,11 @@ from fim_one.core.security import get_safe_async_client, is_private_ip
 from fim_one.web.exceptions import AppError
 from fim_one.web.auth import get_current_user, get_user_org_ids
 from fim_one.web.platform import MARKET_ORG_ID, is_market_org
-from fim_one.core.assembly.confirmation import ConfirmationService, validate_assignee
+from fim_one.core.assembly.confirmation import (
+    ConfirmationService,
+    close_requests_of_runs,
+    validate_assignee,
+)
 from fim_one.core.assembly.errors import AssemblyRefusal
 from fim_one.core.assembly.principal import AuthMethod, Principal, resolve_principal
 from fim_one.db.models import User, Workflow, WorkflowRun, WorkflowVersion
@@ -1097,6 +1101,10 @@ async def delete_workflow(
 
     await purge_resource_subscriptions(
         db, resource_type="workflow", resource_id=workflow_id
+    )
+    # The runs go with the workflow; their open approvals are closed.
+    await close_requests_of_runs(
+        db, select(WorkflowRun.id).where(WorkflowRun.workflow_id == workflow_id)
     )
     await db.delete(wf)
     await db.commit()
@@ -2708,6 +2716,7 @@ async def delete_workflow_run(
     if run.status in ("pending", "running"):
         raise AppError("cannot_delete_active_run", status_code=409)
 
+    await close_requests_of_runs(db, [run.id])
     await db.delete(run)
     await db.commit()
     return ApiResponse(data={"deleted": run_id})
@@ -2725,13 +2734,13 @@ async def clear_workflow_runs(
     """
     await _get_owned_workflow(workflow_id, current_user.id, db)
 
-    del_result = cast(CursorResult[Any], await db.execute(
-        delete(WorkflowRun).where(
-            WorkflowRun.workflow_id == workflow_id,
-            _own_runs_clause(current_user.id),
-            WorkflowRun.status.in_(["completed", "failed", "cancelled"]),
-        )
-    ))
+    finished = (
+        WorkflowRun.workflow_id == workflow_id,
+        _own_runs_clause(current_user.id),
+        WorkflowRun.status.in_(["completed", "failed", "cancelled"]),
+    )
+    await close_requests_of_runs(db, select(WorkflowRun.id).where(*finished))
+    del_result = cast(CursorResult[Any], await db.execute(delete(WorkflowRun).where(*finished)))
     await db.commit()
     return ApiResponse(data={"deleted_count": del_result.rowcount})
 
