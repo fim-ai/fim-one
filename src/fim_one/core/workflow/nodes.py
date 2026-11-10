@@ -876,6 +876,36 @@ async def _interpolated_parameters(
     return params
 
 
+# A JSON number, with an optional leading "+": ASCII digits only, no "_"
+# separators, no "nan" or "inf" (all of which int() and float() accept).
+_NUMBER_TEXT = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?", re.ASCII)
+# Beyond this many digits a "whole number" is not something a tool counts with.
+_MAX_INTEGER_DIGITS = 40
+
+
+def _number_from_text(text: str) -> float | None:
+    """*text* as a finite float when it is written as a plain number."""
+    if not _NUMBER_TEXT.fullmatch(text):
+        return None
+    number = float(text)
+    return number if math.isfinite(number) else None
+
+
+def _integer_from_text(text: str) -> int | None:
+    """*text* as an int when it is a whole number: ``"3"``, ``"3.0"``, ``"3e2"``."""
+    if not _NUMBER_TEXT.fullmatch(text):
+        return None
+    import decimal
+
+    try:
+        value = decimal.Decimal(text)
+    except decimal.InvalidOperation:
+        return None
+    if value.adjusted() >= _MAX_INTEGER_DIGITS or value != value.to_integral_value():
+        return None
+    return int(value)
+
+
 def _fit_tool_schema(
     params: dict[str, Any], template: dict[str, Any], schema: Any
 ) -> dict[str, Any]:
@@ -899,15 +929,17 @@ def _fit_tool_schema(
         declared = properties.get(key)
         kind = declared.get("type") if isinstance(declared, dict) else None
         if isinstance(kind, list):
+            if "string" in kind:
+                # Text is one of the types the tool takes: it stays text.
+                continue
             kind = next((k for k in kind if k != "null"), None)
         text = value.strip()
         try:
             if kind == "integer":
-                fitted[key] = int(text)
+                if (whole := _integer_from_text(text)) is not None:
+                    fitted[key] = whole
             elif kind == "number":
-                number = float(text)
-                # "nan" and "inf" parse, and are not JSON numbers.
-                if math.isfinite(number):
+                if (number := _number_from_text(text)) is not None:
                     fitted[key] = number
             elif kind == "boolean" and text.lower() in ("true", "false"):
                 fitted[key] = text.lower() == "true"

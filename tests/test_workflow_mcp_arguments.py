@@ -84,6 +84,48 @@ class TestFitToolSchema:
         }
         assert _fit_tool_schema(filled, template, SCHEMA) == filled
 
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [("3", 3), ("3.0", 3), (" 3.00 ", 3), ("-7", -7), ("+7", 7), ("3e2", 300), ("0", 0)],
+    )
+    def test_a_whole_number_fits_an_integer_however_it_is_written(
+        self, text: str, expected: int
+    ) -> None:
+        fitted = _fit_tool_schema({"count": text}, {"count": "{{x.y}}"}, SCHEMA)
+        assert fitted == {"count": expected}
+        assert type(fitted["count"]) is int
+
+    @pytest.mark.parametrize(
+        "text",
+        ["3.5", "1_000", "٣", "３", "0x10", "1e999999", "1e40", "Infinity", "nan", "", "3 4", "1,000"],
+    )
+    def test_text_that_is_not_a_plain_whole_number_stays_text_for_an_integer(
+        self, text: str
+    ) -> None:
+        assert _fit_tool_schema({"count": text}, {"count": "{{x.y}}"}, SCHEMA) == {"count": text}
+
+    @pytest.mark.parametrize("text", ["1_000.5", "١٫٥", "inf", "-inf", "nan", "1e999", "0x1p3", "."])
+    def test_text_that_is_not_a_plain_number_stays_text_for_a_number(self, text: str) -> None:
+        assert _fit_tool_schema({"ratio": text}, {"ratio": "{{x.y}}"}, SCHEMA) == {"ratio": text}
+
+    @pytest.mark.parametrize(("text", "expected"), [("1.5", 1.5), (".5", 0.5), ("1e3", 1000.0)])
+    def test_a_plain_number_fits_a_number(self, text: str, expected: float) -> None:
+        assert _fit_tool_schema({"ratio": text}, {"ratio": "{{x.y}}"}, SCHEMA) == {
+            "ratio": expected
+        }
+
+    def test_an_argument_that_may_be_text_stays_text(self) -> None:
+        schema = {
+            "type": "object",
+            "properties": {
+                "id": {"type": ["integer", "string"]},
+                "flag": {"type": ["string", "boolean", "null"]},
+            },
+        }
+        filled = {"id": "007", "flag": "true"}
+        template = {"id": "{{x.id}}", "flag": "{{x.flag}}"}
+        assert _fit_tool_schema(filled, template, schema) == filled
+
     def test_a_value_written_literally_is_never_touched(self) -> None:
         literal = {"count": "3", "label": "x"}
         assert _fit_tool_schema(literal, literal, SCHEMA) == literal
