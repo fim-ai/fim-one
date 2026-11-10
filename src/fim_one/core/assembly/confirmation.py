@@ -730,6 +730,26 @@ async def _record_closure(db: Any, row: Any, action: str, *, actor: Actor, via: 
     if row.kind == "user_question":
         return
     payload = row.payload if isinstance(row.payload, dict) else {}
+    if payload.get("test_mode"):
+        # A card sent from the channel's Approval Playground: the tool name
+        # on it is free text the tester typed and nothing was approved.
+        # Recorded as a test of the channel, never as a decision.
+        results = {
+            actions.CONFIRMATION_APPROVE: "approved",
+            actions.CONFIRMATION_REJECT: "rejected",
+            actions.CONFIRMATION_EXPIRE: "expired",
+        }
+        await audit.record(
+            actions.CHANNEL_TEST_APPROVAL,
+            actor=actor,
+            org_id=row.org_id,
+            target_type="channel",
+            target_id=row.channel_id,
+            outcome="failed" if action == actions.CONFIRMATION_EXPIRE else "success",
+            detail=f"test card {results.get(action, action)}; via={via}",
+            db=db,
+        )
+        return
     about = payload.get("tool_name") if row.kind == "confirmation" else row.node_id
     await audit.record(
         action,

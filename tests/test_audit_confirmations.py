@@ -297,3 +297,99 @@ class TestNobodyDecidedInTime:
             "confirmation.expire", actor=None, target=("confirmation", "cnf-1"), ip=None
         )
         assert row.actor_kind == "system"
+
+
+class TestAnApprovalPlaygroundCard:
+    """An organization member can send a test card with any tool name on it
+    and answer it. That read in the audit log like a real approval."""
+
+    TOOL = "wire_transfer_to_account_CONFIDENTIAL"
+
+    async def _channel(self, world: World) -> tuple[Any, Any, Any]:
+        alice = await world.user("alice")
+        bob = await world.user("bob")
+        acme = await world.org("Acme", alice, member=bob)
+        await world.add(
+            Channel(
+                id="chan-1", name="approvals", type="feishu", org_id=acme.id, config={},
+                created_by=alice.id,
+            )
+        )
+        return alice, bob, acme
+
+    async def test_sending_one_is_recorded_as_a_test_of_the_channel(self, world: World) -> None:
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from fim_one.core.channels import ApprovalCarrier
+
+        _alice, bob, acme = await self._channel(world)
+        carrier = MagicMock(spec=ApprovalCarrier)
+        sent = _request(bob.id, id="cnf-test", payload={"tool_name": self.TOOL, "test_mode": True})
+
+        with (
+            patch("fim_one.web.api.channels.build_channel", return_value=carrier),
+            patch(
+                "fim_one.web.api.channels.ConfirmationService.request",
+                AsyncMock(return_value=sent),
+            ),
+        ):
+            await world.call(
+                "POST",
+                "/api/channels/chan-1/test-approval",
+                by=bob,
+                json={"tool_name": self.TOOL, "tool_args": {"amount": ARGUMENT}},
+            )
+
+        row = await world.one(
+            "channel.test_approval", actor=bob, org=acme, target=("channel", "chan-1")
+        )
+        assert (row.target_label, row.detail) == ("approvals", "test card sent")
+        world.assert_absent(row, self.TOOL, ARGUMENT)
+
+    @pytest.mark.parametrize(("decision", "result"), [("approve", "approved"), ("reject", "rejected")])
+    async def test_answering_one_is_not_an_approval(
+        self, world: World, decision: str, result: str
+    ) -> None:
+        _alice, bob, acme = await self._channel(world)
+        await world.add(
+            _request(
+                bob.id,
+                org_id=acme.id,
+                channel_id="chan-1",
+                agent_id=None,
+                payload={"tool_name": self.TOOL, "tool_args": {"a": ARGUMENT}, "test_mode": True},
+            )
+        )
+
+        await world.call(
+            "POST", "/api/confirmations/cnf-1/respond", by=bob, json={"decision": decision}
+        )
+
+        assert [r.action for r in await world.events()] == ["channel.test_approval"]
+        row = await world.one(
+            "channel.test_approval", actor=bob, org=acme, target=("channel", "chan-1")
+        )
+        assert row.detail == f"test card {result}; via=portal"
+        world.assert_absent(row, self.TOOL, ARGUMENT)
+
+    async def test_one_nobody_answers_is_not_an_expired_approval(self, world: World) -> None:
+        _alice, bob, acme = await self._channel(world)
+        await world.add(
+            _request(
+                bob.id,
+                org_id=acme.id,
+                channel_id="chan-1",
+                payload={"tool_name": self.TOOL, "test_mode": True},
+                expires_at=datetime.now(UTC) - timedelta(minutes=1),
+            )
+        )
+
+        async with world.factory() as db:
+            await ConfirmationRequestExpirer().sweep(db)
+
+        (row,) = await world.events()
+        assert (row.action, row.outcome, row.detail) == (
+            "channel.test_approval",
+            "failed",
+            "test card expired; via=timeout",
+        )

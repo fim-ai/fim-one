@@ -113,6 +113,7 @@ def mutating_routes(app: Any) -> Iterator[tuple[Route, Any]]:
 
 
 AUDITED: dict[Route, tuple[str, ...]] = {
+    ("POST", "/api/channels/{channel_id}/test-approval"): ("channel.test_approval",),
     ("POST", "/api/admin/actions/force-logout-all"): ("auth.force_logout_all",),
     ("POST", "/api/admin/agents/batch-delete"): ("agent.admin_batch_delete",),
     ("POST", "/api/admin/agents/batch-toggle"): ("agent.admin_batch_toggle",),
@@ -400,7 +401,6 @@ EXEMPT: dict[Route, str] = {
     ("POST", "/api/auth/2fa/setup"): PROBE,
     ("POST", "/api/auth/verify-forgot-code"): PROBE,
     ("POST", "/api/channels/discover-chats"): PROBE,
-    ("POST", "/api/channels/{channel_id}/test-approval"): PROBE,
     ("POST", "/api/connectors/test-connection"): PROBE,
     ("POST", "/api/connectors/{connector_id}/circuit-breaker-reset"): PROBE,
     ("POST", "/api/connectors/{connector_id}/introspect"): PROBE,

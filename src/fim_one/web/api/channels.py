@@ -408,6 +408,7 @@ async def test_approval(
             ),
         )
 
+    recorded = {"org_id": channel.org_id, "id": channel.id, "name": channel.name}
     tool_name = (body.tool_name or _DEFAULT_TEST_TOOL_NAME).strip()
     tool_args = body.tool_args if body.tool_args is not None else _DEFAULT_TEST_TOOL_ARGS
     title = (body.title or _DEFAULT_TEST_TITLE).strip()
@@ -439,13 +440,34 @@ async def test_approval(
         confirmation_id = (refusal.detail_args or {}).get("confirmation_id")
         if confirmation_id:
             await _expire_now(db, str(confirmation_id))
+        await _record_test_approval(user, recorded, sent=False)
         return TestApprovalResponse(
             ok=False,
             confirmation_id=str(confirmation_id) if confirmation_id else None,
             error=refusal.detail,
         )
 
+    await _record_test_approval(user, recorded, sent=True)
     return TestApprovalResponse(ok=True, confirmation_id=str(row.id))
+
+
+async def _record_test_approval(user: User, channel: dict[str, Any], *, sent: bool) -> None:
+    """A test approval card was sent (or could not be) through the channel.
+
+    The simulated tool name and arguments are whatever the tester typed and
+    are not recorded. How the card is answered is recorded by the
+    confirmation service, also as a test. Written on its own.
+    """
+    await audit.record(
+        actions.CHANNEL_TEST_APPROVAL,
+        actor=audit.actor_of(user),
+        org_id=channel["org_id"],
+        target_type="channel",
+        target_id=channel["id"],
+        target_label=channel["name"],
+        outcome="success" if sent else "failed",
+        detail="test card sent" if sent else "test card could not be sent",
+    )
 
 
 def _confirmation_service() -> ConfirmationService:

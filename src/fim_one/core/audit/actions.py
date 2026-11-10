@@ -176,6 +176,9 @@ CHANNEL_UPDATE = "channel.update"
 CHANNEL_DELETE = "channel.delete"
 # A test message was sent through the channel.
 CHANNEL_TEST = "channel.test"
+# A test approval card (the channel's Approval Playground) was sent, and how
+# it was answered. Never recorded as ``confirmation.*``: nothing was approved.
+CHANNEL_TEST_APPROVAL = "channel.test_approval"
 # A user's personal credential for a connector or an MCP server.
 CONNECTOR_CREDENTIAL_SET = "connector.credential_set"
 CONNECTOR_CREDENTIAL_DELETE = "connector.credential_delete"

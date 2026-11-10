@@ -664,7 +664,8 @@
       "notifications__instance_send": "Send via Instance Webhook",
       "confirmation__approve": "Approve Request",
       "confirmation__reject": "Reject Request",
-      "confirmation__expire": "Approval Request Expired"
+      "confirmation__expire": "Approval Request Expired",
+      "channel__test_approval": "Channel Test Approval Card"
     },
     "detailDialogTitle": "Audit Detail",
     "filterDateFrom": "From",
