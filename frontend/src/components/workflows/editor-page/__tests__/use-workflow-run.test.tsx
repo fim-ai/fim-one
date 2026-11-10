@@ -98,6 +98,29 @@ describe("useWorkflowRun", () => {
     expect(result.current.isRunning).toBe(false)
   })
 
+  // A run refused for one of its inputs used to show as a failed run. The
+  // panel goes back to its form and the refusal names the input.
+  it("goes back to the input form with the refused input named", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 422,
+      json: async () => ({
+        detail: "Input 'count' must be a number.",
+        error_code: "workflow_input_invalid",
+        error_args: { input: "count", expected: "a number" },
+      }),
+    })
+    const { result } = renderHook(() => useWorkflowRun("wf1"))
+    await act(() => result.current.startRun({ count: "abc" }))
+    expect(result.current.inputError).toEqual({ input: "count", message: "Input 'count' must be a number." })
+    expect(result.current.isRunning).toBe(false)
+    expect(result.current.nodeResults).toBeNull()
+    expect(result.current.finalError).toBeNull()
+    expect(result.current.runStatus).toBeNull()
+    act(() => result.current.clearInputError())
+    expect(result.current.inputError).toBeNull()
+  })
+
   // The server runs the stored workflow, so what is on the canvas has to be
   // saved before the run is requested.
   describe("saving before the run", () => {

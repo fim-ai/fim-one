@@ -20,7 +20,9 @@ import {
 
 /** Data a freshly added node starts with, per node type. */
 export const DEFAULT_NODE_DATA: { [K in WorkflowNodeV2Type]: NodeDataByType[K] } = {
-  start: { variables: [] },
+  // New Start steps have the server check a run's inputs; a Start step
+  // saved without the flag stays unchecked until its author switches it on.
+  start: { variables: [], validate_inputs: true },
   end: { output_mapping: {} },
   llm: { prompt_template: "", output_variable: "llm_result", temperature: 0.7 },
   conditionBranch: { mode: "expression", conditions: [] },
@@ -39,6 +41,27 @@ export const DEFAULT_NODE_DATA: { [K in WorkflowNodeV2Type]: NodeDataByType[K] }
 /** Fresh, mutable copy of a node type's default data. */
 export function defaultNodeData(type: WorkflowNodeV2Type): Record<string, unknown> {
   return structuredClone(DEFAULT_NODE_DATA[type]) as Record<string, unknown>
+}
+
+/** The blueprint a new blank workflow starts with: Start and End, not yet connected. */
+export function blankWorkflowBlueprint(): {
+  nodes: Array<{
+    id: string
+    type: WorkflowNodeV2Type
+    position: { x: number; y: number }
+    data: Record<string, unknown>
+  }>
+  edges: never[]
+  viewport: CanvasViewport
+} {
+  return {
+    nodes: [
+      { id: "start_1", type: "start", position: { x: 100, y: 200 }, data: defaultNodeData("start") },
+      { id: "end_1", type: "end", position: { x: 600, y: 200 }, data: defaultNodeData("end") },
+    ],
+    edges: [],
+    viewport: { x: 0, y: 0, zoom: 1 },
+  }
 }
 
 /** Keys the canvas injects into node data at run time; never persisted. */

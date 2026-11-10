@@ -37,6 +37,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useScopeFilter } from "@/hooks/use-scope-filter"
 import { useModuleGuard } from "@/lib/module-flags"
 import { toastWorkflowError } from "@/lib/workflow-errors"
+import { blankWorkflowBlueprint } from "@/lib/workflow-blueprint"
 import { ScopeFilter } from "@/components/shared/scope-filter"
 import { ListPagination, PAGE_SIZE } from "@/components/shared/list-pagination"
 import { StaggerOnce, StaggerItem } from "@/components/ui/fade-in"
@@ -178,14 +179,7 @@ function WorkflowsPageInner() {
     try {
       const workflow = await workflowApi.create({
         name: t("editorUntitled"),
-        blueprint: {
-          nodes: [
-            { id: "start_1", type: "start", position: { x: 100, y: 200 }, data: { variables: [] } },
-            { id: "end_1", type: "end", position: { x: 600, y: 200 }, data: { output_mapping: {} } },
-          ],
-          edges: [],
-          viewport: { x: 0, y: 0, zoom: 1 },
-        },
+        blueprint: blankWorkflowBlueprint(),
       })
       router.push(`/workflows/${workflow.id}`)
     } catch {

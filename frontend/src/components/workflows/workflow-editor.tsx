@@ -118,6 +118,11 @@ interface WorkflowEditorProps {
   onRunDecided?: () => void
   runPanelOpen: boolean
   startVariables: StartNodeData["variables"]
+  /** The Start step has "check inputs before a run starts" on. */
+  checkInputs?: boolean
+  /** The input the server refused the last run for, and why. */
+  inputError?: { input: string; message: string } | null
+  onClearInputError?: () => void
   nodeResults: Record<string, NodeRunResult> | null
   finalOutputs: Record<string, unknown> | null
   finalError: string | null
@@ -156,6 +161,9 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
   onRunDecided,
   runPanelOpen,
   startVariables,
+  checkInputs,
+  inputError,
+  onClearInputError,
   nodeResults,
   finalOutputs,
   finalError,
@@ -504,6 +512,9 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
           nodeTypeMap={nodeTypeMap}
           totalNodeCount={totalNodeCount}
           logEvents={logEvents}
+          checkInputs={checkInputs}
+          inputError={inputError}
+          onClearInputError={onClearInputError}
           runStatus={runStatus}
           waitingFor={waitingFor}
           onDecided={onRunDecided}

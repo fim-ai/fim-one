@@ -41,7 +41,7 @@ import { WebhookConfigDialog } from "@/components/workflows/webhook-config-dialo
 import { ApiKeyDialog } from "@/components/workflows/api-key-dialog"
 import { ScheduleDialog } from "@/components/workflows/schedule-dialog"
 import { BatchRunDialog } from "@/components/workflows/batch-run-dialog"
-import { emptyBlueprint, startVariablesOf } from "@/components/workflows/editor-page/blueprint-derived"
+import { emptyBlueprint, startChecksInputs, startVariablesOf } from "@/components/workflows/editor-page/blueprint-derived"
 import { useLeaveGuard } from "@/components/workflows/editor-page/use-leave-guard"
 import { useOpenPanels } from "@/components/workflows/editor-page/use-open-panels"
 import { useWorkflowDocument } from "@/components/workflows/editor-page/use-workflow-document"
@@ -299,6 +299,9 @@ export default function WorkflowEditorPage() {
         onRunDecided={run.refreshRun}
         runPanelOpen={run.runPanelOpen}
         startVariables={startVariables}
+        checkInputs={startChecksInputs(blueprintRef.current)}
+        inputError={run.inputError}
+        onClearInputError={run.clearInputError}
         nodeResults={run.nodeResults}
         finalOutputs={run.finalOutputs}
         finalError={run.finalError}

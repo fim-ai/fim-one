@@ -11,6 +11,7 @@ import type {
   WorkflowRunResponse,
   WorkflowRunStatus,
 } from "@/types/workflow"
+import { refusedInputOf } from "./run-inputs"
 import { mergeNodeResults, panelStateOfRun } from "./run-record"
 import {
   createSseParser,
@@ -40,15 +41,10 @@ export const RUN_POLL_INTERVAL_MS = 2000
  * The server runs the workflow it has stored. `beforeRun` is awaited before
  * each run is requested, to save what is on the canvas first; when it
  * resolves false (the save failed) the run does not start and the panel
- * goes back to its input form. A run the server refused to start is thrown
- * to `onRefused` first; when that returns true the refusal has been shown
- * (on the input form) and the panel goes back to the form as well.
+ * goes back to its input form. So does a run the server refused for one of
+ * its inputs: `inputError` names the input, for the form to show it there.
  */
-export function useWorkflowRun(
-  workflowId: string | null,
-  beforeRun?: () => Promise<boolean>,
-  onRefused?: (err: ApiError) => boolean,
-) {
+export function useWorkflowRun(workflowId: string | null, beforeRun?: () => Promise<boolean>) {
   const tError = useTranslations("errors")
 
   const [isRunning, setIsRunning] = useState(false)
@@ -65,6 +61,8 @@ export function useWorkflowRun(
   const [runStatus, setRunStatus] = useState<WorkflowRunStatus | null>(null)
   const [waitingFor, setWaitingFor] = useState<RunWaitingItem[]>([])
   const [logEvents, setLogEvents] = useState<WorkflowLogEvent[]>([])
+  // The input the server refused the last run for, and why.
+  const [inputError, setInputError] = useState<{ input: string; message: string } | null>(null)
 
   const abortRef = useRef<AbortController | null>(null)
   // Counts run attempts and cancellations: an attempt that was cancelled or
@@ -80,8 +78,6 @@ export function useWorkflowRun(
   const mountedRef = useRef(true)
   const beforeRunRef = useRef(beforeRun)
   beforeRunRef.current = beforeRun
-  const onRefusedRef = useRef(onRefused)
-  onRefusedRef.current = onRefused
 
   const stopFollowing = useCallback(() => {
     followRef.current += 1
@@ -111,7 +107,10 @@ export function useWorkflowRun(
     setWaitingFor([])
     setRunId(null)
     runIdRef.current = null
+    setInputError(null)
   }, [])
+
+  const clearInputError = useCallback(() => setInputError(null), [])
 
   /** Show a run record in the panel. Returns whether the run can still change. */
   const showRecord = useCallback((record: WorkflowRunResponse): boolean => {
@@ -221,6 +220,7 @@ export function useWorkflowRun(
       setRunId(null)
       setIsRunning(true)
       setRunStatus("running")
+      setInputError(null)
       setWaitingFor([])
       setNodeResults({})
       setFinalOutputs(null)
@@ -363,9 +363,11 @@ export function useWorkflowRun(
         if (!isCurrent()) return
         if (runIdRef.current === null) {
           if (abortRef.current === controller) abortRef.current = null
-          // The run did not start. A refusal about an input is shown on
-          // the input form by whoever owns the form.
-          if (err instanceof ApiError && onRefusedRef.current?.(err)) {
+          // The run did not start. A refusal about an input goes back to
+          // the input form, which shows it on that input.
+          const refusedInput = refusedInputOf(err)
+          if (refusedInput !== null) {
+            setInputError({ input: refusedInput, message: getErrorMessage(err, tError) })
             backToForm()
             return
           }
@@ -442,6 +444,8 @@ export function useWorkflowRun(
     runDuration,
     totalNodeCount,
     logEvents,
+    inputError,
+    clearInputError,
     openRunPanel,
     closeRunPanel,
     runAgain,

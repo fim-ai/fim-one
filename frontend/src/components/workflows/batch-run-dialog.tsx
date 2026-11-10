@@ -28,6 +28,8 @@ import {
 } from "@/components/ui/dialog"
 import { workflowApi } from "@/lib/api"
 import { toastWorkflowError } from "@/lib/workflow-errors"
+import { getErrorMessage } from "@/lib/error-utils"
+import { refusedInputOf, refusedRowOf } from "@/components/workflows/editor-page/run-inputs"
 import type { BatchRunResultItem, WorkflowBatchRunResponse } from "@/types/workflow"
 
 interface BatchRunDialogProps {
@@ -93,12 +95,15 @@ export function BatchRunDialog({
   const [maxParallel, setMaxParallel] = useState(3)
   const [parseError, setParseError] = useState<string | null>(null)
   const [parsedCount, setParsedCount] = useState(0)
+  // The server's refusal of a row's inputs, shown under the input.
+  const [inputRefusal, setInputRefusal] = useState<string | null>(null)
   const [batchResponse, setBatchResponse] = useState<WorkflowBatchRunResponse | null>(null)
   const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set())
 
   const handleInputChange = useCallback(
     (value: string) => {
       setInputText(value)
+      setInputRefusal(null)
       const { inputs, error } = parseInputSets(value)
       setParseError(error)
       setParsedCount(error ? 0 : inputs.length)
@@ -112,6 +117,7 @@ export function BatchRunDialog({
       setParseError(error ?? t("batchRunNoInputs"))
       return
     }
+    setInputRefusal(null)
 
     setPhase("running")
     try {
@@ -119,7 +125,15 @@ export function BatchRunDialog({
       setBatchResponse(result)
       setPhase("results")
     } catch (err) {
-      toastWorkflowError(err, t("batchRunApiError"), tError, t)
+      // A row whose inputs do not fit the Start step: said at the input,
+      // with the row. Everything else is a toast.
+      const row = refusedRowOf(err)
+      if (refusedInputOf(err) !== null) {
+        const message = getErrorMessage(err, tError)
+        setInputRefusal(row === null ? message : t("batchRunInputRowError", { row, message }))
+      } else {
+        toastWorkflowError(err, t("batchRunApiError"), tError, t)
+      }
       setPhase("input")
     }
   }, [inputText, maxParallel, workflowId, t, tError])
@@ -203,8 +217,11 @@ export function BatchRunDialog({
                 value={inputText}
                 onChange={(e) => handleInputChange(e.target.value)}
                 placeholder={t("batchRunInputPlaceholder")}
-                aria-invalid={!!parseError}
+                aria-invalid={!!parseError || !!inputRefusal}
               />
+              {inputRefusal && !parseError && (
+                <p className="text-sm text-destructive">{inputRefusal}</p>
+              )}
               {parseError && (
                 <p className="text-sm text-destructive">
                   {t("batchRunParseError", { error: parseError })}
