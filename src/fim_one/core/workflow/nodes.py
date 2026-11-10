@@ -829,24 +829,6 @@ def _missing_identity(
     )
 
 
-def _node_call_context(node: WorkflowNodeDef, context: ExecutionContext) -> CallContext:
-    """The assembly-layer call context of a node in this run.
-
-    ``binding=None``: resources are judged by the run's own identity, as
-    they were before the assembly layer. The workflow becomes the binding
-    (and its author the subject) when nodes are folded into that layer.
-    """
-    from fim_one.core.assembly.principal import CallContext, provisional_principal
-
-    return CallContext(
-        principal=provisional_principal(context.user_id),
-        binding=None,
-        entry="workflow_node",
-        workflow_run_id=context.run_id,
-        node_id=node.id,
-    )
-
-
 def _step_call_context(node: WorkflowNodeDef, context: ExecutionContext) -> CallContext:
     """The call context of a step: the run's, at this node.
 
@@ -868,25 +850,6 @@ def _step_call_context(node: WorkflowNodeDef, context: ExecutionContext) -> Call
         workflow_run_id=context.run_id,
         node_id=node.id,
     )
-
-
-async def _disabled_kb_names(kb_ids: list[str]) -> list[str]:
-    """Return the names of the knowledge bases in *kb_ids* that are disabled."""
-    if not kb_ids:
-        return []
-    from sqlalchemy import select
-
-    from fim_one.db import create_session
-    from fim_one.db.models.knowledge_base import KnowledgeBase
-
-    async with create_session() as db:
-        rows = await db.execute(
-            select(KnowledgeBase.name).where(
-                KnowledgeBase.id.in_(kb_ids),
-                KnowledgeBase.is_active == False,  # noqa: E712
-            )
-        )
-        return [str(name) for name in rows.scalars().all()]
 
 
 class KnowledgeRetrievalExecutor:
@@ -911,17 +874,35 @@ class KnowledgeRetrievalExecutor:
         try:
             from fim_one.web.deps import get_kb_manager
 
+            from fim_one.core.assembly.visibility import ResourceKind, authorize_use
+            from fim_one.db import create_session
+
             kb_ids: list[str] = list(node.data.get("kb_ids", []) or [])
 
-            # A disabled knowledge base is not queried (same rule as chat).
-            disabled = await _disabled_kb_names(kb_ids)
-            if disabled:
-                return NodeResult(
-                    node_id=node.id,
-                    status=NodeStatus.FAILED,
-                    error=f"Knowledge base '{disabled[0]}' is disabled",
-                    duration_ms=_ms_since(t0),
-                )
+            # The workflow is the binding: a knowledge base is read while the
+            # workflow's author owns it and it is switched on, whoever runs
+            # the workflow (the same delegation as an agent's bound knowledge
+            # bases). One that is not usable fails the step.
+            kb_owners: dict[str, str] = {}
+            if kb_ids:
+                async with create_session() as db:
+                    decision = await authorize_use(
+                        db,
+                        _step_call_context(node, context),
+                        ResourceKind.KNOWLEDGE_BASE,
+                        kb_ids,
+                    )
+                for kb_id in kb_ids:
+                    if kb_id in decision.refused:
+                        return NodeResult(
+                            node_id=node.id,
+                            status=NodeStatus.FAILED,
+                            error=decision.refused[kb_id].detail,
+                            duration_ms=_ms_since(t0),
+                        )
+                # Content lives under the owner's namespace.
+                kb_owners = {kb.id: kb.user_id for kb in decision.usable}
+                kb_ids = [kb_id for kb_id in kb_ids if kb_id in kb_owners]
             query_template = node.data.get("query_template", "")
             top_k = node.data.get("top_k", 5)
 
@@ -941,7 +922,7 @@ class KnowledgeRetrievalExecutor:
             for kb_id in kb_ids:
                 try:
                     results = await kb_manager.retrieve(
-                        query, kb_id=kb_id, user_id=context.user_id, top_k=top_k
+                        query, kb_id=kb_id, user_id=kb_owners[kb_id], top_k=top_k
                     )
                     for r in results:
                         all_results.append({
@@ -1029,13 +1010,10 @@ class ConnectorExecutor:
             async with create_session() as db:
                 from sqlalchemy.orm import selectinload
 
-                # Enforce visibility against the run's identity: a shared
-                # workflow is a graph of references, and each referenced
-                # connector enforces its own per-user access at run time. Only
-                # connectors the runner owns or has subscribed to are usable —
-                # not any connector that merely exists by id (tightened from
-                # existence-only to match chat assembly + agent binding).
-                # A disabled connector is not callable (same rule as chat).
+                # The workflow is the binding: the connector is usable while
+                # the workflow's author can see it (own or subscribed) and it
+                # is switched on, whoever runs the workflow. The credential
+                # below is the runner's.
                 from fim_one.core.assembly.errors import AssemblyRefusal
                 from fim_one.core.assembly.toolset import connector_tools
                 from fim_one.core.assembly.visibility import (
@@ -1044,7 +1022,7 @@ class ConnectorExecutor:
                 )
                 from fim_one.db.models.connector import Connector
 
-                call_context = _node_call_context(node, context)
+                call_context = _step_call_context(node, context)
                 _decision = await authorize_use(
                     db,
                     call_context,
@@ -1052,11 +1030,11 @@ class ConnectorExecutor:
                     [connector_id],
                     options=(selectinload(Connector.actions),),
                 )
-                # Not applied here yet: a database connector run by someone
-                # other than its owner is not refused as ``owner_only``; it
-                # has no actions, so the lookup below fails the node
-                # (registered in tests/assembly/matrix.py).
-                _usable = _decision.including("owner_only")
+                # A database connector is its owner's alone (``owner_only``).
+                # The owner's own run still fails below: a Connector step has
+                # no way to query a database (registered in
+                # tests/assembly/matrix.py; T10 P4).
+                _usable = _decision.usable
                 if not _usable:
                     return NodeResult(
                         node_id=node.id,
@@ -1238,34 +1216,36 @@ class HumanInterventionExecutor:
         from fim_one.core.assembly.errors import AssemblyRefusal
         from fim_one.core.assembly.principal import AuthMethod, Binding, resolve_principal
 
-        # The run's identity and the workflow it belongs to. (The entry the
-        # run came through is not known here until the engine passes a
-        # CallContext; the auth method is nominal.)
+        # The run's identity and the workflow it belongs to: from the run's
+        # call context when the run service started the run. The principal
+        # is resolved here because an approval reads its organizations.
+        run_ctx = context.call_context
+        binding: Binding | None = run_ctx.binding if run_ctx is not None else None
         async with db_session_factory() as db:
-            from sqlalchemy import select
-
-            from fim_one.db.models.workflow import Workflow
-
             initiator = await resolve_principal(
-                db, user_id=context.user_id, auth=AuthMethod.SESSION
+                db,
+                user_id=context.user_id,
+                auth=run_ctx.principal.auth if run_ctx is not None else AuthMethod.SESSION,
             )
-            workflow = (
-                await db.execute(
-                    select(Workflow.user_id, Workflow.org_id).where(
-                        Workflow.id == context.workflow_id
+            if run_ctx is None:
+                from sqlalchemy import select
+
+                from fim_one.db.models.workflow import Workflow
+
+                workflow = (
+                    await db.execute(
+                        select(Workflow.user_id, Workflow.org_id).where(
+                            Workflow.id == context.workflow_id
+                        )
                     )
-                )
-            ).one_or_none()
-        binding = (
-            Binding(
-                kind="workflow",
-                id=context.workflow_id,
-                owner_id=workflow[0],
-                org_id=workflow[1],
-            )
-            if workflow is not None
-            else None
-        )
+                ).one_or_none()
+                if workflow is not None:
+                    binding = Binding(
+                        kind="workflow",
+                        id=context.workflow_id,
+                        owner_id=workflow[0],
+                        org_id=workflow[1],
+                    )
 
         service = ConfirmationService(db_session_factory)
         spec = ConfirmationSpec(
@@ -1409,20 +1389,17 @@ class MCPExecutor:
             from fim_one.db import create_session
 
             async with create_session() as db:
-                # Enforce visibility against the run's identity, mirroring the
-                # connector node above: only MCP servers the runner owns or
-                # has subscribed to are usable — not any server that merely
-                # exists by id (previously existence-only, so a workflow
-                # referencing a foreign server_id could ride the owner's
-                # env/headers whenever fallback was on). A disabled server is
-                # not callable.
+                # The workflow is the binding, as for the connector step
+                # above: usable while the workflow's author can see the
+                # server and it is switched on. The credential it is opened
+                # with is the runner's.
                 from fim_one.core.assembly.visibility import (
                     ResourceKind,
                     authorize_use,
                 )
 
                 _decision = await authorize_use(
-                    db, _node_call_context(node, context), ResourceKind.MCP_SERVER, [server_id]
+                    db, _step_call_context(node, context), ResourceKind.MCP_SERVER, [server_id]
                 )
                 if not _decision.usable:
                     return NodeResult(
@@ -1440,7 +1417,7 @@ class MCPExecutor:
 
             try:
                 tools, mcp_client = await mcp_tools(
-                    _node_call_context(node, context), [server], mode="legacy", strict=True
+                    _step_call_context(node, context), [server], mode="legacy", strict=True
                 )
             except (AssemblyRefusal, ToolsetError) as refused:
                 return NodeResult(

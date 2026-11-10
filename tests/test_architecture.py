@@ -460,3 +460,25 @@ class TestAgentsAreAssembledByTheRuntime:
             "call_agent builds its delegate with core.assembly.runtime:\n  "
             + "\n  ".join(offenders)
         )
+
+
+class TestWorkflowStepsHoldNoRuleOfTheirOwn:
+    """T10 section 2: a workflow step asks ``core.assembly``; it does not decide.
+
+    Visibility, the fallback switch and credentials are not read under
+    ``core/workflow`` (``TestCredentialsAndCallRecordsLiveInTheAssemblyLayer``
+    covers the last two, with the workflow's own env vars as the one
+    exception), and no step imports the web layer for an agent's runtime.
+    """
+
+    def test_no_visibility_query_in_core_workflow(self) -> None:
+        files = sorted((CORE / "workflow").rglob("*.py"))
+        offenders = [
+            hit
+            for needle in ("resolve_visibility", "build_visibility_filter")
+            for hit in _occurrences(needle, files)
+        ]
+        assert not offenders, (
+            "core/workflow asks fim_one.core.assembly.visibility.authorize_use:\n  "
+            + "\n  ".join(offenders)
+        )

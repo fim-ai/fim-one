@@ -1,7 +1,7 @@
 """The assembly contract matrix: one rule, every entry point.
 
 Each entry point that lets a user reach a resource (chat with an agent,
-chat without one, a ``call_agent`` sub-agent, three kinds of workflow node,
+chat without one, a ``call_agent`` sub-agent, four kinds of workflow node,
 the ``run_workflow`` tool, schedules, trigger keys) is driven for real
 against a seeded database, and what it does is normalised to an
 :class:`Outcome`. :func:`expected` is the rule the assembly layer is being
@@ -11,7 +11,9 @@ the difference is registered in :data:`KNOWN_DEVIATIONS`.
 
 ``tests/assembly/test_matrix.py`` asserts *actual deviations == registered
 deviations*: fixing one without removing its registration fails, and so
-does introducing a new one. The table is what C1 phases 2 to 4 remove.
+does introducing a new one. C1 phases 2 to 4 removed every registration
+that was C1's to remove; the two left are the workflow Connector step's and
+belong to T10 P4 and P5 (see :data:`KNOWN_DEVIATIONS`).
 
 A **cell** is ``(role, resource, allow_fallback, is_active, has_personal)``:
 
@@ -81,6 +83,7 @@ ENTRIES = (
     "wf_connector_node",
     "wf_mcp_node",
     "wf_agent_node",
+    "wf_kb_node",
     "run_workflow",  # the run_workflow agent tool
     "schedule",
     "trigger",
@@ -160,6 +163,7 @@ APPLICABLE: dict[str, tuple[str, ...]] = {
     "wf_connector_node": (*API_CONNECTORS, "db"),
     "wf_mcp_node": MCP_SERVERS,
     "wf_agent_node": (*API_CONNECTORS, "db", *MCP_SERVERS, "kb", "agent"),
+    "wf_kb_node": ("kb",),
     "run_workflow": ("workflow",),
     "schedule": ("workflow",),
     "trigger": ("workflow",),
@@ -177,6 +181,7 @@ _BOUND: dict[str, tuple[str, ...]] = {
     "wf_connector_node": (*API_CONNECTORS, "db"),
     "wf_mcp_node": MCP_SERVERS,
     "wf_agent_node": (*API_CONNECTORS, "db", *MCP_SERVERS, "kb", "agent"),
+    "wf_kb_node": ("kb",),
 }
 
 # Where a refused resource is simply not offered (a tool list, a catalogue),
@@ -1062,6 +1067,34 @@ async def probe_wf_mcp_node(
     return results
 
 
+async def probe_wf_kb_node(
+    scene: Scene, factory: async_sessionmaker[AsyncSession]
+) -> dict[str, Outcome]:
+    """A Knowledge Retrieval step naming the owner's knowledge base."""
+    from fim_one.core.workflow.nodes import KnowledgeRetrievalExecutor
+    from fim_one.core.workflow.types import NodeStatus, NodeType
+    from fim_one.core.workflow.variable_store import VariableStore
+    from fim_one.rag.manager import KnowledgeBaseManager
+
+    read: list[str] = []
+
+    class _Manager:
+        # The vector store is faked; the retrieval layer's own owner check is not.
+        async def retrieve(self, _query: str, *, kb_id: str, user_id: str, **_: Any) -> list[Any]:
+            if await KnowledgeBaseManager._resolve_owner_for_caller(kb_id, user_id) is not None:
+                read.append(kb_id)
+            return []
+
+    node = _node(
+        NodeType.KNOWLEDGE_RETRIEVAL, {"kb_ids": [scene.ids["kb"]], "query_template": "q"}
+    )
+    with outside_world(factory), patch("fim_one.web.deps.get_kb_manager", lambda: _Manager()):
+        result = await KnowledgeRetrievalExecutor().execute(node, VariableStore(), _context(scene))
+    if result.status != NodeStatus.COMPLETED:
+        return {"kb": Outcome(exposed=False, refusal_code=_classify(result.error))}
+    return {"kb": Outcome(exposed=scene.ids["kb"] in read)}
+
+
 async def probe_wf_agent_node(
     scene: Scene, factory: async_sessionmaker[AsyncSession]
 ) -> dict[str, Outcome]:
@@ -1163,6 +1196,7 @@ PROBES: dict[str, Probe] = {
     "wf_connector_node": probe_wf_connector_node,
     "wf_mcp_node": probe_wf_mcp_node,
     "wf_agent_node": probe_wf_agent_node,
+    "wf_kb_node": probe_wf_kb_node,
     "run_workflow": probe_run_workflow,
     "schedule": probe_schedule,
     "trigger": probe_trigger,
@@ -1208,36 +1242,16 @@ def _replace(outcome: Outcome, **changes: Any) -> Outcome:
     return Outcome(**{**{f: getattr(outcome, f) for f in FIELDS}, **changes})
 
 
-def _runner_is_subject(entry: str, cell: Cell, _so_far: Outcome) -> Outcome | None:
-    return rule(entry, cell, subject=cell.role)
-
-
 def _not_confirmed(_entry: str, _cell: Cell, so_far: Outcome) -> Outcome | None:
     return _replace(so_far, confirmed=False) if so_far.exposed else None
 
 
 def _database_unsupported(_entry: str, _cell: Cell, so_far: Outcome) -> Outcome | None:
-    if so_far.exposed or so_far.refusal_code == "owner_only":
-        return Outcome(exposed=False, refusal_code="error")
-    return None
+    return Outcome(exposed=False, refusal_code="error") if so_far.exposed else None
 
 
 # Applied in this order: a later entry sees the outcome the earlier ones left.
 KNOWN_DEVIATIONS: tuple[Deviation, ...] = (
-    Deviation(
-        name="workflow-node-judged-by-runner",
-        entries=("wf_connector_node", "wf_mcp_node"),
-        resources=(*API_CONNECTORS, "db", *MCP_SERVERS),
-        what=(
-            "Visibility is judged by whoever runs the workflow, not by its author: a "
-            "member or outsider running a shared workflow gets 'not found' for a "
-            "resource the author can see (and 'not found' instead of the inactive, "
-            "credential or owner-only refusal)."
-        ),
-        ref="S10; design §1.1 rows 'wf-节点'; B15",
-        removed_in="C1 phase 4",
-        today=_runner_is_subject,
-    ),
     Deviation(
         name="connector-node-cannot-confirm",
         entries=("wf_connector_node",),
@@ -1252,8 +1266,9 @@ KNOWN_DEVIATIONS: tuple[Deviation, ...] = (
         entries=("wf_connector_node",),
         resources=("db",),
         what=(
-            "A database connector is treated as an HTTP connector and the node fails "
-            "with an unrelated error, for the owner and for a subscriber alike."
+            "A Connector step cannot query a database: the owner's own run of a step "
+            "that names a database connector fails ('action not found'). Anyone "
+            "else is refused as owner_only, as the rule says."
         ),
         ref="design §1.2 row 'DB 连接器 wf-节点'",
         removed_in="T10 P4 (support, or refuse at save)",

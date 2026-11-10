@@ -574,12 +574,8 @@ class TestFieldNameCompatibility:
         ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
 
         executor = KnowledgeRetrievalExecutor()
-        # No DB in this unit test: report the KB as enabled.
-        with patch(
-            "fim_one.core.workflow.nodes._disabled_kb_names",
-            new=AsyncMock(return_value=[]),
-        ):
-            result = await executor.execute(node, store, ctx)
+        # The node reads ``kb_ids``; with none there is nothing to look up.
+        result = await executor.execute(node, store, ctx)
         # KB executor handles per-KB errors gracefully (returns 0 results),
         # so it should complete (not "no query" error).
         # The important thing: it read query_template, not "query"
