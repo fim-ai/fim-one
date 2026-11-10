@@ -11,6 +11,7 @@ approved is what runs, or nothing does.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 __all__ = ["call_fingerprint", "credential_source", "masked_env", "open_call", "seal_call"]
@@ -36,32 +37,52 @@ async def credential_source(db: Any, connector_id: str, user_id: str) -> str:
     return "own" if own is not None else "owner"
 
 
+#: An env value shorter than this is masked only where it is a whole argument
+#: value. Replacing ``1`` or ``e`` wherever it occurs would turn ``1000`` into
+#: ``{{env.RETRIES}}000`` and leave the approver unable to read the call.
+_MASK_ANYWHERE_MIN_LENGTH = 6
+
+
 def masked_env(value: Any, env_vars: dict[str, str]) -> Any:
-    """*value* with every workflow env var's value replaced by ``{{env.NAME}}``.
+    """*value* with the workflow's env var values replaced by ``{{env.NAME}}``.
 
     What an approver is shown: that a secret goes into the call, not the
     secret. The call itself is made with the real value.
+
+    A value of six characters or more is replaced wherever it occurs in a
+    text argument; a shorter one only where it is the whole argument. Text is
+    read once, longest value first, so a placeholder is never rewritten by a
+    later replacement. Numbers and booleans are shown as they are.
     """
-    secrets_by_length = sorted(
-        ((name, text) for name, text in env_vars.items() if isinstance(text, str) and text),
-        key=lambda item: len(item[1]),
+    names = {
+        text: name
+        for name, text in sorted(env_vars.items(), reverse=True)
+        if isinstance(text, str) and text
+    }
+    if not names:
+        return value
+    anywhere = sorted(
+        (text for text in names if len(text) >= _MASK_ANYWHERE_MIN_LENGTH),
+        key=len,
         reverse=True,
     )
-    if not secrets_by_length:
-        return value
+    pattern = re.compile("|".join(re.escape(text) for text in anywhere)) if anywhere else None
+
+    def placeholder(text: str) -> str:
+        return "{{env." + names[text] + "}}"
 
     def mask(node: Any) -> Any:
         if isinstance(node, dict):
             return {key: mask(item) for key, item in node.items()}
         if isinstance(node, list):
             return [mask(item) for item in node]
-        if isinstance(node, bool) or node is None:
+        if not isinstance(node, str):
             return node
-        text = node if isinstance(node, str) else str(node)
-        masked = text
-        for name, secret in secrets_by_length:
-            masked = masked.replace(secret, "{{env." + name + "}}")
-        return masked if masked != text else node
+        if node in names:
+            return placeholder(node)
+        if pattern is None:
+            return node
+        return pattern.sub(lambda match: placeholder(match.group(0)), node)
 
     return mask(value)
 
