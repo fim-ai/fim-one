@@ -440,6 +440,7 @@ class StartedRun:
         finally:
             out.duration_ms = self._prior_duration_ms + int((time.time() - start) * 1000)
             suspended = out.status == "waiting" and self._suspend_state is not None
+            closed_elsewhere = False
             # Each step runs even if an earlier one raises; the end marker
             # always goes out last so no reader of events() blocks forever.
             try:
@@ -451,12 +452,26 @@ class StartedRun:
                         )
                 finally:
                     try:
-                        await self._service._persist(
+                        closed_as = await self._service._persist(
                             out,
                             # A continued run keeps the start time it has.
                             started_at=start if self._resume_state is None else None,
                             suspend_state=self._suspend_state if suspended else None,
                         )
+                        if closed_as is not None:
+                            # Someone else closed the run while it executed
+                            # here. How they closed it is how it ended:
+                            # nobody is told it completed.
+                            out.status, out.error = closed_as
+                            out.error_code = (
+                                "workflow_run_cancelled"
+                                if out.status == "cancelled"
+                                else "workflow_run_failed"
+                            )
+                            out.outputs = {}
+                            out.waiting = []
+                            suspended = False
+                            closed_elsewhere = True
                     finally:
                         # Only this object's registration: by now the run may
                         # have been continued, by a new StartedRun under the
@@ -479,9 +494,12 @@ class StartedRun:
                             # The files the run's Agent steps wrote go with the run.
                             await release_sandbox(self._context.sandbox_id)
                             try:
-                                self._service._fire_webhook(
-                                    self.workflow, out, self.mode, self.call_context
-                                )
+                                # A run closed elsewhere is not announced
+                                # from here: this process's view of it lost.
+                                if not closed_elsewhere:
+                                    self._service._fire_webhook(
+                                        self.workflow, out, self.mode, self.call_context
+                                    )
                             except Exception:
                                 logger.exception("Webhook dispatch failed for %s", self.run_id)
             finally:
@@ -557,48 +575,62 @@ class WorkflowRunService:
     ) -> str | None:
         """Close a run on its record alone; the status it had, or ``None``.
 
-        One conditional update, so of several callers (two workers sweeping,
-        a cancel beside a decision) one closes the run. With *stale_before*
-        only a run whose heartbeat is older than that is closed. The run's
-        open confirmation requests are closed in the same transaction; a
-        run that was not executing anywhere also loses its sandbox.
+        The status is not read first and then written: each try is one
+        ``UPDATE … WHERE status = <one of from_statuses>``, so a run that
+        changes hands in between (a waiting run claimed for continuation
+        the moment it is cancelled) is still closed, under the status it
+        has by then, or not at all. Of several callers (two workers
+        sweeping, a cancel beside a decision) one closes the run. ``None``
+        means the run was in none of *from_statuses*: it has ended, or does
+        not exist.
+
+        With *stale_before* only a run whose heartbeat is older than that
+        is closed. The run's open confirmation requests are closed in the
+        same transaction. A run that was waiting loses its sandbox here; a
+        run that was executing somewhere keeps it until that process, or
+        the sweep's later pass over unused directories, removes it.
         """
-        from sqlalchemy import CursorResult, func, select, update
+        from sqlalchemy import CursorResult, func, update
 
         from fim_one.core.assembly.confirmation import close_requests_of_runs
         from fim_one.db import create_session
         from fim_one.db.models import WorkflowRun
 
         now = datetime.now(UTC)
-        async with create_session() as db:
-            previous = (
-                await db.execute(select(WorkflowRun.status).where(WorkflowRun.id == run_id))
-            ).scalar_one_or_none()
-            if previous is None or previous not in from_statuses:
-                return None
-            conditions = [WorkflowRun.id == run_id, WorkflowRun.status == previous]
-            if stale_before is not None:
-                conditions.append(
-                    func.coalesce(
-                        WorkflowRun.heartbeat_at, WorkflowRun.started_at, WorkflowRun.created_at
+        previous: str | None = None
+        # Twice: a run moving between two of the statuses while they are
+        # tried in turn is caught on the second pass.
+        for _ in range(2):
+            for candidate in from_statuses:
+                conditions = [WorkflowRun.id == run_id, WorkflowRun.status == candidate]
+                if stale_before is not None:
+                    conditions.append(
+                        func.coalesce(
+                            WorkflowRun.heartbeat_at,
+                            WorkflowRun.started_at,
+                            WorkflowRun.created_at,
+                        )
+                        < stale_before
                     )
-                    < stale_before
-                )
-            result = await db.execute(
-                update(WorkflowRun)
-                .where(*conditions)
-                .values(status=status, error=error, completed_at=now, suspend_state=None)
-                .execution_options(synchronize_session=False)
-            )
-            if (cast(CursorResult[Any], result).rowcount or 0) != 1:
-                await db.rollback()
-                return None
-            await close_requests_of_runs(db, [run_id])
-            await db.commit()
-        if previous == "waiting" or stale_before is not None:
-            # Nothing is executing it: nobody else will remove its files.
+                async with create_session() as db:
+                    result = await db.execute(
+                        update(WorkflowRun)
+                        .where(*conditions)
+                        .values(status=status, error=error, completed_at=now, suspend_state=None)
+                        .execution_options(synchronize_session=False)
+                    )
+                    if (cast(CursorResult[Any], result).rowcount or 0) == 1:
+                        await close_requests_of_runs(db, [run_id])
+                        await db.commit()
+                        previous = candidate
+                        break
+                    await db.rollback()
+            if previous is not None:
+                break
+        if previous == "waiting":
+            # Nothing was executing it: nobody else will remove its files.
             await release_sandbox(workflow_run_sandbox_id(run_id))
-        return str(previous)
+        return previous
 
     # -- checks ---------------------------------------------------------------
 
@@ -1241,7 +1273,7 @@ class WorkflowRunService:
         *,
         started_at: float | None,
         suspend_state: dict[str, Any] | None = None,
-    ) -> None:
+    ) -> tuple[str, str | None] | None:
         """Write how the run stands to its record.
 
         With *suspend_state* the run is waiting: the state is stored and
@@ -1249,48 +1281,69 @@ class WorkflowRunService:
         requests it still had open are closed with it: nobody is asked to
         decide for a run that is over.
 
-        Only a record still ``running`` is written. One that is not was
-        closed by someone else meanwhile (cancelled from another process,
-        or declared dead by the recovery sweep) and stays as they left it.
+        One ``UPDATE … WHERE status = 'running'``: a record that is no
+        longer ``running`` was closed by someone else meanwhile (cancelled
+        from another process, or declared dead by the recovery sweep) and
+        is not written, however the two writes interleave. Returns ``None``
+        when the record was written, else ``(status, error)`` as the
+        record has them: that, not *out*, is then how the run ended.
         """
-        from sqlalchemy import select
+        from sqlalchemy import CursorResult, select, update
 
         from fim_one.core.assembly.confirmation import close_requests_of_runs
         from fim_one.db import create_session
         from fim_one.db.models import WorkflowRun
 
+        values: dict[str, Any] = {
+            "status": out.status,
+            "outputs": out.outputs or None,
+            "node_results": out.node_results or None,
+            "duration_ms": out.duration_ms,
+            "error": out.error,
+            "total_tokens": out.total_tokens,
+            "suspend_state": suspend_state,
+        }
+        if started_at is not None:
+            values["started_at"] = datetime.fromtimestamp(started_at, tz=UTC)
+        if suspend_state is None:
+            values["completed_at"] = datetime.now(UTC)
         try:
             async with create_session() as db:
-                run = (
-                    await db.execute(select(WorkflowRun).where(WorkflowRun.id == out.run_id))
-                ).scalar_one_or_none()
-                if run is None:
-                    return
-                if run.status != "running":
-                    logger.warning(
-                        "Workflow run %s is already %s; its result (%s) is not recorded",
-                        out.run_id,
-                        run.status,
-                        out.status,
-                    )
-                    await close_requests_of_runs(db, [out.run_id])
+                result = await db.execute(
+                    update(WorkflowRun)
+                    .where(WorkflowRun.id == out.run_id, WorkflowRun.status == "running")
+                    .values(**values)
+                    .execution_options(synchronize_session=False)
+                )
+                written = (cast(CursorResult[Any], result).rowcount or 0) == 1
+                if written and suspend_state is not None:
                     await db.commit()
-                    return
-                run.status = out.status
-                run.outputs = out.outputs or None
-                run.node_results = out.node_results or None
-                if started_at is not None:
-                    run.started_at = datetime.fromtimestamp(started_at, tz=UTC)
-                run.duration_ms = out.duration_ms
-                run.error = out.error
-                run.total_tokens = out.total_tokens
-                run.suspend_state = suspend_state
-                if suspend_state is None:
-                    run.completed_at = datetime.now(UTC)
-                    await close_requests_of_runs(db, [out.run_id])
+                    return None
+                # Ended here, or closed elsewhere: either way nobody is
+                # asked to decide for it any more.
+                await close_requests_of_runs(db, [out.run_id])
                 await db.commit()
+                if written:
+                    return None
+                stored = (
+                    await db.execute(
+                        select(WorkflowRun.status, WorkflowRun.error).where(
+                            WorkflowRun.id == out.run_id
+                        )
+                    )
+                ).first()
+            if stored is None:
+                return None  # deleted meanwhile: nothing to disagree with
+            logger.warning(
+                "Workflow run %s is already %s; its result (%s) is not recorded",
+                out.run_id,
+                stored[0],
+                out.status,
+            )
+            return str(stored[0]), stored[1]
         except Exception:
             logger.exception("Failed to persist workflow run %s", out.run_id)
+            return None
 
     async def _save_progress(self, run_id: str, node_results: dict[str, Any]) -> None:
         from sqlalchemy import update

@@ -158,6 +158,7 @@
   "workflow_input_required": "Input \"{input}\" is required.",
   "workflow_input_invalid": "Input \"{input}\" must be {expected}.",
   "cannot_delete_active_run": "A run that is still in progress cannot be deleted.",
+  "workflow_run_already_finished": "This run has already ended, so there was nothing to cancel.",
   "node_not_found": "That step is not in the saved workflow. Save the workflow and try again.",
   "node_not_testable": "This kind of step cannot be tested on its own.",
   "schedule_cron_required": "Enter a cron expression to enable the schedule.",

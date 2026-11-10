@@ -2919,9 +2919,18 @@ async def cancel_workflow_run(
     # Not executing in this process: waiting for a decision (closed here,
     # with its open requests), or running in another server process (which
     # stops it when it sees the record).
-    await service.cancel_stored_run(run_id)
+    if await service.cancel_stored_run(run_id):
+        return ApiResponse(data={"cancelled": True, "run_id": run_id})
 
-    return ApiResponse(data={"cancelled": True, "run_id": run_id})
+    # Nothing was cancelled: the run had ended by the time the cancel got
+    # to it (it may have been continued and finished in that moment).
+    await db.refresh(run)
+    raise AppError(
+        "workflow_run_already_finished",
+        status_code=409,
+        detail=f"The run has already ended ({run.status}); there is nothing to cancel.",
+        detail_args={"status": run.status},
+    )
 
 
 @router.get("/{workflow_id}/runs/{run_id}/approvals", response_model=ApiResponse)

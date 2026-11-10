@@ -119,3 +119,114 @@ class TestAnAnswerIsNotRetried:
         run = await rig.ended(outcome.run_id, timeout=5)  # asked again, it would wait on
         assert run.status == "failed" and flagged.calls == []
         assert [r.status for r in await _requests(rig, run.id)] == ["rejected"]
+
+
+# ---------------------------------------------------------------------------
+# L1, L2, L11. Closing a run on its record races nothing
+# ---------------------------------------------------------------------------
+
+
+class TestClosingARunOnItsRecord:
+    async def test_a_cancel_is_not_lost_to_a_continuation_claiming_first(self, rig: Rig) -> None:
+        """The cancel is on its way when another process claims the waiting
+        run for continuation. The run is cancelled all the same, under the
+        status it has by then."""
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        outcome = await rig.start()
+        request = await rig.request_of(outcome.run_id)
+        await rig.flip(request.id, status="approved")
+        other = _new_service()
+        real_execute = AsyncSession.execute
+        fired: dict[str, Any] = {}
+
+        async def execute(self: Any, statement: Any, *args: Any, **kwargs: Any) -> Any:
+            text = str(statement)
+            if text.startswith("UPDATE workflow_runs") and "completed_at" in text and not fired:
+                fired["started"] = await other.resume_run(outcome.run_id)
+                assert fired["started"] is not None
+            return await real_execute(self, statement, *args, **kwargs)
+
+        with patch.object(AsyncSession, "execute", execute):
+            cancelled = await rig.service.cancel_stored_run(outcome.run_id)
+
+        await fired["started"].wait()
+        run = await rig.run(outcome.run_id)
+        assert cancelled is True
+        assert run.status == "cancelled"
+
+    async def test_cancelling_a_run_that_has_ended_says_so(self, rig: Rig) -> None:
+        from fim_one.web.api import workflows as wf_api
+        from fim_one.web.exceptions import AppError
+
+        outcome = await rig.start()
+        assert await rig.service.cancel_stored_run(outcome.run_id) is True
+        assert await rig.service.cancel_stored_run(outcome.run_id) is False
+
+        async with rig.factory() as db:
+            with pytest.raises(AppError) as refused:
+                await wf_api.cancel_workflow_run(
+                    rig.wf.id, outcome.run_id, current_user=rig.owner, db=db
+                )
+        assert (refused.value.status_code, refused.value.error_code) == (
+            409,
+            "workflow_run_already_finished",
+        )
+        assert refused.value.detail_args == {"status": "cancelled"}
+
+    async def test_a_result_is_not_written_over_a_run_closed_elsewhere(self, rig: Rig) -> None:
+        """Cancelled from another process while it ran here: the record
+        stays cancelled, the caller is not told it completed, the owner's
+        webhook is not called."""
+        release = asyncio.Event()
+
+        class _Finishes(_CountingEngine):
+            async def execute_streaming(self, *args: Any, **kwargs: Any) -> Any:
+                await release.wait()
+                yield "run_completed", {"status": "completed", "outputs": {"done": True}}
+
+        here = rs.WorkflowRunService(engine_factory=_Finishes)
+        started = await here.start_run(
+            await rig.workflow(), caller_id=rig.owner.id, inputs={}, mode=rs.RunMode.INTERACTIVE
+        )
+        assert await _new_service().cancel_stored_run(started.run_id) is True
+
+        with patch.object(here, "_fire_webhook") as webhook:
+            release.set()
+            outcome = await started.wait()
+
+        run = await rig.run(started.run_id)
+        assert (run.status, run.error, run.outputs) == ("cancelled", "Execution cancelled", None)
+        assert (outcome.status, outcome.outputs) == ("cancelled", {})
+        assert outcome.error_code == "workflow_run_cancelled"
+        webhook.assert_not_called()
+
+    async def test_a_run_stamped_since_it_was_judged_dead_is_not_closed(self, rig: Rig) -> None:
+        """The sweep picked the run as stale; before it closes it, the run's
+        process stamps it. The close is conditional on the stamp still being old."""
+        run_id = str(uuid.uuid4())
+        async with rig.factory() as db:
+            db.add(
+                WorkflowRun(
+                    id=run_id,
+                    workflow_id=rig.wf.id,
+                    user_id=rig.owner.id,
+                    blueprint_snapshot=BLUEPRINT,
+                    status="running",
+                    worker_id="another-live-process",
+                    started_at=datetime.now(UTC) - timedelta(hours=1),
+                    heartbeat_at=datetime.now(UTC),
+                )
+            )
+            await db.commit()
+
+        closed = await rig.service._end_stored_run(
+            run_id,
+            ("pending", "running"),
+            "failed",
+            rs.RUN_INTERRUPTED_ERROR,
+            stale_before=datetime.now(UTC) - timedelta(seconds=90),
+        )
+
+        assert closed is None
+        assert (await rig.run(run_id)).status == "running"

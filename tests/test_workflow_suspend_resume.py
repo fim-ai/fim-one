@@ -853,7 +853,12 @@ class TestCrashRecovery:
         assert run.completed_at is not None
         async with rig.factory() as db:
             assert (await db.get(ConfirmationRequest, request.id)).status == "expired"  # type: ignore[union-attr]
-        assert not sandbox.exists()
+        # Its files are not removed in the same breath: should the process
+        # turn out to be alive after all, it still has them. A later sweep
+        # removes them once nothing has touched them for the grace period.
+        assert sandbox.exists()
+        later = WorkflowRunSupervisor(rig.service, sandbox_grace_seconds=0)
+        assert (await later.sweep()).removed_sandboxes == [sandbox.name]
         await rig.service._refuse_if_running(rig.wf.id)  # the trigger key is free again
 
     async def test_a_run_from_before_heartbeats_existed_is_closed_too(self, rig: Rig) -> None:
