@@ -559,8 +559,12 @@ class TestOneOutboundStack:
                 for lineno, line in _source_lines(py)
                 if pattern.search(line)
             )
-        assert not (CORE / "notification").exists(), (
-            "core/notification is back; a new outbound type belongs in core/channels"
+        # A checkout that had the package keeps an ignored ``__pycache__``
+        # there after the pull that deletes it; only source brings it back.
+        revived = sorted(p.name for p in (CORE / "notification").glob("**/*.py"))
+        assert not revived, (
+            "core/notification is back; a new outbound type belongs in "
+            f"core/channels: {revived}"
         )
         assert not offenders, (
             f"{removed} was removed; use fim_one.core.channels:\n  "
