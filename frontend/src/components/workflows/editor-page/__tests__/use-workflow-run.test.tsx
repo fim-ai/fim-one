@@ -355,6 +355,88 @@ describe("useWorkflowRun", () => {
       expect(requests()).toContain("POST /api/workflows/wf1/runs/r9/cancel")
     })
 
+    // Starting a run aborted the stream of the one before, and with it the
+    // cancel that was waiting there for the run's id: the first run went on.
+    it("still cancels a run cancelled before it was named when another run is started right away", async () => {
+      let release!: () => void
+      const gate = new Promise<void>((resolve) => (release = resolve))
+      const firstStream = new TextEncoder().encode(
+        event("run_started", { run_id: "r1", status: "running" }) +
+          event("run_started", { run_id: "r1", workflow_id: "wf1", node_count: 9 }) +
+          event("node_started", { node_id: "first_only" }) +
+          event("run_failed", { error: "first run's error" }),
+      )
+      let firstSignal: AbortSignal | undefined
+      let runs = 0
+      fetchMock.mockImplementation(async (url: string, init?: { signal?: AbortSignal }) => {
+        if (!String(url).endsWith("/run")) return runRecord({ status: "cancelled" })
+        runs += 1
+        if (runs > 1) {
+          return sseResponse(
+            event("run_started", { run_id: "r2", status: "running" }) +
+              event("run_started", { run_id: "r2", workflow_id: "wf1", node_count: 1 }) +
+              event("node_completed", { node_id: "start_1", duration_ms: 1 }) +
+              event("run_completed", { outputs: { out: "second" }, duration_ms: 5 }),
+          )
+        }
+        // A stream that, like fetch's, stops being readable once aborted.
+        const signal = init?.signal
+        firstSignal = signal
+        const aborted = new Promise<never>((_, reject) => {
+          const fail = () => reject(new DOMException("Aborted", "AbortError"))
+          if (signal?.aborted) fail()
+          signal?.addEventListener("abort", fail)
+        })
+        aborted.catch(() => {})
+        let sent = false
+        return {
+          ok: true,
+          status: 200,
+          body: {
+            getReader: () => ({
+              read: async () => {
+                if (sent) return aborted
+                await Promise.race([gate, aborted])
+                sent = true
+                return { done: false, value: firstStream }
+              },
+            }),
+          },
+        }
+      })
+      const { result } = renderHook(() => useWorkflowRun("wf1"))
+      act(() => {
+        void result.current.startRun({})
+      })
+      await flush()
+      act(() => result.current.cancelRun())
+      await act(() => result.current.startRun({}))
+      await flush()
+      expect(result.current.runId).toBe("r2")
+      expect(result.current.runStatus).toBe("completed")
+      expect(requests().filter((r) => r.includes("/cancel"))).toEqual([])
+      expect(firstSignal?.aborted).toBe(false)
+
+      await act(async () => {
+        release()
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      // The first run is cancelled by its own id, and its stream dropped.
+      expect(requests().filter((r) => r.includes("/cancel"))).toEqual(["POST /api/workflows/wf1/runs/r1/cancel"])
+      expect(firstSignal?.aborted).toBe(true)
+      // Nothing of it reached the panel, which shows the second run.
+      expect(result.current.runId).toBe("r2")
+      expect(result.current.runStatus).toBe("completed")
+      expect(result.current.finalOutputs).toEqual({ out: "second" })
+      expect(result.current.finalError).toBeNull()
+      expect(result.current.totalNodeCount).toBe(1)
+      expect(Object.keys(result.current.nodeResults ?? {})).toEqual(["start_1"])
+      expect(result.current.logEvents.map((e) => `${e.eventType}:${e.nodeId ?? "-"}`)).toEqual([
+        "node_completed:start_1",
+        "run_completed:-",
+      ])
+    })
+
     it("attaches to a run that was already in progress and follows it", async () => {
       fetchMock.mockImplementation(async () =>
         runRecord({ status: "completed", outputs: { out: 1 }, duration_ms: 10, node_results: { h_1: { status: "completed" } } }),

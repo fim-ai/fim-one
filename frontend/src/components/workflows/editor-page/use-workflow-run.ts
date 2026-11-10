@@ -69,9 +69,11 @@ export function useWorkflowRun(workflowId: string | null, beforeRun?: () => Prom
   // superseded while `beforeRun` was pending does not go on to run.
   const attemptRef = useRef(0)
   const runIdRef = useRef<string | null>(null)
-  // Set by a cancel that came before the server had named the run: the run
-  // is cancelled as soon as its id arrives.
-  const cancelWhenNamedRef = useRef(false)
+  // The streams of runs that were cancelled before the server had named
+  // them. Such a stream is no longer the page's (`abortRef` lets go of it),
+  // so that neither a new run nor leaving the page stops reading it: it is
+  // read until the run's id arrives, the run is cancelled, and it is dropped.
+  const cancelWhenNamedRef = useRef(new WeakSet<AbortController>())
   // Counts followings of a run by its record; a newer one ends the older.
   const followRef = useRef(0)
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -219,7 +221,6 @@ export function useWorkflowRun(workflowId: string | null, beforeRun?: () => Prom
       const attempt = ++attemptRef.current
       const controller = new AbortController()
       abortRef.current = controller
-      cancelWhenNamedRef.current = false
       runIdRef.current = null
       setRunId(null)
       setIsRunning(true)
@@ -261,7 +262,7 @@ export function useWorkflowRun(workflowId: string | null, beforeRun?: () => Prom
 
       // A cancel that comes before the run has a name is carried out when
       // the name arrives, so the stream is read on even when this attempt
-      // is no longer the page's current one.
+      // is no longer the page's current one. Nothing else of it is shown.
       const isCurrent = () => mountedRef.current && attemptRef.current === attempt
       let ended = false
       try {
@@ -301,9 +302,9 @@ export function useWorkflowRun(workflowId: string | null, beforeRun?: () => Prom
             const data = JSON.parse(rawData) as Record<string, unknown>
 
             const startedId = runIdOfRunStarted(eventType, data)
-            if (startedId && cancelWhenNamedRef.current && !isCurrent()) {
+            if (startedId && cancelWhenNamedRef.current.has(controller)) {
               // Cancelled before the run had a name: cancel it now.
-              cancelWhenNamedRef.current = false
+              cancelWhenNamedRef.current.delete(controller)
               workflowApi.cancelRun(workflowId, startedId).catch(() => {})
               controller.abort()
               return
@@ -413,7 +414,12 @@ export function useWorkflowRun(workflowId: string | null, beforeRun?: () => Prom
     if (!id) {
       // Not named yet. If the request is on its way the run is cancelled
       // when its id arrives; aborting the stream would only stop reading.
-      if (abortRef.current) cancelWhenNamedRef.current = true
+      // The stream is handed over for that, so a run started next does not
+      // abort it.
+      if (abortRef.current) {
+        cancelWhenNamedRef.current.add(abortRef.current)
+        abortRef.current = null
+      }
       setRunStatus(null)
       setNodeResults(null)
       return
