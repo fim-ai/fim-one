@@ -106,6 +106,10 @@ class MySQLDriver(DatabaseDriver):
                 try:
                     yield conn
                 finally:
+                    # Reset again before the connection waits in the pool:
+                    # a named lock (GET_LOCK) or a temporary table would
+                    # otherwise be held for as long as it idles there.
+                    await self._clear(conn)
                     await self._pool.release(conn)
                 return
             conn.close()
@@ -143,6 +147,18 @@ class MySQLDriver(DatabaseDriver):
         async with conn.cursor() as cur:
             # Mode names are letters, digits and underscores (checked above).
             await cur.execute(f"SET SESSION sql_mode = '{self._sql_mode}'")
+
+    @staticmethod
+    async def _clear(conn: Any) -> None:
+        """Drop what the session holds (locks, temporary tables, variables); close it if that fails."""
+        if conn.closed:
+            return
+        try:
+            await conn._execute_command(_COM_RESET_CONNECTION, b"")
+            await conn._read_ok_packet()
+        except Exception:
+            logger.debug("Clearing a MySQL session on release failed", exc_info=True)
+            conn.close()
 
     async def _reset(self, conn: Any) -> bool:
         """Reset *conn*'s session; ``False`` when it could not be reset."""

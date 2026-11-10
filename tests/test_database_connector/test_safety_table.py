@@ -130,6 +130,7 @@ READS: tuple[str, ...] = (
     "WITH x AS (SELECT 1) TABLE secrets",
     "SELECT (a) update_count FROM t",
     "SELECT share, mode, lock_in FROM t WHERE for_share = 1",
+    "SELECT get_lock, pg_advisory_lock FROM t WHERE note = 'GET_LOCK(1)'",
     # PostgreSQL's named argument notation.
     "SELECT make_interval(days := 2)",
     # For the transaction only, which a read-only connector rolls back.
@@ -320,6 +321,14 @@ WRITES: tuple[str, ...] = (
     "SELECT pg_drop_replication_slot('s')",
     "SELECT pg_replication_origin_create('o')",
     "SELECT set_config('search_path', 'rv', false)",
+    # Locks that belong to the session, not to the query.
+    "SELECT GET_LOCK('l', 0)",
+    "SELECT COUNT(*) FROM t WHERE GET_LOCK('l', 30) = 5",
+    "SELECT RELEASE_LOCK('l'), RELEASE_ALL_LOCKS()",
+    "SELECT IS_FREE_LOCK('l'), IS_USED_LOCK('l')",
+    "SELECT pg_advisory_lock(4242)",
+    "SELECT pg_advisory_xact_lock(1), pg_try_advisory_lock(2)",
+    "SELECT pg_advisory_unlock_all()",
     "SELECT set_config('statement_timeout', '0', NOT false)",
     "SELECT set_config('statement_timeout', '0', 'true')",
     "SELECT set_config('a', 'b')",

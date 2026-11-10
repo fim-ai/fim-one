@@ -31,8 +31,9 @@ pytestmark = pytest.mark.timeout(60)
 
 STATE = (
     "SELECT @@character_set_client, @@sql_mode LIKE '%NO_BACKSLASH_ESCAPES%', @kept, "
-    "IS_USED_LOCK('kept_lock') IS NOT NULL, @@autocommit"
+    "0, @@autocommit"
 )
+LOCK_HELD = "SELECT IS_USED_LOCK('kept_lock') IS NOT NULL"
 # What a read-write connector may leave on its connection.
 LEFT_BEHIND = (
     "SET NAMES gbk",
@@ -85,8 +86,37 @@ class TestLive:
             assert not (await read_write.run(sql=statement)).startswith("["), statement
         state = json.loads(await read_only.run(sql=STATE))["rows"]
         assert state == [["utf8mb4", 0, None, 0, 1]]
+        assert json.loads(await read_write.run(sql=LOCK_HELD))["rows"] == [[0]]
         # The same connection, reused, not a new one.
         assert json.loads(await read_only.run(sql="SELECT CONNECTION_ID()"))["rows"] == connection
+
+    async def test_a_named_lock_is_released_when_the_query_is_done(
+        self, live_mysql: LiveDatabase, one_connection: None
+    ) -> None:
+        """Not at the next checkout: the connection may idle in the pool for hours."""
+        import aiomysql  # type: ignore[import-untyped]
+
+        lock = f"{live_mysql.orders}_lock"
+        read_write = _tool(live_mysql, read_only=False)
+        assert json.loads(await read_write.run(sql=f"SELECT GET_LOCK('{lock}', 0)"))["rows"] == [[1]]
+        await read_write.run(sql="CREATE TEMPORARY TABLE kept_tmp (id int)")
+        # Seen from another connection, while the connector's one is idle.
+        other = await aiomysql.connect(
+            host=live_mysql.config["host"],
+            port=live_mysql.config["port"],
+            user=live_mysql.config["username"],
+            password=live_mysql.config["password"],
+            db=live_mysql.config["database"],
+        )
+        try:
+            async with other.cursor() as cur:
+                await cur.execute(f"SELECT IS_USED_LOCK('{lock}')")
+                assert await cur.fetchone() == (None,)
+        finally:
+            other.close()
+        # And a read-only connector does not take such locks at all.
+        refused = await _tool(live_mysql, read_only=True).run(sql=f"SELECT GET_LOCK('{lock}', 0)")
+        assert refused.startswith("[SQL Safety Error]")
 
     async def test_use_does_not_move_later_queries_to_another_database(
         self, live_mysql: LiveDatabase, one_connection: None
@@ -109,6 +139,7 @@ class TestLive:
         for statement in LEFT_BEHIND:
             await read_write.run(sql=statement)
         assert json.loads(await read_write.run(sql=STATE))["rows"] == [["utf8mb4", 0, None, 0, 1]]
+        assert json.loads(await read_write.run(sql=LOCK_HELD))["rows"] == [[0]]
 
     async def test_bound_text_is_safe_in_a_gbk_session_even_if_the_reset_is_missed(
         self, live_mysql: LiveDatabase, one_connection: None, monkeypatch: pytest.MonkeyPatch

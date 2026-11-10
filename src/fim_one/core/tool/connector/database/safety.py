@@ -77,6 +77,8 @@ _READ_ONLY_FUNCTIONS = frozenset(
         "pg_create_restore_point", "pg_logical_emit_message", "set_config",
         "pg_stat_file", "pg_current_logfile", "ts_stat",
         "pg_drop_replication_slot", "pg_replication_slot_advance",
+        # Session-level locks: they outlive the query.
+        "get_lock", "release_lock", "release_all_locks", "is_free_lock", "is_used_lock",
     }
 )  # fmt: skip
 _READ_ONLY_FUNCTION_PREFIXES = (
@@ -86,6 +88,7 @@ _READ_ONLY_FUNCTION_PREFIXES = (
     "pg_create_physical_replication_slot", "pg_create_logical_replication_slot",
     "pg_copy_physical_replication_slot", "pg_copy_logical_replication_slot",
     "pg_logical_slot_", "pg_replication_origin_",
+    "pg_advisory_", "pg_try_advisory_",
 )  # fmt: skip
 
 def validate_sql(sql: str, *, allow_write: bool = False, dialect: str | None = None) -> str:
@@ -363,7 +366,7 @@ def _refuse_writes_inside_a_read(lexemes: list[Lexeme], dialect: SqlDialect) -> 
         if name in _READ_ONLY_FUNCTIONS or name.startswith(_READ_ONLY_FUNCTION_PREFIXES):
             raise SqlSafetyError(
                 f"{name}() is not allowed on a read-only connection: it acts outside "
-                "the query (files, other connections, server settings or processes)."
+                "the query (files, other connections, locks, server settings or processes)."
             )
 
     if dialect == "mysql" and any(
