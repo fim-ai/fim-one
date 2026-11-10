@@ -466,6 +466,152 @@ class TestTestChannel:
         assert "FIM One test message" in payload["content"]
 
 
+class _Recorder:
+    """A loopback HTTP listener that counts requests and answers with a marker."""
+
+    MARKER = "LOOPBACK-ONLY-BANNER"
+
+    def __init__(self) -> None:
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+
+        recorder = self
+        self.requests: list[str] = []
+
+        class _Handler(BaseHTTPRequestHandler):
+            def do_POST(self) -> None:  # noqa: N802
+                length = int(self.headers.get("Content-Length") or 0)
+                self.rfile.read(length)
+                recorder.requests.append(self.path)
+                body = json.dumps({"code": 1, "msg": recorder.MARKER}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args: Any) -> None:
+                return None
+
+        self._server = HTTPServer(("127.0.0.1", 0), _Handler)
+        self.url = f"http://127.0.0.1:{self._server.server_address[1]}"
+        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+        self._thread.start()
+
+    def close(self) -> None:
+        self._server.shutdown()
+        self._server.server_close()
+        self._thread.join(timeout=5)
+
+
+@pytest.fixture()
+def recorder() -> Any:
+    listener = _Recorder()
+    yield listener
+    listener.close()
+
+
+class TestFeishuBaseUrl:
+    """``config.base_url`` is where the server posts the app secret."""
+
+    _CONFIG = {
+        "app_id": "cli_x",
+        "app_secret": "shh",
+        "chat_id": "oc_1",
+        "encrypt_key": "sign-me",
+    }
+
+    async def _create(
+        self, client: AsyncClient, seed: dict[str, Any], base_url: str | None
+    ) -> Any:
+        config = dict(self._CONFIG) if base_url is None else {**self._CONFIG, "base_url": base_url}
+        return await client.post(
+            "/api/channels",
+            json={"name": "F", "type": "feishu", "org_id": seed["org_id"], "config": config},
+            headers=seed["headers"],
+        )
+
+    @pytest.mark.asyncio
+    async def test_another_host_is_refused_on_create(
+        self,
+        client: AsyncClient,
+        seed: dict[str, Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("FEISHU_ALLOWED_BASE_URLS", raising=False)
+        for base_url in ("http://127.0.0.1:8080", "https://internal.example"):
+            resp = await self._create(client, seed, base_url)
+            assert resp.status_code == 400, resp.text
+            assert resp.json()["detail"] == "feishu_channel_base_url_not_allowed"
+        for official in (None, "https://open.feishu.cn", "https://open.larksuite.com"):
+            assert (await self._create(client, seed, official)).status_code == 201
+
+    @pytest.mark.asyncio
+    async def test_another_host_is_refused_on_update(
+        self,
+        client: AsyncClient,
+        seed: dict[str, Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("FEISHU_ALLOWED_BASE_URLS", raising=False)
+        channel_id = (await self._create(client, seed, None)).json()["id"]
+        resp = await client.patch(
+            f"/api/channels/{channel_id}",
+            json={"config": {"base_url": "http://127.0.0.1:8080"}},
+            headers=seed["headers"],
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "feishu_channel_base_url_not_allowed"
+
+    @pytest.mark.asyncio
+    async def test_a_host_the_operator_listed_is_accepted(
+        self,
+        client: AsyncClient,
+        seed: dict[str, Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("FEISHU_ALLOWED_BASE_URLS", "https://open.feishu.corp.example")
+        resp = await self._create(client, seed, "https://open.feishu.corp.example")
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["config"]["base_url"] == "https://open.feishu.corp.example"
+
+    @pytest.mark.asyncio
+    async def test_a_stored_row_does_not_make_the_server_call_its_host(
+        self,
+        client: AsyncClient,
+        seed: dict[str, Any],
+        session_factory: async_sessionmaker[AsyncSession],
+        recorder: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A member pressing Test on a row saved earlier reaches no internal host.
+
+        The row points at a loopback listener standing in for an internal
+        service; before the check, the server posted the app secret to it
+        and returned its answer in the error.
+        """
+        monkeypatch.delenv("FEISHU_ALLOWED_BASE_URLS", raising=False)
+        async with session_factory() as db:
+            ch = Channel(
+                id=str(uuid.uuid4()),
+                name="Old row",
+                type="feishu",
+                org_id=seed["org_id"],
+                created_by=seed["user_id"],
+                config={**self._CONFIG, "base_url": recorder.url},
+            )
+            db.add(ch)
+            await db.commit()
+
+        resp = await client.post(f"/api/channels/{ch.id}/test", headers=seed["headers"])
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ok"] is False
+        assert "FEISHU_ALLOWED_BASE_URLS" in body["error"]
+        assert recorder.MARKER not in resp.text
+        assert recorder.requests == []
+
+
 class TestWebhookAndEmailChannels:
     """The outbound-only types: a webhook URL per platform, or email recipients."""
 

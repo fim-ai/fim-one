@@ -531,6 +531,7 @@ When both `CLIENT_ID` and `CLIENT_SECRET` are set for a provider, the login page
 | `FEISHU_APP_ID` | No | — | Feishu (Lark) App ID. Create at [open.feishu.cn](https://open.feishu.cn/app). Requires `contact:user.email:readonly` permission |
 | `FEISHU_APP_SECRET` | No | — | Feishu (Lark) App Secret |
 | `FEISHU_TRUSTED_TENANT_KEYS` | No | — | Comma-separated Feishu `tenant_key` values whose enterprise email may match an existing account by email. Other tenants can sign in but never claim an account by email |
+| `FEISHU_ALLOWED_BASE_URLS` | No | — | Comma-separated https origins (for example `https://open.feishu.example.com`, no path) that a [Feishu app channel](/configuration/channels/feishu) may use as its `base_url` besides `https://open.feishu.cn` and `https://open.larksuite.com`. Needed only for a privately deployed Feishu. A channel whose `base_url` is not listed is refused when saved (`feishu_channel_base_url_not_allowed`) and sends nothing |
 | `FRONTEND_URL` | **Prod** | `http://localhost:3000` | Where the browser lands after OAuth completes. Must be set in production (e.g. `https://yourdomain.com`) |
 | `API_BASE_URL` | **Prod** | `http://localhost:8000` | Externally reachable backend URL, used to build OAuth callback URLs. Must be set in production |
 | `BACKEND_URL` | No | *(falls back to `PUBLIC_BACKEND_URL`, then `FRONTEND_URL`)* | Public base URL of the backend, used to build the callback URL shown for a Feishu channel and links in channel cards. Set it when the backend is reached at a different address than the portal |
