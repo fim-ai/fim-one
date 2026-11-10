@@ -307,6 +307,14 @@ class MySQLDriver(DatabaseDriver):
                 # The reset keeps the current database: after "USE other"
                 # every later query on this connection would run there.
                 await conn.select_db(settings["db"])
+            else:
+                # No database configured, and none can be "unselected":
+                # a connection on which one was chosen is not reused.
+                async with conn.cursor() as cur:
+                    await cur.execute("SELECT DATABASE()")
+                    chosen = await cur.fetchone()
+                if chosen and chosen[0] is not None:
+                    return False
             await self._set_sql_mode(conn, read_only=read_only)
         except Exception as exc:
             if getattr(exc, "args", (None,))[0] == _ER_UNKNOWN_COM_ERROR:

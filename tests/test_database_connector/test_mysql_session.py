@@ -138,6 +138,26 @@ class TestLive:
         # A read-only connector does not take USE at all.
         assert (await read_only.run(sql="USE mysql")).startswith("[SQL Safety Error]")
 
+    async def test_use_does_not_last_on_a_connector_with_no_database_configured_either(
+        self, live_mysql: LiveDatabase, one_connection: None
+    ) -> None:
+        """There is no database to go back to, so that connection is not reused."""
+        nowhere = LiveDatabase(
+            config={**live_mysql.config, "database": ""},
+            connector_id=f"{live_mysql.connector_id}-nodb",
+            orders=live_mysql.orders,
+            secrets=live_mysql.secrets,
+        )
+        try:
+            read_write = _tool(nowhere, read_only=False)
+            read_only = _tool(nowhere, read_only=True)
+            assert json.loads(await read_only.run(sql="SELECT DATABASE()"))["rows"] == [[None]]
+            assert not (await read_write.run(sql="USE mysql")).startswith("[")
+            for tool in (read_only, read_write, read_only):
+                assert json.loads(await tool.run(sql="SELECT DATABASE()"))["rows"] == [[None]]
+        finally:
+            await ConnectionPoolManager.get_instance().close_driver(nowhere.connector_id)
+
     async def test_a_read_write_connector_is_reset_between_its_own_calls_too(
         self, live_mysql: LiveDatabase, one_connection: None
     ) -> None:
@@ -205,6 +225,10 @@ class TestReset:
         conn.set_charset = AsyncMock()
         conn.autocommit = AsyncMock()
         conn.select_db = AsyncMock()
+        cursor = conn.cursor.return_value.__aenter__.return_value
+        cursor.execute = AsyncMock()
+        # SELECT DATABASE() / SELECT @@GLOBAL.sql_mode
+        cursor.fetchone = AsyncMock(return_value=(None,))
         return conn
 
     async def test_it_resets_then_states_the_character_set_and_autocommit(self) -> None:
@@ -215,6 +239,18 @@ class TestReset:
         conn.set_charset.assert_awaited_once_with("utf8mb4")
         conn.autocommit.assert_awaited_once_with(True)
         conn.select_db.assert_not_awaited()
+
+    async def test_with_no_database_configured_a_connection_with_one_chosen_is_not_reused(
+        self,
+    ) -> None:
+        driver = MySQLDriver({})
+        conn = self._connection()
+        conn.cursor.return_value.__aenter__.return_value.fetchone = AsyncMock(
+            return_value=("mysql",)
+        )
+        assert await driver._reset(conn) is False
+        # Not a server that cannot reset: later connections are still pooled.
+        assert driver._can_reset is True
 
     async def test_it_goes_back_to_the_connectors_database(self) -> None:
         driver = MySQLDriver({"database": "app"})
