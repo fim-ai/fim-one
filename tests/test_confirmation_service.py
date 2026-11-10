@@ -736,6 +736,43 @@ class TestDecide:
         assert exc.value.error_code == "confirmation_already_decided"
         assert exc.value.detail_args == {"status": "approved"}
 
+    async def test_on_decided_is_told_once_about_each_decision(
+        self, factory: async_sessionmaker[AsyncSession], deciders: dict[str, Any]
+    ) -> None:
+        """The hook a suspended workflow run is continued from (T10 P5)."""
+        row = await _request_with_scope(factory, deciders, "org_members")
+        service = ConfirmationService(factory)
+        first = await _principal(factory, deciders["users"]["initiator"])
+        second = await _principal(factory, deciders["users"]["member2"])
+        told: list[tuple[str, str]] = []
+
+        async def remember(decided: Any) -> None:
+            told.append((decided.id, decided.status))
+
+        def broken(_decided: Any) -> None:
+            raise RuntimeError("a listener's failure is not the decider's")
+
+        removers = [
+            ConfirmationService.on_decided(broken),
+            ConfirmationService.on_decided(remember),
+        ]
+        try:
+            async with factory() as db:
+                await service.decide(db, confirmation_id=row.id, actor=first, decision="reject")
+                with pytest.raises(AssemblyRefusal):
+                    await service.decide(
+                        db, confirmation_id=row.id, actor=second, decision="approve"
+                    )
+            assert told == [(row.id, "rejected")]
+        finally:
+            for remove in removers:
+                remove()
+
+        other = await _request_with_scope(factory, deciders, "org_members")
+        async with factory() as db:
+            await service.decide(db, confirmation_id=other.id, actor=first, decision="approve")
+        assert told == [(row.id, "rejected")]  # removed: no longer told
+
     async def test_a_request_past_its_deadline_cannot_be_decided(
         self, factory: async_sessionmaker[AsyncSession], deciders: dict[str, Any]
     ) -> None:

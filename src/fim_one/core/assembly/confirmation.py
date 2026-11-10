@@ -72,6 +72,7 @@ __all__ = [
     "DEFAULT_POLL_INTERVAL_SECONDS",
     "DEFAULT_TIMEOUT_SECONDS",
     "ApprovalGateHook",
+    "DecidedCallback",
     "ConfirmationService",
     "ConfirmationSpec",
     "Decision",
@@ -98,6 +99,11 @@ EligibleScope = Literal["initiator", "agent_owner", "org_members", "assignee"]
 Delivery = Literal["auto", "inline_only", "channel_only"]
 WaitOutcome = Literal["approve", "reject", "expired"]
 Decision = Literal["approve", "reject"]
+
+# Told about every request that has just been decided (the row, already
+# committed). May be sync or async.
+DecidedCallback = Callable[[Any], Awaitable[None] | None]
+_decided_callbacks: list[DecidedCallback] = []
 
 # Scopes that name one eligible user.
 _SINGLE_USER_SCOPES = ("initiator", "agent_owner", "assignee")
@@ -475,7 +481,30 @@ class ConfirmationService:
         if not newly_applied:
             raise _already_decided(final_status)
         await db.refresh(row)
+        await _notify_decided(row)
         return row
+
+    @staticmethod
+    def on_decided(callback: DecidedCallback) -> Callable[[], None]:
+        """Call *callback* with the row each time :meth:`decide` decides one.
+
+        For whatever was waiting on the request without polling it (a
+        suspended workflow run). The callback runs in the process that took
+        the decision, after the decision is committed; it is told once per
+        request, because only one ``decide`` wins. It should hand long work
+        to a background task: the person deciding waits for it. An
+        exception it raises is logged and does not undo the decision.
+        A request that expires is not announced here.
+
+        Registration is process-wide. Returns a function that removes it.
+        """
+        _decided_callbacks.append(callback)
+
+        def remove() -> None:
+            if callback in _decided_callbacks:
+                _decided_callbacks.remove(callback)
+
+        return remove
 
     async def pending_for(self, db: Any, actor: Principal, *, kind: str | None = None) -> list[Any]:
         """Pending requests *actor* may decide, newest first.
@@ -595,6 +624,18 @@ async def close_requests_of_runs(db: Any, run_ids: Any) -> int:
         ),
     )
     return int(result.rowcount or 0)
+
+
+async def _notify_decided(row: Any) -> None:
+    for callback in list(_decided_callbacks):
+        try:
+            result = callback(row)
+            if result is not None:
+                await result
+        except Exception:
+            logger.exception(
+                "on_decided callback failed for confirmation %s", getattr(row, "id", None)
+            )
 
 
 def _already_decided(status: str) -> AssemblyRefusal:
