@@ -19,7 +19,7 @@ import pytest
 from sqlalchemy import select, update
 
 from fim_one.core.workflow import run_service as rs
-from fim_one.core.workflow.nodes import open_call
+from fim_one.core.assembly.confirmed_call import open_call
 from fim_one.core.workflow.rate_limiter import WorkflowRateLimiter
 from fim_one.core.workflow.run_recovery import WorkflowRunSupervisor, install_resume_on_decision
 from fim_one.db.models.channel import ConfirmationRequest
@@ -554,7 +554,7 @@ class TestWhatWasApprovedIsWhatRuns:
         assert item["arguments"] == open_call(request.payload)[1] == {"target": "ledger-9"}
 
     async def test_an_env_value_inside_a_longer_argument_is_masked_too(self) -> None:
-        from fim_one.core.workflow.nodes import seal_call
+        from fim_one.core.assembly.confirmed_call import seal_call
 
         sealed = seal_call(
             {"url": "https://api.example.test/?key=s3cr3t&n=1", "n": 5, "nested": ["s3cr3t", True]},

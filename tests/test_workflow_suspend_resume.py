@@ -1143,7 +1143,7 @@ class TestConnectorActionConfirmation:
         # Decided by whoever the run belongs to.
         assert (request.eligible_scope, request.eligible_user_id) == ("initiator", rig.owner.id)
         assert request.payload["tool_name"] == "Ledger.wipe"
-        from fim_one.core.workflow.nodes import open_call
+        from fim_one.core.assembly.confirmed_call import open_call
 
         # Encrypted on the row; what will be sent and what is shown agree.
         assert "ledger-7" not in json.dumps(request.payload)

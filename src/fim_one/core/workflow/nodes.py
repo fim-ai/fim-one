@@ -1245,102 +1245,6 @@ async def _action_tool(
 ACTION_CONFIRMATION_TIMEOUT_HOURS = 24.0
 
 
-def _masked_env(value: Any, env_vars: dict[str, str]) -> Any:
-    """*value* with every workflow env var's value replaced by ``{{env.NAME}}``.
-
-    What an approver is shown: that a secret goes into the call, not the
-    secret. The call itself is made with the real value.
-    """
-    secrets_by_length = sorted(
-        ((name, text) for name, text in env_vars.items() if isinstance(text, str) and text),
-        key=lambda item: len(item[1]),
-        reverse=True,
-    )
-    if not secrets_by_length:
-        return value
-
-    def mask(node: Any) -> Any:
-        if isinstance(node, dict):
-            return {key: mask(item) for key, item in node.items()}
-        if isinstance(node, list):
-            return [mask(item) for item in node]
-        if isinstance(node, bool) or node is None:
-            return node
-        text = node if isinstance(node, str) else str(node)
-        masked = text
-        for name, secret in secrets_by_length:
-            masked = masked.replace(secret, "{{env." + name + "}}")
-        return masked if masked != text else node
-
-    return mask(value)
-
-
-def seal_call(arguments: dict[str, Any], env_vars: dict[str, str]) -> str:
-    """The arguments of a call waiting for confirmation, as stored on its request.
-
-    Encrypted with the credential key: the exact arguments that will be
-    sent (``args``) and what the approver is shown (``shown``, the same
-    with env var values masked). Nothing of them is kept in the clear.
-    """
-    from fim_one.core.security.encryption import encrypt_credential
-
-    plain = json.loads(json.dumps(arguments, default=str, ensure_ascii=False))
-    return encrypt_credential({"args": plain, "shown": _masked_env(plain, env_vars)})
-
-
-def open_call(payload: Any) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
-    """``(arguments to send, arguments to show)`` of a confirmation request's payload.
-
-    ``(None, None)`` when the payload holds no sealed call or it cannot be
-    decrypted with this instance's key.
-    """
-    from fim_one.core.security.encryption import decrypt_credential
-
-    sealed = payload.get("sealed") if isinstance(payload, dict) else None
-    if not isinstance(sealed, str):
-        return None, None
-    opened = decrypt_credential(sealed)
-    args, shown = opened.get("args"), opened.get("shown")
-    return (
-        args if isinstance(args, dict) else None,
-        shown if isinstance(shown, dict) else None,
-    )
-
-
-def _call_fingerprint(connector: Any, action: Any, credential_source: str = "") -> str:
-    """What a confirmation of this action was a confirmation of.
-
-    A hash of where the call goes, as whom, and how it is built: the
-    connector's address, authentication type and configuration (hashed,
-    never kept), whether it lends its owner's credential, whose credential
-    this run will use (*credential_source*: the runner's own, or the
-    owner's), and the action's method, path, parameter schema, body
-    template, response extraction and flag. If it differs between the
-    request and the approval, the person approved something else.
-    """
-    import hashlib
-
-    auth_config = json.dumps(connector.auth_config, sort_keys=True, default=str)
-    definition = {
-        "connector_id": connector.id,
-        "base_url": connector.base_url,
-        "auth_type": connector.auth_type,
-        "auth_config": hashlib.sha256(auth_config.encode("utf-8")).hexdigest(),
-        "allow_fallback": bool(connector.allow_fallback),
-        "credential_source": credential_source,
-        "action_id": action.id,
-        "name": action.name,
-        "method": action.method,
-        "path": action.path,
-        "parameters_schema": action.parameters_schema,
-        "request_body_template": action.request_body_template,
-        "response_extract": action.response_extract,
-        "requires_confirmation": bool(action.requires_confirmation),
-    }
-    text = json.dumps(definition, sort_keys=True, default=str, ensure_ascii=False)
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
 async def _confirmed(
     node: WorkflowNodeDef,
     context: ExecutionContext,
@@ -1358,7 +1262,7 @@ async def _confirmed(
     request; the step's parameters are **not** filled in again, because
     variables may have changed since (an env var edited, another branch
     finishing). What was approved is what runs. If the connector or the
-    action was edited in between (:func:`_call_fingerprint`), nothing runs
+    action was edited in between (``core.assembly.confirmed_call.call_fingerprint``), nothing runs
     and the step fails.
 
     Otherwise the step's result: ``WAITING`` when the request was just made
@@ -1373,6 +1277,7 @@ async def _confirmed(
     call in chat.
     """
     from fim_one.core.assembly.confirmation import ConfirmationService, ConfirmationSpec
+    from fim_one.core.assembly.confirmed_call import call_fingerprint, open_call, seal_call
     from fim_one.core.assembly.errors import AssemblyRefusal
 
     def failed(error: str, *, answered: bool = False) -> NodeResult:
@@ -1409,7 +1314,7 @@ async def _confirmed(
                 "sealed": seal_call(params, context.env_vars),
                 "connector_id": connector.id,
                 "action_id": action.id,
-                "fingerprint": _call_fingerprint(connector, action, credential_source),
+                "fingerprint": call_fingerprint(connector, action, credential_source),
             },
             eligible_scope="initiator",
             eligible_user_id=principal.user_id,
@@ -1440,7 +1345,7 @@ async def _confirmed(
     if outcome == "approve":
         shown = record.payload if isinstance(getattr(record, "payload", None), dict) else {}
         approved_args, _ = open_call(shown)
-        if shown.get("fingerprint") != _call_fingerprint(
+        if shown.get("fingerprint") != call_fingerprint(
             connector, action, credential_source
         ) or not isinstance(
             approved_args, dict
@@ -1737,23 +1642,13 @@ class ConnectorExecutor:
                         duration_ms=_ms_since(t0),
                     )
                 connector = _usable[0]
-                # Whose credential the call would carry: the runner's own
-                # if they saved one, else the owner's.
-                from sqlalchemy import select
+                # Whose credential the call would carry (the runner's own,
+                # or the owner's): part of what a confirmation covers.
+                from fim_one.core.assembly.confirmed_call import credential_source as _source
 
-                from fim_one.db.models.connector_credential import ConnectorCredential
-
-                own = (
-                    await db.execute(
-                        select(ConnectorCredential.id)
-                        .where(
-                            ConnectorCredential.connector_id == connector.id,
-                            ConnectorCredential.user_id == call_context.principal.user_id,
-                        )
-                        .limit(1)
-                    )
-                ).first()
-                credential_source = "own" if own is not None else "owner"
+                credential_source = await _source(
+                    db, connector.id, call_context.principal.user_id
+                )
 
             # Also when the flag was taken off the action while a request
             # was waiting: a request that was made is answered, and its

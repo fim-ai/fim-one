@@ -962,7 +962,7 @@ async def _inbox_rows(db: AsyncSession, user: User) -> list[ConfirmationRequest]
 
 
 def _shown_arguments(payload: dict[str, Any]) -> dict[str, Any] | None:
-    from fim_one.core.workflow.nodes import open_call
+    from fim_one.core.assembly.confirmed_call import open_call
 
     return open_call(payload)[1]
 
