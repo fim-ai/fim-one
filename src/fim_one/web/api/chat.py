@@ -5434,19 +5434,17 @@ async def auto_endpoint(
     if principal is None:
         raise AppError("authentication_required", status_code=401)
 
+    # The same admission as the endpoint this turn is routed to, before the
+    # classification below spends a model call: the conversation is the
+    # caller's, plan and quota allow the turn, the agent is usable.
+    agent_cfg = await _admit_turn(principal, body.conversation_id, body.agent_id)
+
     # Determine execution mode
     from fim_one.core.planner.router import classify_execution_mode
     from fim_one.db import create_session as _create_session
 
     async with _create_session() as _llm_db:
-        fast_llm = await _resolve_fast_llm(
-            await agent_runtime.resolve_agent(
-                CallContext(principal=principal, binding=None, entry="chat"),
-                body.agent_id,
-                conversation_id=body.conversation_id,
-            ),
-            _llm_db,
-        )
+        fast_llm = await _resolve_fast_llm(agent_cfg, _llm_db)
 
     decision = await classify_execution_mode(q, fast_llm)
     mode = decision.mode

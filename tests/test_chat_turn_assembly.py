@@ -268,3 +268,42 @@ class TestTheOtherEndpoints:
         assert "connector" in {t.name for t in loop["tools"].list_tools()}
         assert loop["agent_id"] == world.agent
 
+
+
+class TestAutoIsAdmittedBeforeItClassifies:
+    """Auto mode asks a model which way to route. That call is part of the turn."""
+
+    @pytest.fixture()
+    def app(self) -> FastAPI:
+        return create_app()
+
+    async def test_an_over_quota_turn_is_refused_before_any_model_is_asked(
+        self,
+        app: FastAPI,
+        world: World,
+        loops: list[dict[str, Any]],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        asked: list[str] = []
+
+        async def _classify(query: str, _llm: Any) -> Any:
+            asked.append(query)
+            raise AssertionError("classified a turn that is not admitted")
+
+        monkeypatch.setattr("fim_one.core.planner.router.classify_execution_mode", _classify)
+        async with create_session() as db:
+            user = await db.get(User, world.user)
+            assert user is not None
+            user.token_quota = 10
+            db.add(Conversation(user_id=world.user, title="t", mode="react", total_tokens=10))
+            await db.commit()
+
+        conv = await _conversation(world.user, None)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+            resp = await client.post(
+                "/api/auto", json={"q": "say pong", "conversation_id": conv, "token": world.token}
+            )
+
+        assert resp.status_code == 429, resp.text
+        assert resp.json()["error_code"] == "token_quota_exceeded"
+        assert asked == [] and loops == []
