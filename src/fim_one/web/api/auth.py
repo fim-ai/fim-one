@@ -16,6 +16,7 @@ from sqlalchemy import func, select, update
 
 from fim_one.core.utils import spawn_background
 from fim_one.web.admin_notify import notify_admins
+from fim_one.web.audit_events import record_account
 from fim_one.web.email import _smtp_configured, send_verification_email
 from fim_one.web.exceptions import AppError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,7 +46,9 @@ from fim_one.web.auth import (
     verify_password_async,
 )
 from fim_one.db.models import LoginHistory, User
+from fim_one.core.audit import actions
 from fim_one.core.audit import writer as audit
+from fim_one.core.audit.redact import diff_changes
 from fim_one.core.audit.events import Actor, RequestMeta
 from fim_one.db.models.agent import Agent
 from fim_one.db.models.api_key import ApiKey
@@ -364,6 +367,12 @@ async def register(
     user.refresh_token = hash_refresh_token(refresh)
     user.refresh_token_expires_at = datetime.now(UTC) + timedelta(
         days=REFRESH_TOKEN_EXPIRE_DAYS
+    )
+    await record_account(
+        db,
+        user,
+        actions.AUTH_REGISTER,
+        detail="first account, made administrator" if is_first_user_check else None,
     )
     await db.commit()
 
@@ -1116,6 +1125,7 @@ async def change_password(
     if not await verify_password_async(body.current_password, user.password_hash):
         raise AppError("current_password_incorrect")
     user.password_hash = await hash_password_async(body.new_password)
+    await record_account(db, user, actions.AUTH_PASSWORD_CHANGE)
     await db.commit()
     return ApiResponse(data={"message": "Password changed successfully"})
 
@@ -1132,6 +1142,7 @@ async def set_password(
     if user.password_hash is not None:
         raise AppError("password_already_set")
     user.password_hash = await hash_password_async(body.new_password)
+    await record_account(db, user, actions.AUTH_PASSWORD_SET)
     await db.commit()
 
     # Reload with oauth_bindings for response serialization
@@ -1232,6 +1243,7 @@ async def reset_password(
     result = await db.execute(select(User).where(User.id == current_user.id))
     user = result.scalar_one()
     user.password_hash = await hash_password_async(body.new_password)
+    await record_account(db, user, actions.AUTH_PASSWORD_RESET, detail="emailed code, signed in")
     await db.commit()
 
     return ApiResponse(data={"message": "Password reset successfully"})
@@ -1374,6 +1386,10 @@ async def forgot_password(
     user.password_hash = await hash_password_async(body.new_password)
     # Clear the reset token so it can't be reused
     verif.reset_token = None
+    # Nobody is signed in here: the emailed code is what proved the account.
+    await record_account(
+        db, user, actions.AUTH_PASSWORD_RESET, detail="emailed code", auth="email_code"
+    )
     await db.commit()
 
     return ApiResponse(data={"message": "Password reset successfully"})
@@ -1425,6 +1441,7 @@ async def unbind_oauth(
         user.oauth_provider = None
         user.oauth_id = None
 
+    await record_account(db, user, actions.AUTH_OAUTH_UNBIND, detail=f"provider={provider}")
     await db.commit()
 
     # Reload with oauth_bindings for response serialization
@@ -1476,6 +1493,7 @@ async def setup(
     user.refresh_token_expires_at = datetime.now(UTC) + timedelta(
         days=REFRESH_TOKEN_EXPIRE_DAYS
     )
+    await record_account(db, user, actions.AUTH_SETUP_ADMIN)
     await db.commit()
 
     # Reload with oauth_bindings for response serialization
@@ -1667,6 +1685,7 @@ async def enable_2fa(
 
     user.totp_enabled = True
     user.totp_backup_codes = json.dumps(hashed_codes)
+    await record_account(db, user, actions.AUTH_TWO_FACTOR_ENABLE)
     await db.commit()
 
     return TwoFactorEnableResponse(backup_codes=plain_codes)
@@ -1691,6 +1710,7 @@ async def disable_2fa(
     user.totp_secret = None
     user.totp_enabled = False
     user.totp_backup_codes = None
+    await record_account(db, user, actions.AUTH_TWO_FACTOR_DISABLE)
     await db.commit()
 
     return ApiResponse(data={"message": "2FA disabled successfully"})
@@ -1715,6 +1735,7 @@ async def regenerate_backup_codes(
     plain_codes = _generate_backup_codes(10)
     hashed_codes = [_hash_backup_code(c) for c in plain_codes]
     user.totp_backup_codes = json.dumps(hashed_codes)
+    await record_account(db, user, actions.AUTH_BACKUP_CODES_REGENERATE)
     await db.commit()
 
     return TwoFactorBackupCodesResponse(backup_codes=plain_codes)
@@ -1917,9 +1938,16 @@ async def confirm_email_change(
     # Update the user's email
     result = await db.execute(select(User).where(User.id == current_user.id))
     user = result.scalar_one()
+    previous_email = user.email
     user.email = body.new_email
     # Reached only past the OTP check above, so the new address is proven.
     user.email_verified = True
+    await record_account(
+        db,
+        user,
+        actions.AUTH_EMAIL_CHANGE,
+        changes=diff_changes({"email": previous_email}, {"email": user.email}),
+    )
     await db.commit()
 
     return ApiResponse(data={"message": "Email changed successfully"})

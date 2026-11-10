@@ -131,6 +131,27 @@ ACCOUNT_SELF_DELETE = "account.self_delete"
 # A first sign-in through an OAuth provider created the account.
 AUTH_OAUTH_SIGNUP = "auth.oauth_signup"
 
+# -- A user's own account -----------------------------------------------------
+# The target is the user; the record never holds a password, a code or a key.
+AUTH_REGISTER = "auth.register"
+# The first-time setup that creates the instance's first administrator.
+AUTH_SETUP_ADMIN = "auth.setup_admin"
+AUTH_PASSWORD_CHANGE = "auth.password_change"
+# A first password, set by an account that had only a provider sign-in.
+AUTH_PASSWORD_SET = "auth.password_set"
+# By emailed code, signed in or not.
+AUTH_PASSWORD_RESET = "auth.password_reset"
+AUTH_TWO_FACTOR_ENABLE = "auth.two_factor_enable"
+AUTH_TWO_FACTOR_DISABLE = "auth.two_factor_disable"
+AUTH_BACKUP_CODES_REGENERATE = "auth.backup_codes_regenerate"
+AUTH_EMAIL_CHANGE = "auth.email_change"
+AUTH_OAUTH_BIND = "auth.oauth_bind"
+AUTH_OAUTH_UNBIND = "auth.oauth_unbind"
+# The user signed every session of theirs out.
+AUTH_SESSIONS_REVOKE = "auth.sessions_revoke"
+# A user's own API keys are recorded under the administrators' names for
+# the same thing: ``api_key.create`` / ``enable`` / ``disable`` / ``delete``.
+
 ACTIONS: frozenset[str] = frozenset(ADMIN_ACTIONS) | frozenset(
     value
     for name, value in dict(globals()).items()

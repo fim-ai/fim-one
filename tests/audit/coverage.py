@@ -191,16 +191,31 @@ AUDITED: dict[Route, tuple[str, ...]] = {
     ("POST", "/api/agents/{agent_id}/publish"): ("review_log:submitted",),
     ("POST", "/api/agents/{agent_id}/resubmit"): ("review_log:resubmitted",),
     ("POST", "/api/agents/{agent_id}/unpublish"): ("review_log:unpublished",),
+    ("POST", "/api/auth/2fa/backup-codes"): ("auth.backup_codes_regenerate",),
+    ("POST", "/api/auth/2fa/disable"): ("auth.two_factor_disable",),
+    ("POST", "/api/auth/2fa/enable"): ("auth.two_factor_enable",),
     ("DELETE", "/api/auth/account"): ("account.self_delete",),
+    ("POST", "/api/auth/change-email/confirm"): ("auth.email_change",),
+    ("POST", "/api/auth/change-password"): ("auth.password_change",),
+    ("POST", "/api/auth/forgot-password"): ("auth.password_reset",),
     ("POST", "/api/auth/login"): (LOGIN,),
     ("POST", "/api/auth/login-with-code"): (LOGIN,),
     ("POST", "/api/auth/login/verify-2fa"): (LOGIN,),
+    ("DELETE", "/api/auth/oauth-bindings/{provider}"): ("auth.oauth_unbind",),
+    ("POST", "/api/auth/register"): ("auth.register",),
+    ("POST", "/api/auth/reset-password"): ("auth.password_reset",),
+    ("POST", "/api/auth/set-password"): ("auth.password_set",),
+    ("POST", "/api/auth/setup"): ("auth.setup_admin",),
     ("POST", "/api/connectors/{connector_id}/publish"): ("review_log:submitted",),
     ("POST", "/api/connectors/{connector_id}/resubmit"): ("review_log:resubmitted",),
     ("POST", "/api/connectors/{connector_id}/unpublish"): ("review_log:unpublished",),
     ("POST", "/api/mcp-servers/{server_id}/publish"): ("review_log:submitted",),
     ("POST", "/api/mcp-servers/{server_id}/resubmit"): ("review_log:resubmitted",),
     ("POST", "/api/mcp-servers/{server_id}/unpublish"): ("review_log:unpublished",),
+    ("POST", "/api/me/api-keys"): ("api_key.create",),
+    ("DELETE", "/api/me/api-keys/{key_id}"): ("api_key.delete",),
+    ("PATCH", "/api/me/api-keys/{key_id}/active"): ("api_key.enable", "api_key.disable"),
+    ("POST", "/api/me/sessions/revoke-all"): ("auth.sessions_revoke",),
     ("POST", "/api/orgs/{org_id}/reviews/approve"): ("review_log:approved",),
     ("POST", "/api/orgs/{org_id}/reviews/reject"): ("review_log:rejected",),
     ("POST", "/api/skills/{skill_id}/publish"): ("review_log:submitted",),
@@ -287,22 +302,6 @@ EXEMPT: dict[Route, str] = {
 }
 
 KNOWN_GAPS: dict[Route, Gap] = {
-    # 2 account security
-    ("POST", "/api/auth/2fa/backup-codes"): Gap("2 account security", "auth.backup_codes_regenerate"),
-    ("POST", "/api/auth/2fa/disable"): Gap("2 account security", "auth.two_factor_disable"),
-    ("POST", "/api/auth/2fa/enable"): Gap("2 account security", "auth.two_factor_enable"),
-    ("POST", "/api/auth/change-email/confirm"): Gap("2 account security", "auth.email_change"),
-    ("POST", "/api/auth/change-password"): Gap("2 account security", "auth.password_change"),
-    ("POST", "/api/auth/forgot-password"): Gap("2 account security", "auth.password_reset"),
-    ("DELETE", "/api/auth/oauth-bindings/{provider}"): Gap("2 account security", "auth.oauth_unbind"),
-    ("POST", "/api/auth/register"): Gap("2 account security", "auth.register"),
-    ("POST", "/api/auth/reset-password"): Gap("2 account security", "auth.password_reset"),
-    ("POST", "/api/auth/set-password"): Gap("2 account security", "auth.password_set"),
-    ("POST", "/api/auth/setup"): Gap("2 account security", "auth.setup_admin"),
-    ("POST", "/api/me/api-keys"): Gap("2 account security", "api_key.create"),
-    ("DELETE", "/api/me/api-keys/{key_id}"): Gap("2 account security", "api_key.delete"),
-    ("PATCH", "/api/me/api-keys/{key_id}/active"): Gap("2 account security", "api_key.enable|api_key.disable"),
-    ("POST", "/api/me/sessions/revoke-all"): Gap("2 account security", "auth.sessions_revoke"),
     # 3 organizations
     ("POST", "/api/orgs"): Gap("3 organizations", "org.create"),
     ("DELETE", "/api/orgs/{org_id}"): Gap("3 organizations", "org.delete"),
@@ -403,15 +402,17 @@ AUDITED_READS: dict[Route, tuple[str, ...]] = {
     ("GET", "/api/admin/export/full-backup"): ("export.full_backup",),
     ("GET", "/api/admin/export/users"): ("export.users",),
     ("GET", "/api/admin/model-config/export"): ("model_config.export",),
-    # A sign-in through a provider's redirect, and the account it may create.
-    ("GET", "/api/auth/oauth/{provider_name}/callback"): (LOGIN, "auth.oauth_signup"),
+    # A sign-in through a provider's redirect, the account it may create,
+    # and the linking of a provider to a signed-in account.
+    ("GET", "/api/auth/oauth/{provider_name}/callback"): (
+        LOGIN,
+        "auth.oauth_signup",
+        "auth.oauth_bind",
+    ),
 }
 
 # Read routes and other entry points that should leave a record and do not yet.
 KNOWN_NON_ROUTE_GAPS: dict[str, Gap] = {
-    "OAuth callback: linking a provider to the signed-in account": Gap(
-        "2 account security", "auth.oauth_bind"
-    ),
     "export of one's own data, a conversation, a workflow's runs": Gap(
         "8 exports and views", "export.own_data / export.conversation / export.workflow_runs"
     ),

@@ -22,6 +22,7 @@ from fim_one.core.audit import actions
 from fim_one.core.audit import writer as audit
 from fim_one.core.audit.events import Actor
 from fim_one.db import get_session
+from fim_one.web.audit_events import record_account
 from fim_one.web.exceptions import AppError
 from fim_one.web.api.admin import SETTING_REGISTRATION_ENABLED, SETTING_REGISTRATION_MODE
 from fim_one.web.api.admin_utils import get_setting
@@ -311,6 +312,9 @@ async def _handle_bind(
         user.oauth_provider = user_info.provider
         user.oauth_id = user_info.id
 
+    await record_account(
+        db, user, actions.AUTH_OAUTH_BIND, detail=f"provider={user_info.provider}"
+    )
     await db.commit()
 
     return RedirectResponse(
