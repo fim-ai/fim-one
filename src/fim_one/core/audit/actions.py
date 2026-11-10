@@ -262,6 +262,14 @@ SYSTEM_LOGS_READ = "system_logs.read"
 # statement and its result are not recorded.
 DATABASE_QUERY = "database.query"
 
+# -- Refusals anyone can provoke -------------------------------------------------
+# Written through ``core/audit/refusals.py``: at most one per source address
+# and ten minutes, the next one saying how many were left out.
+# A request from an address the IP rules do not allow.
+SECURITY_IP_BLOCKED = "security.ip_blocked"
+# A call to the workflow trigger endpoint with a key no workflow has.
+WORKFLOW_TRIGGER_KEY_INVALID = "workflow.trigger_key_invalid"
+
 ACTIONS: frozenset[str] = frozenset(ADMIN_ACTIONS) | frozenset(
     value
     for name, value in dict(globals()).items()

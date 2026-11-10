@@ -647,7 +647,9 @@
       "export__workflow_runs": "Export Workflow Runs",
       "export__audit_log": "Export Audit Log",
       "system_logs__read": "Read System Logs",
-      "database__query": "Run SQL on Database Connector"
+      "database__query": "Run SQL on Database Connector",
+      "security__ip_blocked": "Request Blocked by IP Rule",
+      "workflow__trigger_key_invalid": "Unknown Workflow Trigger Key"
     },
     "detailDialogTitle": "Audit Detail",
     "filterDateFrom": "From",

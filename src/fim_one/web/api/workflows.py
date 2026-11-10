@@ -23,6 +23,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fim_one.core.audit import actions
 from fim_one.core.audit.redact import diff_changes
 from fim_one.core.audit import writer as audit
+from fim_one.core.audit.context import current_request_meta
+from fim_one.core.audit.redact import hint as redact_hint
+from fim_one.core.audit.refusals import record_refusal
 from fim_one.db import get_session
 from fim_one.core.security import get_safe_async_client, is_private_ip
 from fim_one.web.exceptions import AppError
@@ -814,6 +817,16 @@ async def _resolve_trigger_workflow(raw_key: str | None, db: AsyncSession) -> Wo
     try:
         return await resolve_trigger_key(raw_key, db)
     except TriggerKeyRejectedError as exc:
+        if exc.error_code == "invalid_api_key":
+            # Nobody is authenticated: counted by the caller's address, one
+            # record per address and ten minutes. Of the key, only enough
+            # to tell a typo from a guess.
+            meta = current_request_meta()
+            await record_refusal(
+                actions.WORKFLOW_TRIGGER_KEY_INVALID,
+                source=meta.ip if meta else None,
+                detail=f"key={redact_hint(raw_key, keep=6) or '(none)'}",
+            )
         raise AppError(exc.error_code, status_code=401, detail=exc.detail) from None
 
 

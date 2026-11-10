@@ -432,6 +432,9 @@ def create_app() -> FastAPI:
         path_is_exempt,
     )
 
+    from fim_one.core.audit import actions as audit_actions
+    from fim_one.core.audit.refusals import record_refusal
+
     _ip_rule_cache = RuleCache()
 
     @app.middleware("http")
@@ -443,6 +446,14 @@ def create_app() -> FastAPI:
         allow, deny = await _ip_rule_cache.get()
         client_ip = request.client.host if request.client else None
         if not is_client_allowed(client_ip, allow, deny):
+            # One record per address and ten minutes: a scan must not fill
+            # the audit table. The address itself is on the record from the
+            # request context.
+            await record_refusal(
+                audit_actions.SECURITY_IP_BLOCKED,
+                source=client_ip,
+                detail=f"{request.method} {request.url.path}",
+            )
             return JSONResponse(
                 status_code=403,
                 content={

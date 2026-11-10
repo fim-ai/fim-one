@@ -452,8 +452,6 @@ AUDITED_READS: dict[Route, tuple[str, ...]] = {
 
 # Read routes and other entry points that should leave a record and do not yet.
 KNOWN_NON_ROUTE_GAPS: dict[str, Gap] = {
-    "a request refused by the IP rules": Gap("9 refusals", "security.ip_blocked"),
-    "a trigger call with an unknown key": Gap("9 refusals", "workflow.trigger_key_invalid"),
     "a request nobody decided in time": Gap("11 confirmation decisions", "confirmation.expire"),
     "a scheduled run starting, a waiting run refused on resume, a stale run closed": Gap(
         "T10 P7", "workflow.run_started / workflow.run_refused / workflow.run_closed"
@@ -463,6 +461,17 @@ KNOWN_NON_ROUTE_GAPS: dict[str, Gap] = {
 # Records written outside any route: action -> the test that shows it
 # (``tests/<file>.py::<Class>::<test>``).
 NON_ROUTE_ACTIONS: dict[str, str] = {
+    # The IP rule gate is a middleware; it refuses before any route.
+    "security.ip_blocked": (
+        "tests/test_audit_refusals.py::TestABlockedAddress::"
+        "test_ip_block_recorded_once_per_window"
+    ),
+    # Written where the trigger routes look the key up. The routes themselves
+    # are listed under KNOWN_GAPS for the run they start (T10 P7).
+    "workflow.trigger_key_invalid": (
+        "tests/test_audit_refusals.py::TestAnUnknownTriggerKey::"
+        "test_recorded_once_per_address_with_only_the_start_of_the_key"
+    ),
     # Also written by the payment processor's webhook (a route, see AUDITED);
     # here: the sweep that ends a cancelled subscription at its period end.
     "billing.plan_change": (
