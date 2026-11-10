@@ -238,6 +238,13 @@ WORKFLOW_RUNS_CLEAR = "workflow.runs_clear"
 MARKET_SUBSCRIBE = "market.subscribe"
 MARKET_UNSUBSCRIBE = "market.unsubscribe"
 
+# -- Plans --------------------------------------------------------------------
+# A user's plan changed without an administrator: the payment processor
+# reported a purchase or a switch, or a cancelled subscription reached the
+# end of its period. The actor is the system; the change is the plan before
+# and after.
+BILLING_PLAN_CHANGE = "billing.plan_change"
+
 ACTIONS: frozenset[str] = frozenset(ADMIN_ACTIONS) | frozenset(
     value
     for name, value in dict(globals()).items()

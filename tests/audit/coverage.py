@@ -333,6 +333,7 @@ AUDITED: dict[Route, tuple[str, ...]] = {
         "review_log:unpublished",
         "workflow.unpublish_by_admin",
     ),
+    ("POST", "/api/webhooks/stripe"): ("billing.plan_change",),
 }
 
 EXEMPT: dict[Route, str] = {
@@ -406,8 +407,6 @@ EXEMPT: dict[Route, str] = {
 }
 
 KNOWN_GAPS: dict[Route, Gap] = {
-    # 7 plan changes
-    ("POST", "/api/webhooks/stripe"): Gap("7 plan changes", "billing.plan_change"),
     # 8 exports and views
     ("POST", "/api/connectors/{connector_id}/query"): Gap("8 exports and views", "database.query"),
     # 10 admin leftovers
@@ -455,9 +454,6 @@ KNOWN_NON_ROUTE_GAPS: dict[str, Gap] = {
     "an administrator exporting the audit log or reading the system logs": Gap(
         "8 exports and views", "export.audit_log / system_logs.read"
     ),
-    "a plan ending at its period end (lifecycle sweep)": Gap(
-        "7 plan changes", "billing.plan_change"
-    ),
     "a request refused by the IP rules": Gap("9 refusals", "security.ip_blocked"),
     "a trigger call with an unknown key": Gap("9 refusals", "workflow.trigger_key_invalid"),
     "a request nobody decided in time": Gap("11 confirmation decisions", "confirmation.expire"),
@@ -468,7 +464,14 @@ KNOWN_NON_ROUTE_GAPS: dict[str, Gap] = {
 
 # Records written outside any route: action -> the test that shows it
 # (``tests/<file>.py::<Class>::<test>``).
-NON_ROUTE_ACTIONS: dict[str, str] = {}
+NON_ROUTE_ACTIONS: dict[str, str] = {
+    # Also written by the payment processor's webhook (a route, see AUDITED);
+    # here: the sweep that ends a cancelled subscription at its period end.
+    "billing.plan_change": (
+        "tests/test_audit_plan_changes.py::TestThePeriodEndSweep::"
+        "test_a_cancelled_subscription_past_its_period_puts_the_user_back_on_free"
+    ),
+}
 
 # Where a route's record is written when not in the module of its endpoint
 # (a shared service): route -> the modules that hold the call.

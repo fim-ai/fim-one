@@ -22,6 +22,7 @@ from fim_one.core.audit.redact import CHANGED, diff_changes
 __all__ = [
     "label_of",
     "record_account",
+    "record_plan_change",
     "record_resource",
     "record_resource_change",
     "record_unpublish_by_other",
@@ -157,4 +158,34 @@ async def record_unpublish_by_other(
         return
     await record_resource(
         db, user, action, resource_type, resource, detail=f"owner={owner_id}"
+    )
+
+
+async def record_plan_change(
+    db: AsyncSession,
+    user: Any,
+    action: str,
+    *,
+    plan_from: int | str | None,
+    plan_to: int | str | None,
+    source: str,
+    detail: str | None = None,
+) -> None:
+    """*user*'s plan was changed by the platform itself, not by a person.
+
+    *source* names what did it (the payment processor's event, the
+    period-end sweep): it is the actor. Nothing is recorded when the plan
+    is the one the user already had. Committed with the change.
+    """
+    if plan_from == plan_to:
+        return
+    await audit.record(
+        action,
+        actor=audit.system_actor(source),
+        target_type="user",
+        target_id=user.id,
+        target_label=label_of(user),
+        changes=diff_changes({"plan_id": plan_from}, {"plan_id": plan_to}),
+        detail=detail,
+        db=db,
     )

@@ -640,7 +640,8 @@
       "workflow__run_delete": "Delete Workflow Run",
       "workflow__runs_clear": "Clear Workflow Runs",
       "market__subscribe": "Subscribe to Resource",
-      "market__unsubscribe": "Unsubscribe from Resource"
+      "market__unsubscribe": "Unsubscribe from Resource",
+      "billing__plan_change": "Plan Changed by Billing"
     },
     "detailDialogTitle": "Audit Detail",
     "filterDateFrom": "From",
