@@ -1189,7 +1189,7 @@ async def delete_user(
     info = _user_to_info(target_user)
     label = target_user.username or target_user.email
 
-    # Unified deletion: file cleanup + FK-safe row removal + ORM cascade.
+    # Unified deletion: FK-safe row removal + ORM cascade, then the files.
     # Raises cannot_delete_org_owner if the user still owns any organization.
     summary = await purge_user_data(db, user_id)
     await db.flush()
@@ -1202,6 +1202,9 @@ async def delete_user(
         ),
     )
     await db.commit()
+    # Only now: had the commit failed, the account would still be there and
+    # must still have its files.
+    summary.remove_files()
     return info
 
 

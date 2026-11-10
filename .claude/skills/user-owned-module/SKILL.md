@@ -20,14 +20,18 @@ in one of two ways, neither of which any existing test catches:
 
 ## What to add
 
-Find the block marked `# 3. Clean up file-system resources before the DB
-delete.` in `user_deletion.py`.
+`purge_user_data()` stages the row deletions and returns a `PurgedUser`; the
+caller commits (with its audit record) and then calls
+`PurgedUser.remove_files()`. Files are removed after the commit, never
+before: a leftover file can be cleaned up later, a user whose deletion rolled
+back cannot get their files back.
 
 ### Files
 
-Collect the ids your module keys on, then remove each path. Deletion must be
-tolerant of missing paths — the account may be deleted before the module ever
-wrote anything:
+In `purge_user_data()`, collect the ids your module keys on (block `# 3.`)
+and hand them to `PurgedUser`; in `PurgedUser.remove_files()`, remove each
+path. Deletion must be tolerant of missing paths — the account may be
+deleted before the module ever wrote anything:
 
 ```python
 shutil.rmtree(some_dir / some_id, ignore_errors=True)
