@@ -455,6 +455,12 @@ def _disabled_node_items(blueprint: Any) -> list[BlueprintWarningItem]:
     ]
 
 
+def _graph_of(blueprint: Any) -> str:
+    """A blueprint without its viewport, in a form that compares."""
+    graph = {k: v for k, v in (blueprint or {}).items() if k != "viewport"}
+    return json.dumps(graph, sort_keys=True, default=str)
+
+
 def _refused(exc: Any) -> AppError:
     """Map a run service refusal onto the API's error envelope."""
     return AppError(exc.error_code, status_code=exc.status_code, detail=exc.detail)
@@ -1152,9 +1158,16 @@ async def update_workflow(
     for field, value in update_data.items():
         setattr(wf, field, value)
 
+    # Where the canvas is panned and zoomed to is saved with the blueprint,
+    # but moving the view is not an edit: it makes no version, leaves the
+    # change summary alone and does not send a published workflow back to
+    # review.
+    view_only = False
+
     # Auto-extract schemas and compute change summary when blueprint is updated
     if old_blueprint is not None:
         new_bp = update_data["blueprint"]
+        view_only = _graph_of(old_blueprint) == _graph_of(new_bp)
         input_schema, output_schema = _extract_schemas_from_blueprint(new_bp)
         wf.input_schema = input_schema
         wf.output_schema = output_schema
@@ -1163,7 +1176,8 @@ async def update_workflow(
         from fim_one.core.workflow.blueprint_diff import compute_blueprint_diff
 
         diff_summary = compute_blueprint_diff(old_blueprint, new_bp)
-        wf.change_summary = diff_summary
+        if not view_only:
+            wf.change_summary = diff_summary
 
         # Auto-version: snapshot blueprint when it actually changes
         latest_result = await db.execute(
@@ -1175,9 +1189,9 @@ async def update_workflow(
         latest_ver = latest_result.scalar_one_or_none()
 
         # Compare blueprints — only version if different (or no version yet)
-        should_version = latest_ver is None or json.dumps(
-            latest_ver.blueprint, sort_keys=True
-        ) != json.dumps(new_bp, sort_keys=True)
+        should_version = latest_ver is None or _graph_of(latest_ver.blueprint) != _graph_of(
+            new_bp
+        )
 
         if should_version:
             next_num = (latest_ver.version_number + 1) if latest_ver else 1
@@ -1192,7 +1206,9 @@ async def update_workflow(
             )
             db.add(ver)
 
-    content_changed = bool(update_data.keys() - {"is_active"})
+    content_changed = bool(
+        update_data.keys() - {"is_active"} - ({"blueprint"} if view_only else set())
+    )
     if content_changed:
         from fim_one.web.publish_review import check_edit_revert
 
