@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest"
 
 import {
   isActiveRunStatus,
+  logEventsOfRecord,
+  mergeLogEvents,
   mergeNodeResults,
   nodeResultOfRecord,
   panelStateOfRun,
 } from "@/components/workflows/editor-page/run-record"
-import type { NodeRunResult, WorkflowRunResponse } from "@/types/workflow"
+import type { NodeRunResult, WorkflowLogEvent, WorkflowRunResponse } from "@/types/workflow"
 
 type Record_ = Parameters<typeof panelStateOfRun>[0]
 
@@ -144,5 +146,150 @@ describe("mergeNodeResults", () => {
   it("moves a waiting step on once the record says so", () => {
     expect(mergeNodeResults({ h: result("waiting") }, { h: result("completed") }).h.status).toBe("completed")
     expect(mergeNodeResults(null, { h: result("waiting") }).h.status).toBe("waiting")
+  })
+})
+
+// The Logs tab was filled from the stream only, so a run followed by its
+// record (after it waited, after the stream dropped, or attached on
+// reopening the editor) had an empty log.
+describe("logEventsOfRecord", () => {
+  const NOW = 9_000
+  const steps = (entries: Record<string, unknown>) => entries as unknown as WorkflowRunResponse["node_results"]
+  const brief = (events: WorkflowLogEvent[]) => events.map((e) => `${e.eventType}:${e.nodeId ?? "-"}`)
+
+  it("has one entry per step, of the type of the step's state", () => {
+    const events = logEventsOfRecord(
+      record({
+        status: "waiting",
+        node_results: steps({
+          a: { node_id: "a", status: "completed", ts: 1, duration_ms: 12, output_preview: "out" },
+          b: { node_id: "b", status: "failed", ts: 2, error: "boom" },
+          c: { node_id: "c", status: "skipped", ts: 3, reason: "branch not taken" },
+          d: { node_id: "d", status: "waiting", ts: 4 },
+          e: { node_id: "e", status: "running", ts: 5 },
+          f: { node_id: "f", ts: 6 },
+          g: { node_id: "g", status: "pending" },
+        }),
+      }),
+      NOW,
+    )
+    expect(brief(events)).toEqual([
+      "node_completed:a",
+      "node_failed:b",
+      "node_skipped:c",
+      "node_waiting:d",
+      "node_started:e",
+      "node_started:f",
+    ])
+    expect(events[0]).toEqual({
+      timestamp: 1,
+      eventType: "node_completed",
+      nodeId: "a",
+      details: { node_id: "a", status: "completed", ts: 1, duration_ms: 12, output_preview: "out" },
+    })
+    expect(events[1].details.error).toBe("boom")
+    expect(events[2].details.reason).toBe("branch not taken")
+  })
+
+  it("orders the steps by when their last event happened", () => {
+    const events = logEventsOfRecord(
+      record({
+        node_results: steps({
+          end_1: { status: "running", ts: 30 },
+          start_1: { status: "completed", ts: 10 },
+          llm_1: { status: "completed", ts: 20 },
+        }),
+      }),
+      NOW,
+    )
+    expect(brief(events)).toEqual(["node_completed:start_1", "node_completed:llm_1", "node_started:end_1"])
+    expect(events.map((e) => e.timestamp)).toEqual([10, 20, 30])
+  })
+
+  it("keeps the record's order, at the given time, when a step has no time", () => {
+    const events = logEventsOfRecord(
+      record({
+        node_results: steps({
+          b: { status: "completed", ts: 20 },
+          a: { status: "completed" },
+        }),
+      }),
+      NOW,
+    )
+    expect(brief(events)).toEqual(["node_completed:b", "node_completed:a"])
+    expect(events.map((e) => e.timestamp)).toEqual([20, NOW])
+  })
+
+  it("ends with the run's own entry once the run has ended", () => {
+    const done = logEventsOfRecord(
+      record({ status: "completed", duration_ms: 40, node_results: steps({ a: { status: "completed", ts: 7 } }) }),
+      NOW,
+    )
+    expect(brief(done)).toEqual(["node_completed:a", "run_completed:-"])
+    expect(done[1]).toEqual({
+      timestamp: 7,
+      eventType: "run_completed",
+      nodeId: null,
+      details: { status: "completed", duration_ms: 40 },
+    })
+
+    const failed = logEventsOfRecord(record({ status: "failed", error: "boom", duration_ms: 3 }), NOW)
+    expect(failed).toEqual([
+      { timestamp: NOW, eventType: "run_failed", nodeId: null, details: { status: "failed", duration_ms: 3, error: "boom" } },
+    ])
+
+    const cancelled = logEventsOfRecord(record({ status: "cancelled" }), NOW)
+    expect(cancelled.map((e) => [e.eventType, e.details.status])).toEqual([["run_completed", "cancelled"]])
+  })
+
+  it("has no entry for the run while it runs or waits", () => {
+    expect(logEventsOfRecord(record({ status: "running" }), NOW)).toEqual([])
+    expect(logEventsOfRecord(record({ status: "waiting", node_results: null }), NOW)).toEqual([])
+  })
+})
+
+describe("mergeLogEvents", () => {
+  const entry = (eventType: WorkflowLogEvent["eventType"], nodeId: string | null, over: Partial<WorkflowLogEvent> = {}): WorkflowLogEvent => ({
+    timestamp: 1,
+    eventType,
+    nodeId,
+    details: {},
+    ...over,
+  })
+
+  it("adds what the record has and the panel does not, after what the panel has", () => {
+    const shown = [entry("node_started", "a"), entry("node_completed", "a")]
+    const merged = mergeLogEvents(shown, [
+      entry("node_completed", "a"),
+      entry("node_completed", "b"),
+      entry("run_completed", null),
+    ])
+    expect(merged.map((e) => `${e.eventType}:${e.nodeId ?? "-"}`)).toEqual([
+      "node_started:a",
+      "node_completed:a",
+      "node_completed:b",
+      "run_completed:-",
+    ])
+  })
+
+  it("keeps the panel's entry when both have one for a step and event", () => {
+    const fromStream = entry("node_completed", "a", { timestamp: 5, details: { output_preview: "full", input_preview: "in" } })
+    const merged = mergeLogEvents([fromStream], [entry("node_completed", "a", { timestamp: 6, details: {} })])
+    expect(merged).toEqual([fromStream])
+  })
+
+  it("keeps a step's earlier entry when the record has moved on", () => {
+    const merged = mergeLogEvents([entry("node_waiting", "h")], [entry("node_completed", "h")])
+    expect(merged.map((e) => e.eventType)).toEqual(["node_waiting", "node_completed"])
+  })
+
+  it("does not start a step again that the panel saw end", () => {
+    const shown = [entry("node_completed", "a")]
+    expect(mergeLogEvents(shown, [entry("node_started", "a"), entry("node_waiting", "a")])).toBe(shown)
+  })
+
+  it("is what the record has when the panel has nothing", () => {
+    const fromRecord = [entry("node_completed", "a"), entry("run_completed", null)]
+    expect(mergeLogEvents([], fromRecord)).toEqual(fromRecord)
   })
 })

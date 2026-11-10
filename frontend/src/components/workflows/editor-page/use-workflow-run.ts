@@ -12,7 +12,7 @@ import type {
   WorkflowRunStatus,
 } from "@/types/workflow"
 import { refusedInputOf } from "./run-inputs"
-import { mergeNodeResults, panelStateOfRun } from "./run-record"
+import { logEventsOfRecord, mergeLogEvents, mergeNodeResults, panelStateOfRun } from "./run-record"
 import {
   createSseParser,
   logEventOf,
@@ -119,6 +119,10 @@ export function useWorkflowRun(workflowId: string | null, beforeRun?: () => Prom
     setIsRunning(state.status === "running" || state.status === "pending")
     setWaitingFor(state.waitingFor)
     setNodeResults((shown) => mergeNodeResults(shown, state.nodeResults))
+    // The stream fills the log while it lasts; a run followed by its record
+    // gets the rest (or all of it) from the record.
+    const recorded = logEventsOfRecord(record, Date.now())
+    setLogEvents((shown) => mergeLogEvents(shown, recorded))
     setFinalOutputs(state.finalOutputs)
     setFinalError(state.finalError)
     setRunDuration(state.runDuration)

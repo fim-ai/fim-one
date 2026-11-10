@@ -387,6 +387,94 @@ describe("useWorkflowRun", () => {
       expect(result.current.finalOutputs).toEqual({ out: 1 })
     })
 
+    // The Logs tab was filled from the stream only: empty for a run attached
+    // on reopening the editor, and stopping at the wait for one that waited.
+    const logOf = (events: { eventType: string; nodeId: string | null }[]) =>
+      events.map((e) => `${e.eventType}:${e.nodeId ?? "-"}`)
+
+    it("goes on with the log from the record where the stream stopped, without repeating it", async () => {
+      let reads = 0
+      fetchMock.mockImplementation(async (url: string) => {
+        if (String(url).endsWith("/run")) return waitingStream()
+        reads += 1
+        if (reads === 1) {
+          return runRecord({
+            status: "waiting",
+            waiting_for: WAITING,
+            node_results: { start_1: { status: "completed", ts: 10 }, h_1: { status: "waiting", ts: 20 } },
+          })
+        }
+        return runRecord({
+          status: "completed",
+          outputs: {},
+          duration_ms: 50,
+          node_results: {
+            start_1: { status: "completed", ts: 10 },
+            end_1: { status: "completed", ts: 40, duration_ms: 2 },
+            h_1: { status: "completed", ts: 30 },
+          },
+        })
+      })
+      const { result } = renderHook(() => useWorkflowRun("wf1"))
+      await act(() => result.current.startRun({}))
+      await flush()
+      expect(logOf(result.current.logEvents)).toEqual(["node_completed:start_1", "node_waiting:h_1"])
+      // The stream's own entry stays (it has the step's duration).
+      expect(result.current.logEvents[0].details).toEqual({ node_id: "start_1", duration_ms: 1 })
+      await tick()
+      expect(result.current.runStatus).toBe("completed")
+      expect(logOf(result.current.logEvents)).toEqual([
+        "node_completed:start_1",
+        "node_waiting:h_1",
+        "node_completed:h_1",
+        "node_completed:end_1",
+        "run_completed:-",
+      ])
+      expect(result.current.logEvents[0].details).toEqual({ node_id: "start_1", duration_ms: 1 })
+    })
+
+    it("fills the log of a run it attaches to from the record", async () => {
+      fetchMock.mockImplementation(async () =>
+        runRecord({
+          status: "failed",
+          error: "Model unreachable",
+          duration_ms: 10,
+          node_results: {
+            h_1: { status: "completed", ts: 20 },
+            llm_1: { status: "failed", ts: 30, error: "Model unreachable" },
+            start_1: { status: "completed", ts: 5 },
+          },
+        }),
+      )
+      const { result } = renderHook(() => useWorkflowRun("wf1"))
+      act(() =>
+        result.current.attachToRun({
+          id: "r1",
+          workflow_id: "wf1",
+          status: "waiting",
+          inputs: {},
+          outputs: null,
+          node_results: { start_1: { status: "completed", ts: 5 }, h_1: { status: "waiting", ts: 6 } } as never,
+          started_at: null,
+          completed_at: null,
+          duration_ms: null,
+          error: null,
+          waiting_for: WAITING,
+          created_at: "2026-01-01T00:00:00",
+        }),
+      )
+      expect(logOf(result.current.logEvents)).toEqual(["node_completed:start_1", "node_waiting:h_1"])
+      await flush()
+      expect(logOf(result.current.logEvents)).toEqual([
+        "node_completed:start_1",
+        "node_waiting:h_1",
+        "node_completed:h_1",
+        "node_failed:llm_1",
+        "run_failed:-",
+      ])
+      expect(result.current.logEvents[4].details.error).toBe("Model unreachable")
+    })
+
     it("keeps showing the waiting run when the panel is opened again", async () => {
       fetchMock.mockImplementation(async (url: string) =>
         String(url).endsWith("/run") ? waitingStream() : runRecord({ status: "waiting", waiting_for: WAITING }),

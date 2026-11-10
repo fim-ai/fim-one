@@ -10,6 +10,8 @@ import type {
   NodeRunResult,
   NodeRunStatus,
   RunWaitingItem,
+  WorkflowLogEvent,
+  WorkflowLogEventType,
   WorkflowRunResponse,
   WorkflowRunStatus,
 } from "@/types/workflow"
@@ -118,4 +120,101 @@ export function mergeNodeResults(
     if (!behind) merged[nodeId] = result
   }
   return merged
+}
+
+const LOG_EVENT_OF_STATUS: Partial<Record<NodeRunStatus, WorkflowLogEventType>> = {
+  running: "node_started",
+  retrying: "node_started",
+  waiting: "node_waiting",
+  completed: "node_completed",
+  failed: "node_failed",
+  skipped: "node_skipped",
+}
+const ENDED_LOG_EVENTS: readonly WorkflowLogEventType[] = [
+  "node_completed",
+  "node_failed",
+  "node_skipped",
+]
+
+/**
+ * The execution log of a run, from its record: one entry per step that has
+ * started, in the state the record has it in, and a last entry for the run
+ * itself once it has ended (a cancelled run ends as the stream reports it:
+ * `run_completed` with status `cancelled`).
+ *
+ * The record keeps a step's latest state only, so a finished step is one
+ * `node_completed` entry without the `node_started` before it. Entries are
+ * ordered by `ts` (when the step's last event happened) when every step has
+ * one; otherwise they keep the record's order. `now` is the time shown for
+ * an entry whose step has no `ts`.
+ */
+export function logEventsOfRecord(
+  run: Pick<WorkflowRunResponse, "status" | "node_results" | "duration_ms" | "error">,
+  now: number,
+): WorkflowLogEvent[] {
+  const steps: { event: WorkflowLogEvent; ts: number | null }[] = []
+  for (const [nodeId, entry] of Object.entries(run.node_results ?? {})) {
+    const eventType = LOG_EVENT_OF_STATUS[nodeResultOfRecord(entry).status]
+    if (!eventType) continue
+    const data = (typeof entry === "object" && entry !== null ? entry : {}) as Record<string, unknown>
+    const ts = typeof data.ts === "number" && Number.isFinite(data.ts) ? data.ts : null
+    steps.push({
+      ts,
+      event: {
+        timestamp: ts ?? now,
+        eventType,
+        nodeId,
+        details: { ...data, node_id: nodeId },
+      },
+    })
+  }
+  if (steps.every((step) => step.ts !== null)) {
+    // Array.prototype.sort is stable: steps of the same instant keep the record's order.
+    steps.sort((a, b) => (a.ts as number) - (b.ts as number))
+  }
+  const events = steps.map((step) => step.event)
+
+  const status = RUN_STATUSES.includes(run.status) ? run.status : "running"
+  if (!isActiveRunStatus(status)) {
+    const lastTs = steps.reduce<number | null>(
+      (latest, step) => (step.ts !== null && (latest === null || step.ts > latest) ? step.ts : latest),
+      null,
+    )
+    events.push({
+      timestamp: lastTs ?? now,
+      eventType: status === "failed" ? "run_failed" : "run_completed",
+      nodeId: null,
+      details: {
+        status,
+        duration_ms: run.duration_ms ?? null,
+        ...(status === "failed" ? { error: run.error || "Unknown error" } : {}),
+      },
+    })
+  }
+  return events
+}
+
+/**
+ * The execution log after reading the record, given what the panel had
+ * (from the stream or an earlier read). Nothing the panel had is replaced
+ * or dropped: an entry of the record is added, after those, only when the
+ * panel has none for that step and event. As in {@link mergeNodeResults},
+ * the record can be a moment behind: a step the panel already saw end does
+ * not get a started or waiting entry after it.
+ */
+export function mergeLogEvents(
+  shown: WorkflowLogEvent[],
+  fromRecord: WorkflowLogEvent[],
+): WorkflowLogEvent[] {
+  const key = (event: WorkflowLogEvent) => `${event.eventType}\u0000${event.nodeId ?? ""}`
+  const have = new Set(shown.map(key))
+  const ended = new Set(
+    shown.filter((event) => ENDED_LOG_EVENTS.includes(event.eventType)).map((event) => event.nodeId),
+  )
+  const added = fromRecord.filter((event) => {
+    if (have.has(key(event))) return false
+    const behind = !ENDED_LOG_EVENTS.includes(event.eventType) && event.nodeId !== null && ended.has(event.nodeId)
+    return !behind
+  })
+  return added.length === 0 ? shown : [...shown, ...added]
 }
