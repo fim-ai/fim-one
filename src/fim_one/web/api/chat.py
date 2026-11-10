@@ -1308,6 +1308,25 @@ async def _resolve_agent_config(
         }
 
 
+async def _admit_turn(
+    user_id: str, conversation_id: str | None, agent_id: str | None
+) -> dict[str, Any] | None:
+    """The checks a chat turn passes before it streams; returns the agent config.
+
+    The conversation is confirmed to be the caller's before its agent is
+    looked at: resolving the agent of someone else's conversation would
+    answer ``agent_unavailable`` with that agent's id where "not found" is
+    due. The quota check and the agent resolution then run together.
+    """
+    if conversation_id:
+        await _validate_conversation_ownership(conversation_id, user_id)
+    _, agent_cfg = await asyncio.gather(
+        _check_token_quota(user_id),
+        _resolve_agent_config(agent_id, conversation_id, user_id=user_id, refuse_unavailable=True),
+    )
+    return agent_cfg
+
+
 async def _resolve_llm(
     agent_cfg: dict[str, Any] | None,
     db: AsyncSession,
@@ -2959,18 +2978,7 @@ async def react_endpoint(
     if not user_timezone:
         user_timezone = request.headers.get("X-Timezone") or None
 
-    # Run independent validations and agent config resolution in parallel
-    _parallel_tasks: list[Any] = [_check_token_quota(current_user_id)]
-    if conversation_id:
-        _parallel_tasks.append(_validate_conversation_ownership(conversation_id, current_user_id))
-    _parallel_tasks.append(
-        _resolve_agent_config(
-            agent_id, conversation_id, user_id=current_user_id, refuse_unavailable=True
-        )
-    )
-    _parallel_results = await asyncio.gather(*_parallel_tasks)
-    # _resolve_agent_config is always the last task appended
-    agent_cfg = _parallel_results[-1]
+    agent_cfg = await _admit_turn(current_user_id, conversation_id, agent_id)
 
     from fim_one.db import create_session as _create_session
 
@@ -4270,20 +4278,7 @@ async def dag_endpoint(
     if not user_timezone:
         user_timezone = request.headers.get("X-Timezone") or None
 
-    # Run independent validations and agent config resolution in parallel
-    _parallel_tasks_dag: list[Any] = [_check_token_quota(current_user_id)]
-    if conversation_id:
-        _parallel_tasks_dag.append(
-            _validate_conversation_ownership(conversation_id, current_user_id)
-        )
-    _parallel_tasks_dag.append(
-        _resolve_agent_config(
-            agent_id, conversation_id, user_id=current_user_id, refuse_unavailable=True
-        )
-    )
-    _parallel_results_dag = await asyncio.gather(*_parallel_tasks_dag)
-    # _resolve_agent_config is always the last task appended
-    agent_cfg = _parallel_results_dag[-1]
+    agent_cfg = await _admit_turn(current_user_id, conversation_id, agent_id)
 
     from fim_one.db import create_session as _create_session
 

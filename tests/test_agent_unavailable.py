@@ -226,6 +226,41 @@ class TestChatEndpoints:
         assert body["error_args"]["agent_id"] == world.agent
 
 
+    @pytest.mark.parametrize("endpoint", ["/api/react", "/api/dag"])
+    async def test_someone_elses_conversation_is_not_found_whatever_its_agent(
+        self, app: FastAPI, world: World, endpoint: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The agent of a conversation is not looked at before the conversation is the caller's.
+
+        The ownership check is slowed so that an agent resolution running
+        beside it would answer first.
+        """
+        import asyncio
+
+        from fim_one.web.api import chat as chat_mod
+
+        conv = await _conversation(world.owner, world.agent)
+        await _unpublish(world.agent)
+        token = create_access_token(world.subscriber, "s@x.io")
+        check = chat_mod._validate_conversation_ownership
+
+        async def slow_check(conversation_id: str, user_id: str) -> None:
+            await asyncio.sleep(0.3)
+            await check(conversation_id, user_id)
+
+        monkeypatch.setattr(chat_mod, "_validate_conversation_ownership", slow_check)
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+            resp = await client.post(
+                endpoint, json={"q": "hello", "conversation_id": conv, "token": token}
+            )
+
+        assert resp.status_code == 404, resp.text
+        body = resp.json()
+        assert body["error_code"] == "conversation_not_found"
+        assert world.agent not in resp.text
+
+
 def test_the_message_tells_the_user_what_to_do() -> None:
     import json
     from pathlib import Path
