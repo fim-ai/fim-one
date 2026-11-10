@@ -56,8 +56,12 @@ class _Driver:
     def __init__(self) -> None:
         self.ran: list[dict[str, Any]] = []
 
-    async def execute_query(self, sql: str, *, timeout_s: int, max_rows: int) -> QueryResult:
-        self.ran.append({"sql": sql, "timeout_s": timeout_s, "max_rows": max_rows})
+    async def execute_query(
+        self, sql: str, *, timeout_s: int, max_rows: int, parameters: list[Any] | None
+    ) -> QueryResult:
+        self.ran.append(
+            {"sql": sql, "timeout_s": timeout_s, "max_rows": max_rows, "parameters": parameters}
+        )
         return QueryResult(
             columns=["id", "email"], rows=[[1, "a@example.test"]], row_count=1
         )
@@ -160,7 +164,7 @@ class TestTheOwnerRunsADatabaseStep:
         # Readable under the step's output variable too, like any step.
         assert await store.get("db_1.rows") == await store.get("db_1.output")
 
-    async def test_query_runs_the_sql_with_variables_filled_in(
+    async def test_query_binds_each_variable_as_a_parameter(
         self, factory: async_sessionmaker[AsyncSession]
     ) -> None:
         scene = await _scene(factory)
@@ -176,8 +180,9 @@ class TestTheOwnerRunsADatabaseStep:
                 driver=driver,
             )
         assert result.status == NodeStatus.COMPLETED, result.error
-        assert [call["sql"] for call in driver.ran] == [
-            "SELECT id, email FROM customers WHERE id = 7"
+        # The value is not in the SQL text; the number is still a number.
+        assert [(call["sql"], call["parameters"]) for call in driver.ran] == [
+            ("SELECT id, email FROM customers WHERE id = $1", [7])
         ]
         # The connector's own limits, as in chat.
         assert (driver.ran[0]["max_rows"], driver.ran[0]["timeout_s"]) == (1000, 30)
@@ -250,6 +255,126 @@ class TestTheOwnerRunsADatabaseStep:
             result, _ = await _step(scene, "list_tables")
         assert result.status == NodeStatus.FAILED
         assert "is disabled" in (result.error or "")
+
+
+class TestVariablesInSqlAreBoundNeverPasted:
+    """Whoever triggers the run chooses the values, and they stay values."""
+
+    async def _run(
+        self,
+        factory: async_sessionmaker[AsyncSession],
+        sql: str,
+        variables: dict[str, Any],
+    ) -> tuple[NodeResult, _Driver]:
+        scene = await _scene(factory)
+        driver = _Driver()
+        store = VariableStore()
+        await store.set_many(variables)
+        with m.outside_world(factory):
+            result, _ = await _step(scene, "query", {"sql": sql}, store=store, driver=driver)
+        return result, driver
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            "x' UNION SELECT id, password FROM users --",
+            "x' AND 1 = CAST((SELECT password FROM users LIMIT 1) AS integer) --",
+            "x'/**/OR/**/1=1--",
+            "x\\' OR 1=1 -- ",
+            "1; DROP TABLE customers",
+        ],
+    )
+    async def test_an_injection_payload_never_reaches_the_sql_text(
+        self, factory: async_sessionmaker[AsyncSession], payload: str
+    ) -> None:
+        result, driver = await self._run(
+            factory,
+            "SELECT id FROM customers WHERE email = {{start_1.email}}",
+            {"start_1.email": payload},
+        )
+        assert result.status == NodeStatus.COMPLETED, result.error
+        (call,) = driver.ran
+        assert call["sql"] == "SELECT id FROM customers WHERE email = $1"
+        assert call["parameters"] == [payload]
+
+    async def test_values_keep_their_type_and_lists_become_json_text(
+        self, factory: async_sessionmaker[AsyncSession]
+    ) -> None:
+        result, driver = await self._run(
+            factory,
+            "SELECT id FROM customers WHERE a = {{s.n}} AND b = {{s.f}} AND c = {{s.t}} "
+            "AND d = {{s.none}} AND e = {{s.text}} AND f = {{s.list}} AND g = {{s.obj}}",
+            {
+                "s.n": 3,
+                "s.f": 1.5,
+                "s.t": True,
+                "s.none": None,
+                "s.text": "3",
+                "s.list": [1, "a"],
+                "s.obj": {"k": "v"},
+            },
+        )
+        assert result.status == NodeStatus.COMPLETED, result.error
+        assert driver.ran[0]["parameters"] == [3, 1.5, True, None, "3", '[1, "a"]', '{"k": "v"}']
+
+    async def test_a_quoted_reference_fails_the_step_and_says_to_drop_the_quotes(
+        self, factory: async_sessionmaker[AsyncSession]
+    ) -> None:
+        result, driver = await self._run(
+            factory,
+            "SELECT id FROM customers WHERE email = '{{start_1.email}}'",
+            {"start_1.email": "a@example.test"},
+        )
+        assert result.status == NodeStatus.FAILED
+        assert driver.ran == []
+        assert "{{start_1.email}} is inside quotes" in (result.error or "")
+        assert "WHERE id = {{variable}}" in (result.error or "")
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "{{start_1.sql}}",
+            "SELECT id FROM {{start_1.table}}",
+            "SELECT id FROM customers ORDER BY {{start_1.column}}",
+            "SELECT id FROM customers -- {{start_1.note}}",
+        ],
+    )
+    async def test_a_reference_that_is_not_a_value_fails_the_step(
+        self, factory: async_sessionmaker[AsyncSession], sql: str
+    ) -> None:
+        result, driver = await self._run(
+            factory,
+            sql,
+            {
+                "start_1.sql": "SELECT 1",
+                "start_1.table": "customers",
+                "start_1.column": "id",
+                "start_1.note": "x",
+            },
+        )
+        assert result.status == NodeStatus.FAILED
+        assert (result.error or "").startswith("[SQL Safety Error]")
+        assert driver.ran == []
+
+    async def test_a_variable_nothing_set_fails_the_step(
+        self, factory: async_sessionmaker[AsyncSession]
+    ) -> None:
+        result, driver = await self._run(
+            factory, "SELECT id FROM customers WHERE id = {{start_1.missing}}", {}
+        )
+        assert result.status == NodeStatus.FAILED
+        assert "{{start_1.missing}}, which has no value" in (result.error or "")
+        assert driver.ran == []
+
+    async def test_sql_with_no_variables_runs_as_written(
+        self, factory: async_sessionmaker[AsyncSession]
+    ) -> None:
+        result, driver = await self._run(
+            factory, "SELECT id FROM customers WHERE note LIKE '50%'", {}
+        )
+        assert result.status == NodeStatus.COMPLETED, result.error
+        assert driver.ran[0]["sql"] == "SELECT id FROM customers WHERE note LIKE '50%'"
+        assert driver.ran[0]["parameters"] is None
 
 
 class TestOnlyTheOwnerMayRunIt:

@@ -28,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import Sequence
 from typing import Any
 
 from fim_one.core.tool.connector.database.base import (
@@ -69,6 +70,8 @@ class DM8Driver(DatabaseDriver):
     :class:`~fim_one.core.tool.connector.database.pool.ConnectionPoolManager`
     LRU pool, so no second pooling layer is needed.
     """
+
+    placeholder_style = "qmark"
 
     def __init__(self, config: dict[str, Any]) -> None:
         super().__init__(config)
@@ -190,9 +193,16 @@ class DM8Driver(DatabaseDriver):
     # ---- query execution ------------------------------------------------------
 
     async def execute_query(
-        self, sql: str, *, timeout_s: int = 30, max_rows: int = 1000
+        self,
+        sql: str,
+        *,
+        timeout_s: int = 30,
+        max_rows: int = 1000,
+        parameters: Sequence[Any] | None = None,
     ) -> QueryResult:
         """Execute ``sql`` and return a :class:`QueryResult`.
+
+        *parameters* are bound to the ``?`` placeholders by ``dmPython``.
 
         DM8 does not provide a trivial per-statement timeout through
         ``dmPython``; the ``timeout_s`` argument is enforced via
@@ -202,7 +212,7 @@ class DM8Driver(DatabaseDriver):
 
         async def _run() -> QueryResult:
             rows_raw, columns = await self._execute_sync(
-                sql, (), fetch="rows+cols", max_rows=max_rows + 1
+                sql, tuple(parameters or ()), fetch="rows+cols", max_rows=max_rows + 1
             )
             truncated = len(rows_raw) > max_rows
             if truncated:

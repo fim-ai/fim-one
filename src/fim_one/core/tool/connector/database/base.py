@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar, Literal
 
 
 @dataclass
@@ -48,6 +49,13 @@ class DatabaseDriver(ABC):
     connection management, schema introspection, and query execution.
     """
 
+    # How this driver writes a bound parameter (``$1``, ``%s`` or ``?``).
+    # ``None``: the driver cannot take parameters, and SQL with
+    # ``{{variable}}`` references is refused for it.
+    placeholder_style: ClassVar[Literal["numeric", "format", "qmark"] | None] = None
+    # Which comment and quoting rules the database reads SQL by.
+    sql_dialect: ClassVar[Literal["postgresql", "mysql", "generic"]] = "generic"
+
     def __init__(self, config: dict[str, Any]) -> None:
         self._config = config
 
@@ -75,6 +83,16 @@ class DatabaseDriver(ABC):
 
     @abstractmethod
     async def execute_query(
-        self, sql: str, *, timeout_s: int = 30, max_rows: int = 1000
+        self,
+        sql: str,
+        *,
+        timeout_s: int = 30,
+        max_rows: int = 1000,
+        parameters: Sequence[Any] | None = None,
     ) -> QueryResult:
-        """Execute a read query and return results."""
+        """Execute a query and return results.
+
+        *parameters* are the values of the placeholders in *sql*, written in
+        the driver's :attr:`placeholder_style`. They are sent to the database
+        as values, never as SQL text.
+        """

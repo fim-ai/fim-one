@@ -16,6 +16,42 @@ logger = logging.getLogger(__name__)
 _VAR_PATTERN = re.compile(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\}\}")
 
 
+def _lookup(data: dict[str, Any], var_name: str, default: Any) -> Any:
+    """Resolve a variable name against a snapshot of the store."""
+    # 1. Exact match (covers both flat and dotted references)
+    if var_name in data:
+        return data[var_name]
+
+    # 2. Fallback: flat name matches the last segment of a dotted key
+    #    e.g. "output" might match "llm_1.output"
+    if "." not in var_name:
+        matches: list[tuple[str, Any]] = []
+        for key, val in data.items():
+            parts = key.split(".")
+            if len(parts) == 2 and parts[1] == var_name:
+                matches.append((key, val))
+
+        if len(matches) == 1:
+            return matches[0][1]
+        if len(matches) > 1:
+            # Non-deterministic: multiple nodes expose the same
+            # variable name.  Return the first match but warn the
+            # user so they can switch to qualified names.
+            match_keys = [m[0] for m in matches]
+            logger.warning(
+                "Ambiguous variable reference '{{%s}}' matches "
+                "multiple store keys: %s — returning first match. "
+                "Use a fully-qualified name (e.g. '{{%s}}') to avoid "
+                "non-deterministic resolution.",
+                var_name,
+                match_keys,
+                match_keys[0],
+            )
+            return matches[0][1]
+
+    return default
+
+
 class VariableStore:
     """Async-safe key-value store used during workflow execution.
 
@@ -64,44 +100,9 @@ class VariableStore:
         async with self._lock:
             data_snapshot = dict(self._data)
 
-        def _resolve(var_name: str) -> Any:
-            """Resolve a variable name against the data snapshot."""
-            # 1. Exact match (covers both flat and dotted references)
-            if var_name in data_snapshot:
-                return data_snapshot[var_name]
-
-            # 2. Fallback: flat name matches the last segment of a dotted key
-            #    e.g. "output" might match "llm_1.output"
-            if "." not in var_name:
-                matches: list[tuple[str, Any]] = []
-                for key, val in data_snapshot.items():
-                    parts = key.split(".")
-                    if len(parts) == 2 and parts[1] == var_name:
-                        matches.append((key, val))
-
-                if len(matches) == 1:
-                    return matches[0][1]
-                if len(matches) > 1:
-                    # Non-deterministic: multiple nodes expose the same
-                    # variable name.  Return the first match but warn the
-                    # user so they can switch to qualified names.
-                    match_keys = [m[0] for m in matches]
-                    logger.warning(
-                        "Ambiguous variable reference '{{%s}}' matches "
-                        "multiple store keys: %s — returning first match. "
-                        "Use a fully-qualified name (e.g. '{{%s}}') to avoid "
-                        "non-deterministic resolution.",
-                        var_name,
-                        match_keys,
-                        match_keys[0],
-                    )
-                    return matches[0][1]
-
-            return None
-
         def _replace(match: re.Match[str]) -> str:
             var_name = match.group(1)
-            value = _resolve(var_name)
+            value = _lookup(data_snapshot, var_name, None)
             if value is None:
                 return match.group(0)  # leave placeholder as-is
             if isinstance(value, str):
@@ -116,6 +117,17 @@ class VariableStore:
                 return str(value)
 
         return _VAR_PATTERN.sub(_replace, template)
+
+    async def resolve(self, name: str, default: Any = None) -> Any:
+        """The value a ``{{name}}`` reference stands for, in its own type.
+
+        Follows the lookup :meth:`interpolate` uses (exact key, then a flat
+        name against the last segment of a dotted key) without turning the
+        value into text. *default* is returned for a name nothing matches.
+        """
+        async with self._lock:
+            data_snapshot = dict(self._data)
+        return _lookup(data_snapshot, name, default)
 
     async def snapshot(self) -> dict[str, Any]:
         """Return a shallow copy of all stored variables."""

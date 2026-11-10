@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import Sequence
 from typing import Any
 
 import aiomysql  # type: ignore[import-untyped]
@@ -21,6 +22,9 @@ logger = logging.getLogger(__name__)
 
 class MySQLDriver(DatabaseDriver):
     """MySQL / MariaDB driver backed by aiomysql connection pool."""
+
+    placeholder_style = "format"
+    sql_dialect = "mysql"
 
     def __init__(self, config: dict[str, Any]) -> None:
         super().__init__(config)
@@ -127,9 +131,19 @@ class MySQLDriver(DatabaseDriver):
                 ]
 
     async def execute_query(
-        self, sql: str, *, timeout_s: int = 30, max_rows: int = 1000
+        self,
+        sql: str,
+        *,
+        timeout_s: int = 30,
+        max_rows: int = 1000,
+        parameters: Sequence[Any] | None = None,
     ) -> QueryResult:
-        """Execute a SQL query with timeout and row limit."""
+        """Execute a SQL query with timeout and row limit.
+
+        *parameters* fill the ``%s`` placeholders. aiomysql has no
+        server-side parameters: it writes each value into the statement as
+        a literal, escaped for the connection's character set and SQL mode.
+        """
         assert self._pool is not None
 
         start = time.monotonic()
@@ -142,7 +156,10 @@ class MySQLDriver(DatabaseDriver):
                         (int(timeout_s * 1000),),
                     )
                     try:
-                        await asyncio.wait_for(cur.execute(sql), timeout=timeout_s)
+                        await asyncio.wait_for(
+                            cur.execute(sql, tuple(parameters) if parameters else None),
+                            timeout=timeout_s,
+                        )
 
                         # Fetch max_rows + 1 to detect truncation
                         rows_raw = await asyncio.wait_for(

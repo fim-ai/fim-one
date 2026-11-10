@@ -17,6 +17,13 @@ from typing import Any
 from fim_one.core.tool.base import BaseTool
 from fim_one.core.tool.connector.adapter import connector_tool_prefix
 
+from .binding import (
+    SqlBindingError,
+    bound_value,
+    has_variables,
+    parse_sql_template,
+    render_sql,
+)
 from .pool import ConnectionPoolManager
 from .redaction import pii_column_names, redact_rows
 from .safety import SqlSafetyError, validate_sql
@@ -363,7 +370,44 @@ class _DatabaseQueryTool(BaseTool):
 
     async def run(self, **kwargs: Any) -> str:
         """Validate and execute the SQL query."""
-        sql = kwargs.get("sql", "")
+        return await self._run_sql(kwargs.get("sql", ""), None)
+
+    async def run_with_variables(
+        self, sql: str, resolve: Callable[[str], Awaitable[Any]]
+    ) -> str:
+        """Run *sql* with each ``{{variable}}`` in it bound as a parameter.
+
+        For a caller whose SQL is a template filled with values it does not
+        control (a workflow step). *resolve* gives the value of a variable
+        by name. The values are never written into the SQL text: each
+        reference becomes the driver's placeholder and its value is sent
+        separately. A reference that is not where SQL takes a value, or a
+        driver that cannot take parameters, is answered with a
+        ``[SQL Safety Error]`` and nothing runs.
+        """
+        if not has_variables(sql):
+            return await self._run_sql(sql, None)
+        start_ms = time.monotonic_ns() // 1_000_000
+        try:
+            from .drivers import DRIVER_REGISTRY
+
+            driver_name = self._db_config.get("driver", "postgresql")
+            driver_cls = DRIVER_REGISTRY.get(driver_name)
+            style = driver_cls.placeholder_style if driver_cls else None
+            if driver_cls is None or style is None:
+                raise SqlBindingError(
+                    f"The '{driver_name}' database driver cannot take bound values, so "
+                    "{{variable}} references are not supported in its SQL."
+                )
+            template = parse_sql_template(sql, dialect=driver_cls.sql_dialect)
+            values = [bound_value(await resolve(name)) for name in template.variables]
+            bound_sql = render_sql(template, style)
+        except SqlBindingError as exc:
+            await self._log_call(start_ms, False, error=str(exc), sql=sql)
+            return f"[SQL Safety Error] {exc}"
+        return await self._run_sql(bound_sql, values)
+
+    async def _run_sql(self, sql: str, parameters: list[Any] | None) -> str:
         start_ms = time.monotonic_ns() // 1_000_000
 
         try:
@@ -377,6 +421,7 @@ class _DatabaseQueryTool(BaseTool):
                 cleaned_sql,
                 timeout_s=self._query_timeout,
                 max_rows=self._max_rows,
+                parameters=parameters,
             )
 
             rows, redacted = redact_rows(result.columns, result.rows, self._pii)

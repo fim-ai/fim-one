@@ -1008,6 +1008,31 @@ async def _database_operation_tool(
     return tool
 
 
+_NO_VALUE = object()
+
+
+async def _run_bound_query(tool: BaseTool, sql: str, store: VariableStore) -> Any:
+    """Run a database query step whose SQL has ``{{variable}}`` references.
+
+    The references are bound as parameters by the query tool
+    (``run_with_variables``), with each variable in its own type. A variable
+    nothing has set fails the step, as does a tool that cannot bind.
+    """
+    bind = getattr(tool, "run_with_variables", None)
+    if bind is None:
+        raise _StepFailed("This database tool cannot run SQL with {{variable}} references")
+
+    async def value_of(name: str) -> Any:
+        value = await store.resolve(name, _NO_VALUE)
+        if value is _NO_VALUE:
+            raise _StepFailed(
+                f"The SQL refers to {{{{{name}}}}}, which has no value in this run"
+            )
+        return value
+
+    return await bind(sql, value_of)
+
+
 # How a database tool reports a query it did not run or that failed. The
 # model reads these in chat; a step has no reader, so it fails.
 _DATABASE_TOOL_ERRORS = ("[SQL Safety Error]", "[Timeout]", "[Error]")
@@ -1215,7 +1240,26 @@ class ConnectorExecutor:
                         duration_ms=_ms_since(t0),
                     )
 
-            output = await adapter.run(**params)
+            sql_template = params_template.get("sql")
+            if (
+                adapter.category == "database"
+                and action_id == "query"
+                and isinstance(sql_template, str)
+                and "{{" in sql_template
+            ):
+                # The values are not written into the SQL text: each
+                # reference is bound as a parameter by the query tool.
+                try:
+                    output = await _run_bound_query(adapter, sql_template, store)
+                except _StepFailed as failed_step:
+                    return NodeResult(
+                        node_id=node.id,
+                        status=NodeStatus.FAILED,
+                        error=failed_step.detail,
+                        duration_ms=_ms_since(t0),
+                    )
+            else:
+                output = await adapter.run(**params)
             if (
                 adapter.category == "database"
                 and isinstance(output, str)
