@@ -290,7 +290,10 @@ URL_TOKEN = "url_token"
 URL_UNPARSEABLE = "url_unparseable"
 
 # What joins a name to a token inside one path segment.
-_SEGMENT_PIECES = re.compile(r"[:=,@!$~|]")
+# A dot or a bracket joins one too (``hook.sk-live-…``, ``key.<32 hex>``,
+# ``(token)sk-live-…``); the pieces of a file name (``report.final.json``,
+# ``v1.2``) are judged one by one and none of them is a token.
+_SEGMENT_PIECES = re.compile(r"[:=,@!$~|.()\[\]]")
 _UUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
 _LONG_HEX = re.compile(r"[0-9a-fA-F]{16,}")
 _LONG_ID = re.compile(r"[A-Za-z0-9_\-]{20,}")
@@ -310,7 +313,7 @@ def _segment_is_token(segment: str) -> bool:
     if _TOKEN_SHAPES.match(segment) or _UUID.fullmatch(segment) or _LONG_HEX.fullmatch(segment):
         return True
     # A name and a token in one segment: ``bot123456789:AAH…`` (Telegram),
-    # ``key=…``, ``v1,…``, ``user@…``. Each piece is judged on its own.
+    # ``key=…``, ``v1,…``, ``user@…``, ``hook.…``. Each piece is judged on its own.
     pieces = [piece for piece in _SEGMENT_PIECES.split(segment) if piece]
     if len(pieces) > 1:
         return any(_segment_is_token(piece) for piece in pieces)
