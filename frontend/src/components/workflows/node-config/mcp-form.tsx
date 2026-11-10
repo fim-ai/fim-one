@@ -17,6 +17,7 @@ import {
   fromArgumentText,
   missingArguments,
   parseArgumentsJson,
+  takesText,
   toArgumentText,
   toArgumentsJson,
   withArgument,
@@ -119,9 +120,13 @@ export function MCPForm({ data, setField, setFields, otherNodes }: NodeFormProps
     if (committed !== value) setField("parameters", withArgument(parameters, field.name, committed))
   }
 
+  // A variable goes into a field that is typed into: the last one that had
+  // focus, or the first one when none has had it yet. A dropdown (a boolean,
+  // a fixed list of values) never receives one.
+  const textFields = fields?.filter(takesText) ?? []
   const insertVariable = (reference: string) => {
     if (showJson) return
-    const target = fields?.find((f) => f.name === focused) ?? fields?.[0]
+    const target = textFields.find((f) => f.name === focused) ?? textFields[0]
     if (target) setArgument(target, toArgumentText(parameters[target.name]) + reference)
   }
 
@@ -272,7 +277,7 @@ export function MCPForm({ data, setField, setFields, otherNodes }: NodeFormProps
                     {field.type === "any" ? "" : field.type}
                   </span>
                 </label>
-                {field.options || field.type === "boolean" ? (
+                {!takesText(field) ? (
                   <Select
                     value={text === "" ? "__default__" : text}
                     onValueChange={(v) => setArgument(field, v === "__default__" ? "" : v)}
@@ -335,7 +340,7 @@ export function MCPForm({ data, setField, setFields, otherNodes }: NodeFormProps
               </div>
             )
           })}
-          {fields.length > 0 && (
+          {textFields.length > 0 && (
             <InsertVariableBar otherNodes={otherNodes} onInsert={insertVariable} />
           )}
         </>

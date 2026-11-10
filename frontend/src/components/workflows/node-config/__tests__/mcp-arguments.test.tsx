@@ -526,3 +526,51 @@ describe("MCP step form: numbers", () => {
     expect(screen.queryByText("Enter a whole number, or a {{variable}}.")).toBeNull()
   })
 })
+
+describe("MCP step form: where a picked variable goes", () => {
+  const FLAGS_FIRST = {
+    name: "flags",
+    description: "",
+    input_schema: {
+      type: "object",
+      // Required ones come first: the two dropdowns lead the form.
+      properties: {
+        exact: { type: "boolean" },
+        mode: { type: "string", enum: ["fast", "deep"] },
+        query: { type: "string" },
+      },
+      required: ["exact", "mode"],
+    },
+  }
+  const ONLY_DROPDOWNS = {
+    name: "switches",
+    description: "",
+    input_schema: {
+      type: "object",
+      properties: { exact: { type: "boolean" }, mode: { type: "string", enum: ["fast", "deep"] } },
+    },
+  }
+
+  it("goes into the first field that is typed into when none has had focus", async () => {
+    backend.listTools = () => Promise.resolve([FLAGS_FIRST])
+    const { setField } = renderMcp({
+      server_id: "s-1",
+      tool_name: "flags",
+      parameters: { exact: true, mode: "fast" },
+    })
+    await screen.findByLabelText(/^query/)
+    fireEvent.click(screen.getByRole("button", { name: "insert variable" }))
+    expect(setField).toHaveBeenLastCalledWith("parameters", {
+      exact: true,
+      mode: "fast",
+      query: "{{start_1.topic}}",
+    })
+  })
+
+  it("is not offered when every argument is a dropdown", async () => {
+    backend.listTools = () => Promise.resolve([ONLY_DROPDOWNS])
+    renderMcp({ server_id: "s-1", tool_name: "switches", parameters: {} })
+    await screen.findByRole("option", { name: "deep" })
+    expect(screen.queryByRole("button", { name: "insert variable" })).toBeNull()
+  })
+})

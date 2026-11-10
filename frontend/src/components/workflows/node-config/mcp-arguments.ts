@@ -70,6 +70,14 @@ export function argumentFields(schema: unknown): ArgumentField[] | null {
   return [...fields.filter((f) => f.required), ...fields.filter((f) => !f.required)]
 }
 
+/**
+ * Whether the field is typed into (a text box) rather than picked from a
+ * list: a `{{variable}}` can only be inserted into the former.
+ */
+export function takesText(field: ArgumentField): boolean {
+  return field.options === null && field.type !== "boolean"
+}
+
 /** What a field shows for a stored value. */
 export function toArgumentText(value: unknown): string {
   if (value === undefined || value === null) return ""
