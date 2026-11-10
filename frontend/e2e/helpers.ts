@@ -352,11 +352,15 @@ export async function canvasReported(page: Page): Promise<void> {
   await expect(state).toHaveAttribute("data-sync-pending", "false")
 }
 
-/** Wait until undo history has recorded the canvas as it is (it does so a moment after a change). */
+/**
+ * Wait until undo history has settled on the canvas as it is. It looks at
+ * the canvas a moment after each change; opening a workflow is not a step
+ * (the revision stays 0), so "settled" is: the canvas has reported, and
+ * nothing is waiting to be looked at.
+ */
 export async function historyRecorded(page: Page): Promise<void> {
-  const state = canvasState(page)
-  await expect(state).not.toHaveAttribute("data-history-revision", "0")
-  await expect(state).toHaveAttribute("data-history-pending", "false")
+  await canvasReported(page)
+  await expect(canvasState(page)).toHaveAttribute("data-history-pending", "false")
 }
 
 /** Do something to the canvas and wait until undo history holds the result as a step of its own. */
