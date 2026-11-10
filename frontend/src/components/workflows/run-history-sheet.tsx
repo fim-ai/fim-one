@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl"
 import {
   CheckCircle2,
   XCircle,
+  Hourglass,
   Loader2,
   CircleDashed,
   Clock,
@@ -73,6 +74,7 @@ interface RunHistorySheetProps {
 const runStatusIcons: Record<WorkflowRunResponse["status"], React.ReactNode> = {
   pending: <CircleDashed className="h-4 w-4 text-zinc-500" />,
   running: <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />,
+  waiting: <Hourglass className="h-4 w-4 text-amber-500" />,
   completed: <CheckCircle2 className="h-4 w-4 text-green-500" />,
   failed: <XCircle className="h-4 w-4 text-red-500" />,
   cancelled: <Ban className="h-4 w-4 text-zinc-400" />,
@@ -81,6 +83,7 @@ const runStatusIcons: Record<WorkflowRunResponse["status"], React.ReactNode> = {
 const nodeStatusIcons: Record<NodeRunStatus, React.ReactNode> = {
   pending: <CircleDashed className="h-3.5 w-3.5 text-zinc-500" />,
   running: <Loader2 className="h-3.5 w-3.5 text-blue-500 animate-spin" />,
+  waiting: <Hourglass className="h-3.5 w-3.5 text-amber-500" />,
   completed: <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />,
   failed: <XCircle className="h-3.5 w-3.5 text-red-500" />,
   skipped: <SkipForward className="h-3.5 w-3.5 text-zinc-400" />,
@@ -90,6 +93,7 @@ const nodeStatusIcons: Record<NodeRunStatus, React.ReactNode> = {
 const statusBadgeClass: Record<WorkflowRunResponse["status"], string> = {
   pending: "bg-zinc-500/15 text-zinc-600 dark:text-zinc-400",
   running: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
+  waiting: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
   completed: "bg-green-500/15 text-green-600 dark:text-green-400",
   failed: "bg-red-500/15 text-red-600 dark:text-red-400",
   cancelled: "bg-zinc-500/15 text-zinc-500 dark:text-zinc-400",

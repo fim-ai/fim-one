@@ -47,6 +47,7 @@ import { useOpenPanels } from "@/components/workflows/editor-page/use-open-panel
 import { useWorkflowDocument } from "@/components/workflows/editor-page/use-workflow-document"
 import { useWorkflowPublishing } from "@/components/workflows/editor-page/use-workflow-publishing"
 import { useWorkflowRun } from "@/components/workflows/editor-page/use-workflow-run"
+import { isActiveRunStatus } from "@/components/workflows/editor-page/run-record"
 import { useWorkflowValidation } from "@/components/workflows/editor-page/use-workflow-validation"
 import type {
   WorkflowBlueprint,
@@ -155,6 +156,28 @@ export default function WorkflowEditorPage() {
         setScheduleActive(false)
       })
   }, [userId, workflowId])
+
+  // A run of this workflow that the user started and that has not ended
+  // (it runs, or waits for a decision) is shown again on opening the page.
+  const { attachToRun } = run
+  const loadedWorkflowId = workflow?.id ?? null
+  useEffect(() => {
+    if (!userId || !loadedWorkflowId) return
+    let cancelled = false
+    workflowApi
+      .getRuns(loadedWorkflowId, 1, 1)
+      .then((page) => {
+        const latest = page.items[0]
+        if (cancelled || !latest) return
+        if (latest.user_id === userId && isActiveRunStatus(latest.status)) attachToRun(latest)
+      })
+      .catch(() => {
+        // Nothing to show again; the run history still lists it.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [userId, loadedWorkflowId, attachToRun])
 
   // Auto-open run panel when navigated with ?run=true
   const { openRunPanel } = run
@@ -270,7 +293,10 @@ export default function WorkflowEditorPage() {
         blueprint={workflow.blueprint}
         onBlueprintChange={doc.changeBlueprint}
         onUndoRedoChange={handleUndoRedoChange}
-        isRunning={run.isRunning}
+        isRunning={run.isRunning || run.isWaiting}
+        runStatus={run.runStatus}
+        waitingFor={run.waitingFor}
+        onRunDecided={run.refreshRun}
         runPanelOpen={run.runPanelOpen}
         startVariables={startVariables}
         nodeResults={run.nodeResults}

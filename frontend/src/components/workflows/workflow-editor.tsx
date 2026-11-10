@@ -52,6 +52,8 @@ import type {
   WorkflowBlueprint,
   WorkflowNodeType,
   StartNodeData,
+  RunWaitingItem,
+  WorkflowRunStatus,
   NodeRunResult,
   WorkflowLogEvent,
 } from "@/types/workflow"
@@ -106,7 +108,14 @@ interface WorkflowEditorProps {
   blueprint: WorkflowBlueprint
   onBlueprintChange: (blueprint: WorkflowBlueprint) => void
   onUndoRedoChange?: (canUndo: boolean, canRedo: boolean) => void
+  /** The run is in progress: it executes, or it waits for a decision. */
   isRunning: boolean
+  /** The run's status once the server has named it. */
+  runStatus?: WorkflowRunStatus | null
+  /** What a waiting run waits on. */
+  waitingFor?: RunWaitingItem[]
+  /** A request the run waits on was decided. */
+  onRunDecided?: () => void
   runPanelOpen: boolean
   startVariables: StartNodeData["variables"]
   nodeResults: Record<string, NodeRunResult> | null
@@ -142,6 +151,9 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
   onBlueprintChange,
   onUndoRedoChange,
   isRunning,
+  runStatus = null,
+  waitingFor,
+  onRunDecided,
   runPanelOpen,
   startVariables,
   nodeResults,
@@ -483,7 +495,7 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
       {runPanelOpen ? (
         <RunPanel
           isOpen={runPanelOpen}
-          isRunning={isRunning}
+          isRunning={isRunning && runStatus !== "waiting"}
           startVariables={startVariables ?? []}
           nodeResults={nodeResults}
           finalOutputs={finalOutputs}
@@ -492,6 +504,9 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
           nodeTypeMap={nodeTypeMap}
           totalNodeCount={totalNodeCount}
           logEvents={logEvents}
+          runStatus={runStatus}
+          waitingFor={waitingFor}
+          onDecided={onRunDecided}
           onStartRun={onStartRun}
           onRunAgain={onRunAgain}
           onCancel={onCancelRun}

@@ -27,6 +27,7 @@ const categoryColorMap: Record<string, string> = {
 const runStatusStyles: Record<NodeRunStatus, { ring: string; extra: string }> = {
   pending: { ring: "", extra: "" },
   running: { ring: "ring-2 ring-blue-500/50", extra: "animate-pulse" },
+  waiting: { ring: "ring-2 ring-amber-500/50", extra: "" },
   completed: { ring: "ring-2 ring-green-500/30", extra: "" },
   failed: { ring: "ring-2 ring-red-500/30", extra: "" },
   skipped: { ring: "", extra: "opacity-50" },
@@ -36,6 +37,7 @@ const runStatusStyles: Record<NodeRunStatus, { ring: string; extra: string }> = 
 const statusDotColor: Record<NodeRunStatus, string> = {
   pending: "",
   running: "bg-blue-500",
+  waiting: "bg-amber-500",
   completed: "bg-green-500",
   failed: "bg-red-500",
   skipped: "bg-gray-400",
@@ -375,6 +377,7 @@ function RunStatusBadge({ status }: { status: NodeRunStatus }) {
   const config: Record<NodeRunStatus, { bg: string; text: string; label: string }> = {
     pending: { bg: "bg-zinc-500/10", text: "text-zinc-500", label: "" },
     running: { bg: "bg-blue-500/10", text: "text-blue-500", label: "..." },
+    waiting: { bg: "bg-amber-500/10", text: "text-amber-500", label: "WAIT" },
     completed: { bg: "bg-green-500/10", text: "text-green-500", label: "OK" },
     failed: { bg: "bg-red-500/10", text: "text-red-500", label: "ERR" },
     skipped: { bg: "bg-zinc-500/10", text: "text-zinc-500", label: "SKIP" },

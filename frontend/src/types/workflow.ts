@@ -155,10 +155,54 @@ export interface WorkflowUpdate {
 
 // --- Run types ---
 
+/** A request a waiting run stops at: someone has to approve or reject it. */
+export interface RunWaitingItem {
+  node_id: string
+  confirmation_id: string
+  /** "workflow_approval" (a Human Review step) or "confirmation" (a flagged connector action). */
+  kind?: string | null
+  expires_at?: string | null
+}
+
+/** A request for the signed-in user's decision, as the approval inbox lists it. */
+export interface ApprovalInboxItem {
+  /** The confirmation id: what a decision is sent for. */
+  id: string
+  /** "workflow_approval": a Human Review step. "confirmation": a connector action that requires confirmation. */
+  kind: "workflow_approval" | "confirmation" | (string & {})
+  status: string
+  title: string
+  description: string | null
+  workflow_id: string | null
+  workflow_name: string | null
+  run_id: string
+  /** How the run was started (e.g. manual, trigger, schedule). */
+  run_mode: string | null
+  node_id: string
+  step_label: string | null
+  started_by: { id: string; name: string } | null
+  /** kind "confirmation": the action about to be called and its arguments. */
+  action: string | null
+  arguments: Record<string, unknown> | null
+  created_at: string
+  expires_at: string | null
+}
+
+export type WorkflowRunStatus =
+  | "pending"
+  | "running"
+  /** Stopped at a step that needs a person's decision; goes on once it is made. */
+  | "waiting"
+  | "completed"
+  | "failed"
+  | "cancelled"
+
 export interface WorkflowRunResponse {
   id: string
   workflow_id: string
-  status: "pending" | "running" | "completed" | "failed" | "cancelled"
+  /** Who started the run. */
+  user_id?: string
+  status: WorkflowRunStatus
   inputs: Record<string, unknown> | null
   outputs: Record<string, unknown> | null
   node_results: Record<string, NodeRunResult> | null
@@ -166,13 +210,15 @@ export interface WorkflowRunResponse {
   completed_at: string | null
   duration_ms: number | null
   error: string | null
+  /** What a waiting run waits on; absent otherwise. */
+  waiting_for?: RunWaitingItem[] | null
   created_at: string
 }
 
 export interface NodeRunResult {
   node_id?: string
   node_type?: string
-  status: "pending" | "running" | "completed" | "failed" | "skipped" | "retrying"
+  status: NodeRunStatus
   output: unknown
   error: string | null
   started_at: string | null
@@ -198,7 +244,14 @@ export interface NodeRunOverlayData {
 
 // --- Node run status for canvas overlay ---
 
-export type NodeRunStatus = "pending" | "running" | "completed" | "failed" | "skipped" | "retrying"
+export type NodeRunStatus =
+  | "pending"
+  | "running"
+  | "waiting"
+  | "completed"
+  | "failed"
+  | "skipped"
+  | "retrying"
 
 // --- Execution log event for run panel ---
 
@@ -208,6 +261,7 @@ export type WorkflowLogEventType =
   | "node_failed"
   | "node_skipped"
   | "node_retrying"
+  | "node_waiting"
   | "run_completed"
   | "run_failed"
 

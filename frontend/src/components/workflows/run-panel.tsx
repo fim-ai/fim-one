@@ -13,12 +13,15 @@ import {
   ChevronDown,
   ChevronRight,
   RotateCcw,
+  Hourglass,
+  Ban,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { fmtDuration } from "@/lib/utils"
+import { RunWaitingCard } from "@/components/workflows/approvals/run-waiting-card"
 import type {
   StartNodeData,
   NodeRunResult,
@@ -26,11 +29,19 @@ import type {
   WorkflowNodeType,
   WorkflowLogEvent,
   WorkflowLogEventType,
+  RunWaitingItem,
+  WorkflowRunStatus,
 } from "@/types/workflow"
 
 interface RunPanelProps {
   isOpen: boolean
   isRunning: boolean
+  /** The run's status once the server has named it; null on the input form. */
+  runStatus?: WorkflowRunStatus | null
+  /** What a waiting run waits on. */
+  waitingFor?: RunWaitingItem[]
+  /** A request the run waits on was decided: read the run again. */
+  onDecided?: () => void
   startVariables: NonNullable<StartNodeData["variables"]>
   nodeResults: Record<string, NodeRunResult> | null
   finalOutputs: Record<string, unknown> | null
@@ -49,6 +60,7 @@ interface RunPanelProps {
 const statusIcons: Record<NodeRunStatus, React.ReactNode> = {
   pending: <CircleDashed className="h-3.5 w-3.5 text-zinc-500" />,
   running: <Loader2 className="h-3.5 w-3.5 text-blue-500 animate-spin" />,
+  waiting: <Hourglass className="h-3.5 w-3.5 text-amber-500" />,
   completed: <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />,
   failed: <XCircle className="h-3.5 w-3.5 text-red-500" />,
   skipped: <SkipForward className="h-3.5 w-3.5 text-zinc-400" />,
@@ -62,6 +74,7 @@ const eventBadgeClass: Record<WorkflowLogEventType, string> = {
   node_failed: "text-red-500",
   node_skipped: "text-zinc-400",
   node_retrying: "text-amber-500",
+  node_waiting: "text-amber-500",
   run_completed: "text-green-500",
   run_failed: "text-red-500",
 }
@@ -73,6 +86,7 @@ const eventTypeIcons: Record<WorkflowLogEventType, React.ReactNode> = {
   node_failed: <XCircle className="h-3 w-3" />,
   node_skipped: <SkipForward className="h-3 w-3" />,
   node_retrying: <RotateCcw className="h-3 w-3" />,
+  node_waiting: <Hourglass className="h-3 w-3" />,
   run_completed: <CheckCircle2 className="h-3 w-3" />,
   run_failed: <XCircle className="h-3 w-3" />,
 }
@@ -643,6 +657,9 @@ function LogViewer({
 export function RunPanel({
   isOpen,
   isRunning,
+  runStatus = null,
+  waitingFor = [],
+  onDecided,
   startVariables,
   nodeResults,
   finalOutputs,
@@ -696,8 +713,11 @@ export function RunPanel({
 
   const hasInputs = startVariables.length > 0
   const hasResults = nodeResults && Object.keys(nodeResults).length > 0
-  const isFinished = !isRunning && hasResults
-  const showInputForm = !isRunning && !hasResults
+  // Stopped at a step that needs a decision: not running, not finished.
+  const isWaiting = runStatus === "waiting"
+  const isCancelled = runStatus === "cancelled"
+  const isFinished = !isRunning && !isWaiting && hasResults
+  const showInputForm = !isRunning && !isWaiting && !hasResults
   // Show hint when inputs are pre-filled from a previous run
   const isPrefilled = showInputForm && hasInputs && Object.keys(lastUsedInputsRef.current).length > 0
     && startVariables.some((v) => inputValues[v.name] !== undefined && inputValues[v.name] !== "")
@@ -721,7 +741,7 @@ export function RunPanel({
   }
 
   // Show tabs only when there are results or running (i.e., not on the input form)
-  const showTabs = isRunning || hasResults
+  const showTabs = isRunning || isWaiting || hasResults
 
   return (
     <div
@@ -734,7 +754,7 @@ export function RunPanel({
           {t("runPanelTitle")}
         </h3>
         <div className="flex items-center gap-1.5">
-          {isRunning && (
+          {(isRunning || isWaiting) && (
             <Button variant="outline" size="sm" className="h-6 text-xs gap-1" onClick={onCancel}>
               {t("runPanelCancel")}
             </Button>
@@ -757,13 +777,31 @@ export function RunPanel({
       </div>
 
       {/* Row 2: Status bar (only visible when running or has results) */}
-      {(isRunning || hasResults) && (
-        <div className="flex items-center gap-1.5 px-4 py-1.5 border-b border-border/20 bg-muted/30 shrink-0">
+      {(isRunning || isWaiting || hasResults) && (
+        <div
+          data-testid="run-status"
+          data-status={isRunning ? "running" : (runStatus ?? (finalError ? "failed" : "completed"))}
+          className="flex items-center gap-1.5 px-4 py-1.5 border-b border-border/20 bg-muted/30 shrink-0"
+        >
           {isRunning ? (
             <>
               <Loader2 className="h-3 w-3 text-blue-500 animate-spin shrink-0" />
               <span className="text-[11px] text-blue-600 dark:text-blue-400 font-medium">
                 {t("runPanelStatusRunning")}
+              </span>
+            </>
+          ) : isWaiting ? (
+            <>
+              <Hourglass className="h-3 w-3 text-amber-500 shrink-0" />
+              <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                {t("runPanelStatusWaiting")}
+              </span>
+            </>
+          ) : isCancelled ? (
+            <>
+              <Ban className="h-3 w-3 text-zinc-400 shrink-0" />
+              <span className="text-[11px] text-muted-foreground font-medium">
+                {t("runPanelStatusCancelled")}
               </span>
             </>
           ) : finalError ? (
@@ -868,6 +906,14 @@ export function RunPanel({
                     <Loader2 className="h-6 w-6 text-blue-500 animate-spin" />
                     <p className="text-xs text-muted-foreground">{t("runPanelExecuting")}</p>
                   </div>
+                )}
+                {/* Waiting for a decision */}
+                {isWaiting && (
+                  <RunWaitingCard
+                    waitingFor={waitingFor}
+                    nodeLabel={getNodeLabel}
+                    onDecided={onDecided ?? (() => {})}
+                  />
                 )}
                 {/* Running/Results */}
                 {hasResults && (

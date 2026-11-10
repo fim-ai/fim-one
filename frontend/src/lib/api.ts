@@ -1,6 +1,6 @@
 import { getApiBaseUrl, ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, USER_KEY, MARKET_ORG_ID } from "./constants"
 import type { UserInfo, TokenResponse, LoginRequest, LoginWithCodeRequest, RegisterRequest, ChangePasswordRequest, SetPasswordRequest, SetupRequest } from "@/types/auth"
-import type { WorkflowResponse, WorkflowCreate, WorkflowUpdate, WorkflowRunResponse, WorkflowStats, WorkflowTemplate, NodeStatsResponse, WorkflowValidateResponse, WorkflowVersionResponse, WorkflowAnalyticsResponse, WorkflowScheduleResponse, WorkflowScheduleUpdate, WorkflowBatchRunResponse, WorkflowImportResult, NodeTestRequest, NodeTestResponse } from "@/types/workflow"
+import type { WorkflowResponse, WorkflowCreate, WorkflowUpdate, WorkflowRunResponse, WorkflowStats, WorkflowTemplate, NodeStatsResponse, WorkflowValidateResponse, WorkflowVersionResponse, WorkflowAnalyticsResponse, WorkflowScheduleResponse, WorkflowScheduleUpdate, WorkflowBatchRunResponse, WorkflowImportResult, NodeTestRequest, NodeTestResponse, ApprovalInboxItem } from "@/types/workflow"
 import type {
   ConversationResponse,
   ConversationDetail,
@@ -1037,6 +1037,18 @@ export const workflowApi = {
     apiFetch<ApiResponse<{ deleted_count: number }>>(
       `/api/workflows/${workflowId}/runs`,
       { method: "DELETE" },
+    ),
+
+  /** What the signed-in user is asked to decide for workflow runs. */
+  approvalInbox: () =>
+    apiFetch<ApiResponse<{ items: ApprovalInboxItem[]; count: number }>>(
+      "/api/workflows/approval-inbox",
+    ).then((r) => r.data),
+
+  /** How many requests wait for the signed-in user's decision. */
+  approvalInboxCount: () =>
+    apiFetch<ApiResponse<{ count: number }>>("/api/workflows/approval-inbox/count").then(
+      (r) => r.data.count,
     ),
 
   exportRuns: (workflowId: string, status?: string, limit?: number) => {
