@@ -961,10 +961,22 @@ def _not_json(constant: str) -> Any:
     raise ValueError(f"{constant} is not JSON")
 
 
+def _finite(number: str) -> float:
+    value = float(number)
+    if not math.isfinite(value):
+        # 1e999 reads as infinity, which no JSON number is.
+        raise ValueError(f"{number} is out of range")
+    return value
+
+
 def _json_value(text: str) -> Any:
-    """The value *text* is the JSON of, or ``_UNFIT``. ``NaN`` and ``Infinity`` are not JSON."""
+    """The value *text* is the JSON of, or ``_UNFIT``.
+
+    ``NaN`` and ``Infinity`` are not JSON, and neither is a number too
+    large to be one once read (``1e999``): such text stays text.
+    """
     try:
-        return json.loads(text, parse_constant=_not_json)
+        return json.loads(text, parse_constant=_not_json, parse_float=_finite)
     except (ValueError, RecursionError):
         return _UNFIT
 

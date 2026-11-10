@@ -359,6 +359,30 @@ class TestJsonTextKeepsWhatItsAuthorWrote:
         json.loads(new)
 
 
+class TestNumbersThatAreNotJsonNumbersStayText:
+    """``1e999`` reads as infinity; an MCP argument must not carry one."""
+
+    @pytest.mark.parametrize("text", ["1e999", "-1E400", "[1, 2e999]", '{"k": 1e999}'])
+    async def test_at_an_untyped_place_of_a_tools_argument(self, text: str) -> None:
+        filled = await _fill({"filter": '{"any": {{s.v}}, "q": "{{s.v}}"}'}, {"s.v": text})
+        assert filled == {"filter": {"any": text, "q": text}}
+        json.dumps(filled, allow_nan=False)
+
+    @pytest.mark.parametrize("text", ["1e999", "-1E400"])
+    async def test_in_json_written_into_a_text_parameter(self, text: str) -> None:
+        filled = await _fill({"p": '{"a": {{s.v}}}'}, {"s.v": text}, None)
+        assert filled == {"p": '{"a": "%s"}' % text}
+
+    async def test_numbers_json_can_hold_are_still_numbers(self) -> None:
+        values = {"s.a": "1e308", "s.b": "-0", "s.c": "12345678901234567890", "s.d": "1.5e-320"}
+        filled = await _fill(
+            {"filter": '{"a": {{s.a}}, "b": {{s.b}}, "c": {{s.c}}, "d": {{s.d}}}'}, values
+        )
+        assert filled == {
+            "filter": {"a": 1e308, "b": 0, "c": 12345678901234567890, "d": 1.5e-320}
+        }
+
+
 class TestJsonWrittenIntoATextParameter:
     """With no object or list schema the result is text; the receiver may parse it."""
 
