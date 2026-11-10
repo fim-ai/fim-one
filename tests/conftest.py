@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from typing import Any
 
 import pytest
@@ -108,6 +109,21 @@ def human_intervention_enabled(
 ) -> None:
     """Switch Human Intervention workflow nodes on (they are off by default)."""
     monkeypatch.setenv("WORKFLOW_HUMAN_INTERVENTION_ENABLED", "true")
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _uploads_outside_the_checkout(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
+    """Point ``UPLOADS_DIR`` at the test session's temporary directory.
+
+    ``create_app()`` creates the uploads directory; with the default
+    (``uploads`` in the working directory) every test that builds the app
+    left one in the checkout. Session-scoped, so module-scoped app fixtures
+    see it too. A test that sets ``UPLOADS_DIR`` itself still decides.
+    """
+    patch = pytest.MonkeyPatch()
+    patch.setenv("UPLOADS_DIR", str(tmp_path_factory.getbasetemp() / "uploads"))
+    yield
+    patch.undo()
 
 
 @pytest.fixture(autouse=True)

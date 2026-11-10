@@ -1118,7 +1118,7 @@ async def _resolve_agent_config(
     is bound to it, so the user is told to start a new conversation;
     ``resource_not_found`` / ``resource_inactive`` for an agent named
     explicitly. Without it, ``None``: the caller carries on with no agent
-    (the composer's vision check; the workflow Agent step until C1 phase 4).
+    (the composer's vision check, the only caller that does not refuse).
 
     Returns a dict with ``instructions``, ``tool_categories``,
     ``model_config_json``, ``kb_ids``, and ``grounding_config``, or ``None``.
@@ -1150,8 +1150,8 @@ async def _resolve_agent_config(
                 [resolved_id],
             )
             if not refuse_unavailable:
-                # The workflow Agent step keeps running a switched-off agent
-                # until C1 phase 4 (B16; registered in tests/assembly/matrix.py).
+                # The composer's vision check: a switched-off agent still
+                # names the model its conversation would be answered by.
                 _agents = _agent_decision.including("resource_inactive")
                 agent = _agents[0] if _agents else None
             elif _agent_decision.usable:

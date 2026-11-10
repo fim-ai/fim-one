@@ -218,6 +218,18 @@ class TestRunGate:
         assert (refused.value.error_code, refused.value.status_code) == (code, 403)
         assert backend.asked == []
 
+    @pytest.mark.parametrize("exists", [True, False])
+    async def test_with_no_binding_a_disabled_acting_account_is_account_disabled(
+        self, factory: async_sessionmaker[AsyncSession], backend: _Backend, exists: bool
+    ) -> None:
+        """It was reported as ``workflow_owner_inactive``: there is no owner here."""
+        if exists:
+            await _users(factory, runner=False)
+        with pytest.raises(AssemblyRefusal) as refused:
+            await quota.AssemblyRunGate().check(provisional_principal("runner"))
+        assert (refused.value.error_code, refused.value.status_code) == ("account_disabled", 403)
+        assert backend.asked == []
+
     async def test_an_account_that_does_not_exist_is_refused(
         self, factory: async_sessionmaker[AsyncSession], backend: _Backend
     ) -> None:

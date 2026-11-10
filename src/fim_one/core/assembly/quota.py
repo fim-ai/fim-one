@@ -150,14 +150,17 @@ class AssemblyRunGate:
         from fim_one.db import create_session
         from fim_one.db.models import User
 
-        owner_id = binding.owner_id if binding is not None else principal.user_id
+        accounts = {principal.user_id}
+        if binding is not None:
+            accounts.add(binding.owner_id)
         async with create_session() as db:
             rows = await db.execute(
-                select(User.id, User.is_active).where(User.id.in_({principal.user_id, owner_id}))
+                select(User.id, User.is_active).where(User.id.in_(accounts))
             )
             active = {uid: bool(is_active) for uid, is_active in rows.all()}
-        # A disabled author's workflows stop running for everyone.
-        if not active.get(owner_id, False):
+        # A disabled author's workflows stop running for everyone. With no
+        # binding there is no owner to speak of: only the acting account.
+        if binding is not None and not active.get(binding.owner_id, False):
             raise AssemblyRefusal(
                 WORKFLOW_OWNER_INACTIVE, 403, "The workflow owner's account is disabled"
             )

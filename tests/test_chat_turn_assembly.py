@@ -21,6 +21,7 @@ from httpx import ASGITransport, AsyncClient
 
 import fim_one.db.models  # noqa: F401
 from fim_one.core.agent import ReActAgent
+from fim_one.core.planner.checkpoint import DAGCheckpoint
 from fim_one.db import create_session, init_db, shutdown_db
 from fim_one.db.base import Base
 from fim_one.db.models.agent import Agent
@@ -162,6 +163,10 @@ def loops(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> list[dict[str, Any]
         chat_mod,
         "_conversation_sandbox_root",
         lambda conversation_id: tmp_path / "sandbox" / conversation_id if conversation_id else None,
+    )
+    # So do a plan turn's checkpoints (the default is data/dag_checkpoints in the cwd).
+    monkeypatch.setattr(
+        chat_mod, "DAGCheckpoint", lambda: DAGCheckpoint(str(tmp_path / "dag_checkpoints"))
     )
     monkeypatch.setattr(chat_mod, "ReActAgent", _Recording)
     monkeypatch.setattr(chat_mod, "_resolve_llm", _llm)
