@@ -32,14 +32,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { ApiError } from "@/lib/api"
 import { channelsApi } from "@/lib/api/channels"
 import { getErrorMessage } from "@/lib/error-utils"
+import {
+  CREATABLE_CHANNEL_TYPES,
+  WEBHOOK_URL_EXAMPLES,
+  isWebhookChannelType,
+  isWebhookUrlFor,
+} from "@/types/channel"
 import type {
   Channel,
+  ChannelConfigInput,
   ChannelCreateRequest,
   ChannelType,
   ChatInfo,
   FeishuChannelConfigInput,
+  WebhookChannelConfigInput,
 } from "@/types/channel"
 import { FeishuChatPicker } from "./feishu-chat-picker"
 
@@ -51,6 +60,14 @@ interface ChannelFormDialogProps {
   onSaved: (channel: Channel) => void
 }
 
+// Server error code -> the form field it is about.
+const SERVER_FIELD_ERRORS: Record<string, keyof FieldErrors> = {
+  feishu_channel_requires_encrypt_key: "encrypt_key",
+  channel_webhook_url_invalid: "webhook_url",
+  channel_email_recipients_required: "email_to",
+  channel_email_not_permitted: "email_to",
+}
+
 type FieldErrors = Partial<{
   name: string
   app_id: string
@@ -58,6 +75,8 @@ type FieldErrors = Partial<{
   chat_id: string
   verification_token: string
   encrypt_key: string
+  webhook_url: string
+  email_to: string
 }>
 
 export function ChannelFormDialog({
@@ -80,6 +99,8 @@ export function ChannelFormDialog({
   const [chatId, setChatId] = useState("")
   const [verificationToken, setVerificationToken] = useState("")
   const [encryptKey, setEncryptKey] = useState("")
+  const [webhookUrl, setWebhookUrl] = useState("")
+  const [emailTo, setEmailTo] = useState("")
 
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -108,6 +129,8 @@ export function ChannelFormDialog({
       setChatId(channel.config.chat_id ?? "")
       setVerificationToken("")
       setEncryptKey("")
+      setWebhookUrl("")
+      setEmailTo(channel.config.to ?? "")
     } else {
       setType("feishu")
       setName("")
@@ -116,6 +139,8 @@ export function ChannelFormDialog({
       setChatId("")
       setVerificationToken("")
       setEncryptKey("")
+      setWebhookUrl("")
+      setEmailTo("")
     }
   }, [open, channel])
 
@@ -128,7 +153,9 @@ export function ChannelFormDialog({
         appSecret.length > 0 ||
         chatId.trim().length > 0 ||
         verificationToken.length > 0 ||
-        encryptKey.length > 0
+        encryptKey.length > 0 ||
+        webhookUrl.trim().length > 0 ||
+        emailTo.trim().length > 0
       )
     }
     return (
@@ -137,7 +164,9 @@ export function ChannelFormDialog({
       chatId !== (channel.config.chat_id ?? "") ||
       appSecret.length > 0 ||
       verificationToken.length > 0 ||
-      encryptKey.length > 0
+      encryptKey.length > 0 ||
+      webhookUrl.trim().length > 0 ||
+      emailTo !== (channel.config.to ?? "")
     )
   })()
 
@@ -178,6 +207,22 @@ export function ChannelFormDialog({
       ) {
         errors.encrypt_key = t("form.encrypt_key_required")
       }
+    } else if (isWebhookChannelType(type)) {
+      // The stored URL is never sent back, so on edit a blank field keeps it.
+      const url = webhookUrl.trim()
+      if (!url) {
+        if (!isEditing) errors.webhook_url = t("form.webhook_url_required")
+      } else if (!isWebhookUrlFor(type, url)) {
+        errors.webhook_url = t("form.webhook_url_invalid")
+      }
+    } else if (type === "email") {
+      const addresses = emailTo
+        .split(",")
+        .map((a) => a.trim())
+        .filter(Boolean)
+      if (addresses.length === 0 || addresses.some((a) => !a.includes("@"))) {
+        errors.email_to = t("form.email_to_required")
+      }
     }
     return errors
   }
@@ -192,20 +237,30 @@ export function ChannelFormDialog({
 
     setIsSubmitting(true)
     try {
-      const feishuConfig: FeishuChannelConfigInput = {
-        app_id: appId.trim(),
-        chat_id: chatId.trim(),
+      let config: ChannelConfigInput
+      if (isWebhookChannelType(type)) {
+        const webhookConfig: WebhookChannelConfigInput = {}
+        if (webhookUrl.trim()) webhookConfig.webhook_url = webhookUrl.trim()
+        config = webhookConfig
+      } else if (type === "email") {
+        config = { to: emailTo.trim() }
+      } else {
+        const feishuConfig: FeishuChannelConfigInput = {
+          app_id: appId.trim(),
+          chat_id: chatId.trim(),
+        }
+        // Only include secret fields when user typed something; empty means "keep as-is"
+        if (appSecret) feishuConfig.app_secret = appSecret
+        if (verificationToken) feishuConfig.verification_token = verificationToken
+        if (encryptKey) feishuConfig.encrypt_key = encryptKey
+        config = feishuConfig
       }
-      // Only include secret fields when user typed something; empty means "keep as-is"
-      if (appSecret) feishuConfig.app_secret = appSecret
-      if (verificationToken) feishuConfig.verification_token = verificationToken
-      if (encryptKey) feishuConfig.encrypt_key = encryptKey
 
       let saved: Channel
       if (channel) {
         saved = await channelsApi.update(channel.id, {
           name: name.trim(),
-          config: feishuConfig,
+          config,
         })
         toast.success(t("messages.updated"))
       } else {
@@ -213,7 +268,7 @@ export function ChannelFormDialog({
           name: name.trim(),
           type,
           org_id: orgId,
-          config: feishuConfig,
+          config,
         }
         saved = await channelsApi.create(body)
         toast.success(t("messages.created"))
@@ -221,7 +276,14 @@ export function ChannelFormDialog({
       onSaved(saved)
       onOpenChange(false)
     } catch (err: unknown) {
-      toast.error(getErrorMessage(err, tError))
+      // A 400 that names a field is shown under that field; the rest toast.
+      const code = err instanceof ApiError ? err.errorCode : null
+      const field = code ? SERVER_FIELD_ERRORS[code] : undefined
+      if (field) {
+        setFieldErrors({ [field]: getErrorMessage(err, tError) })
+      } else {
+        toast.error(getErrorMessage(err, tError))
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -280,16 +342,26 @@ export function ChannelFormDialog({
                 </Label>
                 <Select
                   value={type}
-                  onValueChange={(v) => setType(v as ChannelType)}
+                  onValueChange={(v) => {
+                    setType(v as ChannelType)
+                    setFieldErrors({})
+                  }}
                   disabled={isEditing}
                 >
                   <SelectTrigger id="channel-type" className="w-full">
                     <SelectValue placeholder={t("form.typePlaceholder")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="feishu">{t("types.feishu")}</SelectItem>
+                    {CREATABLE_CHANNEL_TYPES.map((value) => (
+                      <SelectItem key={value} value={value}>
+                        {t(`types.${value}`)}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  {t("form.typeHint")}
+                </p>
               </div>
 
               <div className="space-y-1.5">
@@ -485,6 +557,88 @@ export function ChannelFormDialog({
                   {fieldErrors.encrypt_key && (
                     <p className="text-sm text-destructive">
                       {fieldErrors.encrypt_key}
+                    </p>
+                  )}
+                </div>
+              </fieldset>
+            )}
+
+            {/* Webhook URL */}
+            {isWebhookChannelType(type) && (
+              <fieldset className="space-y-3">
+                <legend className="text-sm font-semibold text-foreground">
+                  {t("form.sectionWebhook")}
+                </legend>
+                <p className="text-xs text-muted-foreground">
+                  {t("form.sectionWebhookDescription")}
+                </p>
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor="channel-webhook-url"
+                    className="text-sm font-medium"
+                  >
+                    {t("form.webhook_url")}{" "}
+                    {!isEditing && <span className="text-destructive">*</span>}
+                  </Label>
+                  <Input
+                    id="channel-webhook-url"
+                    type="password"
+                    autoComplete="new-password"
+                    value={webhookUrl}
+                    onChange={(e) => {
+                      setWebhookUrl(e.target.value)
+                      clearFieldError("webhook_url")
+                    }}
+                    placeholder={
+                      isEditing
+                        ? t("form.webhook_url_edit_placeholder")
+                        : WEBHOOK_URL_EXAMPLES[type]
+                    }
+                    aria-invalid={fieldErrors.webhook_url ? true : undefined}
+                  />
+                  {fieldErrors.webhook_url && (
+                    <p className="text-sm text-destructive">
+                      {fieldErrors.webhook_url}
+                    </p>
+                  )}
+                </div>
+              </fieldset>
+            )}
+
+            {/* Email recipients */}
+            {type === "email" && (
+              <fieldset className="space-y-3">
+                <legend className="text-sm font-semibold text-foreground">
+                  {t("form.sectionEmail")}
+                </legend>
+                <p className="text-xs text-muted-foreground">
+                  {t("form.sectionEmailDescription")}
+                </p>
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor="channel-email-to"
+                    className="text-sm font-medium"
+                  >
+                    {t("form.email_to")}{" "}
+                    <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="channel-email-to"
+                    value={emailTo}
+                    onChange={(e) => {
+                      setEmailTo(e.target.value)
+                      clearFieldError("email_to")
+                    }}
+                    placeholder={t("form.email_to_placeholder")}
+                    aria-invalid={fieldErrors.email_to ? true : undefined}
+                  />
+                  {fieldErrors.email_to ? (
+                    <p className="text-sm text-destructive">
+                      {fieldErrors.email_to}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      {t("form.email_to_hint")}
                     </p>
                   )}
                 </div>

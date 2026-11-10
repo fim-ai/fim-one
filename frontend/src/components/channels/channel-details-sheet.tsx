@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/sheet"
 import { channelsApi } from "@/lib/api/channels"
 import { getErrorMessage } from "@/lib/error-utils"
+import { isWebhookChannelType } from "@/types/channel"
 import type { Channel } from "@/types/channel"
 import { HookPlaygroundDialog } from "@/components/channels/hook-playground-dialog"
 
@@ -38,6 +39,7 @@ export function ChannelDetailsSheet({
   const [copied, setCopied] = useState(false)
   const [isSending, setIsSending] = useState(false)
   const [playgroundOpen, setPlaygroundOpen] = useState(false)
+  const isFeishu = channel?.type === "feishu"
 
   const handleCopyUrl = async () => {
     if (!channel) return
@@ -90,98 +92,128 @@ export function ChannelDetailsSheet({
 
         {channel && (
           <div className="mt-4 space-y-4">
-            {/* Callback URL block */}
-            <section className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-foreground">
-                  {t("details.callbackUrlLabel")}
-                </h3>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5"
-                  onClick={handleCopyUrl}
-                >
-                  {copied ? (
-                    <Check className="h-4 w-4 text-green-600" />
-                  ) : (
-                    <Copy className="h-4 w-4" />
-                  )}
-                  {t("details.copyUrl")}
-                </Button>
-              </div>
-              <div className="rounded-md border border-border bg-muted/40 px-3 py-3 font-mono text-sm break-all select-all">
-                {channel.callback_url}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {t("details.callbackUrlHint")}
-              </p>
-            </section>
+            {/* Callback URL and its setup steps: only an app channel receives callbacks */}
+            {isFeishu && (
+              <>
+                {/* Callback URL block */}
+                <section className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-foreground">
+                      {t("details.callbackUrlLabel")}
+                    </h3>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      onClick={handleCopyUrl}
+                    >
+                      {copied ? (
+                        <Check className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                      {t("details.copyUrl")}
+                    </Button>
+                  </div>
+                  <div className="rounded-md border border-border bg-muted/40 px-3 py-3 font-mono text-sm break-all select-all">
+                    {channel.callback_url}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {t("details.callbackUrlHint")}
+                  </p>
+                </section>
 
-            {/* How-to block — collapsed by default; users who've
-                already finished setup don't need it taking up space.
-                Click the header to reveal the 7-step checklist. */}
-            <Collapsible className="rounded-md border border-primary/30 bg-primary/5">
-              <CollapsibleTrigger className="group flex w-full items-center justify-between gap-2 px-3 py-2 text-left">
-                <h3 className="text-sm font-semibold text-foreground">
-                  {t("details.howTo")}
-                </h3>
-                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
-              </CollapsibleTrigger>
-              <CollapsibleContent className="px-3 pb-3">
-                <ol className="ml-5 list-decimal space-y-1 text-sm text-muted-foreground">
-                  <li>{t("details.step1")}</li>
-                  <li>{t("details.step2")}</li>
-                  <li>{t("details.step3")}</li>
-                  <li>{t("details.step4")}</li>
-                  <li>{t("details.step5")}</li>
-                  <li>{t("details.step6")}</li>
-                  <li>{t("details.step7")}</li>
-                </ol>
-              </CollapsibleContent>
-            </Collapsible>
+                {/* How-to block — collapsed by default; users who've
+                    already finished setup don't need it taking up space.
+                    Click the header to reveal the 7-step checklist. */}
+                <Collapsible className="rounded-md border border-primary/30 bg-primary/5">
+                  <CollapsibleTrigger className="group flex w-full items-center justify-between gap-2 px-3 py-2 text-left">
+                    <h3 className="text-sm font-semibold text-foreground">
+                      {t("details.howTo")}
+                    </h3>
+                    <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="px-3 pb-3">
+                    <ol className="ml-5 list-decimal space-y-1 text-sm text-muted-foreground">
+                      <li>{t("details.step1")}</li>
+                      <li>{t("details.step2")}</li>
+                      <li>{t("details.step3")}</li>
+                      <li>{t("details.step4")}</li>
+                      <li>{t("details.step5")}</li>
+                      <li>{t("details.step6")}</li>
+                      <li>{t("details.step7")}</li>
+                    </ol>
+                  </CollapsibleContent>
+                </Collapsible>
+              </>
+            )}
 
             {/* Metadata */}
-            <section className="space-y-3">
-              <DetailRow
-                label={t("details.appIdLabel")}
-                value={channel.config.app_id ?? "—"}
-                mono
-              />
-              <DetailRow
-                label={t("details.chatIdLabel")}
-                value={channel.config.chat_id ?? "—"}
-                mono
-              />
-              {channel.config.chat_name && (
+            {isFeishu ? (
+                <section className="space-y-3">
+                  <DetailRow
+                    label={t("details.appIdLabel")}
+                    value={channel.config.app_id ?? "—"}
+                    mono
+                  />
+                  <DetailRow
+                    label={t("details.chatIdLabel")}
+                    value={channel.config.chat_id ?? "—"}
+                    mono
+                  />
+                  {channel.config.chat_name && (
+                    <DetailRow
+                      label={t("details.chatNameLabel")}
+                      value={channel.config.chat_name}
+                    />
+                  )}
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-sm text-muted-foreground">
+                      {channel.config.app_secret_configured &&
+                      channel.config.verification_token_configured
+                        ? t("details.secretsConfigured")
+                        : t("details.secretsMissing")}
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className={
+                        channel.config.app_secret_configured &&
+                        channel.config.verification_token_configured
+                          ? "border-green-500/30 bg-green-50 text-green-700 dark:bg-green-950/20 dark:text-green-400"
+                          : "border-amber-500/30 bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400"
+                      }
+                    >
+                      {channel.config.app_secret_configured &&
+                      channel.config.verification_token_configured
+                        ? t("status.enabled")
+                        : t("status.disabled")}
+                    </Badge>
+                  </div>
+                </section>
+            ) : (
+              <section className="space-y-3">
                 <DetailRow
-                  label={t("details.chatNameLabel")}
-                  value={channel.config.chat_name}
+                  label={t("details.typeLabel")}
+                  value={t(`types.${channel.type}`)}
                 />
-              )}
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-sm text-muted-foreground">
-                  {channel.config.app_secret_configured &&
-                  channel.config.verification_token_configured
-                    ? t("details.secretsConfigured")
-                    : t("details.secretsMissing")}
-                </span>
-                <Badge
-                  variant="outline"
-                  className={
-                    channel.config.app_secret_configured &&
-                    channel.config.verification_token_configured
-                      ? "border-green-500/30 bg-green-50 text-green-700 dark:bg-green-950/20 dark:text-green-400"
-                      : "border-amber-500/30 bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400"
-                  }
-                >
-                  {channel.config.app_secret_configured &&
-                  channel.config.verification_token_configured
-                    ? t("status.enabled")
-                    : t("status.disabled")}
-                </Badge>
-              </div>
-            </section>
+                {isWebhookChannelType(channel.type) && (
+                  <DetailRow
+                    label={t("details.webhookUrlLabel")}
+                    value={
+                      channel.config.webhook_url
+                        ? t("details.webhookConfigured")
+                        : "—"
+                    }
+                  />
+                )}
+                {channel.type === "email" && (
+                  <DetailRow
+                    label={t("details.recipientsLabel")}
+                    value={channel.config.to ?? "—"}
+                  />
+                )}
+              </section>
+            )}
 
             {/* Plain notification test — verifies credentials without
                 wiring an approval hook. */}
@@ -200,25 +232,29 @@ export function ChannelDetailsSheet({
                 {isSending ? t("details.testing") : t("details.testSend")}
               </Button>
               <p className="text-xs text-muted-foreground">
-                {t("details.testSendHint")}
+                {isFeishu
+                  ? t("details.testSendHint")
+                  : t("details.testSendHintOutbound")}
               </p>
             </section>
 
-            {/* Hook Approval Playground — full round-trip test */}
-            <section className="space-y-2">
-              <Button
-                variant="outline"
-                className="w-full gap-1.5"
-                onClick={() => setPlaygroundOpen(true)}
-                disabled={!channel.is_active}
-              >
-                <Sparkles className="h-4 w-4" />
-                {t("details.openPlayground")}
-              </Button>
-              <p className="text-xs text-muted-foreground">
-                {t("details.playgroundHint")}
-              </p>
-            </section>
+            {/* Hook Approval Playground — full round-trip test (approval carriers only) */}
+            {isFeishu && (
+                <section className="space-y-2">
+                  <Button
+                    variant="outline"
+                    className="w-full gap-1.5"
+                    onClick={() => setPlaygroundOpen(true)}
+                    disabled={!channel.is_active}
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    {t("details.openPlayground")}
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    {t("details.playgroundHint")}
+                  </p>
+                </section>
+            )}
           </div>
         )}
       </SheetContent>

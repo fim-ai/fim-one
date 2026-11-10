@@ -25,17 +25,29 @@ FIM One mirrors this mapping one-to-one:
 | **Org member** | A person inside that tenant who can approve, receive notifications, or react to cards |
 | **Agent (org-published)** | The AI worker acting on behalf of the organization |
 
-An agent can only use a channel inside its own organization. For a draft or personal agent, which has no organization of its own, that means an organization its owner is a member of. Saving an agent with a channel from any other organization is refused (`approval_channel_denied`), and at run time such a binding is treated as no channel at all.
+An agent can only use a channel inside its own organization. For a draft or personal agent, which has no organization of its own, that means an organization its owner is a member of. Saving an agent with a channel from any other organization is refused (`approval_channel_denied` for the approval channel, `completion_channel_denied` for the completion-notification channel), and at run time such a binding is treated as no channel at all.
 
 This constraint applies uniformly: both the approval gate (`ApprovalGateHook`, approval routing) and completion notifications (agent-configured channel) respect the same org-identity boundary.
 
 ## Supported platforms
 
-| Platform | Status | Inbound | Outbound | Approval card |
+| Type | What it is | Outbound | Callbacks | Approval card |
 |---|---|---|---|---|
-| [Feishu (Lark)](./feishu) | GA | Card callbacks only | Yes | Yes (`approval_gate` hook) |
-| Slack | Planned | — | — | — |
-| DingTalk | Planned | — | — | — |
+| [Feishu app](./feishu) | A Feishu / Lark app (bot) and a group chat | Yes | Card callbacks only | Yes (`approval_gate` hook) |
+| Lark / Feishu webhook | A custom bot's incoming webhook in one group | Yes | — | — |
+| Slack webhook | A Slack incoming webhook | Yes | — | — |
+| WeCom webhook | A WeCom (Enterprise WeChat) group-bot webhook | Yes | — | — |
+| Email | A fixed list of recipients, sent from the instance SMTP account | Yes | — | — |
+
+The webhook and email types are outbound only: they carry completion notifications and the messages an agent sends with the `send_notification` tool, and cannot be chosen as an approval channel.
+
+### Webhook channels
+
+Add a custom bot (incoming webhook) to the group on the platform and paste the URL it issues. FIM One posts only to the platform's own host over https: `open.feishu.cn` or `open.larksuite.com` for Lark / Feishu, `hooks.slack.com` for Slack, `qyapi.weixin.qq.com` for WeCom. Any other URL is refused (`channel_webhook_url_invalid`). The URL is the credential for that group, so it is encrypted at rest and never returned by the API; leave the field blank when editing to keep it.
+
+### Email channels
+
+An email channel lists recipient addresses. Mail leaves from the instance SMTP account (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`), so it is held to what the operator allows agents to send: the recipients must pass `SMTP_ALLOWED_DOMAINS` / `SMTP_ALLOWED_ADDRESSES`, or the operator must set `EMAIL_TOOL_ENABLED=true`. Otherwise creating the channel is refused (`channel_email_not_permitted`), and the check runs again on every send.
 
 ## How Channels interact with Hooks
 
@@ -53,8 +65,8 @@ The hook is attached to every agent automatically. Configure it in the agent edi
 
 1. Sign in as an **Org Owner** or **Admin**.
 2. Go to **Organization Settings → Channels → New Channel**.
-3. Pick a channel type (e.g. Feishu), fill in credentials, pick a target chat, and save.
-4. Click **Send test message** to verify the bidirectional wiring.
+3. Pick a channel type, fill in what it needs (Feishu app credentials and a target chat, a webhook URL, or recipient addresses), and save.
+4. Open the channel's details and click **Send Test Message** to check that it delivers.
 
 Each channel type has its own credential shape and event-subscription dance — follow the platform-specific guide for the exact steps:
 

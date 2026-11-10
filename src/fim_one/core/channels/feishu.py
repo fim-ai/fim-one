@@ -64,6 +64,18 @@ class FeishuChannel(BaseChannel):
         self._token: str | None = None
         self._token_expires_at: float = 0.0
 
+    @classmethod
+    def config_error(cls, config: dict[str, Any]) -> str | None:
+        """A Feishu channel needs an ``encrypt_key``.
+
+        Callback signature verification fails closed without the key, so a
+        keyless channel would accept sends but silently reject every card
+        click; the config is refused up front instead.
+        """
+        if not str(config.get("encrypt_key") or "").strip():
+            return "feishu_channel_requires_encrypt_key"
+        return None
+
     # ---- Internal helpers ---------------------------------------------------
 
     def _base_url(self) -> str:

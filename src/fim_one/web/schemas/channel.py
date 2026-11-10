@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class ChannelCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
-    type: str = Field(pattern=r"^(feishu|wecom|slack)$")
+    type: str = Field(pattern=r"^(feishu|lark_webhook|slack_webhook|wecom_webhook|email)$")
     org_id: str = Field(min_length=1)
     config: dict[str, Any] = Field(default_factory=dict)
     is_active: bool = True
@@ -33,7 +33,8 @@ class ChannelUpdate(BaseModel):
 
 # Config fields considered sensitive — masked in API responses.
 _SENSITIVE_KEYS = frozenset(
-    {"app_secret", "verification_token", "encrypt_key", "api_secret"}
+    # A webhook URL carries the token that authorizes posting to the chat.
+    {"app_secret", "verification_token", "encrypt_key", "api_secret", "webhook_url"}
 )
 
 

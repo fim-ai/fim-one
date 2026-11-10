@@ -49,6 +49,18 @@ class InstanceProvider:
     configured: bool
 
 
+class _OperatorEmailChannel(EmailChannel):
+    """Mail to an address the caller names, from the instance SMTP account.
+
+    The callers decide who may send where: the admin endpoints are
+    admin-only, and the agent tool applies the recipient allowlist itself.
+    """
+
+    @classmethod
+    def policy_error(cls, recipients: str) -> str | None:
+        return None
+
+
 def _webhook(name: str) -> WebhookChannel | None:
     env_var, channel_type = _WEBHOOKS[name]
     url = os.getenv(env_var, "").strip()
@@ -105,7 +117,7 @@ def instance_channel(name: str, *, recipient: str | None = None) -> BaseChannel 
     *recipient* is the address an ``email`` notification goes to.
     """
     if name == "email":
-        return EmailChannel({"to": recipient or ""}) if smtp_configured() else None
+        return _OperatorEmailChannel({"to": recipient or ""}) if smtp_configured() else None
     if name in _WEBHOOKS:
         return _webhook(name)
     return None

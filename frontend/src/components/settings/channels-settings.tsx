@@ -46,6 +46,7 @@ import { channelsApi } from "@/lib/api/channels"
 import { getErrorMessage } from "@/lib/error-utils"
 import { ChannelDetailsSheet } from "@/components/channels/channel-details-sheet"
 import { ChannelFormDialog } from "@/components/channels/channel-form-dialog"
+import { isWebhookChannelType } from "@/types/channel"
 import type { Channel } from "@/types/channel"
 
 export function ChannelsSettings() {
@@ -298,10 +299,16 @@ export function ChannelsSettings() {
                     {t(`types.${ch.type}`)}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
-                    {ch.config.chat_name ?? (
-                      <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">
-                        {ch.config.chat_id ?? t("noChat")}
-                      </code>
+                    {isWebhookChannelType(ch.type) ? (
+                      t("webhookTarget")
+                    ) : ch.type === "email" ? (
+                      (ch.config.to ?? t("noChat"))
+                    ) : (
+                      (ch.config.chat_name ?? (
+                        <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">
+                          {ch.config.chat_id ?? t("noChat")}
+                        </code>
+                      ))
                     )}
                   </td>
                   <td className="px-4 py-3">

@@ -25,6 +25,7 @@ __all__ = ["EmailChannel", "smtp_configured"]
 logger = logging.getLogger(__name__)
 
 EMAIL_RECIPIENTS_REQUIRED = "channel_email_recipients_required"
+EMAIL_NOT_PERMITTED = "channel_email_not_permitted"
 
 
 def smtp_configured() -> bool:
@@ -41,10 +42,34 @@ class EmailChannel(BaseChannel):
         return str(self.config.get("to") or "").strip()
 
     @classmethod
+    def policy_error(cls, recipients: str) -> str | None:
+        """Why the instance does not let this channel mail *recipients*, if it does not.
+
+        The mail leaves from the operator's SMTP account, so a channel is
+        held to what the operator allows agents (``email_send``): an
+        allowlist of recipients, or an explicit opt-in.
+        """
+        from fim_one.core.tool.builtin.email_send import EmailSendTool, agent_email_permitted
+
+        if not smtp_configured():
+            return "SMTP is not configured on this instance."
+        if not agent_email_permitted():
+            return (
+                "Email from agents is disabled on this instance. "
+                "Configure SMTP_ALLOWED_DOMAINS / SMTP_ALLOWED_ADDRESSES "
+                "or set EMAIL_TOOL_ENABLED=true."
+            )
+        blocked = EmailSendTool()._check_recipients(recipients)
+        return blocked.removeprefix("[Error] ") if blocked else None
+
+    @classmethod
     def config_error(cls, config: dict[str, Any]) -> str | None:
-        addresses = [a.strip() for a in str(config.get("to") or "").split(",") if a.strip()]
+        to = str(config.get("to") or "")
+        addresses = [a.strip() for a in to.split(",") if a.strip()]
         if not addresses or any("@" not in a for a in addresses):
             return EMAIL_RECIPIENTS_REQUIRED
+        if cls.policy_error(to) is not None:
+            return EMAIL_NOT_PERMITTED
         return None
 
     async def send_message(self, payload: dict[str, Any]) -> ChannelSendResult:
@@ -59,6 +84,11 @@ class EmailChannel(BaseChannel):
             return ChannelSendResult(
                 ok=False, error="Email provider requires 'channel' (recipient address)."
             )
+        # Checked on every send: the operator may have narrowed the allowlist
+        # since the channel was saved.
+        refused = self.policy_error(recipient)
+        if refused is not None:
+            return ChannelSendResult(ok=False, error=refused)
         try:
             await asyncio.to_thread(self._send_sync, to=recipient, subject=title, body=body)
         except Exception as exc:

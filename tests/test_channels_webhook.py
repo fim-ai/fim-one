@@ -32,6 +32,14 @@ SLACK_URL = "https://hooks.slack.com/services/T/B/xxx"
 LARK_URL = "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
 WECOM_URL = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx"
 
+_SMTP = {
+    "SMTP_HOST": "smtp.example.com",
+    "SMTP_PORT": "465",
+    "SMTP_SSL": "ssl",
+    "SMTP_USER": "sender@example.com",
+    "SMTP_PASS": "secret",
+}
+
 _NO_PROVIDERS = {
     "SMTP_HOST": "",
     "SMTP_USER": "",
@@ -246,14 +254,7 @@ class TestEmailSend:
     @pytest.mark.asyncio
     async def test_send_success(self) -> None:
         channel = EmailChannel({"to": "user@example.com"})
-        env = {
-            "SMTP_HOST": "smtp.example.com",
-            "SMTP_PORT": "465",
-            "SMTP_SSL": "ssl",
-            "SMTP_USER": "sender@example.com",
-            "SMTP_PASS": "secret",
-        }
-        with patch.dict(os.environ, env):
+        with patch.dict(os.environ, {**_SMTP, "EMAIL_TOOL_ENABLED": "true"}):
             with patch("fim_one.core.channels.email.smtplib.SMTP_SSL") as mock_smtp:
                 server = MagicMock()
                 mock_smtp.return_value.__enter__ = MagicMock(return_value=server)
@@ -264,11 +265,68 @@ class TestEmailSend:
         assert server.sendmail.call_args.args[1] == ["user@example.com"]
 
     def test_recipients_are_required(self) -> None:
-        assert EmailChannel.config_error({}) == "channel_email_recipients_required"
-        assert EmailChannel.config_error({"to": "not-an-address"}) == (
-            "channel_email_recipients_required"
-        )
-        assert EmailChannel.config_error({"to": "a@x.io, b@y.io"}) is None
+        with patch.dict(os.environ, {**_SMTP, "EMAIL_TOOL_ENABLED": "true"}):
+            assert EmailChannel.config_error({}) == "channel_email_recipients_required"
+            assert EmailChannel.config_error({"to": "not-an-address"}) == (
+                "channel_email_recipients_required"
+            )
+            assert EmailChannel.config_error({"to": "a@x.io, b@y.io"}) is None
+
+
+class TestEmailPolicy:
+    """An organization's email channel mails only whom the operator lets agents mail."""
+
+    def _env(self, **extra: str) -> Any:
+        env = {
+            **_SMTP,
+            "SMTP_ALLOWED_DOMAINS": "",
+            "SMTP_ALLOWED_ADDRESSES": "",
+            "EMAIL_TOOL_ENABLED": "",
+            **extra,
+        }
+        return patch.dict(os.environ, env)
+
+    def test_refused_until_the_operator_opens_email_to_agents(self) -> None:
+        with self._env():
+            assert EmailChannel.config_error({"to": "a@x.io"}) == "channel_email_not_permitted"
+        with self._env(SMTP_HOST=""):
+            assert EmailChannel.config_error({"to": "a@x.io"}) == "channel_email_not_permitted"
+        with self._env(EMAIL_TOOL_ENABLED="true"):
+            assert EmailChannel.config_error({"to": "a@x.io"}) is None
+
+    def test_recipients_must_be_on_the_allowlist(self) -> None:
+        with self._env(SMTP_ALLOWED_DOMAINS="corp.internal"):
+            assert EmailChannel.config_error({"to": "ops@corp.internal"}) is None
+            assert EmailChannel.config_error({"to": "ops@corp.internal, x@outside.io"}) == (
+                "channel_email_not_permitted"
+            )
+
+    @pytest.mark.asyncio
+    async def test_allowlist_is_checked_again_when_sending(self) -> None:
+        """A channel saved under a wider allowlist stops when it is narrowed."""
+        channel = EmailChannel({"to": "x@outside.io"})
+        with self._env(SMTP_ALLOWED_DOMAINS="corp.internal"):
+            with (
+                patch("fim_one.core.channels.email.smtplib.SMTP_SSL") as secure,
+                patch("fim_one.core.channels.email.smtplib.SMTP") as plain,
+            ):
+                result = await channel.send_notice("t", "b")
+        secure.assert_not_called()
+        plain.assert_not_called()
+        assert result.ok is False
+        assert "not in allowlist" in (result.error or "")
+
+    @pytest.mark.asyncio
+    async def test_operator_channel_is_not_held_to_the_agent_allowlist(self) -> None:
+        """The admin endpoints name their own recipient."""
+        with self._env():
+            channel = instance_channel("email", recipient="anyone@outside.io")
+            assert channel is not None
+            with patch("fim_one.core.channels.email.smtplib.SMTP_SSL") as secure:
+                secure.return_value.__enter__ = MagicMock(return_value=MagicMock())
+                secure.return_value.__exit__ = MagicMock(return_value=False)
+                result = await channel.send_notice("t", "b")
+        assert result.ok is True
 
 
 class TestCompletion:

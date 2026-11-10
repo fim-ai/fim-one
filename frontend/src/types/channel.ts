@@ -5,11 +5,63 @@
  * to the FIM One agent runtime. Agents can push notifications and receive
  * interactive actions (e.g. card button clicks) through the configured channel.
  *
- * Currently only `feishu` is wired up; `wecom`/`slack`/`teams` are reserved
- * for future releases.
+ * `feishu` is an app with a callback (it can carry approvals). The webhook
+ * types and `email` are outbound only. `wecom`/`slack`/`teams` are type
+ * strings older rows may carry; they have no adapter and cannot be created.
  */
 
-export type ChannelType = "feishu" | "wecom" | "slack" | "teams"
+export const CREATABLE_CHANNEL_TYPES = [
+  "feishu",
+  "lark_webhook",
+  "slack_webhook",
+  "wecom_webhook",
+  "email",
+] as const
+
+export type CreatableChannelType = (typeof CREATABLE_CHANNEL_TYPES)[number]
+
+export type ChannelType = CreatableChannelType | "wecom" | "slack" | "teams"
+
+export const WEBHOOK_CHANNEL_TYPES = [
+  "lark_webhook",
+  "slack_webhook",
+  "wecom_webhook",
+] as const
+
+export type WebhookChannelType = (typeof WEBHOOK_CHANNEL_TYPES)[number]
+
+export function isWebhookChannelType(type: string): type is WebhookChannelType {
+  return (WEBHOOK_CHANNEL_TYPES as readonly string[]).includes(type)
+}
+
+/** The host a webhook URL of each type must be on (the server enforces it). */
+export const WEBHOOK_URL_HOSTS: Record<WebhookChannelType, readonly string[]> = {
+  lark_webhook: ["open.feishu.cn", "open.larksuite.com"],
+  slack_webhook: ["hooks.slack.com"],
+  wecom_webhook: ["qyapi.weixin.qq.com"],
+}
+
+export const WEBHOOK_URL_EXAMPLES: Record<WebhookChannelType, string> = {
+  lark_webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/…",
+  slack_webhook: "https://hooks.slack.com/services/…",
+  wecom_webhook: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=…",
+}
+
+/** Whether `url` is an https URL on the host its channel type posts to. */
+export function isWebhookUrlFor(type: WebhookChannelType, url: string): boolean {
+  try {
+    const parsed = new URL(url.trim())
+    return (
+      parsed.protocol === "https:" &&
+      WEBHOOK_URL_HOSTS[type].includes(parsed.hostname) &&
+      parsed.port === "" &&
+      parsed.username === "" &&
+      parsed.pathname.replace(/\//g, "") !== ""
+    )
+  } catch {
+    return false
+  }
+}
 
 /**
  * Sanitised configuration returned by the backend.
@@ -26,6 +78,11 @@ export interface ChannelConfig {
   app_secret_configured?: boolean
   verification_token_configured?: boolean
   encrypt_key_configured?: boolean
+
+  // Webhook channels: the stored URL is never echoed, only a mask.
+  webhook_url?: string
+  // Email channels: comma-separated recipient addresses.
+  to?: string
 
   // Reserved for future channel types
   [key: string]: unknown
@@ -62,16 +119,30 @@ export interface FeishuChannelConfigInput {
   encrypt_key?: string
 }
 
+export interface WebhookChannelConfigInput {
+  /** Omitted on update to keep the stored URL. */
+  webhook_url?: string
+}
+
+export interface EmailChannelConfigInput {
+  to: string
+}
+
+export type ChannelConfigInput =
+  | FeishuChannelConfigInput
+  | WebhookChannelConfigInput
+  | EmailChannelConfigInput
+
 export interface ChannelCreateRequest {
   name: string
   type: ChannelType
   org_id: string
-  config: FeishuChannelConfigInput | Record<string, unknown>
+  config: ChannelConfigInput | Record<string, unknown>
 }
 
 export interface ChannelUpdateRequest {
   name?: string
-  config?: FeishuChannelConfigInput | Record<string, unknown>
+  config?: ChannelConfigInput | Record<string, unknown>
   is_active?: boolean
 }
 

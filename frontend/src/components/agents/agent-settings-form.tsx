@@ -98,6 +98,9 @@ export function AgentSettingsForm({
   const [notifyOnComplete, setNotifyOnComplete] = useState<boolean>(false)
   const [notifyChannelId, setNotifyChannelId] = useState<string>("")
   const [availableChannels, setAvailableChannels] = useState<Channel[]>([])
+  // Only a Feishu app channel has a callback, so only it can carry approvals;
+  // webhook and email channels deliver notifications.
+  const approvalChannels = availableChannels.filter((c) => c.type === "feishu")
   const [isLoadingChannels, setIsLoadingChannels] = useState<boolean>(false)
   // Approval routing (Phase 2)
   const [confirmationMode, setConfirmationMode] = useState<
@@ -334,7 +337,7 @@ export function AgentSettingsForm({
       confirmationMode === "channel_only" &&
       !approvalChannelId &&
       !notifyChannelId &&
-      availableChannels.length === 0
+      approvalChannels.length === 0
     ) {
       setFieldErrors((prev) => ({
         ...prev,
@@ -1169,7 +1172,7 @@ export function AgentSettingsForm({
                       {t("approval.personalAgentHint")}
                     </p>
                   </div>
-                ) : availableChannels.length === 0 ? (
+                ) : approvalChannels.length === 0 ? (
                   <div className="rounded-md border border-dashed border-input px-3 py-2.5 space-y-1">
                     <p className="text-xs text-muted-foreground">
                       {t("approval.emptyChannels")}
@@ -1204,7 +1207,7 @@ export function AgentSettingsForm({
                       <SelectItem value="__default__">
                         {t("approval.channelPlaceholder")}
                       </SelectItem>
-                      {availableChannels.map((ch) => (
+                      {approvalChannels.map((ch) => (
                         <SelectItem key={ch.id} value={ch.id}>
                           {ch.name}
                           <span className="text-muted-foreground ml-1 text-xs">
