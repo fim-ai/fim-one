@@ -58,7 +58,7 @@ class _OperatorEmailChannel(EmailChannel):
     """
 
     @classmethod
-    def policy_error(cls, recipients: str) -> str | None:
+    def policy_error(cls, recipients: object) -> str | None:
         return None
 
 

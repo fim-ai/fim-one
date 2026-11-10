@@ -52,6 +52,7 @@
   "feishu_channel_base_url_not_allowed": "This Feishu API address is not allowed. Leave it empty for open.feishu.cn, use https://open.larksuite.com, or ask the operator to list your private deployment in FEISHU_ALLOWED_BASE_URLS.",
   "channel_webhook_url_invalid": "Enter the https webhook URL issued by this platform. URLs on other hosts are not accepted.",
   "channel_email_recipients_required": "Enter at least one recipient email address.",
+  "channel_email_recipients_invalid": "Each recipient must be a plain email address like name@example.com, separated by commas. Display names, angle brackets and semicolons are not accepted.",
   "channel_email_not_permitted": "This instance does not allow sending email to these recipients. Ask the operator to configure SMTP and the recipient allowlist.",
   "channel_type_unsupported": "This channel type is no longer supported. Create a new channel instead.",
 

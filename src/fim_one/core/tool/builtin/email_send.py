@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import smtplib
 import ssl
 from email.mime.multipart import MIMEMultipart
@@ -11,6 +12,58 @@ from email.mime.text import MIMEText
 from typing import Any
 
 from ..base import BaseTool
+
+
+# One address: ``local@domain`` and nothing else. No display name, angle
+# brackets, comment, quoted local part, whitespace or second ``@``: the SMTP
+# layer re-parses whatever it is handed (``"<a@evil> b@allowed"`` is delivered
+# to ``a@evil``), so only a form with a single reading is accepted.
+_ATOM = r"[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+"
+_LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+_ADDRESS_RE = re.compile(rf"{_ATOM}(?:\.{_ATOM})*@{_LABEL}(?:\.{_LABEL})*", re.ASCII)
+_MAX_ADDRESS_CHARS = 254
+_MAX_ECHO_CHARS = 80
+
+
+def parse_recipients(*values: object) -> tuple[list[str], list[str]]:
+    """The addresses in *values* and the items that are not one address.
+
+    Each value is a comma-separated string, or a list of strings holding
+    one address each; ``None`` and ``""`` mean no recipients. Returns
+    ``(addresses, malformed)``: when ``malformed`` is not empty the
+    recipients must not be used. Malformed items are returned as short
+    ``repr`` strings, safe to show.
+    """
+    addresses: list[str] = []
+    malformed: list[str] = []
+
+    def _bad(item: object) -> None:
+        malformed.append(repr(item)[:_MAX_ECHO_CHARS])
+
+    for value in values:
+        if value is None or value == "":
+            continue
+        if isinstance(value, str):
+            items: list[object] = [part.strip() for part in value.split(",")]
+            # "a@x.io," and "a@x.io, ,b@x.io" are typing slips, not addresses.
+            items = [item for item in items if item != ""]
+            if not items:
+                _bad(value)
+        elif isinstance(value, list):
+            items = list(value)
+        else:
+            _bad(value)
+            continue
+        for item in items:
+            if (
+                isinstance(item, str)
+                and len(item) <= _MAX_ADDRESS_CHARS
+                and _ADDRESS_RE.fullmatch(item)
+            ):
+                addresses.append(item)
+            else:
+                _bad(item)
+    return addresses, malformed
 
 
 def agent_email_permitted() -> bool:
@@ -61,7 +114,10 @@ class EmailSendTool(BaseTool):
             "properties": {
                 "to": {
                     "type": "string",
-                    "description": "Recipient email address or comma-separated list.",
+                    "description": (
+                        "Recipient email address or comma-separated list. Plain "
+                        "addresses only (name@example.com), no display names."
+                    ),
                 },
                 "subject": {
                     "type": "string",
@@ -107,21 +163,30 @@ class EmailSendTool(BaseTool):
             return None
         return [a.strip().lower() for a in raw.split(",") if a.strip()]
 
-    def _check_recipients(self, *addr_strings: str) -> str | None:
-        """Return an error message if any address violates the allowlist, else None."""
+    def _check_recipients(self, *addr_strings: object) -> str | None:
+        """Return an error message if any recipient is malformed or not allowed, else None.
+
+        Each argument is a comma-separated string or a list of strings.
+        Every item must be exactly one ``local@domain`` address, whether or
+        not an allowlist is configured; with one, the address or its domain
+        must be on it.
+        """
+        all_addrs, malformed = parse_recipients(*addr_strings)
+        if malformed:
+            return (
+                f"[Error] Not a valid email address: {', '.join(malformed)}. "
+                "Give each recipient as a plain address like name@example.com, "
+                "separated by commas."
+            )
+
         domains = self._allowed_domains()
         addresses = self._allowed_addresses()
         if domains is None and addresses is None:
             return None  # no restrictions configured
 
-        all_addrs: list[str] = []
-        for s in addr_strings:
-            if s:
-                all_addrs.extend(a.strip().lower() for a in s.split(",") if a.strip())
-
         blocked: list[str] = []
-        for addr in all_addrs:
-            addr_domain = addr.split("@")[-1] if "@" in addr else ""
+        for addr in (a.lower() for a in all_addrs):
+            addr_domain = addr.rpartition("@")[2]
             ok_domain = domains is not None and addr_domain in domains
             ok_address = addresses is not None and addr in addresses
             if not (ok_domain or ok_address):
@@ -135,23 +200,29 @@ class EmailSendTool(BaseTool):
         return None
 
     async def run(self, **kwargs: Any) -> str:
-        to: str = kwargs.get("to", "").strip()
-        subject: str = kwargs.get("subject", "").strip()
-        body: str = kwargs.get("body", "")
+        to_raw = kwargs.get("to")
+        cc_raw = kwargs.get("cc")
+        bcc_raw = kwargs.get("bcc")
+        subject: str = str(kwargs.get("subject") or "").strip()
+        body: str = str(kwargs.get("body") or "")
         is_html: bool = bool(kwargs.get("html", False))
-        cc: str = kwargs.get("cc", "").strip()
-        bcc: str = kwargs.get("bcc", "").strip()
 
-        if not to:
+        if isinstance(to_raw, str):
+            to_raw = to_raw.strip()
+        if not to_raw:
             return "[Error] 'to' is required."
         if not subject:
             return "[Error] 'subject' is required."
         if not body:
             return "[Error] 'body' is required."
 
-        err = self._check_recipients(to, cc, bcc)
+        err = self._check_recipients(to_raw, cc_raw, bcc_raw)
         if err:
             return err
+        # What is sent is what was checked: the parsed addresses, re-joined.
+        to, cc, bcc = (", ".join(parse_recipients(raw)[0]) for raw in (to_raw, cc_raw, bcc_raw))
+        if not to:
+            return "[Error] 'to' is required."
 
         return await asyncio.to_thread(self._send, to, subject, body, is_html, cc, bcc)
 

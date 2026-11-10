@@ -25,6 +25,7 @@ __all__ = ["EmailChannel", "smtp_configured"]
 logger = logging.getLogger(__name__)
 
 EMAIL_RECIPIENTS_REQUIRED = "channel_email_recipients_required"
+EMAIL_RECIPIENTS_INVALID = "channel_email_recipients_invalid"
 EMAIL_NOT_PERMITTED = "channel_email_not_permitted"
 
 
@@ -34,15 +35,24 @@ def smtp_configured() -> bool:
 
 
 class EmailChannel(BaseChannel):
-    """Email to the addresses in ``config["to"]`` (comma-separated)."""
+    """Email to the addresses in ``config["to"]`` (comma-separated, or a list)."""
 
     type = "email"
 
     def recipients(self) -> str:
-        return str(self.config.get("to") or "").strip()
+        """The configured recipients as one comma-separated string.
+
+        ``config["to"]`` is a comma-separated string or a list of strings.
+        Anything else, or a list holding something that is not a string, has
+        no reading as recipients and yields ``""``.
+        """
+        to = self.config.get("to")
+        if isinstance(to, list):
+            return ", ".join(a.strip() for a in to) if all(isinstance(a, str) for a in to) else ""
+        return to.strip() if isinstance(to, str) else ""
 
     @classmethod
-    def policy_error(cls, recipients: str) -> str | None:
+    def policy_error(cls, recipients: object) -> str | None:
         """Why the instance does not let this channel mail *recipients*, if it does not.
 
         The mail leaves from the operator's SMTP account, so a channel is
@@ -64,9 +74,13 @@ class EmailChannel(BaseChannel):
 
     @classmethod
     def config_error(cls, config: dict[str, Any]) -> str | None:
-        to = str(config.get("to") or "")
-        addresses = [a.strip() for a in to.split(",") if a.strip()]
-        if not addresses or any("@" not in a for a in addresses):
+        from fim_one.core.tool.builtin.email_send import parse_recipients
+
+        to = config.get("to")
+        addresses, malformed = parse_recipients(to)
+        if malformed:
+            return EMAIL_RECIPIENTS_INVALID
+        if not addresses:
             return EMAIL_RECIPIENTS_REQUIRED
         if cls.policy_error(to) is not None:
             return EMAIL_NOT_PERMITTED
@@ -79,7 +93,21 @@ class EmailChannel(BaseChannel):
         )
 
     async def send_notice(self, title: str, body: str) -> ChannelSendResult:
-        recipient = self.recipients()
+        from fim_one.core.tool.builtin.email_send import parse_recipients
+
+        # Checked on every send, whoever the caller is: a row saved before
+        # recipients were validated may hold text the SMTP layer would read
+        # as a different address than the allowlist check did.
+        addresses, malformed = parse_recipients(self.config.get("to"))
+        if malformed:
+            return ChannelSendResult(
+                ok=False,
+                error=(
+                    f"Not a valid email address: {', '.join(malformed)}. Give each "
+                    "recipient as a plain address like name@example.com, separated by commas."
+                ),
+            )
+        recipient = ", ".join(addresses)
         if not recipient:
             return ChannelSendResult(
                 ok=False, error="Email provider requires 'channel' (recipient address)."

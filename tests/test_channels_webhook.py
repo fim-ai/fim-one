@@ -267,10 +267,67 @@ class TestEmailSend:
     def test_recipients_are_required(self) -> None:
         with patch.dict(os.environ, {**_SMTP, "EMAIL_TOOL_ENABLED": "true"}):
             assert EmailChannel.config_error({}) == "channel_email_recipients_required"
-            assert EmailChannel.config_error({"to": "not-an-address"}) == (
-                "channel_email_recipients_required"
-            )
+            assert EmailChannel.config_error({"to": ""}) == "channel_email_recipients_required"
+            assert EmailChannel.config_error({"to": []}) == "channel_email_recipients_required"
             assert EmailChannel.config_error({"to": "a@x.io, b@y.io"}) is None
+            assert EmailChannel.config_error({"to": ["a@x.io", "b@y.io"]}) is None
+
+    @pytest.mark.parametrize(
+        "to",
+        [
+            "not-an-address",
+            "<victim@evil.com> a@corp.internal",
+            "evil@evil.com@corp.internal",
+            "evil@evil.com;a@corp.internal",
+            "evil@evil.com a@corp.internal",
+            "Ops <a@corp.internal>",
+            "a@corp.internal\nBcc: x@evil.com",
+            ["a@corp.internal, b@corp.internal"],
+            ["a@corp.internal", 7],
+            {"a": "a@corp.internal"},
+            7,
+        ],
+    )
+    def test_each_recipient_is_exactly_one_address(self, to: Any) -> None:
+        """Text whose tail is on the allowlist is not a recipient on it."""
+        env = {**_SMTP, "SMTP_ALLOWED_DOMAINS": "corp.internal", "EMAIL_TOOL_ENABLED": ""}
+        with patch.dict(os.environ, env):
+            assert EmailChannel.config_error({"to": to}) == "channel_email_recipients_invalid"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "to",
+        ["<victim@evil.com> a@corp.internal", "evil@evil.com@corp.internal", ["a@corp.internal", 7]],
+    )
+    async def test_a_stored_row_with_such_text_sends_nothing(self, to: Any) -> None:
+        env = {**_SMTP, "SMTP_ALLOWED_DOMAINS": "corp.internal", "EMAIL_TOOL_ENABLED": ""}
+        with (
+            patch.dict(os.environ, env),
+            patch("fim_one.core.channels.email.smtplib.SMTP_SSL") as secure,
+            patch("fim_one.core.channels.email.smtplib.SMTP") as plain,
+        ):
+            result = await EmailChannel({"to": to}).send_notice("t", "b")
+            # The admin endpoints name their own recipient; the form still holds.
+            operator = instance_channel("email", recipient="Ops <a@corp.internal>")
+            assert operator is not None
+            operator_result = await operator.send_notice("t", "b")
+        secure.assert_not_called()
+        plain.assert_not_called()
+        for outcome in (result, operator_result):
+            assert outcome.ok is False
+            assert "Not a valid email address" in (outcome.error or "")
+
+    @pytest.mark.asyncio
+    async def test_a_list_of_recipients_is_sent_to_each(self) -> None:
+        channel = EmailChannel({"to": ["a@x.io", "b@y.io"]})
+        with patch.dict(os.environ, {**_SMTP, "EMAIL_TOOL_ENABLED": "true"}):
+            with patch("fim_one.core.channels.email.smtplib.SMTP_SSL") as mock_smtp:
+                server = MagicMock()
+                mock_smtp.return_value.__enter__ = MagicMock(return_value=server)
+                mock_smtp.return_value.__exit__ = MagicMock(return_value=False)
+                result = await channel.send_notice("Test", "Hello")
+        assert result.ok is True
+        assert server.sendmail.call_args.args[1] == ["a@x.io", "b@y.io"]
 
 
 class TestEmailPolicy:
