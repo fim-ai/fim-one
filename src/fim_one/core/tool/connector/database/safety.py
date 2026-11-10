@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from itertools import pairwise
 
-from .reading import Lexeme, SqlDialect, read_sql
+from .reading import Lexeme, SqlDialect, ascii_lower, read_sql
 
 
 class SqlSafetyError(Exception):
@@ -30,6 +30,7 @@ class SqlSafetyError(Exception):
 
 
 _DIALECTS: tuple[SqlDialect, ...] = ("postgresql", "mysql", "generic")
+_WHITE_SPACE = " \t\n\r"
 
 # What a read may start with.
 _READS = frozenset({"SELECT", "WITH", "TABLE", "VALUES"})
@@ -104,10 +105,12 @@ def validate_sql(sql: str, *, allow_write: bool = False, dialect: str | None = N
     SqlSafetyError
         If the SQL fails any safety check.
     """
-    if not sql or not sql.strip():
+    if not sql or not sql.strip(_WHITE_SPACE):
         raise SqlSafetyError("Empty SQL statement")
 
-    cleaned = sql.strip().rstrip(";").strip()
+    # ASCII white space only: str.strip() would also drop U+3000 and its
+    # like, which no database takes for white space.
+    cleaned = sql.strip(_WHITE_SPACE).rstrip(";").strip(_WHITE_SPACE)
     if not cleaned:
         raise SqlSafetyError("Empty SQL statement after cleaning")
 
@@ -123,7 +126,18 @@ def validate_sql(sql: str, *, allow_write: bool = False, dialect: str | None = N
 
 
 def _check(lexemes: list[Lexeme], dialect: SqlDialect, allow_write: bool) -> None:
-    lexemes = _one_statement(lexemes)
+    odd = [lex.text for lex in lexemes if lex.kind == "odd"]
+    if odd and not allow_write:
+        # A control character or a non-ASCII "space" outside quotes. What
+        # it does to the statement depends on the server's lexer down to
+        # the byte (MySQL starts a comment after "--" plus U+007F, not
+        # after "--" plus U+3000), and nobody writes one on purpose.
+        raise SqlSafetyError(
+            f"The SQL has an invisible or control character (U+{ord(odd[0]):04X}) outside "
+            "quotes, which is not allowed on a read-only connection. Retype the "
+            "statement with ordinary spaces and line breaks."
+        )
+    lexemes = _one_statement([lex for lex in lexemes if lex.kind != "odd"])
     _refuse_never_allowed(lexemes)
     if allow_write:
         return
@@ -185,7 +199,7 @@ def _function_calls(lexemes: list[Lexeme]) -> list[str]:
     of ``pg_read_file``; a column or a string with that text is not.
     """
     return [
-        lex.text.lower()
+        ascii_lower(lex.text)
         for lex, following in pairwise(lexemes)
         if lex.kind in ("word", "name") and following.is_punct("(")
     ]

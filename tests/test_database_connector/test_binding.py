@@ -204,6 +204,29 @@ class TestWhatDatabasesReadDifferentlyIsRefused:
             parse_sql_template(sql, dialect="mysql")
 
 
+class TestOddCharactersInATemplate:
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT 1 --\u3000'\n + {{v}} + '",
+            "SELECT 1 --\x7f'\n WHERE a = {{v}} --\x7f'",
+            "SELECT\u00a0a FROM t WHERE b = {{v}}",
+            "SELECT a FROM t WHERE b = {{v}} /* \x00 */",
+        ],
+    )
+    def test_a_control_or_invisible_character_outside_quotes_is_refused(self, sql: str) -> None:
+        dialects: tuple[SqlDialect, ...] = ("postgresql", "mysql", "generic")
+        for dialect in dialects:
+            with pytest.raises(SqlBindingError):
+                parse_sql_template(sql, dialect=dialect)
+
+    def test_inside_quotes_it_is_text(self) -> None:
+        template = parse_sql_template(
+            "SELECT a FROM t WHERE b = 'x\u3000y' AND c = {{v}}", dialect="mysql"
+        )
+        assert template.variables == ("v",)
+
+
 class TestPlaceholdersAlreadyInTheSql:
     def test_a_numbered_parameter_is_refused_for_postgresql(self) -> None:
         template = parse_sql_template(

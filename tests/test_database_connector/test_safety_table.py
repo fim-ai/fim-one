@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from fim_one.core.tool.connector.database.reading import SqlDialect, read_sql
+from fim_one.core.tool.connector.database.reading import SqlDialect, is_odd, read_sql
 from fim_one.core.tool.connector.database.safety import SqlSafetyError, validate_sql
 
 DIALECTS: tuple[SqlDialect, ...] = ("postgresql", "mysql", "generic")
@@ -134,6 +134,13 @@ READS: tuple[str, ...] = (
     "SELECT make_interval(days := 2)",
     "SELECT COUNT(*) create FROM t",
     "SELECT 1 FROM t WHERE id = (SELECT 1) UNION SELECT 2 /*! */",
+    # Non-ASCII names, and odd characters inside quotes, are ordinary.
+    "SELECT 客户, 金额 FROM (SELECT customer AS 客户, amount AS 金额 FROM t WHERE customer = '张三') 表",
+    "SELECT 1 WHERE 1 = 1 -- 这是注释；带中文分号",
+    "SELECT 'full\u3000width', 'nbsp\u00a0here', 'tab\there', 'bell\x07' FROM t",
+    "SELECT 1 AS \"a\u3000b\"",
+    "SELECT\n\t1\r\nFROM t\n;\n",
+    "SELECT 5 - -3, 5--3, 5 -- 3",
 )
 
 # Rows of READS that do not pass on a dialect, and why.
@@ -152,6 +159,7 @@ NOT_ON: dict[SqlDialect, frozenset[str]] = {
             "SELECT $$a;b$$",
             # ":=" assigns a session variable there.
             "SELECT make_interval(days := 2)",
+            # A double-quoted string there, with the odd character inside.
         }
     ),
     "generic": frozenset(
@@ -250,6 +258,25 @@ WRITES: tuple[str, ...] = (
     "SELECT pg_catalog.pg_sleep(10)",
     "SELECT pg_sleep_for('5 seconds')",
     "SELECT EXEC('x')",
+    # A control character or a non-ASCII "space" outside quotes: what it
+    # does depends on the server's lexer to the byte. MySQL starts a "--"
+    # comment before U+007F and not before U+3000 or U+0085; all of these
+    # wrote a file or a variable on a read-only MySQL connector.
+    "SELECT 1 --\x7f'\nINTO OUTFILE '/tmp/rv_out1' --\x7f'",
+    "SELECT 1 --\x7f'\n/*!INTO OUTFILE '/tmp/rv_out2'*/ --\x7f'",
+    "SELECT 1 --\x7f'\nINTO @leak --\x7f'",
+    "SELECT 7 --\x7f'\nFOR SHARE --\x7f'",
+    "SELECT 1 FROM t `\u3000a` WHERE 1 --\u3000a.id INTO OUTFILE '/tmp/rv_out3'",
+    "SELECT 1 FROM t `\u00a0a` WHERE 1 --\u00a0a.id INTO @leak2",
+    "SELECT 1 FROM t `\u0085a` WHERE 1 --\u0085a.id INTO OUTFILE '/tmp/rv_out4'",
+    "\u3000SELECT 1",
+    "SELECT\x001",
+    "\x00/*!CREATE TABLE pwn AS*/ SELECT 1",
+    "SELECT 1 \x00 /*!INTO OUTFILE '/tmp/rv_out5'*/",
+    "SELECT 1 /* \x0b */",
+    "SELECT 1 -- zero\u200bwidth",
+    "SELECT\u00a01",
+    "SELECT 1\x0c",
     # Functions that act outside the query; PostgreSQL runs them in a
     # read-only transaction for a role that is allowed to.
     "SELECT dblink_exec('dbname=x', 'INSERT INTO t VALUES (1)')",
@@ -368,6 +395,8 @@ def test_a_connector_that_allows_writes_is_limited_only_by_the_never_allowed(
     for sql in WRITES:
         if any(mark.lower() in sql.lower() for mark in never):
             continue
+        if any(is_odd(ch) for ch in sql):
+            continue
         assert validate_sql(sql, allow_write=True, dialect=dialect) == sql.strip().rstrip(";")
 
 
@@ -405,6 +434,43 @@ class TestReading:
         # PostgreSQL nests block comments.
         assert self._words("SELECT /* a /* b */ c */ d", "postgresql") == ["SELECT", "D"]
         assert self._words("SELECT /* a /* b */ c */ d", "mysql") == ["SELECT", "C", "D"]
+
+    def test_mysql_starts_a_dash_comment_only_before_an_ascii_space_or_control(self) -> None:
+        for after in (" ", "\t", "\r", "\x0b", "\x0c", "\x00", "\x01", "\x1f", "\x7f"):
+            assert self._words(f"SELECT 1 --{after}x\n y", "mysql") == ["SELECT", "Y"], repr(after)
+        assert self._words("SELECT 1 --", "mysql") == ["SELECT"]
+        # Not white space to MySQL, whatever Python's str.isspace says:
+        # the "comment" is code.
+        for after in ("\u3000", "\u00a0", "\u0085", "\u2028", "x", "1"):
+            words = self._words(f"SELECT 1 --{after}x INTO y", "mysql")
+            assert "INTO" in words, repr(after)
+
+    def test_names_and_keywords_are_ascii_folded_and_non_ascii_is_part_of_a_name(self) -> None:
+        # U+017F (long s) upper-cases to "S" in Python; no server folds it.
+        assert self._words("\u017felect 1", "postgresql") == ["\u017fELECT"]
+        # An emoji is not a "word character" to Python; to the servers its
+        # bytes are part of the name, "$" and all.
+        for dialect in DIALECTS:
+            assert [
+                (lex.kind, lex.text) for lex in read_sql("SELECT a\U0001f600$$b", dialect=dialect)
+            ] == [("word", "SELECT"), ("word", "a\U0001f600$$b")]
+        assert self._words("SELECT １２ AS n", "mysql") == ["SELECT", "１２", "AS", "N"]
+
+    def test_odd_characters_are_reported_outside_quotes_only(self) -> None:
+        def odd(sql: str, dialect: SqlDialect = "mysql") -> list[str]:
+            return [lex.text for lex in read_sql(sql, dialect=dialect) if lex.kind == "odd"]
+
+        assert odd("SELECT\x00 1 \u3000 -- \x7f\n /* \u200b */") == [
+            "\x00",
+            "\u3000",
+            "\x7f",
+            "\u200b",
+        ]
+        assert odd("SELECT '\x00\u3000', `\u00a0`, \"\x7f\"") == []
+        assert odd("SELECT 1\r\nFROM t\n") == []
+        # DM8: nobody here knows where its "--" comment ends.
+        assert odd("SELECT 1 -- a\r, b", "generic") == ["\r"]
+        assert odd("SELECT 1 -- a\r\n, b", "generic") == []
 
     def test_an_executable_comment_is_seen_only_where_it_is_one(self) -> None:
         sql = "SELECT 1 /*!50000 , 2 */"

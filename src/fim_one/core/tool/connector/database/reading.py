@@ -29,16 +29,54 @@ for those the read-only transaction is the fence, not this reading.
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Literal
 
-__all__ = ["Lexeme", "SqlDialect", "read_sql"]
+__all__ = ["Lexeme", "SqlDialect", "ascii_lower", "is_name_char", "is_odd", "read_sql"]
 
 SqlDialect = Literal["postgresql", "mysql", "generic"]
 
 _DOLLAR_TAG = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*)?\$")
+# The servers' lexers work on bytes and know ASCII only: a letter is A-Z or
+# a-z, a digit 0-9, white space is space, tab, newline, carriage return,
+# form feed and vertical tab, and every byte of a non-ASCII character is
+# part of a name. Python's ``str.isspace``, ``isalnum``, ``upper`` and the
+# ``\s`` / ``\w`` of ``re`` follow Unicode instead (U+3000 is a space to
+# them, an emoji is not a letter), so none of them is used here.
+_NAME_START = r"(?:[A-Za-z_]|[^\x00-\x7f])"
+_NAME_PART = r"(?:[A-Za-z0-9_$]|[^\x00-\x7f])"
 # A word (keyword or name), a number, or one character of punctuation.
-_PIECE = re.compile(r"[^\W\d][\w$]*|\$[\w$]+|\d[\w.]*|\S", re.UNICODE)
+_PIECE = re.compile(
+    rf"{_NAME_START}{_NAME_PART}*|\${_NAME_PART}+|[0-9][0-9A-Za-z_.]*|[^ \t\n\r\x0b\x0c]"
+)
+_WHITE_SPACE = " \t\n\r\x0b\x0c"
+_ASCII_UPPER = str.maketrans("abcdefghijklmnopqrstuvwxyz", "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+_ASCII_LOWER = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")
+
+
+def is_name_char(ch: str) -> bool:
+    """Whether the servers take *ch* for part of a name (a ``$`` included)."""
+    return ch > "\x7f" or ch in "_$" or (ch.isascii() and ch.isalnum())
+
+
+def ascii_lower(text: str) -> str:
+    """*text* with A-Z lower-cased and nothing else touched, as the servers fold names."""
+    return text.translate(_ASCII_LOWER)
+
+
+def is_odd(ch: str) -> bool:
+    """A character nobody writes in SQL on purpose, and that lexers disagree about.
+
+    Control characters other than tab, newline and carriage return, and
+    every non-ASCII space, line separator, control or invisible format
+    character (U+0085, U+00A0, U+3000, zero-width characters, ...). A
+    database does not treat the non-ASCII ones as white space, whatever
+    they look like.
+    """
+    if ch < "\x80":
+        return (ch < " " and ch not in "\t\n\r") or ch == "\x7f"
+    return unicodedata.category(ch) in ("Zs", "Zl", "Zp", "Cc", "Cf")
 
 
 @dataclass(frozen=True)
@@ -49,17 +87,19 @@ class Lexeme:
     form). ``name``: a quoted name (``text`` is the name itself).
     ``string``: a string literal. ``number`` and ``punct``: as written.
     ``executable``: a MySQL ``/*! ... */`` or MariaDB ``/*M! ... */``
-    comment, whose inside the server runs as SQL.
+    comment, whose inside the server runs as SQL. ``odd``: a character
+    outside quotes that :func:`is_odd` names (also inside a comment, which
+    is otherwise left out).
     """
 
-    kind: Literal["word", "name", "string", "number", "punct", "executable"]
+    kind: Literal["word", "name", "string", "number", "punct", "executable", "odd"]
     text: str
     # How many parentheses are open around it.
     depth: int = 0
 
     @property
     def upper(self) -> str:
-        return self.text.upper() if self.kind == "word" else ""
+        return self.text.translate(_ASCII_UPPER) if self.kind == "word" else ""
 
     def is_punct(self, text: str) -> bool:
         return self.kind == "punct" and self.text == text
@@ -79,13 +119,30 @@ def read_sql(
     i = 0
     n = len(sql)
 
+    def lone_cr(start: int, end: int) -> bool:
+        """A carriage return in ``sql[start:end]`` that no newline follows."""
+        at = sql.find("\r", start, end)
+        while at != -1:
+            if sql[at + 1 : at + 2] != "\n":
+                return True
+            at = sql.find("\r", at + 1, end)
+        return False
+
     def flush(upto: int) -> None:
         nonlocal depth
+        if dialect == "generic" and lone_cr(code_start, upto):
+            # PostgreSQL ends a "--" comment at a carriage return, MySQL
+            # does not; what DM8 does is not known here, so there a bare
+            # one is refused like the other odd characters.
+            out.append(Lexeme("odd", "\r", depth))
+        out.extend(Lexeme("odd", ch, depth) for ch in sql[code_start:upto] if is_odd(ch))
         for piece in _PIECE.finditer(sql, code_start, upto):
             text = piece.group(0)
-            if text[0].isdigit():
+            if len(text) == 1 and is_odd(text):
+                continue
+            if "0" <= text[0] <= "9":
                 out.append(Lexeme("number", text, depth))
-            elif text[0].isalpha() or text[0] == "_" or (text[0] == "$" and len(text) > 1):
+            elif len(text) > 1 or (text != "$" and is_name_char(text)):
                 out.append(Lexeme("word", text, depth))
             else:
                 if text == ")":
@@ -93,6 +150,11 @@ def read_sql(
                 out.append(Lexeme("punct", text, depth))
                 if text == "(":
                     depth += 1
+
+    def odd_in(start: int, end: int) -> None:
+        out.extend(Lexeme("odd", ch, depth) for ch in sql[start:end] if is_odd(ch))
+        if dialect == "generic" and lone_cr(start, end):
+            out.append(Lexeme("odd", "\r", depth))
 
     while i < n:
         ch = sql[i]
@@ -110,7 +172,7 @@ def read_sql(
                     ch == "'"
                     and i > 0
                     and sql[i - 1] in "eE"
-                    and not (i > 1 and (sql[i - 2].isalnum() or sql[i - 2] in "_$"))
+                    and not (i > 1 and is_name_char(sql[i - 2]))
                 )
             else:
                 escapes = False
@@ -123,20 +185,31 @@ def read_sql(
             i = code_start = end
         elif (ch == "#" and dialect == "mysql") or (
             two == "--"
-            # MySQL: a comment only before whitespace; else two minus signs.
-            and (dialect != "mysql" or i + 2 >= n or sql[i + 2].isspace() or ord(sql[i + 2]) < 32)
+            # MySQL: a comment only before an ASCII space or control
+            # character (or the end); before anything else, a non-ASCII
+            # "space" included, it is two minus signs.
+            and (
+                dialect != "mysql"
+                or i + 2 >= n
+                or sql[i + 2] in _WHITE_SPACE
+                or sql[i + 2] < " "
+                or sql[i + 2] == "\x7f"
+            )
         ):
             flush(i)
             newline = sql.find("\n", i)
-            i = code_start = n if newline == -1 else newline
+            end = n if newline == -1 else newline
+            odd_in(i, end)
+            i = code_start = end
         elif two == "/*":
             flush(i)
             end = _end_of_block_comment(sql, i, nested=dialect == "postgresql")
             if dialect == "mysql" and (sql.startswith("/*!", i) or sql.startswith("/*M!", i)):
                 out.append(Lexeme("executable", sql[i:end], depth))
+            odd_in(i, end)
             i = code_start = end
         elif ch == "$" and dialect == "postgresql" and (tag := _DOLLAR_TAG.match(sql, i)):
-            if i > 0 and (sql[i - 1].isalnum() or sql[i - 1] == "_"):
+            if i > 0 and is_name_char(sql[i - 1]):
                 # ``a$b$c`` is one name.
                 i += 1
                 continue

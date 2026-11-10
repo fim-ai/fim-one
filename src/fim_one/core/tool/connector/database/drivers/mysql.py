@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
@@ -25,6 +26,13 @@ logger = logging.getLogger(__name__)
 _COM_RESET_CONNECTION = 0x1F
 _ER_UNKNOWN_COM_ERROR = 1047
 _ER_UNKNOWN_SYSTEM_VARIABLE = 1193
+_MODE_NAME = re.compile(r"[A-Za-z0-9_]+")
+# Modes under which MySQL reads strings and quoted names differently from
+# its default: the two themselves, and the combination modes that include
+# ANSI_QUOTES.
+_QUOTING_MODES = frozenset(
+    {"NO_BACKSLASH_ESCAPES", "ANSI_QUOTES", "ANSI", "DB2", "MAXDB", "MSSQL", "ORACLE", "POSTGRESQL"}
+)
 # "Query execution was interrupted": MySQL's MAX_EXECUTION_TIME (3024) and
 # MariaDB's max_statement_time (1969).
 _STATEMENT_TIMED_OUT = (3024, 1969)
@@ -44,6 +52,8 @@ class MySQLDriver(DatabaseDriver):
         # session (see ``_session``). ``False`` once the server has refused
         # the reset command: connections are then not reused at all.
         self._can_reset = True
+        # The SQL mode every session is put into (see ``_set_sql_mode``).
+        self._sql_mode: str | None = None
 
     def _connection_settings(self) -> dict[str, Any]:
         return {
@@ -101,9 +111,37 @@ class MySQLDriver(DatabaseDriver):
             await self._pool.release(conn)
         conn = await aiomysql.connect(**self._connection_settings())
         try:
+            await self._set_sql_mode(conn)
             yield conn
         finally:
             conn.close()
+
+    async def _set_sql_mode(self, conn: Any) -> None:
+        """Give the session the server's SQL mode without the two modes that change quoting.
+
+        ``NO_BACKSLASH_ESCAPES`` makes a backslash in a string an ordinary
+        character and ``ANSI_QUOTES`` makes ``"..."`` a name. The safety
+        check reads statements by MySQL's default rules (``reading.py``);
+        on a server whose global mode has either, a string would end
+        somewhere else for the server than for the check, and what the
+        check took for text would run (``SELECT '\\' , LOAD_FILE(...) , '\\'``).
+        So every session is put into the server's own mode minus these two
+        (and minus the combination modes that imply ``ANSI_QUOTES``; their
+        other parts are listed separately by the server and stay).
+
+        The mode is read from the server once and then set on every
+        session, so a later change of the global mode does not bring the
+        two back.
+        """
+        if self._sql_mode is None:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT @@GLOBAL.sql_mode")
+                row = await cur.fetchone()
+            modes = [m for m in str(row[0] if row else "").split(",") if _MODE_NAME.fullmatch(m)]
+            self._sql_mode = ",".join(m for m in modes if m.upper() not in _QUOTING_MODES)
+        async with conn.cursor() as cur:
+            # Mode names are letters, digits and underscores (checked above).
+            await cur.execute(f"SET SESSION sql_mode = '{self._sql_mode}'")
 
     async def _reset(self, conn: Any) -> bool:
         """Reset *conn*'s session; ``False`` when it could not be reset."""
@@ -118,6 +156,7 @@ class MySQLDriver(DatabaseDriver):
             await read_ok()
             await conn.set_charset(self._connection_settings()["charset"])
             await conn.autocommit(True)
+            await self._set_sql_mode(conn)
         except Exception as exc:
             if getattr(exc, "args", (None,))[0] == _ER_UNKNOWN_COM_ERROR:
                 logger.warning(

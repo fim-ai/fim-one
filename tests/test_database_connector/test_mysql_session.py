@@ -263,3 +263,88 @@ class TestCancellationAndTimeouts:
         cur.execute = AsyncMock(side_effect=RuntimeError("Cancelled during execution"))
         await mysql_driver._finish(conn, cur, rollback=True)
         conn.close.assert_called_once()
+
+
+async def _raw(live: LiveDatabase, sql: str) -> list[list[Any]]:
+    """Run *sql* on the connector's driver with no check and no transaction."""
+    driver = await ConnectionPoolManager.get_instance().get_driver(live.connector_id, live.config)
+    return (await driver.execute_query(sql, read_only=False)).rows
+
+
+class TestTheServerAndTheCheckReadTheSameStatement:
+    """Where MySQL's lexer and the check's reading disagreed, a read wrote a file."""
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            # MySQL starts a "--" comment before U+007F ...
+            "SELECT 1 --\x7f'\nINTO OUTFILE '{path}' --\x7f'",
+            "SELECT 1 --\x7f'\n/*!INTO OUTFILE '{path}'*/ --\x7f'",
+            # ... and not before U+3000 or U+0085, which are part of a name.
+            "SELECT 1 FROM {orders} `　a` WHERE 1 --　a.id INTO OUTFILE '{path}'",
+            "SELECT 1 FROM {orders} `\u0085a` WHERE 1 --\u0085a.id INTO OUTFILE '{path}'",
+            "SELECT 1 \x00 /*!INTO OUTFILE '{path}'*/",
+        ],
+    )
+    async def test_an_odd_character_cannot_hide_into_outfile(
+        self, live_mysql: LiveDatabase, payload: str
+    ) -> None:
+        path = f"/tmp/{live_mysql.orders}.out"
+        text = await _tool(live_mysql, read_only=True).run(
+            sql=payload.format(path=path, orders=live_mysql.orders)
+        )
+        assert text.startswith("[SQL Safety Error]"), text
+        assert await _raw(live_mysql, f"SELECT LOAD_FILE('{path}') IS NULL") == [[1]]
+
+    async def test_a_server_in_no_backslash_escapes_mode_is_read_by_the_default_rules(
+        self, live_mysql: LiveDatabase
+    ) -> None:
+        """The session is taken out of the two modes that move where a string ends."""
+        (before,) = (await _raw(live_mysql, "SELECT @@GLOBAL.sql_mode"))[0]
+        path = f"/tmp/{live_mysql.orders}.nbe"
+        strict = LiveDatabase(
+            config=live_mysql.config,
+            connector_id=f"{live_mysql.connector_id}-nbe",
+            orders=live_mysql.orders,
+            secrets=live_mysql.secrets,
+        )
+        try:
+            await _raw(
+                live_mysql,
+                "SET GLOBAL sql_mode = CONCAT(@@GLOBAL.sql_mode, ',NO_BACKSLASH_ESCAPES,ANSI_QUOTES')",
+            )
+            tool = _tool(strict, read_only=True)
+            mode = json.loads(await tool.run(sql="SELECT @@sql_mode, @@GLOBAL.sql_mode"))["rows"][0]
+            assert "NO_BACKSLASH_ESCAPES" in mode[1] and "ANSI_QUOTES" in mode[1]
+            assert "NO_BACKSLASH_ESCAPES" not in mode[0] and "ANSI_QUOTES" not in mode[0]
+            # The rest of the server's mode is kept.
+            assert set(mode[0].split(",")) == set(before.split(",")) - {"ANSI_QUOTES"}
+            for sql in (
+                "SELECT '\\' , LOAD_FILE('/etc/hostname') , '\\'",
+                f"SELECT 1, '\\' INTO OUTFILE '{path}' -- '",
+                "SELECT '\\' , SLEEP(1), '\\'",
+                "SELECT '\\' /*!, 'exec-comment-ran' */ , '\\'",
+            ):
+                text = await tool.run(sql=sql)
+                # Refused by the check, or a syntax error on the server:
+                # under one reading there is nothing here to run.
+                assert text.startswith(("[SQL Safety Error]", "[Error]")), (sql, text)
+                assert "exec-comment-ran" not in text and "binary" not in text
+            assert await _raw(live_mysql, f"SELECT LOAD_FILE('{path}') IS NULL") == [[1]]
+            bound = f"SELECT id FROM {strict.orders} WHERE customer = {{{{v}}}}"
+            assert json.loads(await _bound(tool, bound, "\\' OR 1=1 -- "))["rows"] == []
+            assert json.loads(await _bound(tool, bound, "alice"))["rows"] == [[1]]
+            # The fallback path (a connection per call) is prepared the same way.
+            driver = await ConnectionPoolManager.get_instance().get_driver(
+                strict.connector_id, strict.config
+            )
+            assert isinstance(driver, MySQLDriver)
+            driver._can_reset = False
+            fresh = await driver.execute_query("SELECT @@sql_mode")
+            assert "NO_BACKSLASH_ESCAPES" not in fresh.rows[0][0]
+        finally:
+            await _raw(live_mysql, f"SET GLOBAL sql_mode = '{before}'")
+            await ConnectionPoolManager.get_instance().close_driver(strict.connector_id)
+
+    def test_the_combination_modes_that_imply_ansi_quotes_are_dropped_too(self) -> None:
+        assert {"ANSI", "ORACLE", "MSSQL"} <= mysql_driver._QUOTING_MODES

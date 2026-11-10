@@ -25,7 +25,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from .reading import SqlDialect
+from .reading import SqlDialect, is_name_char, is_odd
 
 __all__ = [
     "PlaceholderStyle",
@@ -139,7 +139,12 @@ def sql_tokens(sql: str, *, dialect: SqlDialect, strict: bool = False) -> list[_
             tokens.append(_Token("quoted", sql[i:end]))
             i = code_start = end
         elif two == "--" or (ch == "#" and dialect == "mysql"):
-            if strict and dialect == "mysql" and two == "--" and not sql[i + 2 : i + 3].isspace():
+            if (
+                strict
+                and dialect == "mysql"
+                and two == "--"
+                and sql[i + 2 : i + 3] not in (" ", "\t", "\n", "\r")
+            ):
                 # MySQL starts a comment at ``--`` only before whitespace;
                 # elsewhere it is two minus signs.
                 if i + 2 < n:
@@ -165,7 +170,7 @@ def sql_tokens(sql: str, *, dialect: SqlDialect, strict: bool = False) -> list[_
             i = code_start = end
         elif ch == "$" and dialect == "postgresql" and (tag := _DOLLAR_TAG.match(sql, i)):
             # ``$tag$ ... $tag$``. A ``$`` inside a name (``a$b$c``) is not a tag.
-            if i > 0 and (sql[i - 1].isalnum() or sql[i - 1] == "_"):
+            if i > 0 and is_name_char(sql[i - 1]):
                 i += 1
                 continue
             flush(i)
@@ -241,6 +246,13 @@ def parse_sql_template(sql: str, *, dialect: SqlDialect) -> SqlTemplate:
     tokens = sql_tokens(sql, dialect=dialect, strict=True)
 
     for token in tokens:
+        if token.kind != "quoted" and (odd := next(filter(is_odd, token.text), None)):
+            # Lexers disagree about these down to the byte; see reading.is_odd.
+            raise SqlBindingError(
+                f"The SQL has an invisible or control character (U+{ord(odd):04X}) outside "
+                "quotes, so variables cannot be bound safely in it. Retype the statement "
+                "with ordinary spaces and line breaks."
+            )
         if token.kind in ("quoted", "comment") and (ref := _VARIABLE.search(token.text)):
             where = (
                 "inside a comment"
