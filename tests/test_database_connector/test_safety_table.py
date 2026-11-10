@@ -137,6 +137,10 @@ READS: tuple[str, ...] = (
     "SELECT set_config('search_path', 'rv', true)",
     "SELECT set_config('search_path', 'rv', TRUE), current_setting('search_path')",
     "SELECT set_config, dblink, pg_read_file FROM t",
+    # An alias with a column list is not a call.
+    "SELECT * FROM t AS dblink (a, b)",
+    "SELECT * FROM generate_series(1, 3) AS pg_read_file (n)",
+    'SELECT * FROM t AS "set_config" (a, b)',
     # PostgreSQL's SEARCH and CYCLE clauses of a recursive query.
     "WITH RECURSIVE t(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM t WHERE n < 3) "
     "SEARCH DEPTH FIRST BY n SET ord SELECT * FROM t",

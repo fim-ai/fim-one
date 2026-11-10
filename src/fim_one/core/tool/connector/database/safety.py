@@ -208,12 +208,17 @@ def _function_calls_at(lexemes: list[Lexeme]) -> list[tuple[int, str]]:
 
     A name right before ``(``. ``pg_catalog.pg_read_file(...)`` and
     ``"pg_read_file"(...)`` are calls of ``pg_read_file``; a column or a
-    string with that text is not.
+    string with that text is not, and neither is the alias in
+    ``AS name (columns)``.
     """
     return [
         (index, ascii_lower(lex.text))
         for index, (lex, following) in enumerate(pairwise(lexemes))
-        if lex.kind in ("word", "name") and following.is_punct("(")
+        if lex.kind in ("word", "name")
+        and following.is_punct("(")
+        # "FROM t AS dblink (a, b)": an alias with its column names. What
+        # follows AS is being named, never called.
+        and not (index > 0 and lexemes[index - 1].upper == "AS")
     ]
 
 
