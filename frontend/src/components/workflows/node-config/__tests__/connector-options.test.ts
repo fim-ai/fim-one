@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  DATABASE_OPERATIONS,
   actionOptions,
   connectorOptions,
+  databaseParameters,
+  isDatabaseStep,
   listAllConnectors,
 } from "@/components/workflows/node-config/connector-options"
 import type { ConnectorActionResponse, ConnectorResponse } from "@/types/connector"
@@ -69,26 +72,75 @@ const retired = connector("c-old", "Retired", { is_active: false })
 
 describe("connectorOptions", () => {
   it("lists the user's API connectors by name", () => {
-    expect(connectorOptions([crm, mail], "")).toEqual([
+    expect(connectorOptions([crm, mail], "", "u1")).toEqual([
       { value: "c-crm", label: "CRM" },
       { value: "c-mail", label: "Mail" },
     ])
   })
 
-  it("leaves out database connectors and disabled ones", () => {
-    expect(connectorOptions([crm, warehouse, retired], "").map((o) => o.value)).toEqual(["c-crm"])
+  it("leaves out disabled connectors", () => {
+    expect(connectorOptions([crm, retired], "", "u1").map((o) => o.value)).toEqual(["c-crm"])
+  })
+
+  // A Connector step could not run a database connector at all, so the
+  // list left every one of them out. It can now, for the connector's owner.
+  it("lists a database connector for its owner", () => {
+    expect(connectorOptions([crm, warehouse], "", "u1")).toEqual([
+      { value: "c-crm", label: "CRM" },
+      { value: "c-db", label: "Warehouse" },
+    ])
+  })
+
+  it("leaves out a database connector that belongs to someone else", () => {
+    const shared = connector("c-shared-db", "Shared warehouse", { type: "database", user_id: "u2" })
+    expect(connectorOptions([crm, shared], "", "u1").map((o) => o.value)).toEqual(["c-crm"])
+    expect(connectorOptions([crm, warehouse], "", null).map((o) => o.value)).toEqual(["c-crm"])
   })
 
   it("keeps a disabled connector the step already uses, by name", () => {
-    expect(connectorOptions([crm, retired], "c-old")).toContainEqual({
+    expect(connectorOptions([crm, retired], "c-old", "u1")).toContainEqual({
       value: "c-old",
       label: "Retired",
     })
   })
 
   it("keeps a connector that is not in the list, by id", () => {
-    expect(connectorOptions([], "c-gone")).toEqual([{ value: "c-gone", label: "c-gone" }])
-    expect(connectorOptions([crm], "c-gone")).toContainEqual({ value: "c-gone", label: "c-gone" })
+    expect(connectorOptions([], "c-gone", "u1")).toEqual([{ value: "c-gone", label: "c-gone" }])
+    expect(connectorOptions([crm], "c-gone", "u1")).toContainEqual({
+      value: "c-gone",
+      label: "c-gone",
+    })
+  })
+})
+
+describe("database steps", () => {
+  it("knows a database step from its connector", () => {
+    expect(isDatabaseStep([crm, warehouse], "c-db", "")).toBe(true)
+    expect(isDatabaseStep([crm, warehouse], "c-crm", "a-list")).toBe(false)
+    // An API connector whose action happens to be named like an operation.
+    expect(isDatabaseStep([crm], "c-crm", "query")).toBe(false)
+  })
+
+  it("goes by the stored operation while the connector is not loaded", () => {
+    expect(isDatabaseStep([], "c-db", "query")).toBe(true)
+    expect(isDatabaseStep([], "c-db", "a-list")).toBe(false)
+    expect(isDatabaseStep([], "", "")).toBe(false)
+  })
+
+  it("gives each operation its own parameters and keeps what is already there", () => {
+    expect(databaseParameters("list_tables", { sql: "SELECT 1" })).toEqual({})
+    expect(databaseParameters("describe_table", { sql: "SELECT 1" })).toEqual({ table_name: "" })
+    expect(databaseParameters("describe_table", { table_name: "orders" })).toEqual({
+      table_name: "orders",
+    })
+    expect(databaseParameters("query", { sql: "SELECT 1", q: "left over" })).toEqual({
+      sql: "SELECT 1",
+    })
+    expect(databaseParameters("", { sql: "SELECT 1" })).toEqual({})
+  })
+
+  it("names the three operations chat has", () => {
+    expect([...DATABASE_OPERATIONS]).toEqual(["list_tables", "describe_table", "query"])
   })
 })
 
