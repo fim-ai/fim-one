@@ -197,6 +197,14 @@ def _events(body: str) -> list[tuple[str, Any]]:
     return events
 
 
+def _payloads(body: str) -> list[tuple[str, Any]]:
+    """The events of a turn without the ``{"cursor", "data"}`` envelope."""
+    return [
+        (name, data["data"] if isinstance(data, dict) and "cursor" in data else data)
+        for name, data in _events(body)
+    ]
+
+
 async def _turn(app: FastAPI, endpoint: str, world: World, agent_id: str | None) -> str:
     conv = await _conversation(world.user, agent_id)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
@@ -356,3 +364,147 @@ class TestAutoIsAdmittedBeforeItClassifies:
         assert "done" in [name for name, _ in events], body[-2000:]
         assert loops and all(loop["agent_id"] == world.agent for loop in loops)
         assert seen == ["user", "conversation", "quota", "agent", "route"]
+
+    async def test_someone_elses_conversation_is_refused_before_any_model_is_asked(
+        self,
+        app: FastAPI,
+        world: World,
+        loops: list[dict[str, Any]],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Ownership comes first: the routing call was made for a conversation not theirs."""
+        asked: list[str] = []
+
+        async def _classify(query: str, _llm: Any) -> Any:
+            asked.append(query)
+            raise AssertionError("classified a turn in someone else's conversation")
+
+        monkeypatch.setattr("fim_one.core.planner.router.classify_execution_mode", _classify)
+        other = str(uuid.uuid4())
+        async with create_session() as db:
+            db.add(User(id=other, email="o@x.io", username="other", password_hash="x"))
+            await db.commit()
+        # The other user's conversation, with the caller's own (usable) agent
+        # named in the request: nothing but ownership stands in the way.
+        conv = await _conversation(other, None)
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+            resp = await client.post(
+                "/api/auto",
+                json={
+                    "q": "say pong",
+                    "conversation_id": conv,
+                    "agent_id": world.agent,
+                    "token": world.token,
+                },
+            )
+
+        assert resp.status_code == 404, resp.text
+        assert resp.json()["error_code"] == "conversation_not_found"
+        assert asked == [] and loops == []
+
+
+class TestTheMidStreamQuotaGuard:
+    """A turn admitted under the limit is stopped when its answer crosses it."""
+
+    # 100 chunks of 100 characters: about 2,500 tokens by the guard's estimate.
+    CHUNKS = 100
+    CHUNK = "x" * 100
+    QUOTA = 1000
+
+    @pytest.fixture()
+    def app(self) -> FastAPI:
+        return create_app()
+
+    async def _limit(self, world: World) -> None:
+        async with create_session() as db:
+            user = await db.get(User, world.user)
+            assert user is not None
+            user.token_quota = self.QUOTA
+            await db.commit()
+
+    def _assert_stopped(self, body: str) -> None:
+        events = _payloads(body)
+        streamed = sum(
+            len(data["content"])
+            for name, data in events
+            if name == "answer" and data.get("status") == "delta"
+        )
+        # Cut at the first check after the estimate reaches the limit
+        # (4 characters a token, checked every 200 characters), not at the end.
+        assert self.QUOTA * 4 <= streamed <= self.QUOTA * 4 + 200, streamed
+        assert streamed < self.CHUNKS * len(self.CHUNK)
+        (terminator,) = [data for name, data in events if name == "error"]
+        assert terminator["code"] == "QUOTA_EXCEEDED"
+        assert terminator["quota"] == self.QUOTA
+        assert terminator["tokens_used"] >= self.QUOTA
+        # The turn still ends the ordinary way, so the partial answer is kept.
+        names = [name for name, _ in events]
+        assert names.index("error") < names.index("done")
+
+    async def test_a_react_answer_that_crosses_the_limit_is_cut(
+        self,
+        app: FastAPI,
+        world: World,
+        loops: list[dict[str, Any]],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        async def _long(_self: Any, *_args: Any, **_kwargs: Any) -> AsyncIterator[str]:
+            for _ in range(self.CHUNKS):
+                yield self.CHUNK
+
+        monkeypatch.setattr(ReActAgent, "stream_answer", _long)
+        await self._limit(world)
+
+        body = await _turn(app, "/api/react", world, world.agent)
+
+        self._assert_stopped(body)
+
+    async def test_a_plan_answer_that_crosses_the_limit_is_cut(
+        self,
+        app: FastAPI,
+        world: World,
+        loops: list[dict[str, Any]],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from fim_one.web.api import chat as chat_mod
+
+        async def _long(_self: Any, *_args: Any, **_kwargs: Any) -> AsyncIterator[str]:
+            for _ in range(self.CHUNKS):
+                yield self.CHUNK
+
+        monkeypatch.setattr(chat_mod.PlanAnalyzer, "stream_synthesize", _long)
+        await self._limit(world)
+
+        body = await _turn(app, "/api/dag", world, world.agent)
+
+        self._assert_stopped(body)
+
+    @pytest.mark.parametrize("endpoint", ["/api/react", "/api/dag"])
+    async def test_an_answer_that_stays_under_the_limit_is_streamed_whole(
+        self,
+        app: FastAPI,
+        world: World,
+        loops: list[dict[str, Any]],
+        monkeypatch: pytest.MonkeyPatch,
+        endpoint: str,
+    ) -> None:
+        from fim_one.web.api import chat as chat_mod
+
+        async def _short(_self: Any, *_args: Any, **_kwargs: Any) -> AsyncIterator[str]:
+            for _ in range(10):
+                yield self.CHUNK
+
+        monkeypatch.setattr(ReActAgent, "stream_answer", _short)
+        monkeypatch.setattr(chat_mod.PlanAnalyzer, "stream_synthesize", _short)
+        await self._limit(world)
+
+        events = _payloads(await _turn(app, endpoint, world, world.agent))
+
+        streamed = sum(
+            len(data["content"])
+            for name, data in events
+            if name == "answer" and data.get("status") == "delta"
+        )
+        assert streamed == 1000
+        assert "error" not in [name for name, _ in events]
