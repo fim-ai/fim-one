@@ -1255,6 +1255,9 @@ class AuditLogEntry(BaseModel):
     ip_address: str | None = None
 
 
+_AUDIT_EXPORT_LIMIT = 10_000
+
+
 def _build_audit_filters(
     action: str | None,
     admin_id: str | None,
@@ -1295,15 +1298,26 @@ async def export_audit_log(
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> StreamingResponse:
-    """Export filtered audit log entries as CSV. Limited to 10 000 rows."""
+    """Export filtered audit log entries as CSV: the newest 10 000 that match.
+
+    When more match, the file ends with a line that says so and the
+    response says it in ``X-Export-Truncated`` / ``X-Export-Total``.
+    """
     filters = _build_audit_filters(action, admin_id, date_from, date_to)
     query = select(AuditLog).order_by(AuditLog.created_at.desc())
     for f in filters:
         query = query.where(f)
-    query = query.limit(10_000)
+    query = query.limit(_AUDIT_EXPORT_LIMIT)
 
     result = await db.execute(query)
     rows = result.scalars().all()
+    total = len(rows)
+    if total >= _AUDIT_EXPORT_LIMIT:
+        count_query = select(func.count()).select_from(AuditLog)
+        for f in filters:
+            count_query = count_query.where(f)
+        total = (await db.execute(count_query)).scalar_one()
+    truncated = total > len(rows)
 
     buf = io.StringIO()
     writer = safe_writer(buf)
@@ -1333,15 +1347,29 @@ async def export_audit_log(
     await audit.record(
         "export.audit_log",
         actor=audit.actor_of(current_user),
-        detail=f"{len(rows)} row(s)",
+        detail=f"{len(rows)} row(s)" + (f" of {total}; truncated" if truncated else ""),
     )
+
+    if truncated:
+        # Said in the file itself, where whoever reads it later will see it.
+        writer.writerow(
+            [
+                f"# truncated: the newest {len(rows)} of {total} entries that match; "
+                "narrow the date range to export the rest"
+            ]
+        )
 
     buf.seek(0)
     today = date.today().isoformat()
     return StreamingResponse(
         iter([buf.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="audit-log-{today}.csv"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="audit-log-{today}.csv"',
+            "X-Export-Truncated": "true" if truncated else "false",
+            "X-Export-Rows": str(len(rows)),
+            "X-Export-Total": str(total),
+        },
     )
 
 

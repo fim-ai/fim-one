@@ -452,6 +452,14 @@ export function AdminAudit() {
       if (!res.ok) {
         throw new Error(res.statusText)
       }
+      if (res.headers.get("X-Export-Truncated") === "true") {
+        toast.warning(
+          t("exportTruncated", {
+            rows: Number(res.headers.get("X-Export-Rows") ?? 0),
+            total: Number(res.headers.get("X-Export-Total") ?? 0),
+          }),
+        )
+      }
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
@@ -631,6 +639,11 @@ export function AdminAudit() {
                       {entry.admin_username}
                     </td>
                     <td className="px-4 py-2.5">
+                      {entry.outcome && entry.outcome !== "success" && (
+                        <span className="mr-1.5 inline-flex items-center rounded-md border border-red-500/30 bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-400">
+                          {entry.outcome === "denied" ? t("outcomeDenied") : entry.outcome === "failed" ? t("outcomeFailed") : entry.outcome}
+                        </span>
+                      )}
                       <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${actionColor(entry.action)}`}>
                         {getActionLabel(entry.action)}
                       </span>

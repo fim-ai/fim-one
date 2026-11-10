@@ -223,3 +223,65 @@ class TestTheRecordCannotFailTheExport:
 
         assert export.status_code == 200
         assert await world.events() == []
+
+
+class TestAnExportThatIsCutShort:
+    async def test_it_says_so_in_the_file_and_in_the_response(
+        self, world: World, monkeypatch: Any
+    ) -> None:
+        """The export stops at the newest 10,000 entries; nothing said that
+        a file was not the whole log."""
+        from fim_one.core.audit import writer as audit
+        from fim_one.web.api import admin
+
+        monkeypatch.setattr(admin, "_AUDIT_EXPORT_LIMIT", 3)
+        root = await world.user("root", admin=True)
+        for _ in range(5):
+            await audit.record("user.create", actor=audit.actor_of(root))
+
+        export = await world.call("GET", "/api/admin/audit-log/export", by=root)
+
+        lines = export.text.strip().splitlines()
+        assert len(lines) == 1 + 3 + 1
+        assert lines[-1].startswith("# truncated: the newest 3 of 5 entries that match")
+        assert (
+            export.headers["X-Export-Truncated"],
+            export.headers["X-Export-Rows"],
+            export.headers["X-Export-Total"],
+        ) == ("true", "3", "5")
+        # The record of the export says it too.
+        (row,) = await world.events("export.audit_log")
+        assert row.detail == "3 row(s) of 5; truncated"
+
+    async def test_a_date_range_gets_the_rest(self, world: World, monkeypatch: Any) -> None:
+        from datetime import UTC, datetime, timedelta
+
+        from fim_one.core.audit import writer as audit
+        from fim_one.db.models import AuditLog
+        from fim_one.web.api import admin
+
+        monkeypatch.setattr(admin, "_AUDIT_EXPORT_LIMIT", 3)
+        root = await world.user("root", admin=True)
+        for _ in range(4):
+            await audit.record("user.create", actor=audit.actor_of(root))
+        old = AuditLog(actor_id=root.id, actor_label="root", action="user.delete")
+        old.created_at = datetime.now(UTC) - timedelta(days=40)  # type: ignore[assignment]
+        await world.add(old)
+        day = (datetime.now(UTC) - timedelta(days=40)).strftime("%Y-%m-%d")
+
+        export = await world.call(
+            "GET", f"/api/admin/audit-log/export?date_from={day}&date_to={day}", by=root
+        )
+
+        assert export.headers["X-Export-Truncated"] == "false"
+        assert [line.split(",")[2] for line in export.text.strip().splitlines()[1:]] == [
+            "user.delete"
+        ]
+
+    async def test_an_export_of_everything_has_no_marker(self, world: World) -> None:
+        root = await world.user("root", admin=True)
+
+        export = await world.call("GET", "/api/admin/audit-log/export", by=root)
+
+        assert export.headers["X-Export-Truncated"] == "false"
+        assert "# truncated" not in export.text

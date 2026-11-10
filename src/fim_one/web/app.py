@@ -560,6 +560,8 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        # Read by the admin page after an export, to say when it was cut short.
+        expose_headers=["X-Export-Truncated", "X-Export-Rows", "X-Export-Total"],
     )
 
     # -- Routers ------------------------------------------------------------
