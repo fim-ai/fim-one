@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
-
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import TYPE_CHECKING
 
 from .types import NodeType, WorkflowBlueprint
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 # ---------------------------------------------------------------------------
@@ -101,54 +101,6 @@ def _extract_references(blueprint: WorkflowBlueprint) -> list[_ExtractedRef]:
 
 
 # ---------------------------------------------------------------------------
-# DB queries — batch by resource type
-# ---------------------------------------------------------------------------
-
-
-async def _query_accessible_ids(
-    db: AsyncSession,
-    resource_type: str,
-    candidate_ids: set[str],
-    user_id: str,
-    user_org_ids: list[str],
-    subscribed_ids: list[str] | None = None,
-) -> dict[str, str | None]:
-    """Query the DB for which candidate IDs exist and are accessible.
-
-    Returns a mapping of id -> name (or None) for accessible resources.
-    """
-    from fim_one.core.assembly.visibility import visibility_clause
-
-    if not candidate_ids:
-        return {}
-
-    model = _get_model_for_resource_type(resource_type)
-    if model is None:
-        return {}
-
-    stmt = select(model.id, model.name).where(
-        model.id.in_(candidate_ids),
-        visibility_clause(model, user_id, subscribed_ids),
-    )
-    result = await db.execute(stmt)
-    return {row[0]: row[1] for row in result.all()}
-
-
-def _get_model_for_resource_type(resource_type: str) -> Any:
-    """Return the ORM model class for a given resource type string."""
-    from fim_one.db.models import Agent, Connector, KnowledgeBase, MCPServer, Workflow
-
-    mapping: dict[str, Any] = {
-        "agent": Agent,
-        "connector": Connector,
-        "knowledge_base": KnowledgeBase,
-        "workflow": Workflow,
-        "mcp_server": MCPServer,
-    }
-    return mapping.get(resource_type)
-
-
-# ---------------------------------------------------------------------------
 # Main resolver
 # ---------------------------------------------------------------------------
 
@@ -157,74 +109,45 @@ async def resolve_blueprint_references(
     blueprint: WorkflowBlueprint,
     db: AsyncSession,
     user_id: str,
-    user_org_ids: list[str] | None = None,
-    subscribed_ids: list[str] | None = None,
 ) -> ImportResolution:
-    """Resolve all external resource references in a blueprint.
+    """Sort the blueprint's external references into usable and not.
 
-    Scans nodes for references to agents, connectors, knowledge bases,
-    sub-workflows, and MCP servers. Queries the database to check which
-    referenced IDs exist and are accessible to the importing user.
-
-    Parameters
-    ----------
-    blueprint:
-        A parsed WorkflowBlueprint.
-    db:
-        An async database session.
-    user_id:
-        The ID of the user importing the workflow.
-    user_org_ids:
-        Organization IDs the user belongs to (for visibility filtering).
-        If None, defaults to an empty list.
-    subscribed_ids:
-        Resource IDs the user has subscribed to from the Market.
-        If None, the function will query the ResourceSubscription table
-        to obtain them automatically.
-
-    Returns
-    -------
-    ImportResolution
-        Contains resolved references, unresolved references, and
-        human-readable warning messages.
+    The importing user becomes the workflow's author, and a step uses a
+    resource on its author's access. So a reference is resolved when that
+    user could use the resource in a step today, by the rule the steps
+    themselves ask (``core.assembly.visibility.authorize_use``): visible to
+    them, switched on, and for a database connector or a knowledge base,
+    their own. Anything else is unresolved, and its warning says why. The
+    import goes ahead either way.
     """
-    if user_org_ids is None:
-        user_org_ids = []
-
-    # Fetch subscribed resource IDs if not provided by the caller
-    if subscribed_ids is None:
-        from fim_one.db.models.resource_subscription import ResourceSubscription
-
-        sub_result = await db.execute(
-            select(ResourceSubscription.resource_id).where(
-                ResourceSubscription.user_id == user_id,
-            )
-        )
-        subscribed_ids = list(sub_result.scalars().all())
+    from fim_one.core.assembly.errors import RESOURCE_NOT_FOUND
+    from fim_one.core.assembly.principal import CallContext, provisional_principal
+    from fim_one.core.assembly.visibility import ResourceKind, authorize_use
 
     refs = _extract_references(blueprint)
     if not refs:
         return ImportResolution()
 
-    # Group references by resource_type to batch DB queries
-    refs_by_type: dict[str, list[_ExtractedRef]] = {}
+    # The importer, with no binding yet: the workflow does not exist.
+    ctx = CallContext(
+        principal=provisional_principal(user_id), binding=None, entry="workflow_node"
+    )
+
+    # One decision per resource type.
+    ids_by_type: dict[str, list[str]] = {}
     for ref in refs:
-        refs_by_type.setdefault(ref.resource_type, []).append(ref)
+        ids_by_type.setdefault(ref.resource_type, []).append(ref.referenced_id)
+    decisions = {
+        resource_type: await authorize_use(db, ctx, ResourceKind(resource_type), ids)
+        for resource_type, ids in ids_by_type.items()
+    }
 
-    # Query each resource type once
-    accessible_by_type: dict[str, dict[str, str | None]] = {}
-    for resource_type, type_refs in refs_by_type.items():
-        candidate_ids = {r.referenced_id for r in type_refs}
-        accessible_by_type[resource_type] = await _query_accessible_ids(
-            db, resource_type, candidate_ids, user_id, user_org_ids,
-            subscribed_ids=subscribed_ids,
-        )
-
-    # Classify each reference
     resolution = ImportResolution()
     for ref in refs:
-        accessible = accessible_by_type.get(ref.resource_type, {})
-        if ref.referenced_id in accessible:
+        decision = decisions[ref.resource_type]
+        refusal = decision.refused.get(ref.referenced_id)
+        if refusal is None:
+            row = next(r for r in decision.usable if r.id == ref.referenced_id)
             resolution.resolved.append(
                 ResolvedReference(
                     node_id=ref.node_id,
@@ -232,27 +155,28 @@ async def resolve_blueprint_references(
                     field_name=ref.field_name,
                     referenced_id=ref.referenced_id,
                     resource_type=ref.resource_type,
-                    resource_name=accessible[ref.referenced_id],
+                    resource_name=row.name,
                 )
             )
-        else:
-            resolution.unresolved.append(
-                UnresolvedReference(
-                    node_id=ref.node_id,
-                    node_type=ref.node_type,
-                    field_name=ref.field_name,
-                    referenced_id=ref.referenced_id,
-                    resource_type=ref.resource_type,
-                )
+            continue
+        resolution.unresolved.append(
+            UnresolvedReference(
+                node_id=ref.node_id,
+                node_type=ref.node_type,
+                field_name=ref.field_name,
+                referenced_id=ref.referenced_id,
+                resource_type=ref.resource_type,
             )
-
-    # Build human-readable warnings
-    for unref in resolution.unresolved:
-        type_label = unref.resource_type.replace("_", " ")
+        )
+        type_label = ref.resource_type.replace("_", " ")
+        reason = (
+            "which was not found or is not accessible."
+            if refusal.error_code == RESOURCE_NOT_FOUND
+            else f"which cannot be used: {refusal.detail}."
+        )
         resolution.warnings.append(
-            f"Node '{unref.node_id}' ({unref.node_type}) references "
-            f"{type_label} '{unref.referenced_id}' which was not found "
-            f"or is not accessible."
+            f"Node '{ref.node_id}' ({ref.node_type}) references "
+            f"{type_label} '{ref.referenced_id}' {reason}"
         )
 
     return resolution

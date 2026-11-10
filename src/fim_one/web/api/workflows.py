@@ -2838,10 +2838,7 @@ async def import_workflow(
         raise AppError("import_invalid_blueprint", status_code=400) from None
 
     # Resolve external references
-    user_org_ids = await get_user_org_ids(current_user.id, db)
-    resolution = await resolve_blueprint_references(
-        parsed_bp, db, current_user.id, user_org_ids
-    )
+    resolution = await resolve_blueprint_references(parsed_bp, db, current_user.id)
 
     # Deduplicate name: append " (imported)" if a workflow with the same
     # name already exists for this user.
