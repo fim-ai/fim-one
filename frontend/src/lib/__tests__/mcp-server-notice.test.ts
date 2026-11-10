@@ -4,6 +4,9 @@ import toolsMessages from "../../../messages/en/tools.json"
 import {
   ADDRESS_REASONS,
   MCP_SERVER_ADDRESS_PRIVATE,
+  canConfigureOwnKeys,
+  depsNeedingKeys,
+  depsOnlyOwnerCanUse,
   knownAddressReasons,
   mcpServerNotice,
 } from "../mcp-server-notice"
@@ -59,5 +62,25 @@ describe("knownAddressReasons", () => {
     expect(toolsMessages.addressPrivateWarning).toContain("{parts}")
     expect(toolsMessages.addressPrivateWarning).toContain("may contain a credential")
     expect(toolsMessages.addressPrivateWarning).toContain("headers and environment variables")
+  })
+})
+
+describe("keys that would not help are not asked for", () => {
+  it("offers Configure My Keys only where a key of one's own opens the server", () => {
+    expect(canConfigureOwnKeys(base, false)).toBe(true)
+    expect(canConfigureOwnKeys({ ...base, address_private: true }, false)).toBe(false)
+    expect(canConfigureOwnKeys(base, true)).toBe(false)
+  })
+
+  it("splits a subscription's dependencies into those needing keys and those owner-only", () => {
+    type Dep = { resource_id: string; allow_fallback: boolean; address_private?: boolean }
+    const lent: Dep = { resource_id: "a", allow_fallback: true }
+    const needsKeys: Dep = { resource_id: "b", allow_fallback: false }
+    const ownerOnly: Dep = { resource_id: "c", allow_fallback: false, address_private: true }
+    const deps = [lent, needsKeys, ownerOnly]
+    expect(depsNeedingKeys(deps)).toEqual([needsKeys])
+    expect(depsOnlyOwnerCanUse(deps)).toEqual([ownerOnly])
+    expect(depsNeedingKeys(undefined)).toEqual([])
+    expect(depsOnlyOwnerCanUse(null)).toEqual([])
   })
 })

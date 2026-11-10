@@ -351,3 +351,37 @@ class TestAPersonalServerUsedByASharedAgentOrWorkflow:
 
         for seen in await self._views(session, server_id):
             assert seen["warning"] is None
+
+
+class TestTheMarketListing:
+    @pytest.mark.parametrize(
+        ("url", "allow_fallback", "expected"),
+        [
+            (SECRET_URL, False, True),
+            (SECRET_URL, True, False),
+            ("https://h.example/mcp", False, False),
+        ],
+    )
+    def test_it_says_which_server_only_its_owner_can_use(
+        self, url: str, allow_fallback: bool, expected: bool
+    ) -> None:
+        """Before subscribing, and without showing the address."""
+        from datetime import UTC, datetime
+
+        from fim_one.web.api.market import _mcp_market_info
+
+        info = _mcp_market_info(
+            MCPServer(
+                id="s",
+                user_id=OWNER,
+                name="srv",
+                transport="streamable_http",
+                url=url,
+                allow_fallback=allow_fallback,
+                org_id=ORG,
+                created_at=datetime.now(UTC),
+            )
+        )
+
+        assert info["address_private"] is expected
+        assert "url" not in info and "tok-in-url" not in repr(info)

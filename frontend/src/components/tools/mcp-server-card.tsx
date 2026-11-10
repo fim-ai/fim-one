@@ -40,7 +40,7 @@ import {
 import { mcpServerApi } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
 import { MARKET_ORG_ID } from "@/lib/constants"
-import { mcpServerNotice } from "@/lib/mcp-server-notice"
+import { canConfigureOwnKeys, mcpServerNotice } from "@/lib/mcp-server-notice"
 import { useAddressPrivateWarning } from "@/hooks/use-address-private-warning"
 import type { MCPServerResponse } from "@/types/mcp-server"
 
@@ -102,6 +102,8 @@ export function MCPServerCard({
   // its address holds a credential and only the owner can connect.
   const notice = mcpServerNotice(server, isOwner)
   const addressWarning = useAddressPrivateWarning()
+  // Keys of one's own do not open a server only its owner can connect to.
+  const canConfigureKeys = canConfigureOwnKeys(server, isOwner)
   // A personal credential must supply what the transport reads: stdio servers
   // read environment variables, SSE / HTTP servers read request headers.
   const usesHeaders = server.transport !== "stdio"
@@ -292,7 +294,7 @@ export function MCPServerCard({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        ) : (isSubscribed && onUninstall) || isOrgResource ? (
+        ) : (isSubscribed && onUninstall) || (isOrgResource && canConfigureKeys) ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -304,7 +306,7 @@ export function MCPServerCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {(isSubscribed || isOrgResource) && (
+              {(isSubscribed || isOrgResource) && canConfigureKeys && (
                 <DropdownMenuItem onClick={handleOpenMyKeys}>
                   <Key className="mr-2 h-4 w-4" />
                   {t("configureMyKeys")}
@@ -312,7 +314,7 @@ export function MCPServerCard({
               )}
               {isSubscribed && onUninstall && (
                 <>
-                  <DropdownMenuSeparator />
+                  {canConfigureKeys && <DropdownMenuSeparator />}
                   <DropdownMenuItem variant="destructive" onClick={() => onUninstall(server.id)}>
                     <PackageMinus className="mr-2 h-4 w-4" />
                     {tc("uninstall")}

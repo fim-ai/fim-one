@@ -268,6 +268,16 @@ class TestDependencyManifest:
         assert len(d["connection_deps"]) == 1
         assert d["connection_deps"][0]["credential_schema"] == {"api_key": {"type": "password"}}
 
+    def test_to_dict_says_which_mcp_server_only_its_owner_can_use(self) -> None:
+        m = DependencyManifest(
+            connection_deps=[
+                ConnectionDep("mcp_server", "s-1", "Locked", {}, address_private=True),
+                ConnectionDep("mcp_server", "s-2", "Open", {}),
+            ]
+        )
+        flags = [dep["address_private"] for dep in m.to_dict()["connection_deps"]]
+        assert flags == [True, False]
+
     def test_to_dict_empty(self) -> None:
         d = DependencyManifest().to_dict()
         assert d == {"content_deps": [], "connection_deps": []}
@@ -334,6 +344,45 @@ class TestResolveAgentDependencies:
         assert "api_key" in manifest.connection_deps[0].credential_schema
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("url", "allow_fallback", "expected"),
+        [
+            ("https://mcp.example.com/mcp?token=abc", False, True),
+            ("https://mcp.example.com/mcp?token=abc", True, False),
+            ("https://mcp.example.com/mcp", False, False),
+        ],
+    )
+    async def test_an_mcp_server_only_its_owner_can_use_is_marked(
+        self, url: str, allow_fallback: bool, expected: bool
+    ) -> None:
+        """So that nobody is asked for keys that would not let them in."""
+        agent = SimpleNamespace(
+            id="agt-1",
+            name="Test Agent",
+            kb_ids=None,
+            connector_ids=None,
+            mcp_server_ids=["srv-1"],
+            skill_ids=None,
+        )
+        server = SimpleNamespace(
+            id="srv-1",
+            name="Server",
+            transport="streamable_http",
+            url=url,
+            args=None,
+            env=None,
+            headers={"Authorization": "x"},
+            allow_fallback=allow_fallback,
+        )
+        db = _mock_db_fetch({"agt-1": agent, "srv-1": server})
+
+        manifest = await resolve_solution_dependencies("agent", "agt-1", db)
+
+        (dep,) = manifest.connection_deps
+        assert dep.address_private is expected
+        assert manifest.to_dict()["connection_deps"][0]["address_private"] is expected
+
+    @pytest.mark.asyncio
     async def test_agent_not_found(self) -> None:
         db = _mock_db_fetch({})
         manifest = await resolve_solution_dependencies("agent", "missing", db)
@@ -343,7 +392,12 @@ class TestResolveAgentDependencies:
     @pytest.mark.asyncio
     async def test_agent_with_empty_ids(self) -> None:
         agent = SimpleNamespace(
-            id="agt-1", name="Agent", kb_ids=None, connector_ids=None, mcp_server_ids=None, skill_ids=None
+            id="agt-1",
+            name="Agent",
+            kb_ids=None,
+            connector_ids=None,
+            mcp_server_ids=None,
+            skill_ids=None,
         )
         db = _mock_db_fetch({"agt-1": agent})
         manifest = await resolve_solution_dependencies("agent", "agt-1", db)
@@ -510,9 +564,7 @@ class TestResolveWorkflowDependencies:
                 "edges": [],
             },
         )
-        server = _fake_mcp_server(
-            id="srv-1", name="MCP Server", env={"API_KEY": "sk-..."}
-        )
+        server = _fake_mcp_server(id="srv-1", name="MCP Server", env={"API_KEY": "sk-..."})
         db = _mock_db_fetch({"wf-1": workflow, "srv-1": server})
 
         manifest = await resolve_solution_dependencies("workflow", "wf-1", db)

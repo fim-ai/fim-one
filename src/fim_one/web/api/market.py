@@ -24,6 +24,7 @@ from fim_one.web.exceptions import AppError
 from fim_one.db.models.agent import Agent
 from fim_one.db.models.connector import Connector
 from fim_one.db.models.connector_credential import ConnectorCredential
+from fim_one.core.assembly.credentials import address_is_private
 from fim_one.db.models.mcp_server import MCPServer
 from fim_one.db.models.mcp_server_credential import MCPServerCredential
 from fim_one.db.models.organization import OrgMembership, Organization
@@ -89,6 +90,8 @@ def _mcp_market_info(srv: MCPServer) -> dict[str, Any]:
         "description": srv.description,
         "transport": srv.transport,
         "allow_fallback": getattr(srv, "allow_fallback", True),
+        # Only its owner can connect, whatever credential a subscriber saves.
+        "address_private": address_is_private(srv),
         "org_id": srv.org_id,
         "user_id": srv.user_id,
         "created_at": srv.created_at.isoformat() if srv.created_at else None,

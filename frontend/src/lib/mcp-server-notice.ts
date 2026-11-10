@@ -43,6 +43,25 @@ type NoticeFields = Pick<
   "allow_fallback" | "address_private" | "warning" | "my_has_credentials"
 >
 
+/** Whether "Configure My Keys" is of any use to someone who is not the owner. */
+export function canConfigureOwnKeys(server: NoticeFields, isOwner: boolean): boolean {
+  return !isOwner && !server.address_private
+}
+
+/** The dependencies of a just-subscribed resource that the user is asked to set keys for. */
+export function depsNeedingKeys<T extends { allow_fallback: boolean; address_private?: boolean }>(
+  deps: readonly T[] | null | undefined,
+): T[] {
+  return (deps ?? []).filter((dep) => !dep.allow_fallback && !dep.address_private)
+}
+
+/** Those that only their owner can use: keys of the subscriber's own would not help. */
+export function depsOnlyOwnerCanUse<T extends { address_private?: boolean }>(
+  deps: readonly T[] | null | undefined,
+): T[] {
+  return (deps ?? []).filter((dep) => !!dep.address_private)
+}
+
 export function mcpServerNotice(server: NoticeFields, isOwner: boolean): MCPServerNotice | null {
   if (isOwner) {
     return server.warning === MCP_SERVER_ADDRESS_PRIVATE ? "addressPrivateOwner" : null
