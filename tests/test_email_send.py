@@ -104,9 +104,7 @@ class TestParseRecipients:
 
 
 class TestAllowlist:
-    def _run(self, **kwargs: Any) -> tuple[str, MagicMock, MagicMock]:
-        import asyncio
-
+    async def _run(self, **kwargs: Any) -> tuple[str, MagicMock, MagicMock]:
         server = MagicMock()
         with (
             patch.dict(os.environ, _SMTP),
@@ -115,14 +113,12 @@ class TestAllowlist:
         ):
             secure.return_value.__enter__ = MagicMock(return_value=server)
             secure.return_value.__exit__ = MagicMock(return_value=False)
-            result = asyncio.run(
-                EmailSendTool().run(**{"subject": "s", "body": "b", **kwargs})
-            )
+            result = await EmailSendTool().run(**{"subject": "s", "body": "b", **kwargs})
         plain.assert_not_called()
         return result, secure, server
 
-    def test_an_allowed_address_is_sent(self) -> None:
-        result, _, server = self._run(to="a@allowed.com, B@Allowed.com", cc="c@allowed.com")
+    async def test_an_allowed_address_is_sent(self) -> None:
+        result, _, server = await self._run(to="a@allowed.com, B@Allowed.com", cc="c@allowed.com")
         assert result == "Email sent to a@allowed.com, B@Allowed.com, cc: c@allowed.com."
         assert server.sendmail.call_args.args[1] == [
             "a@allowed.com",
@@ -130,55 +126,50 @@ class TestAllowlist:
             "c@allowed.com",
         ]
 
-    def test_another_domain_is_refused(self) -> None:
-        result, secure, _ = self._run(to="a@allowed.com, x@evil.com")
+    async def test_another_domain_is_refused(self) -> None:
+        result, secure, _ = await self._run(to="a@allowed.com, x@evil.com")
         assert result.startswith("[Error] Recipient(s) not in allowlist: x@evil.com")
         secure.assert_not_called()
 
     @pytest.mark.parametrize("value", SMUGGLED)
     @pytest.mark.parametrize("field", ["to", "cc", "bcc"])
-    def test_text_that_is_not_one_address_is_never_sent(self, field: str, value: str) -> None:
+    async def test_text_that_is_not_one_address_is_never_sent(self, field: str, value: str) -> None:
         """The allowlist is not passed by text whose tail looks allowed."""
         kwargs = {"to": "a@allowed.com", field: value}
-        result, secure, _ = self._run(**kwargs)
+        result, secure, _ = await self._run(**kwargs)
         assert result.startswith("[Error] Not a valid email address"), result
         secure.assert_not_called()
 
-    def test_to_is_a_string_or_a_list_of_strings(self) -> None:
-        result, _, server = self._run(to=["a@allowed.com", "b@allowed.com"])
+    async def test_to_is_a_string_or_a_list_of_strings(self) -> None:
+        result, _, server = await self._run(to=["a@allowed.com", "b@allowed.com"])
         assert result == "Email sent to a@allowed.com, b@allowed.com."
         assert server.sendmail.call_args.args[1] == ["a@allowed.com", "b@allowed.com"]
         for bad in (7, {"a": "a@allowed.com"}, ["a@allowed.com", 7], ["a@allowed.com,b@allowed.com"]):
-            result, secure, _ = self._run(to=bad)
+            result, secure, _ = await self._run(to=bad)
             assert result.startswith("[Error] Not a valid email address"), bad
             secure.assert_not_called()
 
-    def test_recipients_are_required(self) -> None:
+    async def test_recipients_are_required(self) -> None:
         empties: list[Any] = ["", "   ", None, []]
         for empty in empties:
-            result, secure, _ = self._run(to=empty)
+            result, secure, _ = await self._run(to=empty)
             assert result == "[Error] 'to' is required."
             secure.assert_not_called()
 
-    def test_the_form_is_checked_without_an_allowlist_too(self) -> None:
-        import asyncio
-
+    async def test_the_form_is_checked_without_an_allowlist_too(self) -> None:
         env = {**_SMTP, "SMTP_ALLOWED_DOMAINS": "", "EMAIL_TOOL_ENABLED": "true"}
         with (
             patch.dict(os.environ, env),
             patch("fim_one.core.tool.builtin.email_send.smtplib.SMTP_SSL") as secure,
         ):
-            result = asyncio.run(
-                EmailSendTool().run(to="a@x.io\nBcc: b@y.io", subject="s", body="b")
-            )
+            result = await EmailSendTool().run(to="a@x.io\nBcc: b@y.io", subject="s", body="b")
         assert result.startswith("[Error] Not a valid email address")
         secure.assert_not_called()
 
 
 class TestSubject:
-    def test_a_subject_with_line_breaks_is_sent_on_one_line(self) -> None:
+    async def test_a_subject_with_line_breaks_is_sent_on_one_line(self) -> None:
         """A line break in the subject made the send fail with a header error."""
-        import asyncio
         import email as email_lib
 
         server = MagicMock()
@@ -188,22 +179,16 @@ class TestSubject:
         ):
             secure.return_value.__enter__ = MagicMock(return_value=server)
             secure.return_value.__exit__ = MagicMock(return_value=False)
-            result = asyncio.run(
-                EmailSendTool().run(
+            result = await EmailSendTool().run(
                     to="a@allowed.com", subject="Weekly\r\nBcc: x@evil.com\n", body="b"
                 )
-            )
         assert result == "Email sent to a@allowed.com."
         message = email_lib.message_from_string(server.sendmail.call_args.args[2])
         assert message["Subject"] == "Weekly Bcc: x@evil.com"
         assert message["Bcc"] is None
         assert server.sendmail.call_args.args[1] == ["a@allowed.com"]
 
-    def test_a_subject_of_only_line_breaks_is_missing(self) -> None:
-        import asyncio
-
+    async def test_a_subject_of_only_line_breaks_is_missing(self) -> None:
         with patch.dict(os.environ, _SMTP):
-            result = asyncio.run(
-                EmailSendTool().run(to="a@allowed.com", subject="\r\n \n", body="b")
-            )
+            result = await EmailSendTool().run(to="a@allowed.com", subject="\r\n \n", body="b")
         assert result == "[Error] 'subject' is required."
