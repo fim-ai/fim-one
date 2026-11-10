@@ -42,6 +42,7 @@
   "forbidden": "Forbidden.",
   "token_quota_exceeded": "Token quota exceeded.",
   "subscription_required": "A paid subscription is required to use models.",
+  "quota_unavailable": "Your plan and token quota could not be checked. Try again shortly.",
   "billing_plan_is_default": "The included default plan cannot be disabled or deleted. Switch the access model instead.",
   "invalid_access_model": "Invalid access model.",
   "no_active_execution": "No active execution to cancel.",

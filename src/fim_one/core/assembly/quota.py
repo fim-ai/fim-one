@@ -8,12 +8,14 @@ check raises: nothing is let through by default.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Protocol
 
 from .errors import (
     ACCOUNT_DISABLED,
+    QUOTA_UNAVAILABLE,
     SUBSCRIPTION_REQUIRED,
     TOKEN_QUOTA_EXCEEDED,
     WORKFLOW_OWNER_INACTIVE,
@@ -22,6 +24,8 @@ from .errors import (
 
 if TYPE_CHECKING:
     from .principal import Binding, Principal
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "AssemblyRunGate",
@@ -108,11 +112,26 @@ async def check_quota(principal: Principal) -> None:
     """Refuse a model call the principal's plan or quota does not cover.
 
     In order: ``subscription_required`` (402) when access is sold by plan
-    and the user has none, then ``token_quota_exceeded`` (429).
+    and the user has none, then ``token_quota_exceeded`` (429). When the
+    plan or the usage cannot be read the call is refused as
+    ``quota_unavailable`` (503): an unknown is not a pass.
     """
     backend = get_quota_backend()
-    status = await quota_status(principal.user_id)
-    if await backend.unentitled(principal.user_id):
+    try:
+        status = await quota_status(principal.user_id)
+        unentitled = await backend.unentitled(principal.user_id)
+    except AssemblyRefusal:
+        raise
+    except Exception:
+        logger.warning(
+            "Plan or quota lookup failed for user %s; refusing", principal.user_id, exc_info=True
+        )
+        raise AssemblyRefusal(
+            QUOTA_UNAVAILABLE,
+            503,
+            "Your plan and token quota could not be checked. Try again shortly.",
+        ) from None
+    if unentitled:
         raise AssemblyRefusal(SUBSCRIPTION_REQUIRED, 402)
     if status.exhausted:
         raise AssemblyRefusal(TOKEN_QUOTA_EXCEEDED, 429)

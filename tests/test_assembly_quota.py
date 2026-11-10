@@ -15,7 +15,9 @@ from fim_one.core.assembly import quota
 from fim_one.core.assembly.errors import AssemblyRefusal
 from fim_one.core.assembly.principal import Binding, provisional_principal
 from fim_one.db.base import Base
+from fim_one.db.models import BillingPlan, Conversation, SystemSetting
 from fim_one.db.models.user import User
+from fim_one.db.models.workflow import WorkflowRun
 
 RESET = datetime(2027, 1, 1, tzinfo=UTC)
 
@@ -193,3 +195,183 @@ class TestRunGate:
     ) -> None:
         await _users(factory, runner=True)
         await quota.AssemblyRunGate().check(provisional_principal("runner"))
+
+
+# ---------------------------------------------------------------------------
+# The chain, end to end: check_quota over the web backend and a real database
+# ---------------------------------------------------------------------------
+
+PLAN_CAP = 5_000
+DEFAULT_CAP = 1_000
+OVERRIDE_CAP = 300
+UNLIMITED = 0
+
+# (admin override on the user row, access_model, user has a plan)
+#   -> the cap enforced, or the refusal that comes before any cap.
+# The override wins everywhere; the plan counts only while the instance
+# sells access by plan; ``off`` is the system default for everyone.
+CHAIN: dict[tuple[int | None, str, bool], int | str] = {
+    (None, "off", False): DEFAULT_CAP,
+    (None, "off", True): DEFAULT_CAP,  # a leftover plan_id is not read
+    (None, "freemium", False): DEFAULT_CAP,
+    (None, "freemium", True): PLAN_CAP,
+    (None, "paid_only", False): "subscription_required",
+    (None, "paid_only", True): PLAN_CAP,
+    (0, "off", False): UNLIMITED,
+    (0, "off", True): UNLIMITED,
+    (0, "freemium", False): UNLIMITED,
+    (0, "freemium", True): UNLIMITED,
+    (0, "paid_only", False): UNLIMITED,
+    (0, "paid_only", True): UNLIMITED,
+    (OVERRIDE_CAP, "off", False): OVERRIDE_CAP,
+    (OVERRIDE_CAP, "off", True): OVERRIDE_CAP,
+    (OVERRIDE_CAP, "freemium", False): OVERRIDE_CAP,
+    (OVERRIDE_CAP, "freemium", True): OVERRIDE_CAP,
+    (OVERRIDE_CAP, "paid_only", False): OVERRIDE_CAP,
+    (OVERRIDE_CAP, "paid_only", True): OVERRIDE_CAP,
+}
+
+
+async def _seed(
+    factory: async_sessionmaker[AsyncSession],
+    *,
+    override: int | None,
+    access_model: str,
+    has_plan: bool,
+    used: int = 0,
+) -> str:
+    async with factory() as s:
+        s.add(SystemSetting(key="access_model", value=access_model))
+        s.add(SystemSetting(key="default_token_quota", value=str(DEFAULT_CAP)))
+        plan = BillingPlan(slug="pro", name="Pro", monthly_token_quota=PLAN_CAP)
+        s.add(plan)
+        await s.flush()
+        user = User(
+            id="u1",
+            email="u1@x.io",
+            username="u1",
+            token_quota=override,
+            plan_id=plan.id if has_plan else None,
+        )
+        s.add(user)
+        if used:
+            s.add(Conversation(user_id="u1", title="t", mode="react", total_tokens=used))
+        await s.commit()
+    return "u1"
+
+
+async def _refusal(user_id: str) -> str | None:
+    try:
+        await quota.check_quota(provisional_principal(user_id))
+    except AssemblyRefusal as refused:
+        return refused.error_code
+    return None
+
+
+class TestTheChain:
+    """Three override states x three access models x with and without a plan."""
+
+    @pytest.mark.parametrize(("case", "want"), CHAIN.items(), ids=lambda v: str(v))
+    async def test_the_cap_enforced_is_the_one_the_usage_card_shows(
+        self,
+        factory: async_sessionmaker[AsyncSession],
+        case: tuple[int | None, str, bool],
+        want: int | str,
+    ) -> None:
+        from fim_one.web.services.quota_enforcer import get_user_quota_by_id
+
+        override, access_model, has_plan = case
+        user_id = await _seed(
+            factory, override=override, access_model=access_model, has_plan=has_plan
+        )
+
+        if isinstance(want, str):
+            assert await _refusal(user_id) == want
+            return
+        status = await quota.quota_status(user_id)
+        assert status.cap == want
+        # What the Usage card reads (``None`` there is "unlimited").
+        async with factory() as s:
+            assert (await get_user_quota_by_id(user_id, s) or 0) == want
+
+    @pytest.mark.parametrize(
+        ("case", "want"),
+        [(c, w) for c, w in CHAIN.items() if isinstance(w, int) and w > 0],
+        ids=lambda v: str(v),
+    )
+    async def test_the_cap_is_where_the_refusal_starts(
+        self,
+        factory: async_sessionmaker[AsyncSession],
+        case: tuple[int | None, str, bool],
+        want: int,
+    ) -> None:
+        override, access_model, has_plan = case
+        user_id = await _seed(
+            factory, override=override, access_model=access_model, has_plan=has_plan, used=want - 1
+        )
+        assert await _refusal(user_id) is None
+        async with factory() as s:
+            s.add(WorkflowRun(workflow_id="w", user_id=user_id, blueprint_snapshot={}, total_tokens=1))
+            await s.commit()
+        assert await _refusal(user_id) == "token_quota_exceeded"
+
+    async def test_off_with_a_leftover_plan_enforces_the_system_default(
+        self, factory: async_sessionmaker[AsyncSession]
+    ) -> None:
+        """B14. The plan's 5 000 used to be enforced while the card showed 1 000."""
+        user_id = await _seed(
+            factory, override=None, access_model="off", has_plan=True, used=DEFAULT_CAP
+        )
+        assert await _refusal(user_id) == "token_quota_exceeded"
+
+    async def test_no_cap_anywhere_is_unlimited(
+        self, factory: async_sessionmaker[AsyncSession]
+    ) -> None:
+        user_id = await _seed(factory, override=None, access_model="off", has_plan=False, used=10**9)
+        async with factory() as s:
+            row = await s.get(SystemSetting, "default_token_quota")
+            assert row is not None
+            row.value = "0"
+            await s.commit()
+        assert await _refusal(user_id) is None
+        assert (await quota.quota_status(user_id)).unlimited
+
+
+class TestALookupThatFailsRefuses:
+    """B14. A plan or usage lookup that errors used to let the run through."""
+
+    async def test_the_cap_lookup_failing_is_503(
+        self, factory: async_sessionmaker[AsyncSession]
+    ) -> None:
+        user_id = await _seed(factory, override=None, access_model="freemium", has_plan=True)
+        with patch(
+            "fim_one.web.services.quota_enforcer.get_user_quota_by_id",
+            side_effect=RuntimeError("billing_plans is gone"),
+        ):
+            with pytest.raises(AssemblyRefusal) as refused:
+                await quota.check_quota(provisional_principal(user_id))
+        assert (refused.value.error_code, refused.value.status_code) == ("quota_unavailable", 503)
+
+    async def test_the_plan_check_failing_is_503(
+        self, factory: async_sessionmaker[AsyncSession]
+    ) -> None:
+        user_id = await _seed(factory, override=None, access_model="paid_only", has_plan=False)
+        with patch(
+            "fim_one.web.services.quota_enforcer.is_user_unentitled",
+            side_effect=RuntimeError("database is down"),
+        ):
+            with pytest.raises(AssemblyRefusal) as refused:
+                await quota.check_quota(provisional_principal(user_id))
+        assert (refused.value.error_code, refused.value.status_code) == ("quota_unavailable", 503)
+
+    async def test_the_message_does_not_carry_the_error(
+        self, factory: async_sessionmaker[AsyncSession]
+    ) -> None:
+        user_id = await _seed(factory, override=None, access_model="freemium", has_plan=True)
+        with patch(
+            "fim_one.web.services.quota_enforcer.get_user_quota_by_id",
+            side_effect=RuntimeError("password=hunter2"),
+        ):
+            with pytest.raises(AssemblyRefusal) as refused:
+                await quota.check_quota(provisional_principal(user_id))
+        assert "hunter2" not in refused.value.detail

@@ -15,6 +15,7 @@ __all__ = [
     "CREDENTIAL_REQUIRED",
     "CREDENTIAL_UNAVAILABLE",
     "OWNER_ONLY",
+    "QUOTA_UNAVAILABLE",
     "RESOURCE_INACTIVE",
     "RESOURCE_NOT_FOUND",
     "SUBSCRIPTION_REQUIRED",
@@ -39,6 +40,7 @@ APPROVAL_ASSIGNEE_NOT_IN_ORG = "approval_assignee_not_in_org"
 AGENT_UNAVAILABLE = "agent_unavailable"
 SUBSCRIPTION_REQUIRED = "subscription_required"
 TOKEN_QUOTA_EXCEEDED = "token_quota_exceeded"
+QUOTA_UNAVAILABLE = "quota_unavailable"
 WORKFLOW_OWNER_INACTIVE = "workflow_owner_inactive"
 
 
