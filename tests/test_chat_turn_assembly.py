@@ -364,6 +364,7 @@ class TestCompletionNotificationOfAPersonalAgent:
         assert shims[0].org_id is None
         assert shims[0].user_id == world.user
         assert send.await_count == 1, "the completion notice was not sent"
+        assert send.await_args is not None
         summary = send.await_args.args[0]
         assert summary.agent_name == "Helper"
         assert summary.user_message == "say pong"
