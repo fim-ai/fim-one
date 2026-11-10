@@ -191,6 +191,21 @@ _DROPS_SILENTLY: dict[str, tuple[str, ...]] = {
 }
 
 
+# An entry point's own spelling of a refusal, where it has one. Trigger keys
+# and schedules answer a switched-off workflow with ``workflow_inactive``
+# (403): the code is part of the trigger API and of recorded schedule
+# refusals, so it stays; it is the same refusal as ``resource_inactive``.
+_SPELLED: dict[str, dict[str, str]] = {
+    "schedule": {"resource_inactive": "workflow_inactive"},
+    "trigger": {"resource_inactive": "workflow_inactive"},
+}
+
+# Not an entry point: the rule for a resource used directly, with every
+# refusal code surfaced (what ``authorize_use`` and ``resolve_credential``
+# are compared with).
+DIRECT = "direct"
+
+
 def applicable(entry: str, cell: Cell) -> bool:
     if cell.resource not in APPLICABLE[entry]:
         return False
@@ -212,7 +227,7 @@ def rule(entry: str, cell: Cell, *, subject: str) -> Outcome:
     def refuse(code: str) -> Outcome:
         if resource in _DROPS_SILENTLY.get(entry, ()):
             return Outcome(exposed=False)
-        return Outcome(exposed=False, refusal_code=code)
+        return Outcome(exposed=False, refusal_code=_SPELLED.get(entry, {}).get(code, code))
 
     # 1. Visible to the subject. Knowledge bases cannot be shared.
     if not sees(subject, resource):
@@ -1207,12 +1222,6 @@ def _database_unsupported(_entry: str, _cell: Cell, so_far: Outcome) -> Outcome 
     return None
 
 
-def _workflow_inactive_code(_entry: str, _cell: Cell, so_far: Outcome) -> Outcome | None:
-    if so_far.refusal_code != "resource_inactive":
-        return None
-    return _replace(so_far, refusal_code="workflow_inactive")
-
-
 # Applied in this order: a later entry sees the outcome the earlier ones left.
 KNOWN_DEVIATIONS: tuple[Deviation, ...] = (
     Deviation(
@@ -1249,18 +1258,6 @@ KNOWN_DEVIATIONS: tuple[Deviation, ...] = (
         ref="design §1.2 row 'DB 连接器 wf-节点'",
         removed_in="T10 P4 (support, or refuse at save)",
         today=_database_unsupported,
-    ),
-    Deviation(
-        name="workflow-entry-own-inactive-code",
-        entries=("schedule", "trigger"),
-        resources=("workflow",),
-        what=(
-            "A switched-off workflow is refused as workflow_inactive (403), "
-            "not resource_inactive (409)."
-        ),
-        ref="design §1.1 row 'wf-入口' (已收口), §2.2",
-        removed_in="C1 phase 4 (decide: rename or alias)",
-        today=_workflow_inactive_code,
     ),
 )
 
