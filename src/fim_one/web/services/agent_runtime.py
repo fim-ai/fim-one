@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from fim_one.core.tool.registry import ToolRegistry
 
 __all__ = [
+    "SANDBOXED_TOOLS",
     "WebAgentRuntimeFactory",
     "bare_runtime",
     "build_hooks",
@@ -167,19 +168,48 @@ async def build_hooks(
     )
 
 
+# Built-in tools a run with no agent and no conversation does not get. In a
+# chat they are confined to the conversation's own sandbox directory; a
+# workflow step has no conversation, so they would run in the directory
+# every such run shares (the host's, with no Docker sandbox).
+SANDBOXED_TOOLS = ("shell_exec", "python_exec", "node_exec", "file_ops")
+
+
+async def _disabled_builtin_tools() -> list[str]:
+    """The built-in tools an administrator switched off for the instance."""
+    import json
+
+    from fim_one.db import create_session
+    from fim_one.web.api.admin import SETTING_DISABLED_BUILTIN_TOOLS
+    from fim_one.web.api.admin_utils import get_setting
+
+    async with create_session() as db:
+        raw = await get_setting(db, SETTING_DISABLED_BUILTIN_TOOLS, default="[]")
+    names = json.loads(raw)
+    return [str(name) for name in names] if isinstance(names, list) else []
+
+
 async def bare_runtime(ctx: CallContext) -> AgentRuntime:
-    """The runtime of a step that names no agent: the fast model and the built-in tools."""
+    """The runtime of a step that names no agent: a model and plain tools.
+
+    The fast model and the built-in tools that need neither a user's
+    resources nor a sandbox: no connectors, MCP servers, knowledge bases or
+    delegation (the step selected no agent to bind them to), and none of
+    :data:`SANDBOXED_TOOLS`. Tools an administrator disabled are left out,
+    as everywhere else.
+    """
     from fim_one.db import create_session
     from fim_one.web.deps import get_effective_fast_llm, get_tools
 
     async with create_session() as db:
         llm = await get_effective_fast_llm(db)
+    tools = get_tools().exclude_by_name(*SANDBOXED_TOOLS, *await _disabled_builtin_tools())
     return AgentRuntime(
         ctx=ctx,
         agent=None,
         llm=llm,
         fast_llm=llm,
-        tools=get_tools(),
+        tools=tools,
         hooks=await build_hooks(None),
         instructions=None,
     )

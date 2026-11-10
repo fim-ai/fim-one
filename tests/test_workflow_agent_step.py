@@ -31,6 +31,7 @@ from fim_one.core.workflow.types import (
 )
 from fim_one.core.workflow.variable_store import VariableStore
 from fim_one.db.base import Base
+from fim_one.db.models import SystemSetting
 from fim_one.db.models.agent import Agent
 from fim_one.db.models.connector_call_log import ConnectorCallLog
 from fim_one.db.models.workflow import Workflow
@@ -223,9 +224,12 @@ class TestTheAgentsBoundResources:
 
 
 class TestAStepWithNoAgent:
-    async def test_it_runs_a_model_with_built_in_tools_and_nothing_of_the_users(
+    """No agent selected: a model with plain tools, not the run of the host."""
+
+    async def test_it_gets_no_shell_code_or_file_tools_and_no_user_resources(
         self, factory: async_sessionmaker[AsyncSession]
     ) -> None:
+        """It got every built-in tool, ``shell_exec`` among them."""
         scene = await m.seed_scene(factory, m.SceneKey("owner", True, True, False))
         with m.outside_world(factory) as out:
             result = await _run(None, _context(scene))
@@ -233,12 +237,47 @@ class TestAStepWithNoAgent:
         assert result.status == NodeStatus.COMPLETED, result.error
         built = out.agents_built[-1]
         names = _names(built["tools"])
-        # No agent was selected to bind connectors or MCP servers to.
+        assert not names & {"shell_exec", "python_exec", "node_exec", "file_ops"}
+        # Nothing of the user's either: no agent was selected to bind it to.
         assert not names & {"connector", "database", "mcp", "call_agent", "run_workflow"}
         assert out.mcp_connects == {}
+        # Still a working step: the ordinary tools and the approval gate.
         assert {"calculator", "web_fetch"} <= names
         assert built["extra_instructions"] is None and built["agent_id"] is None
         assert [h.name for h in built["hook_registry"].list_hooks()] == ["approval_gate"]
+
+    async def test_tools_the_administrator_disabled_are_left_out(
+        self, factory: async_sessionmaker[AsyncSession]
+    ) -> None:
+        scene = await m.seed_scene(factory, m.SceneKey("owner", True, True, False))
+        async with factory() as s:
+            s.add(SystemSetting(key="disabled_builtin_tools", value='["web_fetch"]'))
+            await s.commit()
+        with m.outside_world(factory) as out:
+            result = await _run(None, _context(scene))
+
+        assert result.status == NodeStatus.COMPLETED, result.error
+        names = _names(out.agents_built[-1]["tools"])
+        assert "web_fetch" not in names and "calculator" in names
+
+    async def test_a_chat_with_no_agent_keeps_its_sandboxed_tools(
+        self, factory: async_sessionmaker[AsyncSession]
+    ) -> None:
+        """The restriction is the step's: a chat confines them to its own directory."""
+        from fim_one.core.assembly.runtime import get_agent_runtime_factory
+
+        scene = await m.seed_scene(factory, m.SceneKey("owner", True, True, False))
+        with m.outside_world(factory):
+            built = await get_agent_runtime_factory().build(
+                CallContext(
+                    principal=provisional_principal(scene.actor),
+                    binding=None,
+                    entry="chat_noagent",
+                ),
+                None,
+            )
+            await built.aclose()
+        assert {"shell_exec", "python_exec", "connector", "call_agent"} <= _names(built.tools)
 
 
 class TestTheRunServiceGivesStepsTheirContext:
