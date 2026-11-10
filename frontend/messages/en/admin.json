@@ -589,7 +589,13 @@
       "auth__email_change": "Change Email",
       "auth__oauth_bind": "Link Sign-In Provider",
       "auth__oauth_unbind": "Unlink Sign-In Provider",
-      "auth__sessions_revoke": "Sign Out All Sessions"
+      "auth__sessions_revoke": "Sign Out All Sessions",
+      "org__create": "Create Organization",
+      "org__update": "Update Organization",
+      "org__delete": "Delete Organization",
+      "org__member_add": "Add Organization Member",
+      "org__member_role_change": "Change Member Role",
+      "org__member_remove": "Remove Organization Member"
     },
     "detailDialogTitle": "Audit Detail",
     "filterDateFrom": "From",

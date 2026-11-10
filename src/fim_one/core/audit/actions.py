@@ -152,6 +152,17 @@ AUTH_SESSIONS_REVOKE = "auth.sessions_revoke"
 # A user's own API keys are recorded under the administrators' names for
 # the same thing: ``api_key.create`` / ``enable`` / ``disable`` / ``delete``.
 
+# -- Organizations and their members -----------------------------------------
+# ``org_id`` is the organization; for a membership the target is the member
+# and the change is the role before and after.
+ORG_CREATE = "org.create"
+ORG_UPDATE = "org.update"
+ORG_DELETE = "org.delete"
+ORG_MEMBER_ADD = "org.member_add"
+ORG_MEMBER_ROLE_CHANGE = "org.member_role_change"
+# Removed by an administrator of the organization, or left (detail ``left``).
+ORG_MEMBER_REMOVE = "org.member_remove"
+
 ACTIONS: frozenset[str] = frozenset(ADMIN_ACTIONS) | frozenset(
     value
     for name, value in dict(globals()).items()

@@ -216,6 +216,12 @@ AUDITED: dict[Route, tuple[str, ...]] = {
     ("DELETE", "/api/me/api-keys/{key_id}"): ("api_key.delete",),
     ("PATCH", "/api/me/api-keys/{key_id}/active"): ("api_key.enable", "api_key.disable"),
     ("POST", "/api/me/sessions/revoke-all"): ("auth.sessions_revoke",),
+    ("POST", "/api/orgs"): ("org.create",),
+    ("DELETE", "/api/orgs/{org_id}"): ("org.delete",),
+    ("PUT", "/api/orgs/{org_id}"): ("org.update",),
+    ("POST", "/api/orgs/{org_id}/members"): ("org.member_add",),
+    ("DELETE", "/api/orgs/{org_id}/members/{user_id}"): ("org.member_remove",),
+    ("PATCH", "/api/orgs/{org_id}/members/{user_id}"): ("org.member_role_change",),
     ("POST", "/api/orgs/{org_id}/reviews/approve"): ("review_log:approved",),
     ("POST", "/api/orgs/{org_id}/reviews/reject"): ("review_log:rejected",),
     ("POST", "/api/skills/{skill_id}/publish"): ("review_log:submitted",),
@@ -302,13 +308,6 @@ EXEMPT: dict[Route, str] = {
 }
 
 KNOWN_GAPS: dict[Route, Gap] = {
-    # 3 organizations
-    ("POST", "/api/orgs"): Gap("3 organizations", "org.create"),
-    ("DELETE", "/api/orgs/{org_id}"): Gap("3 organizations", "org.delete"),
-    ("PUT", "/api/orgs/{org_id}"): Gap("3 organizations", "org.update"),
-    ("POST", "/api/orgs/{org_id}/members"): Gap("3 organizations", "org.member_add"),
-    ("DELETE", "/api/orgs/{org_id}/members/{user_id}"): Gap("3 organizations", "org.member_remove"),
-    ("PATCH", "/api/orgs/{org_id}/members/{user_id}"): Gap("3 organizations", "org.member_role_change"),
     # 4 channels and credentials
     ("POST", "/api/channels"): Gap("4 channels and credentials", "channel.create"),
     ("DELETE", "/api/channels/{channel_id}"): Gap("4 channels and credentials", "channel.delete"),
