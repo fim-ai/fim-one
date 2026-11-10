@@ -403,12 +403,14 @@ AUDITED_READS: dict[Route, tuple[str, ...]] = {
     ("GET", "/api/admin/export/full-backup"): ("export.full_backup",),
     ("GET", "/api/admin/export/users"): ("export.users",),
     ("GET", "/api/admin/model-config/export"): ("model_config.export",),
+    # A sign-in through a provider's redirect, and the account it may create.
+    ("GET", "/api/auth/oauth/{provider_name}/callback"): (LOGIN, "auth.oauth_signup"),
 }
 
 # Read routes and other entry points that should leave a record and do not yet.
 KNOWN_NON_ROUTE_GAPS: dict[str, Gap] = {
-    "OAuth callback: sign-in, first sign-in creating the account, linking": Gap(
-        "1 sign-in methods", "auth.login / auth.oauth_signup / auth.oauth_bind"
+    "OAuth callback: linking a provider to the signed-in account": Gap(
+        "2 account security", "auth.oauth_bind"
     ),
     "export of one's own data, a conversation, a workflow's runs": Gap(
         "8 exports and views", "export.own_data / export.conversation / export.workflow_runs"

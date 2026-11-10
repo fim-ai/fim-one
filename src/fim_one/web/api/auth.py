@@ -143,15 +143,22 @@ async def _record_login(
     user: User | None,
     *,
     success: bool,
+    method: str,
     failure_reason: str | None = None,
     email: str | None = None,
 ) -> None:
-    """Record a login attempt in login_history for security auditing."""
+    """Record a login attempt in login_history for security auditing.
+
+    *method* is how it was attempted (``password``, ``email_code``,
+    ``oauth:<provider>``); the 2FA step records the method of the sign-in
+    it completes.
+    """
     await audit.record_login(
         user_id=user.id if user else None,
         username=user.username if user else None,
         email=user.email if user else email,
         success=success,
+        method=method,
         failure_reason=failure_reason,
         request=RequestMeta(
             ip=request.client.host if request.client else None,
@@ -392,21 +399,21 @@ async def login(
         select(User).options(selectinload(User.oauth_bindings)).where(User.email == body.email)
     )
     if user is None:
-        await _record_login(db, request, None, success=False, failure_reason="user_not_found", email=body.email)
+        await _record_login(db, request, None, method="password", success=False, failure_reason="user_not_found", email=body.email)
         raise AppError("invalid_credentials", status_code=401)
 
     if user.password_hash is None or not await verify_password_async(body.password, user.password_hash):
-        await _record_login(db, request, user, success=False, failure_reason="wrong_password")
+        await _record_login(db, request, user, method="password", success=False, failure_reason="wrong_password")
         raise AppError("invalid_credentials", status_code=401)
 
     if not user.is_active:
-        await _record_login(db, request, user, success=False, failure_reason="account_disabled")
+        await _record_login(db, request, user, method="password", success=False, failure_reason="account_disabled")
         raise AppError("account_disabled", status_code=403)
 
     # 2FA check: if TOTP is enabled, return a temp token instead of full auth
     if user.totp_enabled:
-        temp_token = _create_2fa_temp_token(user.id)
-        await _record_login(db, request, user, success=True, failure_reason="2fa_pending")
+        temp_token = _create_2fa_temp_token(user.id, method="password")
+        await _record_login(db, request, user, method="password", success=True, failure_reason="2fa_pending")
         return JSONResponse(content={"requires_2fa": True, "temp_token": temp_token})
 
     access = create_access_token(user.id, user.email)
@@ -418,7 +425,7 @@ async def login(
     )
     await db.commit()
 
-    await _record_login(db, request, user, success=True)
+    await _record_login(db, request, user, method="password", success=True)
 
     # Reload with oauth_bindings (commit expires loaded attributes)
     result = await db.execute(
@@ -489,11 +496,11 @@ async def login_with_code(
         select(User).options(selectinload(User.oauth_bindings)).where(User.email == body.email)
     )
     if user is None:
-        await _record_login(db, request, None, success=False, failure_reason="email_not_registered", email=body.email)
+        await _record_login(db, request, None, method="email_code", success=False, failure_reason="email_not_registered", email=body.email)
         raise AppError("email_not_registered", status_code=404)
 
     if not user.is_active:
-        await _record_login(db, request, user, success=False, failure_reason="account_disabled")
+        await _record_login(db, request, user, method="email_code", success=False, failure_reason="account_disabled")
         raise AppError("account_disabled", status_code=403)
 
     # Find the latest unexpired, unverified code for this email+purpose
@@ -510,21 +517,21 @@ async def login_with_code(
     verif = verif_result.scalar_one_or_none()
 
     if verif is None:
-        await _record_login(db, request, user, success=False, failure_reason="verification_code_expired")
+        await _record_login(db, request, user, method="email_code", success=False, failure_reason="verification_code_expired")
         raise AppError("verification_code_expired")
 
     if verif.expires_at.replace(tzinfo=UTC) < datetime.now(UTC):
-        await _record_login(db, request, user, success=False, failure_reason="verification_code_expired")
+        await _record_login(db, request, user, method="email_code", success=False, failure_reason="verification_code_expired")
         raise AppError("verification_code_expired")
 
     if verif.attempts >= VERIFICATION_MAX_ATTEMPTS:
-        await _record_login(db, request, user, success=False, failure_reason="verification_code_too_many_attempts")
+        await _record_login(db, request, user, method="email_code", success=False, failure_reason="verification_code_too_many_attempts")
         raise AppError("verification_code_too_many_attempts")
 
     if verif.code != body.code:
         verif.attempts += 1
         await db.commit()
-        await _record_login(db, request, user, success=False, failure_reason="verification_code_invalid")
+        await _record_login(db, request, user, method="email_code", success=False, failure_reason="verification_code_invalid")
         raise AppError("verification_code_invalid")
 
     # Mark as verified
@@ -535,8 +542,8 @@ async def login_with_code(
     # the second factor.
     if user.totp_enabled:
         await db.commit()
-        temp_token = _create_2fa_temp_token(user.id)
-        await _record_login(db, request, user, success=True, failure_reason="2fa_pending")
+        temp_token = _create_2fa_temp_token(user.id, method="email_code")
+        await _record_login(db, request, user, method="email_code", success=True, failure_reason="2fa_pending")
         return JSONResponse(content={"requires_2fa": True, "temp_token": temp_token})
 
     # Issue tokens (same pattern as /login)
@@ -549,7 +556,7 @@ async def login_with_code(
     )
     await db.commit()
 
-    await _record_login(db, request, user, success=True)
+    await _record_login(db, request, user, method="email_code", success=True)
 
     # Reload with oauth_bindings (commit expires loaded attributes)
     result = await db.execute(
@@ -1552,14 +1559,19 @@ _2FA_MAX_FAILURES = 5
 _2FA_FAILURE_WINDOW_MINUTES = 15
 
 
-def _create_2fa_temp_token(user_id: str) -> str:
-    """Create a short-lived JWT for 2FA verification step."""
+def _create_2fa_temp_token(user_id: str, *, method: str | None = None) -> str:
+    """Create a short-lived JWT for 2FA verification step.
+
+    *method* is how the first step was passed (``password``, ``email_code``,
+    ``oauth:<provider>``); the sign-in record of the second step repeats it.
+    """
     from fim_one.web.auth import ALGORITHM, SECRET_KEY
 
     now = datetime.now(UTC)
     payload = {
         "sub": user_id,
         "purpose": "2fa_verify",
+        **({"method": method} if method else {}),
         "exp": now + timedelta(minutes=_2FA_TEMP_TOKEN_EXPIRE_MINUTES),
         "iat": now,
     }
@@ -1583,6 +1595,16 @@ def _decode_2fa_temp_token(token: str) -> str:
     if not user_id:
         raise AppError("2fa_token_invalid", status_code=401)
     return str(user_id)
+
+
+def _2fa_token_method(token: str) -> str:
+    """How the sign-in a (verified) 2FA temp token belongs to was started.
+
+    A token issued before the claim existed says nothing; such a sign-in is
+    recorded as ``unknown``.
+    """
+    claims = _jwt.decode(token, options={"verify_signature": False})
+    return str(claims.get("method") or "unknown")
 
 
 def _generate_backup_codes(count: int = 10) -> list[str]:
@@ -1706,6 +1728,8 @@ async def verify_2fa_login(
 ) -> TokenResponse:
     """Complete login with 2FA verification using TOTP code or backup code."""
     user_id = _decode_2fa_temp_token(body.temp_token)
+    # The record of this step names the sign-in it completes.
+    method = _2fa_token_method(body.temp_token)
 
     result = await db.execute(
         select(User).options(selectinload(User.oauth_bindings)).where(User.id == user_id)
@@ -1755,7 +1779,7 @@ async def verify_2fa_login(
             user.totp_backup_codes = json.dumps(stored_codes)
 
     if not code_valid:
-        await _record_login(db, request, user, success=False, failure_reason="2fa_code_invalid")
+        await _record_login(db, request, user, method=method, success=False, failure_reason="2fa_code_invalid")
         raise AppError("2fa_code_invalid", status_code=401)
 
     # Issue tokens (same as normal login)
@@ -1768,7 +1792,7 @@ async def verify_2fa_login(
     )
     await db.commit()
 
-    await _record_login(db, request, user, success=True)
+    await _record_login(db, request, user, method=method, success=True)
 
     # Reload with oauth_bindings (commit expires loaded attributes)
     result = await db.execute(

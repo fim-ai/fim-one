@@ -576,7 +576,8 @@
       "workflow__cleanup_runs": "Clean Up Workflow Runs",
       "workflow_template__create": "Create Workflow Template",
       "workflow_template__delete": "Delete Workflow Template",
-      "workflow_template__update": "Update Workflow Template"
+      "workflow_template__update": "Update Workflow Template",
+      "auth__oauth_signup": "Sign Up via OAuth"
     },
     "detailDialogTitle": "Audit Detail",
     "filterDateFrom": "From",

@@ -25,7 +25,7 @@ from unittest.mock import patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient, Response
-from sqlalchemy import event, select
+from sqlalchemy import event, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import fim_one.db.models  # noqa: F401
@@ -141,14 +141,15 @@ class World:
 
     async def events(self, action: str | None = None) -> list[AuditLog]:
         async with self.factory() as db:
-            query = select(AuditLog).order_by(AuditLog.created_at, AuditLog.id)
+            # In the order written: timestamps have one-second resolution here.
+            query = select(AuditLog).order_by(text("rowid"))
             if action is not None:
                 query = query.where(AuditLog.action == action)
             return list((await db.execute(query)).scalars().all())
 
     async def logins(self) -> list[LoginHistory]:
         async with self.factory() as db:
-            query = select(LoginHistory).order_by(LoginHistory.created_at, LoginHistory.id)
+            query = select(LoginHistory).order_by(text("rowid"))
             return list((await db.execute(query)).scalars().all())
 
     async def reviews(self) -> list[ReviewLog]:

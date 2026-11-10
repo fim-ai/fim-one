@@ -18,6 +18,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from fim_one.core.audit import actions
+from fim_one.core.audit import writer as audit
+from fim_one.core.audit.events import Actor
 from fim_one.db import get_session
 from fim_one.web.exceptions import AppError
 from fim_one.web.api.admin import SETTING_REGISTRATION_ENABLED, SETTING_REGISTRATION_MODE
@@ -315,13 +318,38 @@ async def _handle_bind(
     )
 
 
+async def _record_sign_in(
+    db: AsyncSession, user: User, method: str, *, failure_reason: str | None = None
+) -> None:
+    """Add a successful sign-in of *user* to the session; the caller commits.
+
+    A provider sign-in that still owes the second factor is recorded as the
+    password sign-in is: successful, with ``2fa_pending`` as the reason.
+    """
+    await audit.record_login(
+        user_id=user.id,
+        username=user.username,
+        email=user.email,
+        success=True,
+        method=method,
+        failure_reason=failure_reason,
+        db=db,
+    )
+
+
 async def _handle_login(
     db: AsyncSession,
     user_info: OAuthUserInfo,
     provider_name: str,
     frontend_url: str,
 ) -> RedirectResponse:
-    """Handle the standard OAuth login flow (existing logic, unchanged)."""
+    """Handle the standard OAuth login flow.
+
+    Every outcome that names an account leaves a sign-in record with the
+    method ``oauth:<provider>``; the caller's address comes from the
+    request being served.
+    """
+    method = f"oauth:{user_info.provider}"
     # --- Find or create user via OAuth binding ---
     # 1. Look up by (provider, oauth_id) in bindings table
     binding_result = await db.execute(
@@ -384,6 +412,16 @@ async def _handle_login(
                     provider_name,
                     user_info.email,
                 )
+                await audit.record_login(
+                    user_id=None,
+                    username=None,
+                    email=user_info.email,
+                    success=False,
+                    method=method,
+                    failure_reason="registration_disabled",
+                    db=db,
+                )
+                await db.commit()
                 return RedirectResponse(
                     url=f"{frontend_url}/auth/callback?error=registration_disabled",
                     status_code=302,
@@ -418,6 +456,17 @@ async def _handle_login(
             )
             db.add(user)
             await db.flush()
+            # The account exists from this moment; the record is committed
+            # with it.
+            await audit.record(
+                actions.AUTH_OAUTH_SIGNUP,
+                actor=Actor(user_id=user.id, label=user.username or user.email, kind="user"),
+                target_type="user",
+                target_id=user.id,
+                target_label=user.username or user.email,
+                detail=f"provider={user_info.provider}",
+                db=db,
+            )
 
         # Create binding for this user
         new_binding = UserOAuthBinding(
@@ -446,11 +495,12 @@ async def _handle_login(
     if user.totp_enabled:
         from fim_one.web.api.auth import _create_2fa_temp_token
 
+        await _record_sign_in(db, user, method, failure_reason="2fa_pending")
         await db.commit()
         return RedirectResponse(
             url=(
                 f"{frontend_url}/auth/callback"
-                f"#requires_2fa=1&temp_token={_create_2fa_temp_token(user.id)}"
+                f"#requires_2fa=1&temp_token={_create_2fa_temp_token(user.id, method=method)}"
             ),
             status_code=302,
         )
@@ -464,6 +514,7 @@ async def _handle_login(
     # token rotation for OAuth users (the hash comparison would never match).
     user.refresh_token = hash_refresh_token(jwt_refresh)
     user.refresh_token_expires_at = datetime.now(UTC) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    await _record_sign_in(db, user, method)
     await db.commit()
 
     # Reload with oauth_bindings for response serialization

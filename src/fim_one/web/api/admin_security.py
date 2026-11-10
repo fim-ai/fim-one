@@ -35,6 +35,9 @@ class LoginHistoryItem(BaseModel):
     user_agent: str | None = None
     success: bool
     failure_reason: str | None = None
+    # ``password``, ``email_code`` or ``oauth:<provider>``; empty on rows
+    # written before the method was recorded.
+    method: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

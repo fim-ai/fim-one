@@ -125,6 +125,12 @@ ADMIN_ACTIONS: tuple[str, ...] = (
 # A user deleting their own account.
 ACCOUNT_SELF_DELETE = "account.self_delete"
 
+# -- Signing in ---------------------------------------------------------------
+# Sign-in attempts themselves are rows of ``login_history`` (with their
+# method), not events here.
+# A first sign-in through an OAuth provider created the account.
+AUTH_OAUTH_SIGNUP = "auth.oauth_signup"
+
 ACTIONS: frozenset[str] = frozenset(ADMIN_ACTIONS) | frozenset(
     value
     for name, value in dict(globals()).items()

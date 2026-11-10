@@ -435,9 +435,15 @@ class TestTheExistingWritersGoThroughIt:
         )
         user = User(id="u-1", email="a@x.io", username="alice")
         async with factory() as db:
-            await _record_login(db, request, user, success=True)  # type: ignore[arg-type]
+            await _record_login(db, request, user, method="password", success=True)  # type: ignore[arg-type]
             await _record_login(  # type: ignore[arg-type]
-                db, request, None, success=False, failure_reason="user_not_found", email="z@x.io"
+                db,
+                request,
+                None,
+                method="password",
+                success=False,
+                failure_reason="user_not_found",
+                email="z@x.io",
             )
 
         async with factory() as s:

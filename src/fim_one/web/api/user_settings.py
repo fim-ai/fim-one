@@ -233,6 +233,7 @@ async def list_my_sessions(
             user_agent=row.user_agent,
             success=row.success,
             failure_reason=row.failure_reason,
+            method=row.method,
             created_at=row.created_at.isoformat() if row.created_at else "",
         )
         for row in rows
