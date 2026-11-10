@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
@@ -132,23 +133,29 @@ _throttle = RefusalThrottle()
 # Kinds with a summary already scheduled.
 _summary_pending: set[str] = set()
 
-_LONGEST_PLAIN_SEGMENT = 16
-_LONGEST_PATH = 200
+# How much of a refused request's path is kept: the part that names an area
+# of the API. Route names here are lower-case words.
+_KEPT_SEGMENTS = 3
+_ROUTE_WORD = re.compile(r"[a-z][a-z0-9_-]{0,31}")
 
 
 def safe_path(path: str) -> str:
     """A request path as it may be stored for a refused request.
 
-    A path can carry a secret (the deprecated trigger route has the key in
-    it) and nothing has matched it to a route yet, so no segment longer
-    than a word is kept: ids and keys alike are written ``***``. What is
-    left says which part of the API was probed.
+    Nothing has matched the path to a route yet, and a path can carry a
+    secret of any length (the deprecated trigger route has the key in it;
+    a short password is as likely there as a long key). Only the first
+    three segments are kept, and each only when it looks like the name of
+    a route; whatever else there was is written ``…``. That still says
+    which part of the API was probed.
     """
-    segments = [
-        segment if len(segment) <= _LONGEST_PLAIN_SEGMENT else "***"
-        for segment in path.split("?", 1)[0].split("/")
-    ]
-    return "/".join(segments)[:_LONGEST_PATH]
+    segments = [segment for segment in path.split("?", 1)[0].split("/") if segment]
+    kept = []
+    for segment in segments[:_KEPT_SEGMENTS]:
+        if not _ROUTE_WORD.fullmatch(segment):
+            break
+        kept.append(segment)
+    return "/" + "/".join(kept) + ("/…" if len(kept) < len(segments) else "")
 
 
 async def write_summary(action: str) -> bool:

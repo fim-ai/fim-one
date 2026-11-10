@@ -179,10 +179,23 @@ class TestABlockedAddress:
             await world.call("GET", f"/api/agents/{resource}?token=in-the-query", expect=403)
 
         first, second = await world.events("security.ip_blocked")
-        assert first.detail == "POST /api/workflows/trigger/***"
-        assert second.detail == "GET /api/agents/***"
+        assert first.detail == "POST /api/workflows/trigger/…"
+        assert second.detail == "GET /api/agents/…"
         world.assert_absent(first, key, key[:12])
         world.assert_absent(second, resource, "in-the-query")
+
+    async def test_a_short_secret_in_the_path_is_not_recorded_either(self, world: World) -> None:
+        """Only long segments were cut: a short key or password in the
+        path, or one where a route name is expected, was kept."""
+        with _blocked((CLIENT_IP, "deny")):
+            await world.call("POST", "/api/workflows/trigger/hunter2", expect=403, json={})
+            refusals._throttle.reset()
+            await world.call("GET", "/api/auth/x/Passw0rd/y%2FS3cret", expect=403)
+            refusals._throttle.reset()
+            await world.call("GET", "/api/S3cret", expect=403)
+
+        details = [row.detail for row in await world.events("security.ip_blocked")]
+        assert details == ["POST /api/workflows/trigger/…", "GET /api/auth/x/…", "GET /api/…"]
 
     async def test_an_allowed_request_records_nothing(self, world: World) -> None:
         alice = await world.user("alice")
