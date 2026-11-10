@@ -433,7 +433,7 @@ def create_app() -> FastAPI:
     )
 
     from fim_one.core.audit import actions as audit_actions
-    from fim_one.core.audit.refusals import record_refusal
+    from fim_one.core.audit.refusals import record_refusal, safe_path
 
     _ip_rule_cache = RuleCache()
 
@@ -452,7 +452,7 @@ def create_app() -> FastAPI:
             await record_refusal(
                 audit_actions.SECURITY_IP_BLOCKED,
                 source=client_ip,
-                detail=f"{request.method} {request.url.path}",
+                detail=f"{request.method} {safe_path(request.url.path)}",
             )
             return JSONResponse(
                 status_code=403,

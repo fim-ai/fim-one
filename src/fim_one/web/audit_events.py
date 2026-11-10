@@ -154,7 +154,8 @@ async def record_unpublish_by_other(
     resource still names its organization.
     """
     owner_id = getattr(resource, "user_id", None)
-    if owner_id == user.id:
+    if owner_id == user.id or not getattr(resource, "org_id", None):
+        # The owner's own, or nothing was published: nothing was taken back.
         return
     await record_resource(
         db, user, action, resource_type, resource, detail=f"owner={owner_id}"

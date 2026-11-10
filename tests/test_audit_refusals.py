@@ -108,6 +108,23 @@ class TestABlockedAddress:
 
         await world.one("security.ip_blocked", actor=None, outcome="denied")
 
+    async def test_a_key_or_an_id_in_the_path_is_not_recorded(self, world: World) -> None:
+        """The deprecated trigger route has the key in its path, and the
+        refusal comes before any route is matched."""
+        key = "wf_3CDsrGZhq-a_real-looking_key-0123456789abcdefghi"
+        resource = "03cc1615-6573-43c1-ba2e-12fed03ecef5"
+
+        with _blocked((CLIENT_IP, "deny")):
+            await world.call("POST", f"/api/workflows/trigger/{key}", expect=403, json={})
+            refusals._throttle.reset()
+            await world.call("GET", f"/api/agents/{resource}?token=in-the-query", expect=403)
+
+        first, second = await world.events("security.ip_blocked")
+        assert first.detail == "POST /api/workflows/trigger/***"
+        assert second.detail == "GET /api/agents/***"
+        world.assert_absent(first, key, key[:12])
+        world.assert_absent(second, resource, "in-the-query")
+
     async def test_an_allowed_request_records_nothing(self, world: World) -> None:
         alice = await world.user("alice")
 

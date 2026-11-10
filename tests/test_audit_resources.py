@@ -600,6 +600,18 @@ class TestUnpublishingSomeoneElsesResource:
         (review,) = await world.reviews()
         assert (review.action, review.actor_id, review.org_id) == ("unpublished", alice.id, acme.id)
 
+    async def test_a_platform_administrator_pressing_unpublish_on_a_personal_resource(
+        self, world: World, alice: Any
+    ) -> None:
+        """Nothing was published, so nothing was taken back: no record."""
+        root = await world.user("root", admin=True)
+        agent_id = await _create(world, "agent", alice)
+
+        await world.call("POST", f"/api/agents/{agent_id}/unpublish", by=root)
+
+        assert await world.events("agent.unpublish_by_admin") == []
+        assert await world.reviews() == []
+
     async def test_the_owner_unpublishing_their_own_is_in_the_review_trail_only(
         self, world: World, alice: Any
     ) -> None:

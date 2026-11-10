@@ -34,6 +34,7 @@ __all__ = [
     "WINDOW_SECONDS",
     "RefusalThrottle",
     "record_refusal",
+    "safe_path",
 ]
 
 logger = logging.getLogger(__name__)
@@ -114,6 +115,24 @@ class RefusalThrottle:
 
 
 _throttle = RefusalThrottle()
+
+_LONGEST_PLAIN_SEGMENT = 16
+_LONGEST_PATH = 200
+
+
+def safe_path(path: str) -> str:
+    """A request path as it may be stored for a refused request.
+
+    A path can carry a secret (the deprecated trigger route has the key in
+    it) and nothing has matched it to a route yet, so no segment longer
+    than a word is kept: ids and keys alike are written ``***``. What is
+    left says which part of the API was probed.
+    """
+    segments = [
+        segment if len(segment) <= _LONGEST_PLAIN_SEGMENT else "***"
+        for segment in path.split("?", 1)[0].split("/")
+    ]
+    return "/".join(segments)[:_LONGEST_PATH]
 
 
 async def record_refusal(
