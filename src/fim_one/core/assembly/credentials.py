@@ -381,7 +381,7 @@ def _address_private(server: Any) -> AssemblyRefusal:
         MCP_SERVER_ADDRESS_PRIVATE,
         403,
         f"MCP server '{_name(server)}' can only be used by its owner: its {where} "
-        "contain a credential and fallback to the owner's is disabled. Saving your own "
+        "may contain a credential and fallback to the owner's is disabled. Saving your own "
         "credentials does not change that; ask the owner to move the credential into "
         f"{'an environment variable' if where == 'launch arguments' else 'a header'} "
         "or to allow fallback.",

@@ -15,8 +15,11 @@ passed through before they quote a URL.
 The classification is by shape, not by knowledge of the server:
 
 - a URL carries a secret when it has user-info, a query string or a
-  fragment. A secret written as a path segment (``/mcp/3f9c…/sse``) is not
-  recognised: nothing tells it from an ordinary path;
+  fragment, a path segment shaped like a credential (a UUID, a long hex or
+  mixed string, a known token prefix) or a ``;name=value`` path parameter.
+  The path part is a heuristic: a short or worded secret segment
+  (``/mcp/hunter2/sse``) is not recognised, and an opaque id that is no
+  secret is;
 - a launch argument carries a secret when it matches one of the shapes
   listed at :func:`launch_args_carry_secret`. A secret passed as a bare
   positional argument with no known prefix, or after a flag whose name says
@@ -34,7 +37,7 @@ import re
 import traceback
 from collections.abc import Sequence
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 __all__ = [
     "SECRET_NAME_WORDS",
@@ -44,6 +47,7 @@ __all__ = [
     "strip_url_secrets",
     "traceback_without_url_secrets",
     "url_carries_secret",
+    "url_secret_reasons",
 ]
 
 # A URL inside free text: scheme://… up to white space. A URL has no white
@@ -156,24 +160,96 @@ _BEARER = re.compile(r"(?i)(?<![A-Za-z0-9_\-])bearer(?:\s+\S|$)")
 _ASSIGNMENT = re.compile(r"^([A-Za-z_][A-Za-z0-9_.\-]*)\s*[=:]\s*(\S.*)$", re.DOTALL)
 
 
-def url_carries_secret(url: str | None) -> bool:
-    """Whether *url* has user-info, a query string or a fragment.
+# Why a URL is taken to carry a secret (:func:`url_secret_reasons`).
+URL_USER_INFO = "url_user_info"
+URL_QUERY = "url_query"
+URL_FRAGMENT = "url_fragment"
+URL_PATH_SEGMENT = "url_path_segment"
+URL_PATH_PARAMETER = "url_path_parameter"
+URL_TOKEN = "url_token"
+URL_UNPARSEABLE = "url_unparseable"
 
-    Each of them is where a credential is put in a URL, and none of them
-    can be told from one by looking, so any of them counts. A URL that
-    cannot be parsed counts as well. The path is not examined.
+_UUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
+_LONG_HEX = re.compile(r"[0-9a-fA-F]{16,}")
+_LONG_ID = re.compile(r"[A-Za-z0-9_\-]{20,}")
+
+
+def _segment_is_token(segment: str) -> bool:
+    """Whether a path segment (percent-decoded) is shaped like a credential.
+
+    A known token shape, a UUID, sixteen or more hex digits, or twenty or
+    more of ``[A-Za-z0-9_-]`` in which letters and digits are mixed. That is
+    how hosted MCP endpoints write a per-user secret into the path
+    (``/api/mcp/s/<secret>/mcp``, ``/<32 hex>/sse``); the fixed paths of the
+    well-known servers (``/mcp``, ``/sse``, ``/v1/sse``) are none of them.
+    """
+    if not segment:
+        return False
+    if _TOKEN_SHAPES.match(segment) or _UUID.fullmatch(segment) or _LONG_HEX.fullmatch(segment):
+        return True
+    if not _LONG_ID.fullmatch(segment):
+        return False
+    # Letters and digits mixed within one run: ``aB3dE5gH7jK9mN1pQ3sT5``,
+    # ``ab12cd34-ef56gh78-…``. Words joined by dashes with a version among
+    # them (``streamable-http-transport-v2``) are a name, not a token.
+    return any(
+        len(run) >= 8 and re.search(r"[A-Za-z]", run) and re.search(r"[0-9]", run)
+        for run in re.split(r"[-_]", segment)
+    )
+
+
+def _segment_reason(raw_segment: str) -> str | None:
+    """Why one raw path segment counts, or ``None``."""
+    segment = unquote(raw_segment)
+    name, has_parameters, parameters = segment.partition(";")
+    # ``;name=value`` path parameters, and a ``?`` or ``#`` that was
+    # percent-encoded into the path (``/mcp%3Ftoken=…``).
+    if (has_parameters and "=" in parameters) or re.search(r"[?#]", segment):
+        return URL_PATH_PARAMETER
+    if _segment_is_token(name):
+        return URL_PATH_SEGMENT
+    return None
+
+
+def url_secret_reasons(url: str | None) -> list[str]:
+    """Why *url* is taken to carry a secret; empty when it is not.
+
+    - user-info, a query string or a fragment: each is where a credential
+      is put in a URL, and none can be told from one by looking;
+    - a path segment shaped like a credential (:func:`_segment_is_token`),
+      a ``;name=value`` path parameter, or a known token shape anywhere;
+    - a URL that cannot be parsed.
+
+    The path rules are a heuristic: an opaque segment may be an account or
+    a workspace id, and a short or worded secret segment is not recognised.
     """
     if not url or not url.strip():
-        return False
+        return []
     try:
         parts = urlsplit(url.strip())
         # ``.port`` is what raises for a malformed network location.
         _ = parts.port
     except ValueError:
-        return True
-    return bool(parts.username or parts.password or "@" in parts.netloc) or bool(
-        parts.query or parts.fragment
-    )
+        return [URL_UNPARSEABLE]
+    reasons: list[str] = []
+    if parts.username or parts.password or "@" in parts.netloc:
+        reasons.append(URL_USER_INFO)
+    if parts.query:
+        reasons.append(URL_QUERY)
+    if parts.fragment:
+        reasons.append(URL_FRAGMENT)
+    for raw_segment in parts.path.split("/"):
+        reason = _segment_reason(raw_segment)
+        if reason is not None and reason not in reasons:
+            reasons.append(reason)
+    if not reasons and _TOKEN_SHAPES.search(unquote(url)):
+        reasons.append(URL_TOKEN)
+    return reasons
+
+
+def url_carries_secret(url: str | None) -> bool:
+    """Whether *url* is taken to carry a secret (:func:`url_secret_reasons`)."""
+    return bool(url_secret_reasons(url))
 
 
 def _names_a_secret(name: str) -> bool:

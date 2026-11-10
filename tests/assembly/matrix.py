@@ -899,7 +899,7 @@ def _classify(error: str | None) -> str:
         return "resource_not_found"
     if "requires your own" in text and "credentials" in text:
         return "credential_required"
-    if "can only be used by its owner: its" in text and "contain a credential" in text:
+    if "can only be used by its owner: its" in text and "may contain a credential" in text:
         return "mcp_server_address_private"
     if "is disabled" in text:
         return "resource_inactive"

@@ -12,6 +12,7 @@ from fim_one.core.assembly.mcp_address import (
     launch_args_carry_secret,
     strip_url_secrets,
     url_carries_secret,
+    url_secret_reasons,
 )
 
 
@@ -44,12 +45,97 @@ class TestUrl:
             "https://host.example:8443/mcp/sse",
             "http://[::1]:8080/mcp",
             "https://host.example/mcp?",  # an empty query string holds nothing
-            # Known miss: a secret written as a path segment is not recognised.
-            "https://host.example/mcp/3f9c2b7a1d5e4f60/sse",
+            # Known miss: a short or worded secret in the path is not recognised.
+            "https://host.example/mcp/hunter2/sse",
         ],
     )
     def test_a_plain_address_does_not(self, url: str | None) -> None:
         assert url_carries_secret(url) is False
+
+
+T32 = "0123456789abcdef0123456789abcdef"
+
+
+class TestUrlPath:
+    """Hosted MCP endpoints write the per-user secret into the path."""
+
+    @pytest.mark.parametrize(
+        ("url", "reason"),
+        [
+            (f"https://mcp.zapier.com/api/mcp/s/{T32}/mcp", "url_path_segment"),
+            (f"https://mcp.pipedream.net/v2/{T32}", "url_path_segment"),
+            (f"https://host.example/{T32}/sse", "url_path_segment"),
+            (f"https://mcp.make.com/api/v1/u/{T32[:16]}/sse", "url_path_segment"),  # 16 hex
+            (
+                "https://mcp.composio.dev/composio/server/3f9c1c2e-1d2a-4b6f-9a77-0d6f2b1c9e11/mcp",
+                "url_path_segment",
+            ),
+            ("https://n8n.example/mcp/aB3dE5gH7jK9mN1pQ3sT5/sse", "url_path_segment"),
+            ("https://host.example/mcp/ab12cd34-ef56gh78-ij90kl12", "url_path_segment"),
+            ("https://actions.zapier.com/mcp/sk-ak-abcdefgh12345/sse", "url_path_segment"),
+            (f"https://host.example/mcp/%30123456789abcdef{T32[:8]}", "url_path_segment"),
+            ("https://host.example/mcp;token=abc", "url_path_parameter"),
+            ("https://host.example/mcp;v=1/sse", "url_path_parameter"),
+            ("https://host.example/mcp%3Ftoken=abc", "url_path_parameter"),
+        ],
+    )
+    def test_a_token_shaped_segment_or_a_path_parameter_counts(self, url: str, reason: str) -> None:
+        assert url_secret_reasons(url) == [reason]
+        assert url_carries_secret(url) is True
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            # The documented fixed addresses of well-known remote servers.
+            "https://api.githubcopilot.com/mcp/",
+            "https://api.githubcopilot.com/mcp/x/repos/readonly",
+            "https://mcp.linear.app/sse",
+            "https://mcp.linear.app/mcp",
+            "https://mcp.notion.com/mcp",
+            "https://mcp.notion.com/sse",
+            "https://mcp.sentry.dev/mcp",
+            "https://mcp.sentry.dev/sse",
+            "https://mcp.atlassian.com/v1/sse",
+            "https://mcp.context7.com/mcp",
+            "https://docs.mcp.cloudflare.com/sse",
+            "https://bindings.mcp.cloudflare.com/sse",
+            "https://observability.mcp.cloudflare.com/sse",
+            "https://mcp.asana.com/sse",
+            "https://huggingface.co/mcp",
+            "https://hf.co/mcp",
+            "https://mcp.stripe.com",
+            "https://mcp.paypal.com/sse",
+            "https://mcp.deepwiki.com/sse",
+            "https://mcp.intercom.com/sse",
+            "https://mcp.vercel.com",
+            "https://mcp.figma.com/mcp",
+            "https://mcp.canva.com/mcp",
+            "https://mcp.supabase.com/mcp",
+            "https://mcp.neon.tech/sse",
+            "https://gitmcp.io/modelcontextprotocol/typescript-sdk",
+            "https://learn.microsoft.com/api/mcp",
+            "http://localhost:3000/mcp",
+            "http://127.0.0.1:8931/sse",
+            # Names, not tokens.
+            "https://host.example/streamable-http-transport-v2/mcp",
+            "https://host.example/api/v2/workspaces/acme-corp/mcp",
+            "https://host.example/mcp;charset",
+            "https://host.example/0123456789abcde/sse",  # 15 hex
+        ],
+    )
+    def test_fixed_addresses_and_names_do_not(self, url: str) -> None:
+        assert url_secret_reasons(url) == []
+
+    def test_the_reasons_name_each_part_once(self) -> None:
+        url = f"https://u:p@host.example/{T32}/{T32};a=b?x=1#f"
+        assert url_secret_reasons(url) == [
+            "url_user_info",
+            "url_query",
+            "url_fragment",
+            "url_path_segment",
+            "url_path_parameter",
+        ]
+        assert url_secret_reasons("http://[::1/mcp") == ["url_unparseable"]
 
 
 class TestLaunchArguments:
