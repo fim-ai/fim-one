@@ -133,6 +133,17 @@ class TestPostgreSQL(_BoundValues):
     async def test_a_list_in_an_in_list_is_bound_item_by_item(self, live_pg: LiveDatabase) -> None:
         await self._check_lists(live_pg)
 
+    async def test_a_list_longer_than_the_parameter_limit_says_what_to_write(
+        self, live_pg: LiveDatabase
+    ) -> None:
+        ids = list(range(40000))
+        in_list = f"SELECT count(*) FROM {live_pg.orders} WHERE id IN ({{{{ids}}}})"
+        text = await _query(live_pg, in_list, {"ids": ids})
+        assert text.startswith("[SQL Safety Error]")
+        assert "32767" in text and "= ANY({{list}})" in text
+        any_of = f"SELECT count(*) FROM {live_pg.orders} WHERE id = ANY({{{{ids}}}})"
+        assert json.loads(await _query(live_pg, any_of, {"ids": ids}))["rows"] == [[2]]
+
     async def test_a_list_fits_an_array_parameter(self, live_pg: LiveDatabase) -> None:
         any_of = f"SELECT id FROM {live_pg.orders} WHERE id = ANY({{{{ids}}}}) ORDER BY id"
         assert json.loads(await _query(live_pg, any_of, {"ids": [2, "1"]}))["rows"] == [[1], [2]]

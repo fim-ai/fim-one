@@ -317,6 +317,8 @@ _OPENS_IN_LIST = re.compile(r"(?<![\w$.])IN\s*\(\s*$", re.IGNORECASE)
 _OPENS_IN_LIST_WITH_NOT = re.compile(
     r"(?:(?<![\w$.])(?P<not>NOT)\s+)?(?<![\w$.])IN\s*\(\s*$", re.IGNORECASE
 )
+# The wire protocol counts a statement's parameters in 16 bits.
+_POSTGRESQL_MAX_PARAMETERS = 32767
 
 
 _AFTER_COUNT_KEYWORD = re.compile(r"(?<![\w$.])(?:LIMIT|OFFSET)\s*$", re.IGNORECASE)
@@ -436,6 +438,12 @@ def render_sql(
                 parameters.append(item)
                 written.append(f"${len(parameters)}" if style == "numeric" else "?")
         out.append(", ".join(written))
+    if style == "numeric" and len(parameters) > _POSTGRESQL_MAX_PARAMETERS:
+        raise SqlBindingError(
+            f"The query would bind {len(parameters)} values, and PostgreSQL takes at most "
+            f"{_POSTGRESQL_MAX_PARAMETERS} in one statement. For a long list write "
+            "= ANY({{list}}) instead of IN ({{list}}): the whole list is then one value."
+        )
     return "".join(out), (None if style == "literal" else parameters)
 
 

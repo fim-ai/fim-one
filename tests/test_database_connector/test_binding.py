@@ -297,6 +297,15 @@ class TestAListInAnInList:
             sql, _ = render_sql(negated, style, [[], "x"])  # type: ignore[arg-type]
             assert "id not  in ( SELECT NULL FROM DUAL WHERE 1 = 0 )" in sql
 
+    def test_more_values_than_postgresql_takes_says_so(self) -> None:
+        template = parse_sql_template(self.SQL, dialect="postgresql")
+        with pytest.raises(SqlBindingError) as refused:
+            render_sql(template, "numeric", [list(range(40000)), "x"])
+        assert "40001 values" in str(refused.value)
+        assert "32767" in str(refused.value) and "= ANY({{list}})" in str(refused.value)
+        # Just under the limit is fine.
+        assert len(render_sql(template, "numeric", [list(range(32766)), "x"])[1] or []) == 32767
+
     def test_one_value_in_an_in_list_is_one_value(self) -> None:
         template = parse_sql_template(self.SQL, dialect="postgresql")
         assert render_sql(template, "numeric", [7, "x"])[1] == [7, "x"]
