@@ -87,6 +87,8 @@
   "agent_not_found": "Agent not found.",
   "connector_ownership_denied": "You do not own connector \"{name}\".",
   "kb_ownership_denied": "You do not own knowledge base \"{name}\".",
+  "agent_connector_names_collide": "Connectors \"{first}\" and \"{second}\" would both be offered to the agent as \"{tool_name}\", so it could not tell them apart. Rename one of them or bind only one.",
+  "agent_mcp_server_names_collide": "MCP servers \"{first}\" and \"{second}\" would both offer their tools to the agent as \"{tool_name}\", so it could not tell them apart. Rename one of them or bind only one.",
   "approval_channel_denied": "The approval channel must belong to an organization you are a member of.",
   "approval_channel_type_unsupported": "This channel cannot carry approvals. Choose a Feishu app channel; webhook and email channels only deliver notifications.",
   "approval_channel_not_in_agent_org": "This agent belongs to an organization, so its approval channel must be a channel of that organization.",

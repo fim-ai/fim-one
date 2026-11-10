@@ -32,6 +32,19 @@ CONNECTOR_RESPONSE_MAX_CHARS = int(
 CONNECTOR_RESPONSE_MAX_ITEMS = int(os.environ.get("CONNECTOR_RESPONSE_MAX_ITEMS", "10"))
 
 
+def connector_tool_prefix(connector_name: str) -> str:
+    """The part of a tool name that stands for a connector called *connector_name*.
+
+    Lower-cased, every character outside ``a-z0-9`` replaced by ``_``, outer
+    underscores dropped. Two connectors whose names differ only in case,
+    punctuation or non-ASCII characters therefore get the same prefix; a
+    name with no ASCII letter or digit gives ``""``. Every place that names
+    a connector's tools goes through this function, and so does the check
+    made when connectors are bound to an agent.
+    """
+    return re.sub(r"[^a-zA-Z0-9]", "_", connector_name.lower()).strip("_")
+
+
 class ConnectorToolAdapter(BaseTool):
     """Wraps a single ConnectorAction as a BaseTool.
 
@@ -61,7 +74,7 @@ class ConnectorToolAdapter(BaseTool):
         # something a caller writes out (``None``), not something it forgets.
         on_call_complete: Callable[..., Awaitable[None]] | None,
     ) -> None:
-        safe_connector = re.sub(r"[^a-zA-Z0-9]", "_", connector_name.lower()).strip("_")
+        safe_connector = connector_tool_prefix(connector_name)
         safe_action = re.sub(r"[^a-zA-Z0-9]", "_", action_name.lower()).strip("_")
         self._name = f"{safe_connector}__{safe_action}"
         self._description = action_description or f"{action_method} {action_path}"
