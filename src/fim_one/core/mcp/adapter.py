@@ -8,10 +8,20 @@ import time
 from collections.abc import Awaitable, Callable, Coroutine
 from typing import Any
 
+from fim_one.core.assembly.mcp_address import strip_url_secrets
 from fim_one.core.tool.base import BaseTool
 from fim_one.core.tool.truncation import truncate_tool_output
 
 logger = logging.getLogger(__name__)
+
+
+class MCPCallError(RuntimeError):
+    """A call to an MCP tool failed, and its error text had to be rewritten.
+
+    Raised in place of an error whose message quoted a URL with a
+    credential in it; the message here is the original's type and text
+    with that part cut.
+    """
 
 # How much of a failed call's output is kept in its record.
 _ERROR_MESSAGE_MAX_CHARS = 500
@@ -127,11 +137,22 @@ class MCPToolAdapter(BaseTool):
             output = self._extract_text(result)
             success = not _result_is_error(result)
             if not success:
+                # An error result can quote the address it failed at.
+                output = strip_url_secrets(output) or ""
                 error_message = output[:_ERROR_MESSAGE_MAX_CHARS]
             return truncate_tool_output(output)
         except Exception as exc:
-            error_message = f"{type(exc).__name__}: {exc}"[:_ERROR_MESSAGE_MAX_CHARS]
-            raise
+            # Whoever called is shown this text (the model, the chat, a
+            # workflow step) and may not be the server's owner; the error
+            # of an HTTP transport names the server's URL, credential
+            # included. Every way a tool is offered passes through here.
+            text = str(exc)
+            safe = strip_url_secrets(text) or ""
+            error_message = f"{type(exc).__name__}: {safe}"[:_ERROR_MESSAGE_MAX_CHARS]
+            if safe == text:
+                raise
+            # The original is not chained: its message is what was cut.
+            raise MCPCallError(f"{type(exc).__name__}: {safe}") from None
         finally:
             if self._on_call_complete is not None:
                 try:

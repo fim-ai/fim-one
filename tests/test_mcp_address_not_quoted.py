@@ -244,6 +244,65 @@ class TestAConnectionThatFails:
 
 
 class TestACallThatFails:
+    async def test_the_tool_itself_raises_without_the_urls_secret(self) -> None:
+        """One tool per MCP tool, a delegate, a workflow step: all call the adapter."""
+        from fim_one.core.mcp.adapter import MCPCallError, MCPToolAdapter
+
+        recorded: list[dict[str, Any]] = []
+
+        async def _record(**call: Any) -> None:
+            recorded.append(call)
+
+        async def _call(_tool: str, _arguments: dict[str, Any]) -> Any:
+            raise _connection_error(m.SECRET_URL)
+
+        adapter = MCPToolAdapter(
+            server_name="srv",
+            tool_def={"name": "echo", "description": "echo", "inputSchema": {"type": "object"}},
+            call_fn=_call,
+        )
+        adapter.record_calls(_record, server_id="srv-1")
+
+        with pytest.raises(MCPCallError) as raised:
+            await adapter.run()
+
+        assert str(raised.value) == (
+            f"RuntimeError: Client error '401 Unauthorized' for url '{BARE_URL}'"
+        )
+        # Nothing chained that a traceback would print.
+        assert raised.value.__cause__ is None and raised.value.__suppress_context__
+        assert TOKEN not in recorded[0]["error_message"]
+
+    async def test_an_error_with_nothing_to_cut_is_raised_as_it_is(self) -> None:
+        from fim_one.core.mcp.adapter import MCPToolAdapter
+
+        async def _call(_tool: str, _arguments: dict[str, Any]) -> Any:
+            raise TimeoutError("no answer")
+
+        adapter = MCPToolAdapter(
+            server_name="srv",
+            tool_def={"name": "echo", "description": "echo", "inputSchema": {"type": "object"}},
+            call_fn=_call,
+        )
+        with pytest.raises(TimeoutError, match="no answer"):
+            await adapter.run()
+
+    async def test_an_error_result_is_returned_without_the_urls_secret(self) -> None:
+        from fim_one.core.mcp.adapter import MCPToolAdapter
+
+        async def _call(_tool: str, _arguments: dict[str, Any]) -> Any:
+            return SimpleNamespace(
+                content=[SimpleNamespace(type="text", text=f"upstream {m.SECRET_URL} said no")],
+                isError=True,
+            )
+
+        adapter = MCPToolAdapter(
+            server_name="srv",
+            tool_def={"name": "echo", "description": "echo", "inputSchema": {"type": "object"}},
+            call_fn=_call,
+        )
+        assert await adapter.run() == f"[MCP Error] upstream {BARE_URL} said no"
+
     async def test_the_mcp_tool_answers_without_the_urls_secret(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:

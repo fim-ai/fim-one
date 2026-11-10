@@ -21,7 +21,7 @@ from typing import Any, Literal
 
 from fim_one.core.tool.base import BaseTool
 
-from .adapter import MCPToolAdapter
+from .adapter import MCPCallError, MCPToolAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -264,7 +264,10 @@ class MCPServerMetaTool(BaseTool):
                 tool_name,
                 traceback_without_url_secrets(exc),
             )
-            return f"[Error] MCP call failed: {error_without_url_secrets(exc)}"
+            # The adapter has already named the original error where it
+            # had to rewrite it.
+            reason = str(exc) if isinstance(exc, MCPCallError) else error_without_url_secrets(exc)
+            return f"[Error] MCP call failed: {reason}"
 
     # ------------------------------------------------------------------
     # Helpers
