@@ -467,7 +467,8 @@ class TestWorkflowStepsHoldNoRuleOfTheirOwn:
 
     Nothing under ``core/workflow`` decides who may see a resource or reads
     the fallback switch: no visibility query, no subscription lookup, no
-    ``allow_fallback``. That covers the steps and the import check, which
+    share-state clause, no ``allow_fallback``, no owner-only predicate for
+    raw SQL. That covers the steps and the import check, which
     used to read the subscription table itself. Credentials and call
     records are gated by ``TestCredentialsAndCallRecordsLiveInTheAssemblyLayer``
     (with the workflow's own env vars as the one exception), and no step
@@ -486,6 +487,10 @@ class TestWorkflowStepsHoldNoRuleOfTheirOwn:
                 "use_clause_for",
                 "ResourceSubscription",
                 "allow_fallback",
+                # whether a subscribed resource is still shared
+                "is_shared_clause",
+                # who may run raw SQL on a database connector (its owner)
+                "db_raw_sql_tool_allowed",
             )
             for hit in _occurrences(needle, files)
         ]
