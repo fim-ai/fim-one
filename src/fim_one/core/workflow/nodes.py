@@ -1009,8 +1009,16 @@ async def _filled_json(
     async def placed(node: Any, node_schema: dict[str, Any] | None) -> Any:
         if (index := marked(node)) is not None:
             value = values[index]
-            # A variable nothing has set stays visible, as in a text.
-            return f"{{{{{names[index]}}}}}" if value is _UNFIT else value
+            if value is _UNFIT:
+                # A variable nothing has set stays visible, as in a text.
+                return f"{{{{{names[index]}}}}}"
+            if isinstance(value, str):
+                # Text takes the type declared at this place, like text
+                # filled into a field of its own: "5" for an integer is 5.
+                kinds = _declared_types(node_schema)
+                if "string" not in kinds:
+                    return _fit_text(value, next((k for k in kinds if k != "null"), None))
+            return value
         if isinstance(node, str):
             return await _filled(store, node, node_schema)
         if isinstance(node, dict):

@@ -231,6 +231,30 @@ class TestReferencesAreFilledInAtAnyDepth:
             "filter": {"limit": 3, "name": "3", "ranges": [0.5, 2]}
         }
 
+    async def test_a_bare_reference_in_a_json_template_takes_the_declared_type_too(self) -> None:
+        """``{"limit": {{s.n}}}`` with the text "5" is 5, as ``"{{s.n}}"`` alone is."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "filter": self.NESTED_SCHEMA["properties"]["filter"],
+                "ids": {"type": "array", "items": {"type": "integer"}},
+                "flags": {"type": "array", "items": {"type": "boolean"}},
+            },
+        }
+        template = {
+            "filter": '{"limit": {{s.n}}, "name": {{s.n}}, "ranges": [{{s.r}}, 2], "other": {{s.n}}}',
+            "ids": "[{{s.n}}, 2, {{s.bad}}]",
+            "flags": "[{{s.t}}]",
+        }
+        values = {"s.n": "5", "s.r": "0.5", "s.bad": "1_000", "s.t": "true"}
+        assert await _fill(template, values, schema) == {
+            # "name" is declared as text and "other" is not declared: both stay text.
+            "filter": {"limit": 5, "name": "5", "ranges": [0.5, 2], "other": "5"},
+            # Text that is not a plain whole number stays text, for the tool to judge.
+            "ids": [5, 2, "1_000"],
+            "flags": [True],
+        }
+
     async def test_with_no_schema_every_text_is_filled_in_as_text(self) -> None:
         template = {"body": {"id": "{{s.n}}", "items": ["{{s.n}}"]}, "plain": 7}
         assert await _fill(template, {"s.n": 3}, None) == {
