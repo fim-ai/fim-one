@@ -53,9 +53,8 @@ import os
 from collections.abc import Callable
 from typing import Any, Protocol, runtime_checkable
 
-from sqlalchemy import select as sa_select
-
 from fim_one.core.channels import CompletionSummary, build_channel
+from fim_one.core.channels.resolve import resolve_org_channel
 
 
 __all__ = [
@@ -79,7 +78,9 @@ class _AgentLike(Protocol):
     :class:`types.SimpleNamespace` wrapper used in the web layer when the
     code already holds a lightweight dict.  Minimum fields we read:
 
-    - ``org_id`` — used to prevent cross-org channel targeting
+    - ``org_id`` — the agent's organization; the channel must belong to it
+    - ``user_id`` — the agent's owner; for an agent with no organization
+      the channel must belong to one the owner is a member of
     - ``id`` — logging / correlation only (may be ``None``)
     - ``name`` — shown in the notification card header
     - ``model_config_json`` — dict (or falsy) holding
@@ -87,6 +88,7 @@ class _AgentLike(Protocol):
     """
 
     org_id: Any  # pragma: no cover - protocol attribute
+    user_id: Any  # pragma: no cover - protocol attribute
     id: Any  # pragma: no cover - protocol attribute
     name: Any  # pragma: no cover - protocol attribute
     model_config_json: Any  # pragma: no cover - protocol attribute
@@ -157,8 +159,9 @@ async def notify_agent_completion(
 ) -> None:
     """Fire-and-forget completion notification.
 
-    If the agent is configured for completion notifications, load the
-    target :class:`fim_one.db.models.channel.Channel`, instantiate its
+    If the agent is configured for completion notifications, resolve the
+    target :class:`fim_one.db.models.channel.Channel` inside the agent's
+    organization (:func:`resolve_org_channel`), instantiate its
     adapter, and hand off a :class:`CompletionSummary` to
     :meth:`BaseChannel.send_completion` — the adapter decides how to
     render it (Feishu card, Slack message, DingTalk markdown, ...).
@@ -168,7 +171,7 @@ async def notify_agent_completion(
     user-facing chat response.
 
     Args:
-        agent: Object exposing ``org_id``, ``id``, ``name``,
+        agent: Object exposing ``org_id``, ``user_id``, ``id``, ``name``,
             ``model_config_json``.  The ORM row or a ``SimpleNamespace``
             shim both work.
         conversation_id: ID of the conversation being notified about
@@ -200,41 +203,23 @@ async def notify_agent_completion(
             )
             return
 
-        agent_org_id = getattr(agent, "org_id", None)
-
-        # Fetch the channel in its own short-lived session.
-        from fim_one.db.models.channel import Channel
-
+        # The channel must be active and lie inside the agent's organization
+        # (for a personal agent: one its owner belongs to), the same rule an
+        # approval channel is resolved by. Looked up in a short-lived session.
         async with session_factory() as db:
-            stmt = sa_select(Channel).where(Channel.id == channel_id)
-            result = await db.execute(stmt)
-            channel_row = result.scalar_one_or_none()
+            channel_row = await resolve_org_channel(
+                db,
+                channel_id=channel_id,
+                org_id=getattr(agent, "org_id", None),
+                owner_id=getattr(agent, "user_id", None),
+            )
 
         if channel_row is None:
             logger.warning(
-                "Completion notification channel %r not found (agent=%r); "
-                "skipping",
+                "Completion notification channel %r is not usable by agent %r "
+                "(missing, inactive, or outside the agent's organization); skipping",
                 channel_id,
                 getattr(agent, "id", None),
-            )
-            return
-
-        if not channel_row.is_active:
-            logger.warning(
-                "Completion notification channel %r is inactive (agent=%r); "
-                "skipping",
-                channel_id,
-                getattr(agent, "id", None),
-            )
-            return
-
-        if agent_org_id and channel_row.org_id != agent_org_id:
-            logger.warning(
-                "Channel %r org_id=%r does not match agent org_id=%r; "
-                "skipping completion notification",
-                channel_id,
-                channel_row.org_id,
-                agent_org_id,
             )
             return
 

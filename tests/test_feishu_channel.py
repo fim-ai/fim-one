@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from fim_one.core.channels import FeishuChannel, build_channel
-from fim_one.core.channels.feishu import build_confirmation_card
+from fim_one.core.channels.feishu import build_confirmation_card, build_decided_card
 from fim_one.core.channels.registry import CHANNEL_TYPES, get_channel_class
 
 
@@ -257,8 +258,11 @@ class TestListChats:
 
         with patch("httpx.AsyncClient") as mock_async_client:
             mock_async_client.return_value = mock_client
-            with pytest.raises(RuntimeError, match="invalid app_access_token"):
+            with pytest.raises(RuntimeError) as caught:
                 await channel.list_chats()
+        # The code, not the text the remote host answered with.
+        assert "code 99991663" in str(caught.value)
+        assert "invalid app_access_token" not in str(caught.value)
 
     @pytest.mark.asyncio
     async def test_bad_credentials_raises_runtime(self) -> None:
@@ -299,6 +303,277 @@ class TestListChats:
             mock_async_client.return_value = mock_client
             items = await channel.list_chats()
         assert items == []
+
+
+# ---------------------------------------------------------------------------
+# Mentions: text from a user or a tool call cannot notify the chat
+# ---------------------------------------------------------------------------
+
+_AT_ALL = '<at id=all></at> <at user_id="all">everyone</at>'
+_LIVE_AT = re.compile(r"<\s*/?\s*at\b", re.IGNORECASE)
+
+
+def _strings(node: Any) -> list[str]:
+    if isinstance(node, str):
+        return [node]
+    if isinstance(node, dict):
+        return [text for value in node.values() for text in _strings(value)]
+    if isinstance(node, list):
+        return [text for value in node for text in _strings(value)]
+    return []
+
+
+class TestMentionsAreInert:
+    def test_completion_card(self) -> None:
+        from fim_one.core.channels import CompletionSummary
+        from fim_one.core.channels.feishu import _build_completion_card
+
+        card = _build_completion_card(
+            CompletionSummary(
+                agent_name="A",
+                duration_seconds=1,
+                tools_used=[],
+                user_message=f"hello {_AT_ALL}",
+                final_answer=f"done {_AT_ALL} 1 < 2",
+                conversation_id=None,
+                conversation_url=None,
+            )
+        )
+        texts = _strings(card)
+        assert not any(_LIVE_AT.search(text) for text in texts), texts
+        joined = " ".join(texts).replace("\u200b", "")
+        assert f"hello {_AT_ALL}" in joined
+        assert "1 < 2" in joined
+
+    def test_confirmation_and_decided_cards(self) -> None:
+        card = build_confirmation_card(
+            confirmation_id="c1",
+            title="Approve?",
+            summary=f"Agent wants to run a tool {_AT_ALL}",
+            tool_name="send<at id=all></at>",
+            tool_args_preview='{"note": "<at id=all></at>"}',
+            approver_hint="Only <at id=ou_1></at> may decide",
+        )
+        decided = build_decided_card(
+            confirmation_id="c1",
+            decision="approved",
+            tool_name="send<at id=all></at>",
+            decided_by="Eve <at id=all></at>",
+        )
+        for built in (card, decided):
+            texts = _strings(built)
+            assert not any(_LIVE_AT.search(text) for text in texts), texts
+        # The buttons still carry the request they decide.
+        assert '"confirmation_id": "c1"' in json.dumps(card)
+
+    @pytest.mark.asyncio
+    async def test_a_notice_is_sent_as_inert_text(self) -> None:
+        channel = FeishuChannel({"app_id": "cli_x", "app_secret": "s", "chat_id": "oc_x"})
+        mock_client = MagicMock()
+        mock_client.post = AsyncMock(
+            side_effect=[
+                _make_async_response({"code": 0, "tenant_access_token": "tok"}),
+                _make_async_response({"code": 0}),
+            ]
+        )
+        with patch("httpx.AsyncClient") as mock_async_client:
+            mock_async_client.return_value.__aenter__.return_value = mock_client
+            mock_async_client.return_value.__aexit__.return_value = None
+            result = await channel.send_notice(f"Title {_AT_ALL}", f"Body {_AT_ALL}")
+        assert result.ok is True
+        text = json.loads(mock_client.post.await_args_list[1].kwargs["json"]["content"])["text"]
+        assert not _LIVE_AT.search(text)
+        assert text.replace("\u200b", "") == f"Title {_AT_ALL}\n\nBody {_AT_ALL}"
+
+
+# ---------------------------------------------------------------------------
+# base_url: only Feishu's own origins, or one the operator listed
+# ---------------------------------------------------------------------------
+
+_BASE = {"app_id": "cli_x", "app_secret": "s", "chat_id": "oc_x", "encrypt_key": "k"}
+_ENV = "FEISHU_ALLOWED_BASE_URLS"
+
+
+class TestBaseUrl:
+    @pytest.mark.parametrize(
+        "base_url",
+        [
+            None,
+            "",
+            "https://open.feishu.cn",
+            "https://open.feishu.cn/",
+            "https://open.larksuite.com",
+        ],
+    )
+    def test_official_origins_need_no_configuration(
+        self, base_url: str | None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv(_ENV, raising=False)
+        config = dict(_BASE) if base_url is None else {**_BASE, "base_url": base_url}
+        assert FeishuChannel.config_error(config) is None
+        assert FeishuChannel(config)._base_url() in (
+            "https://open.feishu.cn",
+            "https://open.larksuite.com",
+        )
+
+    @pytest.mark.parametrize(
+        "base_url",
+        [
+            "http://open.feishu.cn",
+            "http://127.0.0.1:8080",
+            "https://internal.example",
+            "https://open.feishu.cn.evil.example",
+            "https://open.feishu.cn@evil.example",
+            "https://user:pw@open.feishu.cn",
+            "https://:pw@open.feishu.cn",
+            "https://open.feishu.cn/redirect",
+            "https://open.feishu.cn?x=1",
+            "https://open.feishu.cn#x",
+            "https://open.feishu.cn:8443",
+            "open.feishu.cn",
+            "https://",
+            "https://open.feishu.cn\n.evil.example",
+            123,
+            ["https://open.feishu.cn"],
+        ],
+    )
+    def test_any_other_value_is_refused_on_save_and_on_use(
+        self, base_url: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv(_ENV, raising=False)
+        config = {**_BASE, "base_url": base_url}
+        assert FeishuChannel.config_error(config) == "feishu_channel_base_url_not_allowed"
+        with pytest.raises(RuntimeError, match=_ENV):
+            FeishuChannel(config)._base_url()
+
+    def test_the_operator_can_list_a_private_deployment(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv(
+            _ENV, " https://open.feishu.corp.example/ , https://lark.corp.example:8443"
+        )
+        for base_url, origin in (
+            ("https://open.feishu.corp.example", "https://open.feishu.corp.example"),
+            ("https://OPEN.feishu.corp.example/", "https://open.feishu.corp.example"),
+            ("https://lark.corp.example:8443", "https://lark.corp.example:8443"),
+        ):
+            config = {**_BASE, "base_url": base_url}
+            assert FeishuChannel.config_error(config) is None
+            assert FeishuChannel(config)._base_url() == origin
+        # Listing one host does not open another, nor another port of it.
+        for base_url in ("https://other.corp.example", "https://lark.corp.example"):
+            assert FeishuChannel.config_error({**_BASE, "base_url": base_url}) is not None
+
+    def test_the_list_accepts_https_origins_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv(
+            _ENV,
+            "http://plain.corp.example,https://u:p@creds.corp.example,"
+            "https://path.corp.example/api,*,corp.example",
+        )
+        for base_url in (
+            "http://plain.corp.example",
+            "https://creds.corp.example",
+            "https://u:p@creds.corp.example",
+            "https://path.corp.example",
+            "https://path.corp.example/api",
+            "https://corp.example",
+        ):
+            assert FeishuChannel.config_error({**_BASE, "base_url": base_url}) is not None
+
+    @pytest.mark.asyncio
+    async def test_a_stored_row_with_another_host_sends_nothing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A row saved before the check existed is refused when it is used."""
+        monkeypatch.delenv(_ENV, raising=False)
+        channel = FeishuChannel({**_BASE, "base_url": "http://127.0.0.1:9"})
+        with patch("httpx.AsyncClient") as mock_async_client:
+            for result in (
+                await channel.send_notice("t", "b"),
+                await channel.send_text("oc_x", "hello"),
+                await channel.send_interactive_card("oc_x", {"elements": []}),
+            ):
+                assert result.ok is False
+                assert "base_url is not an allowed Feishu API address" in (result.error or "")
+                assert "127.0.0.1" not in (result.error or "")
+            with pytest.raises(RuntimeError, match="not an allowed Feishu API address"):
+                await channel.list_chats()
+        mock_async_client.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_listed_origin_is_the_one_called(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv(_ENV, "https://open.feishu.corp.example")
+        channel = FeishuChannel({**_BASE, "base_url": "https://open.feishu.corp.example/"})
+        mock_client = MagicMock()
+        mock_client.post = AsyncMock(
+            side_effect=[
+                _make_async_response({"code": 0, "tenant_access_token": "tok"}),
+                _make_async_response({"code": 0}),
+            ]
+        )
+        with patch("httpx.AsyncClient") as mock_async_client:
+            mock_async_client.return_value.__aenter__.return_value = mock_client
+            mock_async_client.return_value.__aexit__.return_value = None
+            result = await channel.send_notice("t", "b")
+        assert result.ok is True
+        assert [call.args[0] for call in mock_client.post.await_args_list] == [
+            "https://open.feishu.corp.example/open-apis/auth/v3/tenant_access_token/internal",
+            "https://open.feishu.corp.example/open-apis/im/v1/messages",
+        ]
+
+
+class TestUpstreamBodyIsNotRepeated:
+    """What the remote host answered is logged, not returned to the caller."""
+
+    _SECRET = "INTERNAL-SERVICE-BANNER root:x:0:0"
+
+    @pytest.mark.asyncio
+    async def test_a_refused_token_request(self, caplog: pytest.LogCaptureFixture) -> None:
+        channel = FeishuChannel(dict(_BASE))
+        mock_client = MagicMock()
+        mock_client.post = AsyncMock(
+            return_value=_make_async_response({"code": 10003, "msg": self._SECRET})
+        )
+        with patch("httpx.AsyncClient") as mock_async_client, caplog.at_level("WARNING"):
+            mock_async_client.return_value.__aenter__.return_value = mock_client
+            mock_async_client.return_value.__aexit__.return_value = None
+            result = await channel.send_notice("t", "b")
+        assert result.ok is False
+        assert self._SECRET not in (result.error or "")
+        assert "code 10003" in (result.error or "")
+        assert self._SECRET in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_a_refused_message(self, caplog: pytest.LogCaptureFixture) -> None:
+        channel = FeishuChannel(dict(_BASE))
+        mock_client = MagicMock()
+        mock_client.post = AsyncMock(
+            side_effect=[
+                _make_async_response({"code": 0, "tenant_access_token": "tok"}),
+                _make_async_response({"code": 230001, "msg": self._SECRET, "x": self._SECRET}),
+            ]
+        )
+        with patch("httpx.AsyncClient") as mock_async_client, caplog.at_level("WARNING"):
+            mock_async_client.return_value.__aenter__.return_value = mock_client
+            mock_async_client.return_value.__aexit__.return_value = None
+            result = await channel.send_notice("t", "b")
+        assert result.ok is False
+        assert result.error == "Feishu API error (code 230001)"
+        assert self._SECRET in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_a_body_that_is_not_a_feishu_answer(self) -> None:
+        channel = FeishuChannel(dict(_BASE))
+        mock_client = MagicMock()
+        mock_client.post = AsyncMock(return_value=_make_async_response({"banner": self._SECRET}))
+        with patch("httpx.AsyncClient") as mock_async_client:
+            mock_async_client.return_value.__aenter__.return_value = mock_client
+            mock_async_client.return_value.__aexit__.return_value = None
+            result = await channel.send_notice("t", "b")
+        assert result.ok is False
+        assert self._SECRET not in (result.error or "")
 
 
 # ---------------------------------------------------------------------------

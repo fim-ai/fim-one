@@ -1,7 +1,7 @@
 """Shared SMTP transport-mode resolution.
 
-Both the system-email path (``fim_one.web.email``) and the notification
-provider (``fim_one.core.notification.email_provider``) authenticate to SMTP
+Both the system-email path (``fim_one.web.email``) and the email channel
+(``fim_one.core.channels.email``) authenticate to SMTP
 with ``server.login()``, so both must agree on when the connection is
 encrypted. Keeping the rule in one place means a typo in ``SMTP_SSL`` cannot
 downgrade one of them to cleartext while the other stays secure.

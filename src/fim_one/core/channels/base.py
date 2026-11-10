@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import abc
+import re
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, runtime_checkable
 
@@ -103,6 +104,15 @@ class BaseChannel(abc.ABC):
     def __init__(self, config: dict[str, Any]) -> None:
         self.config = config
 
+    @classmethod
+    def config_error(cls, config: dict[str, Any]) -> str | None:
+        """The error code of what is wrong with *config*; ``None`` when it is usable.
+
+        Checked before a channel row is saved, so a channel that could never
+        deliver is refused up front.
+        """
+        return None
+
     # -- Outbound --
 
     @abc.abstractmethod
@@ -113,6 +123,14 @@ class BaseChannel(abc.ABC):
 
             {"chat_id": "oc_xxx", "msg_type": "text", "content": "hello"}
             {"chat_id": "oc_xxx", "msg_type": "interactive", "card": {...}}
+        """
+
+    @abc.abstractmethod
+    async def send_notice(self, title: str, body: str) -> ChannelSendResult:
+        """Send a short titled message to the channel's own target.
+
+        The channel renders *title* and *body* in its native format (a
+        card, a markdown message, an email with a subject).
         """
 
     @abc.abstractmethod
@@ -173,3 +191,98 @@ class BaseChannel(abc.ABC):
                 },
             }
         """
+
+
+# ---------------------------------------------------------------------------
+# Rendering helpers shared by the channel types
+# ---------------------------------------------------------------------------
+
+
+def format_duration(seconds: float) -> str:
+    """Human-friendly duration string for a completion notice.
+
+    Examples:
+        ``0.4`` -> ``"0.4s"``
+        ``2.345`` -> ``"2.3s"``
+        ``107`` -> ``"1m 47s"``
+        ``3725`` -> ``"1h 2m 5s"``
+    """
+    if seconds < 0:
+        seconds = 0.0
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    total = int(seconds)
+    hours, rem = divmod(total, 3600)
+    minutes, secs = divmod(rem, 60)
+    if hours > 0:
+        return f"{hours}h {minutes}m {secs}s"
+    return f"{minutes}m {secs}s"
+
+
+def truncate(text: str, limit: int) -> str:
+    """Truncate ``text`` to ``limit`` chars, appending an ellipsis on overflow."""
+    if not text:
+        return ""
+    if len(text) <= limit:
+        return text
+    # Chop on a line boundary if one is nearby — keeps the preview readable
+    # for answers that begin with a header / first paragraph.
+    head = text[:limit]
+    last_nl = head.rfind("\n")
+    if last_nl >= limit - 80:
+        head = head[:last_nl]
+    return head.rstrip() + "\n\n…"
+
+
+def format_tools(tools: list[str]) -> str:
+    """Join ``tools`` with commas, truncating to 6 with an ellipsis."""
+    if not tools:
+        return "—"
+    seen: set[str] = set()
+    unique: list[str] = []
+    for t in tools:
+        if t and t not in seen:
+            seen.add(t)
+            unique.append(t)
+    if len(unique) <= 6:
+        return ", ".join(unique)
+    return ", ".join(unique[:6]) + ", …"
+
+
+# A zero-width space: put after the "<" of a mention tag, the platform no
+# longer reads a tag there and shows the text as it was written.
+_ZERO_WIDTH_SPACE = "\u200b"
+_LARK_AT_TAG_RE = re.compile(r"<(?=\s*/?\s*at\b)", re.IGNORECASE)
+
+
+def neutralise_lark_mentions(text: str) -> str:
+    """*text* with Lark / Feishu ``<at ...>`` tags made inert.
+
+    In a card's markdown and in a text message ``<at id=all></at>`` (or
+    ``user_id=``, ``open_id=``, ``email=``) notifies people. Text that comes
+    from a user, a model or a tool call must not be able to do that: the
+    tag is kept readable but no longer parsed.
+    """
+    return _LARK_AT_TAG_RE.sub("<" + _ZERO_WIDTH_SPACE, text)
+
+
+def completion_notice(summary: CompletionSummary) -> tuple[str, str]:
+    """``(title, markdown body)`` of a finished run, for channels without cards.
+
+    Same content and limits as the Feishu completion card: the user message
+    is cut at 200 characters and the final answer at 600.
+    """
+    title = f"{summary.agent_name or 'Agent'} — Task complete"[:100]
+    lines = [
+        f"**Duration**: {format_duration(summary.duration_seconds)}",
+        f"**Tools**: {format_tools(summary.tools_used)}",
+    ]
+    if summary.conversation_url:
+        lines.append(f"**Conversation**: {summary.conversation_url}")
+    elif summary.conversation_id:
+        lines.append(f"**Conversation**: {summary.conversation_id[:8]}…")
+    lines.append("")
+    lines.append(f"**User message**\n{truncate(summary.user_message or '', 200)}")
+    lines.append("")
+    lines.append(f"**Final answer**\n{truncate(summary.final_answer or '', 600)}")
+    return title, "\n".join(lines)

@@ -121,6 +121,7 @@ def _make_agent(
     enabled: bool = True,
     channel_id: str | None = "chan-1",
     name: str = "Summariser",
+    user_id: str | None = None,
 ) -> SimpleNamespace:
     """Build an agent-shaped SimpleNamespace with optional notifications."""
     notifications: dict[str, Any] = {}
@@ -135,6 +136,7 @@ def _make_agent(
         id="agent-42",
         name=name,
         org_id=org_id,
+        user_id=user_id,
         model_config_json={"notifications": notifications},
     )
 
@@ -438,7 +440,7 @@ async def test_skip_when_channel_not_found(
                 session_factory=session_factory,
             )
     mock_client.assert_not_called()
-    assert any("not found" in r.message for r in caplog.records)
+    assert any("is not usable by agent" in r.message for r in caplog.records)
 
 
 @pytest.mark.asyncio
@@ -467,7 +469,7 @@ async def test_skip_when_channel_inactive(
                 session_factory=session_factory,
             )
     mock_client.assert_not_called()
-    assert any("inactive" in r.message for r in caplog.records)
+    assert any("is not usable by agent" in r.message for r in caplog.records)
 
 
 @pytest.mark.asyncio
@@ -490,7 +492,7 @@ async def test_skip_when_org_mismatch(
                 session_factory=session_factory,
             )
     mock_client.assert_not_called()
-    assert any("does not match agent org_id" in r.message for r in caplog.records)
+    assert any("is not usable by agent" in r.message for r in caplog.records)
 
 
 # ---------------------------------------------------------------------------

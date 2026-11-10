@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
+import socket
+import urllib.request
 from collections.abc import Iterator
 from typing import Any
 
@@ -122,6 +125,83 @@ def _uploads_outside_the_checkout(tmp_path_factory: pytest.TempPathFactory) -> I
     """
     patch = pytest.MonkeyPatch()
     patch.setenv("UPLOADS_DIR", str(tmp_path_factory.getbasetemp() / "uploads"))
+    yield
+    patch.undo()
+
+
+class RealNetworkBlocked(OSError):
+    """A test tried to connect to a host other than this machine."""
+
+
+def _host_name(host: object) -> str:
+    if isinstance(host, bytes | bytearray):
+        return bytes(host).decode("ascii", "replace")
+    return str(host)
+
+
+def _is_local_host(host: object) -> bool:
+    """Whether *host* names this machine (or nothing, as when binding)."""
+    if host is None:
+        return True
+    name = _host_name(host).split("%", 1)[0].strip("[]").lower()
+    if name in ("", "localhost"):
+        return True
+    try:
+        address = ipaddress.ip_address(name)
+    except ValueError:
+        return False
+    return address.is_loopback or address.is_unspecified
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _no_real_network() -> Iterator[None]:
+    """Refuse every connection that would leave this machine.
+
+    Tests mock the services they talk to, but a fixture row is real
+    configuration: a Feishu channel a test happens to send through would
+    post to ``open.feishu.cn``, an email channel would dial its SMTP host.
+    With this in place such a send fails (``RealNetworkBlocked``, an
+    ``OSError``, so the code under test reports it like any unreachable
+    host) and nothing goes out. Loopback and unix sockets stay open for
+    local listeners and a local test database. Name lookups are left
+    alone: the outbound-address checks resolve the hosts they vet.
+
+    The operating system's proxy settings are ignored as well: httpx and
+    urllib read them (on macOS and Windows) when no proxy variable is set,
+    and a local proxy is a loopback address that would carry the request
+    out. ``NO_PROXY=*`` is set for the session so no client picks one up.
+    """
+    patch = pytest.MonkeyPatch()
+    real_connect = socket.socket.connect
+    real_connect_ex = socket.socket.connect_ex
+    real_sendto = socket.socket.sendto
+
+    def _check(address: object) -> None:
+        # AF_INET / AF_INET6 addresses are tuples; a unix socket path is not.
+        if isinstance(address, tuple) and address and not _is_local_host(address[0]):
+            raise RealNetworkBlocked(f"tests may not connect to {_host_name(address[0])!r}")
+
+    def connect(self: socket.socket, address: Any) -> None:
+        _check(address)
+        real_connect(self, address)
+
+    def connect_ex(self: socket.socket, address: Any) -> int:
+        _check(address)
+        return real_connect_ex(self, address)
+
+    def sendto(self: socket.socket, *args: Any) -> int:
+        _check(args[-1])
+        return real_sendto(self, *args)
+
+    # ``NO_PROXY=*`` is what the HTTP clients themselves honour (httpx binds
+    # ``getproxies`` at import, so replacing the function alone misses it);
+    # with a proxy variable present the system settings are not consulted.
+    patch.setenv("NO_PROXY", "*")
+    patch.setenv("no_proxy", "*")
+    patch.setattr(urllib.request, "getproxies", urllib.request.getproxies_environment)
+    patch.setattr(socket.socket, "connect", connect)
+    patch.setattr(socket.socket, "connect_ex", connect_ex)
+    patch.setattr(socket.socket, "sendto", sendto)
     yield
     patch.undo()
 

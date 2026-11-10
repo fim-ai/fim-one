@@ -10,7 +10,7 @@ import ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-from fim_one.core.notification.smtp import resolve_ssl_mode, warn_plaintext
+from fim_one.core.channels.smtp import resolve_ssl_mode, warn_plaintext
 
 logger = logging.getLogger(__name__)
 

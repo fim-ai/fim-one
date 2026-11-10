@@ -225,6 +225,66 @@ class TestCreateChannel:
         assert resp.status_code == 403
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("channel_type", "config"),
+        [
+            (
+                "feishu",
+                {"app_id": "cli_x", "app_secret": "shh", "chat_id": "oc_1", "encrypt_key": "k"},
+            ),
+            ("slack_webhook", {"webhook_url": "https://hooks.slack.com/services/T/B/x"}),
+        ],
+    )
+    async def test_a_plain_member_cannot_create(
+        self,
+        channel_type: str,
+        config: dict[str, Any],
+        client: AsyncClient,
+        seed: dict[str, Any],
+        session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """Belonging to the organization is not enough: channels are its admins'."""
+        async with session_factory() as db:
+            member = User(
+                id=str(uuid.uuid4()), username="member", email="member@test.com", is_admin=False
+            )
+            db.add(member)
+            db.add(
+                OrgMembership(
+                    id=str(uuid.uuid4()), org_id=seed["org_id"], user_id=member.id, role="member"
+                )
+            )
+            await db.commit()
+        headers = {
+            "Authorization": f"Bearer {create_access_token(member.id, member.email or '')}"
+        }
+
+        resp = await client.post(
+            "/api/channels",
+            json={"name": "Mine", "type": channel_type, "org_id": seed["org_id"], "config": config},
+            headers=headers,
+        )
+        assert resp.status_code == 403, resp.text
+        async with session_factory() as db:
+            assert (await db.execute(select(Channel))).scalars().all() == []
+        # The member can still see the organization's channels.
+        listing = await client.get(f"/api/channels?org_id={seed['org_id']}", headers=headers)
+        assert listing.status_code == 200
+        # An admin of the same organization can create it.
+        async with session_factory() as db:
+            row = (
+                await db.execute(select(OrgMembership).where(OrgMembership.user_id == member.id))
+            ).scalar_one()
+            row.role = "admin"
+            await db.commit()
+        resp = await client.post(
+            "/api/channels",
+            json={"name": "Mine", "type": channel_type, "org_id": seed["org_id"], "config": config},
+            headers=headers,
+        )
+        assert resp.status_code == 201, resp.text
+
+    @pytest.mark.asyncio
     async def test_unauthenticated_rejected(
         self, client: AsyncClient, seed: dict[str, Any]
     ) -> None:
@@ -464,6 +524,309 @@ class TestTestChannel:
         assert payload["chat_id"] == "oc_test"
         assert payload["msg_type"] == "text"
         assert "FIM One test message" in payload["content"]
+
+
+class _Recorder:
+    """A loopback HTTP listener that counts requests and answers with a marker."""
+
+    MARKER = "LOOPBACK-ONLY-BANNER"
+
+    def __init__(self) -> None:
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+
+        recorder = self
+        self.requests: list[str] = []
+
+        class _Handler(BaseHTTPRequestHandler):
+            def do_POST(self) -> None:  # noqa: N802
+                length = int(self.headers.get("Content-Length") or 0)
+                self.rfile.read(length)
+                recorder.requests.append(self.path)
+                body = json.dumps({"code": 1, "msg": recorder.MARKER}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args: Any) -> None:
+                return None
+
+        self._server = HTTPServer(("127.0.0.1", 0), _Handler)
+        self.url = f"http://127.0.0.1:{self._server.server_address[1]}"
+        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+        self._thread.start()
+
+    def close(self) -> None:
+        self._server.shutdown()
+        self._server.server_close()
+        self._thread.join(timeout=5)
+
+
+@pytest.fixture()
+def recorder() -> Any:
+    listener = _Recorder()
+    yield listener
+    listener.close()
+
+
+class TestFeishuBaseUrl:
+    """``config.base_url`` is where the server posts the app secret."""
+
+    _CONFIG = {
+        "app_id": "cli_x",
+        "app_secret": "shh",
+        "chat_id": "oc_1",
+        "encrypt_key": "sign-me",
+    }
+
+    async def _create(
+        self, client: AsyncClient, seed: dict[str, Any], base_url: str | None
+    ) -> Any:
+        config = dict(self._CONFIG) if base_url is None else {**self._CONFIG, "base_url": base_url}
+        return await client.post(
+            "/api/channels",
+            json={"name": "F", "type": "feishu", "org_id": seed["org_id"], "config": config},
+            headers=seed["headers"],
+        )
+
+    @pytest.mark.asyncio
+    async def test_another_host_is_refused_on_create(
+        self,
+        client: AsyncClient,
+        seed: dict[str, Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("FEISHU_ALLOWED_BASE_URLS", raising=False)
+        for base_url in ("http://127.0.0.1:8080", "https://internal.example"):
+            resp = await self._create(client, seed, base_url)
+            assert resp.status_code == 400, resp.text
+            assert resp.json()["detail"] == "feishu_channel_base_url_not_allowed"
+        for official in (None, "https://open.feishu.cn", "https://open.larksuite.com"):
+            assert (await self._create(client, seed, official)).status_code == 201
+
+    @pytest.mark.asyncio
+    async def test_another_host_is_refused_on_update(
+        self,
+        client: AsyncClient,
+        seed: dict[str, Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("FEISHU_ALLOWED_BASE_URLS", raising=False)
+        channel_id = (await self._create(client, seed, None)).json()["id"]
+        resp = await client.patch(
+            f"/api/channels/{channel_id}",
+            json={"config": {"base_url": "http://127.0.0.1:8080"}},
+            headers=seed["headers"],
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "feishu_channel_base_url_not_allowed"
+
+    @pytest.mark.asyncio
+    async def test_a_host_the_operator_listed_is_accepted(
+        self,
+        client: AsyncClient,
+        seed: dict[str, Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("FEISHU_ALLOWED_BASE_URLS", "https://open.feishu.corp.example")
+        resp = await self._create(client, seed, "https://open.feishu.corp.example")
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["config"]["base_url"] == "https://open.feishu.corp.example"
+
+    @pytest.mark.asyncio
+    async def test_a_stored_row_does_not_make_the_server_call_its_host(
+        self,
+        client: AsyncClient,
+        seed: dict[str, Any],
+        session_factory: async_sessionmaker[AsyncSession],
+        recorder: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A member pressing Test on a row saved earlier reaches no internal host.
+
+        The row points at a loopback listener standing in for an internal
+        service; before the check, the server posted the app secret to it
+        and returned its answer in the error.
+        """
+        monkeypatch.delenv("FEISHU_ALLOWED_BASE_URLS", raising=False)
+        async with session_factory() as db:
+            ch = Channel(
+                id=str(uuid.uuid4()),
+                name="Old row",
+                type="feishu",
+                org_id=seed["org_id"],
+                created_by=seed["user_id"],
+                config={**self._CONFIG, "base_url": recorder.url},
+            )
+            db.add(ch)
+            await db.commit()
+
+        resp = await client.post(f"/api/channels/{ch.id}/test", headers=seed["headers"])
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ok"] is False
+        assert "FEISHU_ALLOWED_BASE_URLS" in body["error"]
+        assert recorder.MARKER not in resp.text
+        assert recorder.requests == []
+
+
+class TestWebhookAndEmailChannels:
+    """The outbound-only types: a webhook URL per platform, or email recipients."""
+
+    SLACK_URL = "https://hooks.slack.com/services/T000/B000/secret-token"
+
+    async def _create(
+        self, client: AsyncClient, seed: dict[str, Any], channel_type: str, config: dict[str, Any]
+    ) -> Any:
+        return await client.post(
+            "/api/channels",
+            json={"name": "Ops", "type": channel_type, "org_id": seed["org_id"], "config": config},
+            headers=seed["headers"],
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("channel_type", "url"),
+        [
+            ("slack_webhook", SLACK_URL),
+            ("lark_webhook", "https://open.feishu.cn/open-apis/bot/v2/hook/abc"),
+            ("wecom_webhook", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=abc"),
+        ],
+    )
+    async def test_webhook_channel_is_created_with_its_url_masked(
+        self,
+        client: AsyncClient,
+        seed: dict[str, Any],
+        session_factory: async_sessionmaker[AsyncSession],
+        channel_type: str,
+        url: str,
+    ) -> None:
+        resp = await self._create(client, seed, channel_type, {"webhook_url": url})
+        assert resp.status_code == 201, resp.text
+        body = resp.json()
+        assert body["type"] == channel_type
+        # The URL carries the token that authorizes posting, so it is not echoed.
+        assert body["config"]["webhook_url"] == "***"
+        async with session_factory() as db:
+            row = await db.get(Channel, body["id"])
+            assert row is not None and row.config["webhook_url"] == url
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "",
+            "http://127.0.0.1:8000/admin",
+            "https://example.com/hook",
+            "https://open.feishu.cn/open-apis/bot/v2/hook/abc",  # another platform's host
+            "***",
+            "https://user:pw@hooks.slack.com/services/T/B/x",
+            "https://:pw@hooks.slack.com/services/T/B/x",
+        ],
+    )
+    async def test_webhook_url_must_be_on_the_platforms_host(
+        self, client: AsyncClient, seed: dict[str, Any], url: str
+    ) -> None:
+        resp = await self._create(client, seed, "slack_webhook", {"webhook_url": url})
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "channel_webhook_url_invalid"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("channel_type", ["wecom", "slack"])
+    async def test_types_that_never_had_an_adapter_are_not_offered(
+        self, client: AsyncClient, seed: dict[str, Any], channel_type: str
+    ) -> None:
+        resp = await self._create(client, seed, channel_type, {})
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_patch_keeps_the_stored_url_and_validates_a_new_one(
+        self, client: AsyncClient, seed: dict[str, Any],
+        session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        created = (
+            await self._create(client, seed, "slack_webhook", {"webhook_url": self.SLACK_URL})
+        ).json()
+        renamed = await client.patch(
+            f"/api/channels/{created['id']}",
+            json={"name": "Renamed", "config": {}},
+            headers=seed["headers"],
+        )
+        assert renamed.status_code == 200, renamed.text
+        async with session_factory() as db:
+            row = await db.get(Channel, created["id"])
+            assert row is not None and row.config["webhook_url"] == self.SLACK_URL
+
+        moved = await client.patch(
+            f"/api/channels/{created['id']}",
+            json={"config": {"webhook_url": "https://internal.service/hook"}},
+            headers=seed["headers"],
+        )
+        assert moved.status_code == 400
+        assert moved.json()["detail"] == "channel_webhook_url_invalid"
+
+    @pytest.mark.asyncio
+    async def test_test_endpoint_posts_to_the_webhook(
+        self, client: AsyncClient, seed: dict[str, Any]
+    ) -> None:
+        created = (
+            await self._create(client, seed, "slack_webhook", {"webhook_url": self.SLACK_URL})
+        ).json()
+        send_mock = AsyncMock(return_value=ChannelSendResult(ok=True))
+        with patch(
+            "fim_one.core.channels.webhook.WebhookChannel.send_message", new=send_mock
+        ):
+            resp = await client.post(
+                f"/api/channels/{created['id']}/test", headers=seed["headers"]
+            )
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+        blocks = send_mock.await_args.args[0]["blocks"]
+        assert blocks[0]["text"]["text"] == "FIM One test message"
+        assert "admin@test.com" in blocks[1]["text"]["text"]
+
+    @pytest.mark.asyncio
+    async def test_webhook_channel_accepts_no_callback(
+        self, client: AsyncClient, seed: dict[str, Any]
+    ) -> None:
+        created = (
+            await self._create(client, seed, "slack_webhook", {"webhook_url": self.SLACK_URL})
+        ).json()
+        resp = await client.post(
+            f"/api/channels/{created['id']}/callback",
+            json={"action": {"value": {"confirmation_id": "x", "decision": "approve"}}},
+        )
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_email_channel_needs_the_operators_permission(
+        self, client: AsyncClient, seed: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        for name in ("SMTP_ALLOWED_DOMAINS", "SMTP_ALLOWED_ADDRESSES", "EMAIL_TOOL_ENABLED"):
+            monkeypatch.delenv(name, raising=False)
+        monkeypatch.setenv("SMTP_HOST", "smtp.x.io")
+        monkeypatch.setenv("SMTP_USER", "bot@x.io")
+        monkeypatch.setenv("SMTP_PASS", "p")
+
+        missing = await self._create(client, seed, "email", {"to": ""})
+        assert missing.status_code == 400
+        assert missing.json()["detail"] == "channel_email_recipients_required"
+
+        # SMTP is set up, but the operator has not opened it to agents.
+        refused = await self._create(client, seed, "email", {"to": "ops@corp.internal"})
+        assert refused.status_code == 400
+        assert refused.json()["detail"] == "channel_email_not_permitted"
+
+        monkeypatch.setenv("SMTP_ALLOWED_DOMAINS", "corp.internal")
+        outside = await self._create(client, seed, "email", {"to": "anyone@outside.io"})
+        assert outside.status_code == 400
+        assert outside.json()["detail"] == "channel_email_not_permitted"
+
+        allowed = await self._create(client, seed, "email", {"to": "ops@corp.internal"})
+        assert allowed.status_code == 201, allowed.text
+        assert allowed.json()["config"]["to"] == "ops@corp.internal"
 
 
 # ---------------------------------------------------------------------------

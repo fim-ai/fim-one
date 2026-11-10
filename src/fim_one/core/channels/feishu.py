@@ -16,12 +16,18 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import time
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 import httpx
 
 from .base import (
+    format_duration as _format_duration,
+    format_tools as _format_tools,
+    neutralise_lark_mentions as _inert,
+    truncate as _truncate,
     ApprovalRequestSummary,
     BaseChannel,
     CarrierDecision,
@@ -32,9 +38,77 @@ from .base import (
 logger = logging.getLogger(__name__)
 
 # Feishu / Lark endpoints.  Feishu uses open.feishu.cn; Lark uses
-# open.larksuite.com — both are API-compatible.  Override via config key
-# ``base_url`` if needed.
+# open.larksuite.com — both are API-compatible.  A channel picks one with
+# the config key ``base_url``.
 DEFAULT_BASE_URL = "https://open.feishu.cn"
+OFFICIAL_BASE_URLS = (DEFAULT_BASE_URL, "https://open.larksuite.com")
+
+# A privately deployed Feishu has a host of its own. The server makes the
+# request (with the app secret in it), so only the operator may add one:
+# comma-separated https origins, e.g. ``https://open.feishu.corp.example``.
+ALLOWED_BASE_URLS_ENV = "FEISHU_ALLOWED_BASE_URLS"
+
+BASE_URL_NOT_ALLOWED = "feishu_channel_base_url_not_allowed"
+
+
+def _origin(value: object) -> str | None:
+    """*value* as a bare ``https://host[:port]`` origin, or ``None`` if it is not one."""
+    if not isinstance(value, str):
+        return None
+    text = value.strip().rstrip("/")
+    if not text or any(ch.isspace() or ord(ch) < 0x20 for ch in text):
+        return None
+    try:
+        parts = urlsplit(text)
+        port = parts.port
+    except ValueError:
+        return None
+    if parts.scheme != "https" or not parts.hostname:
+        return None
+    if parts.username is not None or parts.password is not None:
+        return None
+    if parts.path or parts.query or parts.fragment or "?" in text or "#" in text:
+        return None
+    host = parts.hostname.lower()
+    if ":" in host:
+        host = f"[{host}]"
+    return f"https://{host}" if port in (None, 443) else f"https://{host}:{port}"
+
+
+def allowed_base_urls() -> frozenset[str]:
+    """The API origins a Feishu channel may use: the two official ones plus the operator's."""
+    listed = (_origin(item) for item in os.getenv(ALLOWED_BASE_URLS_ENV, "").split(","))
+    return frozenset(OFFICIAL_BASE_URLS) | {origin for origin in listed if origin}
+
+
+def base_url_allowed(value: object) -> bool:
+    """Whether a config's ``base_url`` may be used. Absent means the default."""
+    if value is None or value == "":
+        return True
+    origin = _origin(value)
+    return origin is not None and origin in allowed_base_urls()
+
+
+class FeishuBaseUrlNotAllowed(RuntimeError):
+    """The channel's ``base_url`` is not an allowed Feishu API origin."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "This Feishu channel's base_url is not an allowed Feishu API address, "
+            "so nothing was sent. Remove it to use https://open.feishu.cn, or ask "
+            f"the operator to list it in {ALLOWED_BASE_URLS_ENV}."
+        )
+
+
+def _upstream_code(data: object) -> str:
+    """The numeric error code of a Feishu response, for an error shown to the caller.
+
+    Only the code: the body is whatever the remote host answered, and is
+    logged on the server instead of being repeated to the caller.
+    """
+    code = data.get("code") if isinstance(data, dict) else None
+    return f"code {code}" if isinstance(code, int) and not isinstance(code, bool) else "no code"
+
 
 TOKEN_CACHE_TTL_SECONDS = 300  # 5 minutes; actual token lives for 2 hours.
 
@@ -50,7 +124,9 @@ class FeishuChannel(BaseChannel):
             "chat_id": "oc_xxx",            # default target chat (group)
             "verification_token": "...",    # optional
             "encrypt_key": "...",           # optional (enables AES+sign)
-            "base_url": "https://...",      # optional, defaults to Feishu
+            "base_url": "https://...",      # optional: open.feishu.cn (default),
+                                            # open.larksuite.com, or an origin in
+                                            # FEISHU_ALLOWED_BASE_URLS
         }
     """
 
@@ -61,10 +137,41 @@ class FeishuChannel(BaseChannel):
         self._token: str | None = None
         self._token_expires_at: float = 0.0
 
+    @classmethod
+    def config_error(cls, config: dict[str, Any]) -> str | None:
+        """A Feishu channel needs an ``encrypt_key`` and an allowed ``base_url``.
+
+        Callback signature verification fails closed without the key, so a
+        keyless channel would accept sends but silently reject every card
+        click; the config is refused up front instead. A ``base_url`` other
+        than the two official origins must be one the operator listed
+        (``FEISHU_ALLOWED_BASE_URLS``): the server posts the app secret to it.
+        """
+        if not str(config.get("encrypt_key") or "").strip():
+            return "feishu_channel_requires_encrypt_key"
+        if not base_url_allowed(config.get("base_url")):
+            return BASE_URL_NOT_ALLOWED
+        return None
+
     # ---- Internal helpers ---------------------------------------------------
 
     def _base_url(self) -> str:
-        return str(self.config.get("base_url") or DEFAULT_BASE_URL).rstrip("/")
+        """The API origin to call.
+
+        Checked on every use, not only when the channel is saved: a row
+        stored before the check existed, or one whose host the operator has
+        since removed from the list, must not be called either.
+
+        Raises:
+            FeishuBaseUrlNotAllowed: the configured ``base_url`` is not allowed.
+        """
+        configured = self.config.get("base_url")
+        if configured is None or configured == "":
+            return DEFAULT_BASE_URL
+        origin = _origin(configured)
+        if origin is None or origin not in allowed_base_urls():
+            raise FeishuBaseUrlNotAllowed
+        return origin
 
     async def _fetch_tenant_access_token(
         self, client: httpx.AsyncClient | None = None
@@ -95,8 +202,10 @@ class FeishuChannel(BaseChannel):
                 await client.aclose()
 
         if not isinstance(data, dict) or data.get("code") != 0:
+            logger.warning("Feishu refused a tenant_access_token: %r", data)
             raise RuntimeError(
-                f"Failed to obtain tenant_access_token: {data!r}"
+                "Failed to obtain tenant_access_token: Feishu refused the app "
+                f"credentials ({_upstream_code(data)})"
             )
         token = data.get("tenant_access_token")
         if not isinstance(token, str) or not token:
@@ -125,14 +234,15 @@ class FeishuChannel(BaseChannel):
         ``external``, ``tenant_key``, etc.
 
         Raises ``RuntimeError`` with a human-readable message on any API
-        failure (bad credentials, network error, non-zero Feishu code).
+        failure (bad credentials, network error, non-zero Feishu code) and
+        when the channel's ``base_url`` is not allowed.
         """
+        url = f"{self._base_url()}/open-apis/im/v1/chats"
         own_client = client is None
         if client is None:
             client = httpx.AsyncClient(timeout=15)
         try:
             token = await self._fetch_tenant_access_token(client=client)
-            url = f"{self._base_url()}/open-apis/im/v1/chats"
             resp = await client.get(
                 url,
                 params={"page_size": page_size},
@@ -144,14 +254,8 @@ class FeishuChannel(BaseChannel):
                 await client.aclose()
 
         if not isinstance(data, dict) or data.get("code") != 0:
-            msg: str | None = None
-            if isinstance(data, dict):
-                raw_msg = data.get("msg")
-                if isinstance(raw_msg, str):
-                    msg = raw_msg
-            raise RuntimeError(
-                f"Feishu list_chats failed: {msg or data!r}"
-            )
+            logger.warning("Feishu list_chats failed: %r", data)
+            raise RuntimeError(f"Feishu list_chats failed ({_upstream_code(data)})")
 
         payload = data.get("data")
         if not isinstance(payload, dict):
@@ -208,10 +312,15 @@ class FeishuChannel(BaseChannel):
         }
 
         try:
+            base_url = self._base_url()
+        except FeishuBaseUrlNotAllowed as exc:
+            return ChannelSendResult(ok=False, error=str(exc))
+
+        try:
             async with httpx.AsyncClient(timeout=15) as client:
                 token = await self._fetch_tenant_access_token(client=client)
                 resp = await client.post(
-                    f"{self._base_url()}/open-apis/im/v1/messages",
+                    f"{base_url}/open-apis/im/v1/messages",
                     params={"receive_id_type": "chat_id"},
                     headers={"Authorization": f"Bearer {token}"},
                     json=body,
@@ -223,9 +332,10 @@ class FeishuChannel(BaseChannel):
 
         if isinstance(data, dict) and data.get("code") == 0:
             return ChannelSendResult(ok=True, raw=data)
+        logger.warning("Feishu refused a message: %r", data)
         return ChannelSendResult(
             ok=False,
-            error=f"Feishu API error: {data}",
+            error=f"Feishu API error ({_upstream_code(data)})",
             raw=data if isinstance(data, dict) else {},
         )
 
@@ -237,6 +347,17 @@ class FeishuChannel(BaseChannel):
                 "msg_type": "text",
                 "content": {"text": text},
             }
+        )
+
+    async def send_notice(self, title: str, body: str) -> ChannelSendResult:
+        """Post *title* and *body* as one plain-text message to the channel's chat."""
+        chat_id = str(self.config.get("chat_id") or "").strip()
+        if not chat_id:
+            return ChannelSendResult(ok=False, error="channel has no chat_id configured")
+        # A text message reads ``<at user_id="all">`` as a mention.
+        text = _inert(f"{title}\n\n{body}" if body else title)
+        return await self.send_message(
+            {"chat_id": chat_id, "msg_type": "text", "content": text}
         )
 
     async def send_interactive_card(
@@ -573,6 +694,12 @@ def build_confirmation_card(
     must return ``{"toast": {...}, "card": ... (optional)}`` — see
     ``fim_one.web.api.channels``.
     """
+    # The summary, the tool name and its arguments come from a model's tool
+    # call: an ``<at id=all></at>`` in them must not notify the chat.
+    summary = _inert(summary[:2000])
+    approver_hint = _inert(approver_hint[:300]) if approver_hint else approver_hint
+    tool_name = _inert(tool_name)
+    tool_args_preview = _inert(tool_args_preview[:800])
     return {
         "schema": "2.0",
         "config": {
@@ -588,13 +715,13 @@ def build_confirmation_card(
             "elements": [
                 {
                     "tag": "markdown",
-                    "content": summary[:2000],
+                    "content": summary,
                 },
                 *(
                     [
                         {
                             "tag": "markdown",
-                            "content": f"> {approver_hint[:300]}",
+                            "content": f"> {approver_hint}",
                         }
                     ]
                     if approver_hint
@@ -634,7 +761,7 @@ def build_confirmation_card(
                 {
                     "tag": "markdown",
                     "content": (
-                        f"**Arguments**\n```\n{tool_args_preview[:800]}\n```"
+                        f"**Arguments**\n```\n{tool_args_preview}\n```"
                     ),
                 },
                 {
@@ -739,9 +866,9 @@ def build_decided_card(
 
     lines: list[str] = []
     if tool_name:
-        lines.append(f"**Tool** · {tool_name}")
+        lines.append(f"**Tool** · {_inert(tool_name)}")
     if decided_by:
-        lines.append(f"**Decided by** · {decided_by}")
+        lines.append(f"**Decided by** · {_inert(decided_by)}")
     if was_already_decided:
         lines.append(
             "_This request had already been finalized; the new click "
@@ -764,57 +891,6 @@ def build_decided_card(
             ],
         },
     }
-
-
-def _format_duration(seconds: float) -> str:
-    """Human-friendly duration string (Feishu card render helper).
-
-    Examples:
-        ``0.4`` -> ``"0.4s"``
-        ``2.345`` -> ``"2.3s"``
-        ``107`` -> ``"1m 47s"``
-        ``3725`` -> ``"1h 2m 5s"``
-    """
-    if seconds < 0:
-        seconds = 0.0
-    if seconds < 60:
-        return f"{seconds:.1f}s"
-    total = int(seconds)
-    hours, rem = divmod(total, 3600)
-    minutes, secs = divmod(rem, 60)
-    if hours > 0:
-        return f"{hours}h {minutes}m {secs}s"
-    return f"{minutes}m {secs}s"
-
-
-def _truncate(text: str, limit: int) -> str:
-    """Truncate ``text`` to ``limit`` chars, appending an ellipsis on overflow."""
-    if not text:
-        return ""
-    if len(text) <= limit:
-        return text
-    # Chop on a line boundary if one is nearby — keeps the preview readable
-    # for answers that begin with a header / first paragraph.
-    head = text[:limit]
-    last_nl = head.rfind("\n")
-    if last_nl >= limit - 80:
-        head = head[:last_nl]
-    return head.rstrip() + "\n\n…"
-
-
-def _format_tools(tools: list[str]) -> str:
-    """Join ``tools`` with commas, truncating to 6 with an ellipsis."""
-    if not tools:
-        return "—"
-    seen: set[str] = set()
-    unique: list[str] = []
-    for t in tools:
-        if t and t not in seen:
-            seen.add(t)
-            unique.append(t)
-    if len(unique) <= 6:
-        return ", ".join(unique)
-    return ", ".join(unique[:6]) + ", …"
 
 
 def _build_completion_card(summary: CompletionSummary) -> dict[str, Any]:
@@ -865,8 +941,9 @@ def _build_completion_card(summary: CompletionSummary) -> dict[str, Any]:
             }
         )
 
-    user_preview = _truncate(summary.user_message or "", 200)
-    answer_preview = _truncate(summary.final_answer or "", 600)
+    # What the user and the agent wrote must not notify the chat's members.
+    user_preview = _inert(_truncate(summary.user_message or "", 200))
+    answer_preview = _inert(_truncate(summary.final_answer or "", 600))
 
     return {
         "schema": "2.0",
@@ -920,9 +997,15 @@ def _constant_time_eq(a: str, b: str) -> bool:
 
 
 __all__ = [
+    "ALLOWED_BASE_URLS_ENV",
+    "BASE_URL_NOT_ALLOWED",
+    "FeishuBaseUrlNotAllowed",
     "FeishuChannel",
+    "allowed_base_urls",
+    "base_url_allowed",
     "build_confirmation_card",
     "build_decided_card",
     "DEFAULT_BASE_URL",
+    "OFFICIAL_BASE_URLS",
     "TOKEN_CACHE_TTL_SECONDS",
 ]

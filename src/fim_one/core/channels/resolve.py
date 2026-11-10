@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-__all__ = ["resolve_org_channel"]
+__all__ = ["list_member_channels", "resolve_org_channel"]
 
 
 async def resolve_org_channel(
@@ -48,3 +48,30 @@ async def resolve_org_channel(
     else:
         return None
     return (await db.execute(stmt.limit(1))).scalar_one_or_none()
+
+
+async def list_member_channels(db: AsyncSession, *, user_id: str) -> list[Any]:
+    """The active channels of every organization *user_id* is a member of.
+
+    What a user acting alone may send through: membership is read here, at
+    the time of use, so leaving an organization ends access to its channels.
+    Ordered by name, then id, so the same query lists them the same way.
+    """
+    from sqlalchemy import select
+
+    from fim_one.db.models.channel import Channel
+    from fim_one.db.models.organization import OrgMembership
+
+    if not user_id:
+        return []
+    stmt = (
+        select(Channel)
+        .where(
+            Channel.is_active.is_(True),
+            Channel.org_id.in_(
+                select(OrgMembership.org_id).where(OrgMembership.user_id == user_id)
+            ),
+        )
+        .order_by(Channel.name, Channel.id)
+    )
+    return list((await db.execute(stmt)).scalars().all())

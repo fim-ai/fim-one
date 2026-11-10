@@ -30,9 +30,10 @@ from fim_one.core.assembly.principal import (
     resolve_external_actor,
     resolve_principal,
 )
-from fim_one.core.channels import ApprovalCarrier, build_channel
+from fim_one.core.channels import ApprovalCarrier, build_channel, get_channel_class
 from fim_one.core.channels.feishu import FeishuChannel, build_decided_card
 from fim_one.db import get_session
+from fim_one.web.exceptions import AppError
 from fim_one.web.auth import (
     get_current_user,
     require_org_admin,
@@ -81,22 +82,22 @@ def _build_callback_url(channel_id: str) -> str:
     return f"{base}{path}" if base else path
 
 
-def _require_feishu_encrypt_key(
-    channel_type: str, config: dict[str, Any]
-) -> None:
-    """Reject Feishu channel configs without an ``encrypt_key``.
+def _require_valid_config(channel_type: str, config: dict[str, Any]) -> None:
+    """Reject a config its channel type could never deliver with.
 
-    Callback signature verification fails closed without the key, so a
-    keyless channel would accept sends but silently reject every card
-    click — better to refuse the config up front.
+    Each type names what it needs (:meth:`BaseChannel.config_error`): a
+    Feishu channel an ``encrypt_key``, a webhook channel a URL on its
+    platform's host, an email channel recipients the instance may mail.
     """
-    if channel_type.lower() != "feishu":
-        return
-    if not str(config.get("encrypt_key") or "").strip():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="feishu_channel_requires_encrypt_key",
-        )
+    channel_class = get_channel_class(channel_type)
+    error_code = (
+        "channel_type_unsupported"
+        if channel_class is None
+        else channel_class.config_error(config)
+    )
+    if error_code is not None:
+        # ``detail`` repeats the code for clients that read only that field.
+        raise AppError(error_code, status_code=status.HTTP_400_BAD_REQUEST, detail=error_code)
 
 
 async def _load_channel_or_404(
@@ -126,7 +127,7 @@ async def create_channel(
 ) -> ChannelResponse:
     """Create a new channel.  Requires org admin (or org owner)."""
     await require_org_admin(body.org_id, user, db)
-    _require_feishu_encrypt_key(body.type, body.config or {})
+    _require_valid_config(body.type, body.config or {})
 
     ch = Channel(
         id=str(uuid.uuid4()),
@@ -207,7 +208,7 @@ async def update_channel(
         # can PATCH just the chat_id without re-sending app_secret).
         merged = dict(channel.config or {})
         merged.update(body.config)
-        _require_feishu_encrypt_key(channel.type, merged)
+        _require_valid_config(channel.type, merged)
         channel.config = merged
 
     await db.commit()
@@ -243,7 +244,7 @@ async def test_channel(
     user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ChannelTestResponse:
-    """Send a test message to the channel's configured chat.
+    """Send a test message to the channel's own target (chat, webhook, recipients).
 
     Requires org membership.
     """
@@ -257,24 +258,15 @@ async def test_channel(
             error=f"Unsupported channel type: {channel.type}",
         )
 
-    chat_id = str((channel.config or {}).get("chat_id") or "").strip()
-    if not chat_id:
-        return ChannelTestResponse(
-            ok=False, error="channel has no chat_id configured"
-        )
-
-    # Send a plain text notification — no interactive buttons.
+    # Send a plain notice — no interactive buttons.
     # The Approval Playground covers the rich-card round-trip; this
     # endpoint exists purely as a connectivity/credentials sanity
     # check, so users who don't want approval gates aren't confused by
     # Approve/Reject buttons on a "test" message.
     sender = user.email or user.username
-    result = await adapter.send_message(
-        {
-            "chat_id": chat_id,
-            "msg_type": "text",
-            "content": f"FIM One test message from {sender}",
-        }
+    result = await adapter.send_notice(
+        "FIM One test message",
+        f"Sent by {sender} to check that this channel can deliver.",
     )
     return ChannelTestResponse(ok=result.ok, error=result.error)
 

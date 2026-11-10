@@ -49,6 +49,12 @@
   "conversation_not_found": "Conversation not found.",
   "agent_config_error": "Agent configuration error: {reason}.",
   "feishu_channel_requires_encrypt_key": "Feishu channels require an Encrypt Key — without it, callback signatures cannot be verified.",
+  "feishu_channel_base_url_not_allowed": "This Feishu API address is not allowed. Leave it empty for open.feishu.cn, use https://open.larksuite.com, or ask the operator to list your private deployment in FEISHU_ALLOWED_BASE_URLS.",
+  "channel_webhook_url_invalid": "Enter the https webhook URL issued by this platform. URLs on other hosts are not accepted.",
+  "channel_email_recipients_required": "Enter at least one recipient email address.",
+  "channel_email_recipients_invalid": "Each recipient must be a plain email address like name@example.com, separated by commas. Display names, angle brackets and semicolons are not accepted.",
+  "channel_email_not_permitted": "This instance does not allow sending email to these recipients. Ask the operator to configure SMTP and the recipient allowlist.",
+  "channel_type_unsupported": "This channel type is no longer supported. Create a new channel instead.",
 
   "connector_not_found": "Connector not found.",
   "db_password_required": "The connection settings changed. Enter the password again to test.",
@@ -82,6 +88,10 @@
   "connector_ownership_denied": "You do not own connector \"{name}\".",
   "kb_ownership_denied": "You do not own knowledge base \"{name}\".",
   "approval_channel_denied": "The approval channel must belong to an organization you are a member of.",
+  "approval_channel_type_unsupported": "This channel cannot carry approvals. Choose a Feishu app channel; webhook and email channels only deliver notifications.",
+  "approval_channel_not_in_agent_org": "This agent belongs to an organization, so its approval channel must be a channel of that organization.",
+  "completion_channel_not_in_agent_org": "This agent belongs to an organization, so its completion notification channel must be a channel of that organization.",
+  "completion_channel_denied": "The completion notification channel must belong to an organization you are a member of.",
 
   "llm_empty_response": "LLM returned empty response.",
   "llm_invalid_json": "LLM returned invalid JSON.",

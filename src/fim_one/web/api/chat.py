@@ -1626,6 +1626,10 @@ async def _resolve_tools(
         cats = agent_cfg.get("tool_categories") or []
         tools = tools.filter_by_category(*cats)
 
+    # ``send_notification`` acts for the caller, whichever agent it is used
+    # through: it reaches the channels of the caller's organizations.
+    tools = agent_runtime.bind_send_notification(tools, user_id)
+
     # Register the MarkItDown built-in tool with an injected vision LLM
     # resolved from the active workspace. Always registered (not gated by
     # category filter) because `convert_to_markdown` is a general-purpose
@@ -3890,6 +3894,7 @@ async def _react_turn(
                     id=(agent_cfg or {}).get("agent_id"),
                     name=(agent_cfg or {}).get("name") or "Agent",
                     org_id=(agent_cfg or {}).get("org_id"),
+                    user_id=(agent_cfg or {}).get("owner_user_id"),
                     model_config_json=(agent_cfg or {}).get("model_config_json"),
                 )
                 spawn_background(
@@ -5193,6 +5198,7 @@ async def _dag_turn(
                     id=(agent_cfg or {}).get("agent_id"),
                     name=(agent_cfg or {}).get("name") or "Agent",
                     org_id=(agent_cfg or {}).get("org_id"),
+                    user_id=(agent_cfg or {}).get("owner_user_id"),
                     model_config_json=(agent_cfg or {}).get("model_config_json"),
                 )
                 spawn_background(
