@@ -919,12 +919,12 @@ async def _filled(store: VariableStore, written: Any, schema: dict[str, Any] | N
             return await store.interpolate(written)
         # The result is text. If the template itself is a JSON object or
         # list (a request body typed into a text parameter, an argument the
-        # tool does not describe), whoever receives it will parse it: it is
-        # filled in after parsing and written out again, so that a value
-        # cannot add keys there either.
-        structure = await _filled_json(store, written, None, None)
-        if structure is not _UNFIT:
-            return json.dumps(structure, ensure_ascii=False)
+        # tool does not describe), whoever receives it will parse it: each
+        # reference is replaced, where it stands, by JSON of its value, so
+        # that a value cannot add keys there either.
+        text = await _filled_json_text(store, written)
+        if text is not None:
+            return text
         if "string" in kinds:
             # Text is one of the types the tool takes: it stays text.
             return await store.interpolate(written)
@@ -1005,30 +1005,30 @@ def _bare_value(value: Any, name: str, schema: dict[str, Any] | None) -> Any:
     return read
 
 
-async def _filled_json(
-    store: VariableStore, written: str, schema: dict[str, Any] | None, kind: str | None
-) -> Any:
-    """A template for an object or a list, filled in after it is parsed.
+def _masked_json_template(written: str) -> tuple[str, str, list[tuple[int, int, str, bool]]]:
+    """*written* with each reference outside a JSON string replaced by a marker string.
 
-    Filling the references into the JSON text and parsing the result would
-    let a value close a string and add keys of its own. Here each reference
-    outside a JSON string is first replaced by a marker string, the text is
-    parsed, and the values are then put in place of their markers; a
-    reference inside a string is filled in as part of that string. Returns
-    ``_UNFIT`` when the template is not JSON of the declared *kind*
-    (``None``: an object or a list written out in the template itself; a
-    template that is one reference is then left to plain filling-in).
+    Returns the masked text, the marker's prefix (marker ``i`` is the
+    string ``"<prefix>:<i>"``, numbered over the references outside
+    strings) and every reference as ``(start, end, name, in_string)``.
     """
-    wanted: tuple[type, ...] = (
-        (dict,) if kind == "object" else (list,) if kind == "array" else (dict, list)
-    )
     marker = secrets.token_hex(8)
-    names: list[str] = []
+    references: list[tuple[int, int, str, bool]] = []
     text: list[str] = []
+    bare = 0
     in_string = False
     i = 0
     while i < len(written):
         ch = written[i]
+        if ch == "{" and (ref := VARIABLE_REFERENCE.match(written, i)):
+            references.append((i, ref.end(), ref.group(1), in_string))
+            if in_string:
+                text.append(ref.group(0))
+            else:
+                text.append(json.dumps(f"{marker}:{bare}"))
+                bare += 1
+            i = ref.end()
+            continue
         if in_string:
             if ch == "\\":
                 text.append(written[i : i + 2])
@@ -1037,14 +1037,74 @@ async def _filled_json(
             in_string = ch != '"'
         elif ch == '"':
             in_string = True
-        elif ch == "{" and (ref := VARIABLE_REFERENCE.match(written, i)):
-            text.append(json.dumps(f"{marker}:{len(names)}"))
-            names.append(ref.group(1))
-            i = ref.end()
-            continue
         text.append(ch)
         i += 1
-    parsed = _json_value("".join(text))
+    return "".join(text), marker, references
+
+
+_JSON_WHITE_SPACE = " \t\n\r"
+
+
+async def _filled_json_text(store: VariableStore, written: str) -> str | None:
+    """JSON written into a text parameter, with its references filled in where they stand.
+
+    ``None`` when *written*, its references masked, is not a JSON object
+    or list. Otherwise the author's text, byte for byte (its numbers, key
+    order, duplicate keys, escapes and white space), with each reference
+    replaced by JSON: outside a string, one JSON value (see
+    :func:`_bare_value`; text that is JSON is put in as written); inside a
+    string, the value's text escaped for a JSON string. Nothing a value
+    holds can end a string or add a key, and ``NaN`` and ``Infinity`` are
+    never written.
+    """
+    masked, _marker, references = _masked_json_template(written)
+    if not isinstance(_json_value(masked), (dict, list)):
+        return None
+    out: list[str] = []
+    at = 0
+    for start, end, name, in_string in references:
+        out.append(written[at:start])
+        at = end
+        value = await store.resolve(name, _UNFIT)
+        if in_string:
+            if value is None or value is _UNFIT:
+                # As in any text: a reference with no value stays visible.
+                out.append(written[start:end])
+                continue
+            text = value if isinstance(value, str) else _json_text(value)
+            out.append(json.dumps(text, ensure_ascii=False)[1:-1])
+        elif isinstance(value, str) and _json_value(value) is not _UNFIT:
+            out.append(value.strip(_JSON_WHITE_SPACE))
+        else:
+            out.append(_json_text(_bare_value(value, name, None)))
+    out.append(written[at:])
+    return "".join(out)
+
+
+def _json_text(value: Any) -> str:
+    """*value* as JSON; what JSON cannot say (``NaN``, an odd object) as a string."""
+    try:
+        return json.dumps(value, ensure_ascii=False, allow_nan=False)
+    except (TypeError, ValueError):
+        return json.dumps(str(value), ensure_ascii=False)
+
+
+async def _filled_json(
+    store: VariableStore, written: str, schema: dict[str, Any] | None, kind: str
+) -> Any:
+    """A template for an object or a list, filled in after it is parsed.
+
+    Filling the references into the JSON text and parsing the result would
+    let a value close a string and add keys of its own. Here each reference
+    outside a JSON string is first replaced by a marker string, the text is
+    parsed, and the values are then put in place of their markers; a
+    reference inside a string is filled in as part of that string. Returns
+    ``_UNFIT`` when the template is not JSON of the declared *kind*.
+    """
+    wanted: tuple[type, ...] = (dict,) if kind == "object" else (list,)
+    masked, marker, references = _masked_json_template(written)
+    names = [name for _, _, name, in_string in references if not in_string]
+    parsed = _json_value(masked)
     if parsed is _UNFIT:
         return _UNFIT
     values = [await store.resolve(name, _UNFIT) for name in names]
@@ -1055,8 +1115,6 @@ async def _filled_json(
         return None
 
     if (whole := marked(parsed)) is not None:
-        if kind is None:
-            return _UNFIT
         # The template is one reference: the variable's value, or the JSON
         # it is the text of.
         value = values[whole]

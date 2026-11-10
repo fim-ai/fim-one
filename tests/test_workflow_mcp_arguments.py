@@ -284,6 +284,81 @@ class TestABareReferenceIsReadAsJson:
         }
 
 
+class TestJsonTextKeepsWhatItsAuthorWrote:
+    """Old (plain filling-in) against new, for JSON written into a text parameter.
+
+    Where plain filling-in gave valid JSON without a value changing its
+    structure, the result is the same text, byte for byte. It differs only
+    where the old result was broken JSON or had keys a value added.
+    """
+
+    VALUES: dict[str, Any] = {
+        "input.v": 'x", "admin": true, "y": "',
+        "input.n": "5",
+        "input.i": 5,
+        "input.b": "true",
+        "input.bt": True,
+        "input.obj": {"a": 1},
+        "input.js": '{"k": [1,2]}',
+        "input.jl": "[1,2]",
+        "input.lst": [1, "a"],
+        "input.none": None,
+        "input.s": "plain text",
+        "input.nulls": "null",
+        "input.nan": float("nan"),
+    }
+    SAME_AS_BEFORE: tuple[str, ...] = (
+        '{"count": {{input.n}}, "flag": {{input.b}}, "data": {{input.js}}, "name": "{{input.s}}"}',
+        "[{{input.n}}, {{input.jl}}]",
+        # Numbers, escapes, duplicate keys and white space as written.
+        '{"q":   "{{input.s}}",\n  "n": 1.0, "e": 1e3, "z": 1.10, "big": 12345678901234567890, '
+        '"u": "\\u00e9\\/", "neg": -0, "dup": 1, "dup": 2}',
+        '{"huge": 1E400, "k": {{input.i}}}',
+        '  {"a": {{input.i}}}  ',
+        '{"a": {{input.obj}}, "l": {{input.lst}}, "t": {{input.bt}}}',
+        '{"sql": "SELECT * FROM t WHERE a = {{input.n}}"}',
+        '{"a":{{input.i}},"b":[1,2,3]}',
+        '{"c": {{input.nulls}}}',
+        # Not a JSON object or list: plain filling-in, as ever.
+        "prefix {\"a\": {{input.i}}}",
+        "{{input.js}}",
+        '"{{input.s}}"',
+        "{'a': {{input.i}}}",
+        '{"a": {{input.i}}} {"b": 1}',
+        '{"k": NaN, "a": {{input.i}}}',
+        "Hello {{input.s}}, {{input.i}} times",
+    )
+    DIFFERENT: dict[str, str] = {
+        # A value closed its string and added keys.
+        '{"a": "{{input.v}}"}': '{"a": "x\\", \\"admin\\": true, \\"y\\": \\""}',
+        # Broken JSON before; one string now.
+        '{"a": {{input.v}}}': '{"a": "x\\", \\"admin\\": true, \\"y\\": \\""}',
+        "[{{input.s}}]": '["plain text"]',
+        # A reference with no value was left in as bare text.
+        '{"a": {{input.none}}, "b": {{input.missing}}}': '{"a": null, "b": "{{input.missing}}"}',
+        # NaN is not JSON.
+        '{"x": {{input.nan}}}': '{"x": "nan"}',
+    }
+
+    async def _both(self, template: str) -> tuple[str, Any]:
+        store = VariableStore()
+        await store.set_many(self.VALUES)
+        new = await _interpolated_parameters(store, {"p": template})
+        return await store.interpolate(template), new["p"]
+
+    @pytest.mark.parametrize("template", SAME_AS_BEFORE)
+    async def test_the_same_text_as_plain_filling_in(self, template: str) -> None:
+        old, new = await self._both(template)
+        assert new == old
+
+    @pytest.mark.parametrize("template", list(DIFFERENT))
+    async def test_different_only_where_the_old_result_was_wrong(self, template: str) -> None:
+        old, new = await self._both(template)
+        assert new == self.DIFFERENT[template]
+        assert new != old
+        json.loads(new)
+
+
 class TestJsonWrittenIntoATextParameter:
     """With no object or list schema the result is text; the receiver may parse it."""
 
