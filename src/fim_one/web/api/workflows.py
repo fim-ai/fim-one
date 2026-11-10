@@ -1132,6 +1132,10 @@ async def publish_workflow(
         from fim_one.web.auth import require_org_member
         if not is_market_org(body.org_id):
             await require_org_member(body.org_id, current_user, db)
+        # The blueprint was saved against the organization the workflow was
+        # in then (or none); its literal assignees must fit the one it is
+        # published to, the rule a run there applies.
+        await ensure_assignees_valid(db, wf.blueprint, user=current_user, org_id=body.org_id)
         wf.visibility = "org"
         wf.org_id = body.org_id
         from fim_one.web.publish_review import apply_publish_status

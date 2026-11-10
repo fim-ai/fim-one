@@ -41,9 +41,11 @@ from fim_one.web.api.workflows import (
     ensure_assignees_valid,
     list_pending_approvals,
     list_run_approvals,
+    publish_workflow,
     reject_approval,
 )
 from fim_one.web.exceptions import AppError
+from fim_one.web.schemas.common import PublishRequest
 from fim_one.web.schemas.workflow import ApprovalDecisionRequest
 
 
@@ -458,6 +460,79 @@ class TestRunApprovalListing:
                 run.workflow_id, run.id, current_user=world.colleague, db=session
             )
         assert _ids(seen) == {approval.id}
+
+
+class TestPublishingChecksAssigneesAgainstTheTargetOrganization:
+    """A personal workflow's assignee was checked against the saver's organizations only."""
+
+    @staticmethod
+    async def _personal_workflow(session: AsyncSession, owner: User, assignee: str) -> Workflow:
+        wf = Workflow(
+            user_id=owner.id,
+            org_id=None,
+            name="wf",
+            blueprint={
+                "nodes": [
+                    {
+                        "id": "human_1",
+                        "type": "humanIntervention",
+                        "data": {
+                            "type": "HUMAN_INTERVENTION",
+                            "label": "Sign-off",
+                            "assignee": assignee,
+                        },
+                    }
+                ],
+                "edges": [],
+            },
+        )
+        session.add(wf)
+        await session.commit()
+        return wf
+
+    async def test_an_assignee_outside_the_target_organization_refuses_the_publish(
+        self, session: AsyncSession, world: World
+    ) -> None:
+        """Saved while personal, naming someone the author shares another organization with."""
+        # The stranger shares an organization with the author, so the personal
+        # workflow could be saved naming them.
+        third = str(uuid.uuid4())
+        session.add(
+            Organization(id=third, name="Third", slug=f"t-{third[:6]}", owner_id=world.author.id)
+        )
+        await session.flush()
+        for uid in (world.author.id, world.stranger.id):
+            session.add(
+                OrgMembership(id=str(uuid.uuid4()), org_id=third, user_id=uid, role="member")
+            )
+        await session.commit()
+        wf = await self._personal_workflow(session, world.author, world.stranger.id)
+        await ensure_assignees_valid(session, wf.blueprint, user=world.author, org_id=None)
+
+        with pytest.raises(AppError) as exc:
+            await publish_workflow(
+                wf.id,
+                PublishRequest(scope="org", org_id=world.org),
+                current_user=world.author,
+                db=session,
+            )
+        assert exc.value.error_code == "approval_assignee_not_in_org"
+        assert exc.value.detail_args == {"step": "Sign-off", "assignee": world.stranger.id}
+        await session.rollback()
+        await session.refresh(wf)
+        assert wf.org_id is None and wf.visibility != "org"
+
+    async def test_an_assignee_in_the_target_organization_is_published(
+        self, session: AsyncSession, world: World
+    ) -> None:
+        wf = await self._personal_workflow(session, world.author, world.colleague.id)
+        resp = await publish_workflow(
+            wf.id,
+            PublishRequest(scope="org", org_id=world.org),
+            current_user=world.author,
+            db=session,
+        )
+        assert resp.data["org_id"] == world.org
 
 
 class TestDeletingARunClosesItsApprovals:
