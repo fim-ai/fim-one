@@ -15,6 +15,7 @@ __all__ = [
     "CONFIRMATION_UNDELIVERABLE",
     "CREDENTIAL_REQUIRED",
     "CREDENTIAL_UNAVAILABLE",
+    "MCP_SERVER_ADDRESS_PRIVATE",
     "OWNER_ONLY",
     "QUOTA_UNAVAILABLE",
     "RESOURCE_INACTIVE",
@@ -34,6 +35,7 @@ RESOURCE_INACTIVE = "resource_inactive"
 OWNER_ONLY = "owner_only"
 CREDENTIAL_REQUIRED = "credential_required"
 CREDENTIAL_UNAVAILABLE = "credential_unavailable"
+MCP_SERVER_ADDRESS_PRIVATE = "mcp_server_address_private"
 CONFIRMATION_UNDELIVERABLE = "confirmation_undeliverable"
 CONFIRMATION_NOT_FOUND = "confirmation_not_found"
 CONFIRMATION_FORBIDDEN = "confirmation_forbidden"

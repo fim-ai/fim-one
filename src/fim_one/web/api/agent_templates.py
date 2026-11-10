@@ -107,4 +107,4 @@ async def create_agent_from_template(
     # Reuse the existing response builder from agents module
     from fim_one.web.api.agents import _agent_to_response
 
-    return ApiResponse(data=_agent_to_response(agent).model_dump())
+    return ApiResponse(data=_agent_to_response(agent, is_owner=True).model_dump())

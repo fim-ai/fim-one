@@ -487,6 +487,111 @@ class TestMcpServerThatStoresNothing:
         assert got.env == {"API_KEY": "mine"}
 
 
+class TestMcpServerWhoseAddressCarriesACredential:
+    """The URL and the launch arguments are the owner's, whoever connects.
+
+    Where they hold a credential, a personal ``env`` or ``headers`` does not
+    replace it: with fallback off the server is its owner's alone.
+    """
+
+    def _flagged(self, transport: str, *, allow_fallback: bool) -> SimpleNamespace:
+        server = _mcp(transport=transport, allow_fallback=allow_fallback)
+        if transport == "stdio":
+            server.args = ["-y", "pkg", "--api-key", "sk-owner-0123456789"]
+            server.url = None
+        else:
+            server.args = None
+            server.url = "https://mcp.example.com/mcp?token=owner-token"
+        return server
+
+    async def _save_fitting(self, session: AsyncSession, user_id: str, transport: str) -> None:
+        if transport == "stdio":
+            await _save_mcp(session, user_id, env={"API_KEY": "mine"})
+        else:
+            await _save_mcp(session, user_id, headers={"Authorization": "Bearer mine"})
+
+    @pytest.mark.parametrize("transport", ["stdio", "sse", "streamable_http"])
+    @pytest.mark.parametrize("has_personal", [True, False])
+    @pytest.mark.parametrize("user_id", [OTHER, ""])
+    async def test_someone_else_is_refused_when_fallback_is_off_whatever_they_saved(
+        self, session: AsyncSession, transport: str, has_personal: bool, user_id: str
+    ) -> None:
+        """A saved credential of their own let them in, on the owner's URL or arguments."""
+        if has_personal and user_id:
+            await self._save_fitting(session, user_id, transport)
+
+        refusal = await _refusal(session, user_id, self._flagged(transport, allow_fallback=False))
+
+        assert (refusal.error_code, refusal.status_code) == ("mcp_server_address_private", 403)
+        # The refusal says where the credential is, never what it is.
+        assert "sk-owner" not in refusal.detail and "owner-token" not in refusal.detail
+        assert ("launch arguments" if transport == "stdio" else "address") in refusal.detail
+
+    @pytest.mark.parametrize("transport", ["stdio", "streamable_http"])
+    @pytest.mark.parametrize("allow_fallback", [True, False])
+    async def test_the_owner_is_unaffected(
+        self, session: AsyncSession, transport: str, allow_fallback: bool
+    ) -> None:
+        got = await resolve_credential(
+            session,
+            provisional_principal(OWNER),
+            self._flagged(transport, allow_fallback=allow_fallback),
+        )
+
+        assert got.source is CredentialSource.OWNER
+
+    @pytest.mark.parametrize("transport", ["stdio", "streamable_http"])
+    async def test_with_fallback_on_nothing_changes(
+        self, session: AsyncSession, transport: str
+    ) -> None:
+        """The owner has agreed to lend the server as configured."""
+        server = self._flagged(transport, allow_fallback=True)
+
+        borrowed = await resolve_credential(session, provisional_principal(OTHER), server)
+        assert borrowed.source is CredentialSource.OWNER_FALLBACK
+
+        await self._save_fitting(session, OTHER, transport)
+        own = await resolve_credential(session, provisional_principal(OTHER), server)
+        assert own.source is CredentialSource.PERSONAL
+
+    async def test_it_is_answered_without_looking_anything_up(self) -> None:
+        """No credential of the caller's could change the answer."""
+        db = AsyncMock()
+
+        (answer,) = await resolve_credentials(
+            db, provisional_principal(OTHER), [self._flagged("stdio", allow_fallback=False)]
+        )
+
+        assert isinstance(answer, AssemblyRefusal)
+        assert answer.error_code == "mcp_server_address_private"
+        db.execute.assert_not_awaited()
+
+    async def test_it_does_not_cost_the_other_servers_their_answer(
+        self, session: AsyncSession
+    ) -> None:
+        plain = _mcp(transport="stdio", allow_fallback=True)
+        plain.id = "srv-2"
+
+        flagged, lent = await resolve_credentials(
+            session,
+            provisional_principal(OTHER),
+            [self._flagged("stdio", allow_fallback=False), plain],
+        )
+
+        assert isinstance(flagged, AssemblyRefusal)
+        assert not isinstance(lent, AssemblyRefusal)
+        assert lent.source is CredentialSource.OWNER_FALLBACK
+
+    def test_the_code_has_a_message_for_the_interface(self) -> None:
+        import json
+        from pathlib import Path
+
+        messages = json.loads(
+            (Path(__file__).resolve().parents[1] / "frontend/messages/en/errors.json").read_text()
+        )
+        assert "mcp_server_address_private" in messages
+
+
 class TestManyResourcesOneLookup:
     """A chat with no agent resolves every connector and server the user can
     see on every turn: the lookups must not grow with their number."""

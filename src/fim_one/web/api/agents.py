@@ -26,7 +26,7 @@ from fim_one.web.visibility import build_visibility_filter
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
 
-def _agent_to_response(agent: Agent, *, is_owner: bool = True) -> AgentResponse:
+def _agent_to_response(agent: Agent, *, is_owner: bool) -> AgentResponse:
     # Non-owners: strip internal content (instructions, model config are IP)
     if is_owner:
         instructions = agent.instructions
@@ -389,7 +389,7 @@ async def create_agent(
     await db.commit()
     result = await db.execute(select(Agent).where(Agent.id == agent.id))
     agent = result.scalar_one()
-    return ApiResponse(data=_agent_to_response(agent).model_dump())
+    return ApiResponse(data=_agent_to_response(agent, is_owner=True).model_dump())
 
 
 @router.get("", response_model=PaginatedResponse)
@@ -526,7 +526,7 @@ async def update_agent(
     await db.commit()
     result = await db.execute(select(Agent).where(Agent.id == agent.id))
     agent = result.scalar_one()
-    data = _agent_to_response(agent).model_dump()
+    data = _agent_to_response(agent, is_owner=True).model_dump()
     if reverted:
         data["publish_status_reverted"] = True
     return ApiResponse(data=data)
@@ -615,7 +615,7 @@ async def publish_agent(
     await db.commit()
     await db.refresh(agent)
 
-    data = _agent_to_response(agent).model_dump()
+    data = _agent_to_response(agent, is_owner=True).model_dump()
     data["warnings"] = warnings
     return ApiResponse(data=data)
 
@@ -649,7 +649,7 @@ async def resubmit_agent(
 
     await db.commit()
     await db.refresh(agent)
-    return ApiResponse(data=_agent_to_response(agent).model_dump())
+    return ApiResponse(data=_agent_to_response(agent, is_owner=True).model_dump())
 
 
 @router.post("/{agent_id}/unpublish", response_model=ApiResponse)
@@ -697,7 +697,7 @@ async def unpublish_agent(
 
     await db.commit()
     await db.refresh(agent)
-    return ApiResponse(data=_agent_to_response(agent).model_dump())
+    return ApiResponse(data=_agent_to_response(agent, is_owner=agent.user_id == current_user.id).model_dump())
 
 
 # ---------------------------------------------------------------------------
@@ -756,4 +756,4 @@ async def fork_agent(
         select(Agent).where(Agent.id == forked.id)
     )
     forked = result.scalar_one()
-    return ApiResponse(data=_agent_to_response(forked).model_dump())
+    return ApiResponse(data=_agent_to_response(forked, is_owner=True).model_dump())

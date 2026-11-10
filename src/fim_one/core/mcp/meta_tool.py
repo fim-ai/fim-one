@@ -21,7 +21,7 @@ from typing import Any, Literal
 
 from fim_one.core.tool.base import BaseTool
 
-from .adapter import MCPToolAdapter
+from .adapter import MCPCallError, MCPToolAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -251,13 +251,23 @@ class MCPServerMetaTool(BaseTool):
             result = await adapter.run(**parameters)
             return result
         except Exception as exc:
+            # The caller may not be the server's owner and is never shown
+            # its URL, which an error can quote, credential included.
+            from fim_one.core.assembly.mcp_address import (
+                error_without_url_secrets,
+                traceback_without_url_secrets,
+            )
+
             logger.warning(
-                "MCPServerMetaTool call failed: server=%s tool=%s",
+                "MCPServerMetaTool call failed: server=%s tool=%s\n%s",
                 server_name,
                 tool_name,
-                exc_info=True,
+                traceback_without_url_secrets(exc),
             )
-            return f"[Error] MCP call failed: {type(exc).__name__}: {exc}"
+            # The adapter has already named the original error where it
+            # had to rewrite it.
+            reason = str(exc) if isinstance(exc, MCPCallError) else error_without_url_secrets(exc)
+            return f"[Error] MCP call failed: {reason}"
 
     # ------------------------------------------------------------------
     # Helpers

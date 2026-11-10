@@ -54,4 +54,4 @@ async def create_skill_from_template(
 
     from fim_one.web.api.skills import _skill_to_response
 
-    return ApiResponse(data=_skill_to_response(skill).model_dump())
+    return ApiResponse(data=_skill_to_response(skill, is_owner=True).model_dump())

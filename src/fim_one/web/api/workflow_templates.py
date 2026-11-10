@@ -242,7 +242,7 @@ async def create_workflow_from_template(
     # Use the response builder from workflows module
     from fim_one.web.api.workflows import _workflow_to_response
 
-    return ApiResponse(data=_workflow_to_response(wf_reloaded).model_dump())
+    return ApiResponse(data=_workflow_to_response(wf_reloaded, is_owner=True).model_dump())
 
 
 # ---------------------------------------------------------------------------
