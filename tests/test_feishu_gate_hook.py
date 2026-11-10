@@ -543,7 +543,8 @@ class TestInlineMode:
         result = await hook.execute(ctx)
 
         assert result.allow is False
-        assert "channel_only" in (result.error or "").lower()
+        assert '"Channel only"' in (result.error or "")
+        assert "channel_only" not in (result.error or "")
         # No row should have been created for a pre-flight failure.
         async with session_factory() as db:
             rows = (await db.execute(select(ConfirmationRequest))).all()

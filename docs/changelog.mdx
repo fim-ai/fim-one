@@ -43,6 +43,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **Two approval messages say what happened.** A tool call refused because the agent is set to "Channel only" with no usable approval channel now says so in the words of the agent editor and points to the setting, instead of naming the stored value `channel_only`. Clicking a Feishu approval card with a linked account that has been disabled answers "Your linked FIM One account is disabled" instead of "no longer exists".
 - **Deleting a workflow run closes the approvals it left open.** An approval still waiting when its run was deleted (by hand, by "clear runs", by the retention cleanup, or together with its workflow or its user) stayed in the assignee's pending list with nothing behind it. It is now closed as expired when the run goes.
 - **A long task keeps your original request when you interrupt it more than once.** When the request and the interrupts sent mid-run together took more than half the context budget, compaction kept only the newest interrupt word for word and folded the original request into the summary. The original request and the newest interrupt are now both kept; only the interrupts in between are summarised.
 

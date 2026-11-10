@@ -797,7 +797,7 @@ async def _decide_from_click(
             db, provider="feishu", subject=open_id
         )
     except AssemblyRefusal:
-        return _denied("Your linked FIM One account no longer exists.")
+        return _denied("Your linked FIM One account is disabled.")
     if actor is None:
         return _denied(
             "Your Feishu account is not linked to FIM One — link it "

@@ -216,7 +216,10 @@ class TestRequest:
         with pytest.raises(AssemblyRefusal) as exc:
             await ConfirmationService(factory).request(_spec(world, delivery="channel_only"))
         assert exc.value.error_code == "confirmation_undeliverable"
-        assert "channel_only" in exc.value.detail
+        # In the words of the agent editor, not the stored value.
+        assert '"Channel only"' in exc.value.detail
+        assert "approval channel" in exc.value.detail
+        assert "channel_only" not in exc.value.detail
         async with factory() as db:
             assert (await db.execute(select(ConfirmationRequest))).scalars().all() == []
 

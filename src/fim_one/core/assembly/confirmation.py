@@ -193,8 +193,10 @@ class ConfirmationService:
                 raise AssemblyRefusal(
                     CONFIRMATION_UNDELIVERABLE,
                     409,
-                    "Agent is configured for channel_only confirmation "
-                    "but no Feishu channel is bound or active.",
+                    'This agent\'s confirmation mode is "Channel only", but it has no '
+                    "approval channel linked, or the linked channel is switched off. "
+                    "Choose an active approval channel in the agent's settings, or "
+                    "change the confirmation mode.",
                 )
             row = await self._create_row(spec, mode="inline", channel_row=None)
             # Best-effort: the listener never raises, and the row is polled

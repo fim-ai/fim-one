@@ -1249,6 +1249,38 @@ class TestFeishuCallback:
         assert row.approver_user_id is None
 
     @pytest.mark.asyncio
+    async def test_a_disabled_linked_account_is_told_it_is_disabled(
+        self,
+        client: AsyncClient,
+        seed: dict[str, Any],
+        session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """The account is still there; the toast must not say it no longer exists."""
+        from fim_one.db.models.user import User
+
+        ch, req = await self._seed_callback(session_factory, seed, name="CB-Disabled")
+        async with session_factory() as db:
+            user = await db.get(User, seed["user_id"])
+            assert user is not None
+            user.is_active = False
+            await db.commit()
+        resp = await self._post(
+            client,
+            ch.id,
+            {
+                "action": {"value": {"confirmation_id": req.id, "decision": "approve"}},
+                "open_id": "ou_operator",
+            },
+        )
+        assert resp.status_code == 200
+        toast = resp.json()["toast"]
+        assert toast["type"] == "error"
+        assert "disabled" in toast["content"]
+        assert "no longer exists" not in toast["content"]
+        row = await self._fetch(session_factory, req.id)
+        assert row.status == "pending"
+
+    @pytest.mark.asyncio
     async def test_out_of_scope_user_denied(
         self,
         client: AsyncClient,
