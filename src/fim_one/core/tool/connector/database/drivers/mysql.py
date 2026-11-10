@@ -26,6 +26,12 @@ logger = logging.getLogger(__name__)
 _COM_RESET_CONNECTION = 0x1F
 _ER_UNKNOWN_COM_ERROR = 1047
 _ER_UNKNOWN_SYSTEM_VARIABLE = 1193
+_ER_NO_SUCH_THREAD = 1094
+_POOL_SIZE = 5
+# How long an abandoned statement may keep its slot: this many times the
+# query timeout. And how often the server is asked whether it is gone.
+_ABANDONED_CEILING_FACTOR = 10
+_ABANDONED_POLL_S = 1.0
 _ER_CANT_AGGREGATE_2COLLATIONS = 1267
 _MODE_NAME = re.compile(r"[A-Za-z0-9_]+")
 # Modes under which MySQL reads strings and quoted names differently from
@@ -55,6 +61,10 @@ class MySQLDriver(DatabaseDriver):
         self._can_reset = True
         # The SQL mode a read-only session is put into (see ``_set_sql_mode``).
         self._sql_mode: str | None = None
+        # Slots for statements on the server, running or abandoned and not
+        # yet gone (see ``_session``), and the tasks waiting those out.
+        self._slots: asyncio.Semaphore | None = None
+        self._stopping: set[asyncio.Task[None]] = set()
 
     def _connection_settings(self) -> dict[str, Any]:
         return {
@@ -73,11 +83,108 @@ class MySQLDriver(DatabaseDriver):
     async def connect(self) -> None:
         """Create an aiomysql connection pool."""
         self._pool = await aiomysql.create_pool(
-            minsize=1, maxsize=5, **self._connection_settings()
+            minsize=1, maxsize=_POOL_SIZE, **self._connection_settings()
         )
 
     @asynccontextmanager
-    async def _session(self, *, read_only: bool = True) -> AsyncIterator[Any]:
+    async def _session(
+        self, *, read_only: bool = True, timeout_s: int = 30
+    ) -> AsyncIterator[Any]:
+        """A clean session (:meth:`_connection`), within the driver's count of busy slots.
+
+        A query whose client gave up (a timeout, a cancelled request) is
+        not over for the server: aiomysql drops the connection and the
+        statement runs on, for as long as it takes. Such a statement keeps
+        its slot here until it is gone (see :meth:`_abandon`), so however
+        many requests are abandoned, at most ``_POOL_SIZE`` statements of
+        this connector run on the server at once, from this process.
+        """
+        if self._slots is None:
+            self._slots = asyncio.Semaphore(_POOL_SIZE)
+        try:
+            await asyncio.wait_for(self._slots.acquire(), timeout=timeout_s)
+        except TimeoutError:
+            raise RuntimeError(
+                f"all {_POOL_SIZE} connections of this connector are busy, some with "
+                "queries that were given up on and are still running on the server; "
+                "try again later"
+            ) from None
+        kept = False
+        try:
+            async with self._connection(read_only=read_only) as conn:
+                thread_id = conn.thread_id()
+                try:
+                    yield conn
+                finally:
+                    if conn.closed:
+                        # Cut off in the middle of a statement.
+                        kept = self._abandon(thread_id, timeout_s)
+        finally:
+            if not kept:
+                self._slots.release()
+
+    def _abandon(self, thread_id: int, timeout_s: int) -> bool:
+        """Have the server stop the statement of *thread_id*; its slot stays busy meanwhile.
+
+        Runs on its own, after the caller has gone: it never raises into
+        the caller and does not hold up a cancellation. ``True`` when the
+        slot was handed to it.
+        """
+        try:
+            task = asyncio.get_running_loop().create_task(self._stop(thread_id, timeout_s))
+        except RuntimeError:
+            return False
+        self._stopping.add(task)
+
+        def _done(finished: asyncio.Task[None]) -> None:
+            self._stopping.discard(finished)
+            if self._slots is not None:
+                self._slots.release()
+            if not finished.cancelled() and finished.exception() is not None:
+                logger.warning(
+                    "Stopping an abandoned MySQL statement failed", exc_info=finished.exception()
+                )
+
+        task.add_done_callback(_done)
+        return True
+
+    async def _stop(self, thread_id: int, timeout_s: int) -> None:
+        """``KILL QUERY`` the statement, then wait until its thread is no longer running one.
+
+        From a short-lived connection of its own, with the connector's
+        credentials (a user may always kill their own threads). Some
+        statements take the server a long time to interrupt; the wait ends
+        after ten times the query timeout whatever the server says.
+        """
+        side = await aiomysql.connect(**self._connection_settings())
+        try:
+            async with side.cursor() as cur:
+                try:
+                    await cur.execute(f"KILL QUERY {int(thread_id)}")
+                except Exception as exc:
+                    if getattr(exc, "args", (None,))[0] != _ER_NO_SUCH_THREAD:
+                        raise
+                    return
+                deadline = time.monotonic() + _ABANDONED_CEILING_FACTOR * timeout_s
+                while time.monotonic() < deadline:
+                    await cur.execute(
+                        "SELECT 1 FROM information_schema.processlist "
+                        "WHERE id = %s AND command <> 'Sleep'",
+                        (int(thread_id),),
+                    )
+                    if not await cur.fetchone():
+                        return
+                    await asyncio.sleep(_ABANDONED_POLL_S)
+                logger.warning(
+                    "MySQL thread %s is still running %ss after its query was given up on",
+                    thread_id,
+                    _ABANDONED_CEILING_FACTOR * timeout_s,
+                )
+        finally:
+            side.close()
+
+    @asynccontextmanager
+    async def _connection(self, *, read_only: bool = True) -> AsyncIterator[Any]:
         """A connection whose session carries nothing over from its last use.
 
         A pooled connection keeps what earlier statements left on it: user
@@ -216,6 +323,8 @@ class MySQLDriver(DatabaseDriver):
 
     async def disconnect(self) -> None:
         """Close the connection pool."""
+        for task in list(self._stopping):
+            task.cancel()
         if self._pool:
             self._pool.close()
             await self._pool.wait_closed()
@@ -340,7 +449,7 @@ class MySQLDriver(DatabaseDriver):
 
         start = time.monotonic()
         try:
-            async with self._session(read_only=read_only) as conn:
+            async with self._session(read_only=read_only, timeout_s=timeout_s) as conn:
                 cur = await conn.cursor()
                 try:
                     await self._limit_statement_time(cur, timeout_s)

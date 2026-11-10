@@ -14,6 +14,7 @@ Live tests need ``FIM_TEST_MYSQL_URL``; the rest run anywhere.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 from collections.abc import AsyncIterator
 from typing import Any
@@ -569,3 +570,131 @@ class TestAConnectionIsAlwaysGivenBack:
             asyncio.gather(*(tool.run(sql="SELECT 1") for _ in range(8))), timeout=10
         )
         assert all(json.loads(text)["rows"] == [[1]] for text in answers)
+
+
+class TestAnAbandonedStatementIsStopped:
+    """The client gave up; the server would run the statement to its end."""
+
+    @staticmethod
+    def _heavy(live: LiveDatabase) -> str:
+        tables = ", ".join(f"{live.orders} t{i}" for i in range(32))
+        return f"SELECT SUM(t0.id + t31.id) FROM {tables}"
+
+    @staticmethod
+    async def _running(live: LiveDatabase) -> int:
+        import aiomysql  # type: ignore[import-untyped]
+
+        admin = await aiomysql.connect(
+            host=live.config["host"],
+            port=live.config["port"],
+            user=live.config["username"],
+            password=live.config["password"],
+            db=live.config["database"],
+        )
+        try:
+            async with admin.cursor() as cur:
+                await cur.execute(
+                    "SELECT COUNT(*) FROM information_schema.processlist "
+                    "WHERE info LIKE %s AND id <> CONNECTION_ID()",
+                    (f"SELECT SUM(t0.id + t31.id) FROM {live.orders}%",),
+                )
+                (count,) = await cur.fetchone()
+                return int(count)
+        finally:
+            admin.close()
+
+    async def _gone_within(self, live: LiveDatabase, seconds: float) -> bool:
+        deadline = asyncio.get_running_loop().time() + seconds
+        while asyncio.get_running_loop().time() < deadline:
+            if await self._running(live) == 0:
+                return True
+            await asyncio.sleep(0.3)
+        return False
+
+    @pytest.fixture()
+    def no_server_limit(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """As for a statement MAX_EXECUTION_TIME does not cover: only the client's timeout."""
+
+        async def _none(_cur: Any, _timeout_s: int) -> None:
+            return None
+
+        monkeypatch.setattr(MySQLDriver, "_limit_statement_time", staticmethod(_none))
+
+    async def test_after_a_client_side_timeout_the_statement_is_killed(
+        self, live_mysql: LiveDatabase, no_server_limit: None
+    ) -> None:
+        driver = await ConnectionPoolManager.get_instance().get_driver(
+            live_mysql.connector_id, live_mysql.config
+        )
+        assert isinstance(driver, MySQLDriver)
+        with pytest.raises(TimeoutError):
+            await driver.execute_query(self._heavy(live_mysql), timeout_s=1)
+        assert await self._gone_within(live_mysql, 6)
+        # Its slot is free again, and the pool serves.
+        await asyncio.sleep(1.5)
+        assert driver._slots is not None and driver._slots._value == mysql_driver._POOL_SIZE
+        assert (await driver.execute_query("SELECT 1")).rows == [[1]]
+
+    async def test_after_a_cancelled_request_the_statement_is_killed(
+        self, live_mysql: LiveDatabase, no_server_limit: None
+    ) -> None:
+        tool = _tool(live_mysql, read_only=True)
+        tasks = [asyncio.create_task(tool.run(sql=self._heavy(live_mysql))) for _ in range(3)]
+        await asyncio.sleep(0.7)
+        assert await self._running(live_mysql) == 3
+        for task in tasks:
+            task.cancel()
+        assert all(
+            isinstance(result, asyncio.CancelledError)
+            for result in await asyncio.gather(*tasks, return_exceptions=True)
+        )
+        assert await self._gone_within(live_mysql, 6)
+        assert json.loads(await tool.run(sql="SELECT 1"))["rows"] == [[1]]
+
+    async def test_a_statement_the_server_does_not_stop_keeps_its_slot_and_new_calls_are_told(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Abandoned statements are capped at the pool's size; the sixth call does not pile on."""
+        driver = MySQLDriver({})
+        never = asyncio.Event()
+
+        async def _never_gone(_self: MySQLDriver, _thread_id: int, _timeout_s: int) -> None:
+            await never.wait()
+
+        monkeypatch.setattr(MySQLDriver, "_stop", _never_gone)
+
+        @contextlib.asynccontextmanager
+        async def _dropped(**_kwargs: Any) -> AsyncIterator[Any]:
+            conn = MagicMock(closed=False)
+            try:
+                yield conn
+            finally:
+                conn.closed = True
+
+        monkeypatch.setattr(driver, "_connection", _dropped)
+
+        async def _use() -> None:
+            async with driver._session(timeout_s=1) as conn:
+                conn.closed = True  # cut off mid-statement
+
+        for _ in range(mysql_driver._POOL_SIZE):
+            await _use()
+        assert driver._slots is not None and driver._slots._value == 0
+        with pytest.raises(RuntimeError, match="are busy"):
+            await _use()
+        # Once the server reports them gone, the slots come back.
+        never.set()
+        await asyncio.sleep(0.05)
+        assert driver._slots._value == mysql_driver._POOL_SIZE
+
+    async def test_a_kill_that_fails_gives_the_slot_back_and_raises_nowhere(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        driver = MySQLDriver({})
+        driver._slots = asyncio.Semaphore(0)
+        monkeypatch.setattr(
+            mysql_driver.aiomysql, "connect", AsyncMock(side_effect=OSError("no route"))
+        )
+        assert driver._abandon(7, 1) is True
+        await asyncio.sleep(0.05)
+        assert driver._slots._value == 1 and not driver._stopping

@@ -194,6 +194,44 @@ class TestPostgreSQL:
         assert time.monotonic() - started < 10
         assert json.loads(await tool.run(sql="SELECT 1"))["rows"] == [[1]]
 
+    async def test_a_statement_the_client_gave_up_on_is_not_left_running(
+        self, live_pg: LiveDatabase, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """asyncpg cancels on the server when the client times out or is cancelled."""
+        import asyncio
+
+        from fim_one.core.tool.connector.database.drivers import postgresql
+
+        heavy = "SELECT count(*) FROM generate_series(1, 100000000000)"
+
+        async def running() -> int:
+            rows = await _rows(
+                live_pg,
+                "SELECT count(*) FROM pg_stat_activity WHERE state = 'active' "
+                "AND query LIKE 'SELECT count(*) FROM generate_series(1, 1000000%' "
+                "AND pid <> pg_backend_pid()",
+            )
+            return int(rows[0][0])
+
+        driver = await _driver(live_pg)
+        # The client's own timeout, before the server's: 1 s against 60 s.
+        with monkeypatch.context() as patched:
+            patched.setattr(postgresql, "_CLIENT_TIMEOUT_GRACE_S", -59)
+            with pytest.raises(TimeoutError):
+                await driver.execute_query(heavy, timeout_s=60)
+        await asyncio.sleep(0.5)
+        assert await running() == 0
+        # And a cancelled request.
+        task = asyncio.create_task(driver.execute_query(heavy, timeout_s=60))
+        await asyncio.sleep(0.7)
+        assert await running() == 1
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        await asyncio.sleep(0.5)
+        assert await running() == 0
+        assert (await driver.execute_query("SELECT 1")).rows == [[1]]
+
     async def test_a_connector_that_allows_writes_still_writes(self, live_pg: LiveDatabase) -> None:
         text = await _tool(
             live_pg,
