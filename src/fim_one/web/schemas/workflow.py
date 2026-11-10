@@ -617,10 +617,37 @@ class WorkflowApprovalResponse(BaseModel):
     updated_at: str | None
 
 
-class ApprovalDecisionRequest(BaseModel):
-    """Request body for approving or rejecting a workflow approval."""
+class ApprovalInboxUser(BaseModel):
+    id: str
+    name: str
 
-    note: str | None = None
+
+class ApprovalInboxItem(BaseModel):
+    """One request waiting for the signed-in user's decision.
+
+    ``kind`` is ``workflow_approval`` (an approval step: ``title`` and
+    ``description`` are the step's) or ``confirmation`` (a connector action
+    flagged "requires confirmation": ``action`` and ``arguments`` say what
+    is about to be called).
+    """
+
+    id: str
+    kind: str
+    status: str
+    title: str
+    description: str | None = None
+    workflow_id: str | None = None
+    workflow_name: str | None = None
+    run_id: str
+    # interactive / batch / trigger / schedule
+    run_mode: str | None = None
+    node_id: str
+    step_label: str | None = None
+    started_by: ApprovalInboxUser | None = None
+    action: str | None = None
+    arguments: dict[str, Any] | None = None
+    created_at: str
+    expires_at: str | None = None
 
 
 # ---------------------------------------------------------------------------

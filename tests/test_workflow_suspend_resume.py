@@ -71,7 +71,13 @@ def _edge(source: str, target: str) -> dict[str, Any]:
 
 
 APPROVAL = _node(
-    "human_1", "humanIntervention", "HUMAN_INTERVENTION", title="Sign off", timeout_hours=1
+    "human_1",
+    "humanIntervention",
+    "HUMAN_INTERVENTION",
+    label="Manager sign-off",
+    title="Sign off",
+    description="Check the figures first.",
+    timeout_hours=1,
 )
 # start -> approval -> end; the end reads something set before the wait and
 # something set by the decision.
@@ -1050,3 +1056,117 @@ class TestConnectorActionConfirmation:
         assert flagged.calls == []
         async with rig.factory() as s:
             assert (await s.execute(select(ConfirmationRequest))).scalars().all() == []
+
+
+# ---------------------------------------------------------------------------
+# The approval inbox
+# ---------------------------------------------------------------------------
+
+
+async def _inbox(rig: Rig, user: User) -> dict[str, Any]:
+    async with rig.factory() as db:
+        inbox = (await wf_api.approval_inbox(current_user=user, db=db)).data
+        count = (await wf_api.approval_inbox_count(current_user=user, db=db)).data
+    assert count == {"count": inbox["count"]} and inbox["count"] == len(inbox["items"])
+    return dict(inbox)
+
+
+async def _respond(rig: Rig, request_id: str, decision: str, user: User, reason: str = "") -> Any:
+    from fim_one.web.api.confirmations import ConfirmationRespondRequest, respond_to_confirmation
+
+    async with rig.factory() as db:
+        return await respond_to_confirmation(
+            request_id,
+            ConfirmationRespondRequest(decision=decision, reason=reason or None),  # type: ignore[arg-type]
+            current_user=user,
+            db=db,
+        )
+
+
+class TestApprovalInbox:
+    async def test_an_approval_is_listed_with_where_it_comes_from(self, rig: Rig) -> None:
+        outcome = await rig.start()
+        request = await rig.request_of(outcome.run_id)
+
+        (item,) = (await _inbox(rig, rig.owner))["items"]
+
+        assert item["id"] == request.id
+        assert (item["kind"], item["status"]) == ("workflow_approval", "pending")
+        assert (item["title"], item["description"]) == ("Sign off", "Check the figures first.")
+        assert (item["workflow_id"], item["workflow_name"]) == (rig.wf.id, "sign-off")
+        assert (item["run_id"], item["run_mode"]) == (outcome.run_id, "interactive")
+        assert (item["node_id"], item["step_label"]) == ("human_1", "Manager sign-off")
+        assert item["started_by"] == {"id": rig.owner.id, "name": "owner@x.io"}
+        assert item["created_at"] and item["expires_at"]
+        assert (item["action"], item["arguments"]) == (None, None)
+        # An administrator may decide any request but is not asked to.
+        assert (await _inbox(rig, rig.admin))["items"] == []
+
+    async def test_a_connector_confirmation_says_what_is_about_to_be_called(
+        self, rig: Rig, flagged: _Adapter
+    ) -> None:
+        outcome = await rig.start(inputs={"q": "ledger-7"})
+
+        (item,) = (await _inbox(rig, rig.owner))["items"]
+
+        assert item["kind"] == "confirmation"
+        assert item["title"] == "Confirm: Ledger / wipe"
+        assert (item["action"], item["arguments"]) == ("Ledger.wipe", {"target": "ledger-7"})
+        assert (item["run_id"], item["node_id"]) == (outcome.run_id, "connector_1")
+
+    async def test_deciding_from_the_inbox_continues_the_run_and_empties_the_list(
+        self, rig: Rig, hooked: rs.WorkflowRunService
+    ) -> None:
+        from fim_one.web.exceptions import AppError
+
+        outcome = await rig.start()
+        (item,) = (await _inbox(rig, rig.owner))["items"]
+
+        answer = await _respond(rig, item["id"], "approve", rig.owner, "looks right")
+
+        assert answer.status == "approved"
+        run = await rig.ended(outcome.run_id)
+        assert run.status == "completed"
+        assert _decision(run)["decision_note"] == "looks right"
+        assert (await _inbox(rig, rig.owner))["count"] == 0
+        # Another surface that still shows the request and clicks: told how
+        # it was decided, not that something broke.
+        with pytest.raises(AppError) as late:
+            await _respond(rig, item["id"], "reject", rig.admin)
+        assert (late.value.status_code, late.value.error_code) == (
+            409,
+            "confirmation_already_decided",
+        )
+        assert late.value.detail_args == {"status": "approved"}
+
+    async def test_a_request_past_its_deadline_is_not_listed(self, rig: Rig) -> None:
+        outcome = await rig.start()
+        request = await rig.request_of(outcome.run_id)
+        await rig.flip(request.id, expires_at=datetime.now(UTC) - timedelta(seconds=1))
+
+        assert (await _inbox(rig, rig.owner))["count"] == 0
+
+    async def test_requests_of_chat_tool_calls_are_not_in_it(self, rig: Rig) -> None:
+        from fim_one.core.assembly.confirmation import ConfirmationSpec
+
+        async with rig.factory() as db:
+            actor = await resolve_principal(db, user_id=rig.owner.id, auth=AuthMethod.SESSION)
+        await rig.confirmations().request(
+            ConfirmationSpec(
+                kind="confirmation",
+                initiator=actor,
+                binding=None,
+                org_id=None,
+                title="chat tool call",
+                description=None,
+                payload={"tool_name": "x", "tool_args": {}},
+                eligible_scope="initiator",
+                eligible_user_id=rig.owner.id,
+                delivery="inline_only",
+                channel_id=None,
+                timeout_seconds=600,
+                conversation_id="conv-1",
+            )
+        )
+
+        assert (await _inbox(rig, rig.owner))["count"] == 0

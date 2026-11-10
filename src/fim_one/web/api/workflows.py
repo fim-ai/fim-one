@@ -70,9 +70,10 @@ from fim_one.web.schemas.workflow import (
     WorkflowUpdate,
     WorkflowValidateResponse,
     WorkflowVersionResponse,
+    ApprovalInboxItem,
+    ApprovalInboxUser,
     RunWaitingItem,
     WorkflowApprovalResponse,
-    ApprovalDecisionRequest,
     _compute_next_run,
 )
 from fim_one.web.visibility import build_visibility_filter
@@ -883,7 +884,8 @@ async def _execute_trigger(
 
 
 # Workflow approvals are confirmation requests of kind "workflow_approval";
-# these endpoints are a view onto ``ConfirmationService``.
+# these endpoints are a view onto ``ConfirmationService``. Deciding one is
+# ``POST /api/confirmations/{id}/respond``, as for any other request.
 APPROVAL_KIND = "workflow_approval"
 
 
@@ -920,91 +922,133 @@ def _approval_to_response(row: ConfirmationRequest) -> WorkflowApprovalResponse:
     )
 
 
-async def _decide_approval(
-    approval_id: str,
-    body: ApprovalDecisionRequest,
-    current_user: User,
-    db: AsyncSession,
-    *,
-    decision: Literal["approve", "reject"],
-) -> ApiResponse:
-    """Decide a workflow approval the user may decide, or raise.
+# Requests a workflow run waits on: an approval step's, and the
+# confirmation of a connector action flagged "requires confirmation".
+_INBOX_KINDS = (APPROVAL_KIND, "confirmation")
 
-    An assigned approval belongs to its assignee (``approval_not_assigned``
-    to anyone else); an unassigned one to the user its run is attributed
-    to, and to nobody else it does not exist (``approval_not_found``). A
-    platform administrator may decide either.
-    """
-    row = (
-        await db.execute(
-            select(ConfirmationRequest).where(
-                ConfirmationRequest.id == approval_id,
-                ConfirmationRequest.kind == APPROVAL_KIND,
-            )
-        )
-    ).scalar_one_or_none()
-    if row is None:
-        raise AppError("approval_not_found", status_code=404)
-    actor = await _principal_of(db, current_user)
+
+async def _inbox_rows(db: AsyncSession, user: User) -> list[ConfirmationRequest]:
+    """Pending requests of workflow runs that *user* may decide, newest first."""
+    actor = await _principal_of(db, user)
     service = _confirmation_service()
-    if not await service.may_decide(db, row, actor):
-        if row.eligible_scope == "assignee":
-            raise AppError(
-                "approval_not_assigned",
-                status_code=403,
-                detail="This approval is assigned to another user",
-            )
-        # Same response as a missing approval: do not reveal that it exists.
-        raise AppError("approval_not_found", status_code=404)
-    try:
-        decided = await service.decide(
-            db, confirmation_id=approval_id, actor=actor, decision=decision, note=body.note
+    rows: list[ConfirmationRequest] = []
+    for kind in _INBOX_KINDS:
+        rows.extend(
+            row for row in await service.pending_for(db, actor, kind=kind) if row.workflow_run_id
         )
-    except AssemblyRefusal as refusal:
-        if refusal.error_code == "confirmation_already_decided":
-            raise AppError(
-                "approval_already_resolved",
-                status_code=409,
-                detail="Approval has already been resolved",
-            ) from None
-        raise AppError("approval_not_found", status_code=404) from None
-    return ApiResponse(data=_approval_to_response(decided).model_dump())
+    now = datetime.now(UTC)
+
+    def open_still(row: ConfirmationRequest) -> bool:
+        deadline = row.expires_at
+        if deadline is None:
+            return True
+        if deadline.tzinfo is None:
+            deadline = deadline.replace(tzinfo=UTC)
+        return deadline > now
+
+    rows = [row for row in rows if open_still(row)]
+    rows.sort(key=lambda row: str(row.created_at or ""), reverse=True)
+    return rows
 
 
-@router.get("/approvals/pending", response_model=ApiResponse)
-async def list_pending_approvals(
+def _step_label(run: WorkflowRun | None, node_id: str | None) -> str | None:
+    """The name the author gave the step, from the blueprint the run started with."""
+    snapshot = run.blueprint_snapshot if run is not None else None
+    if not isinstance(snapshot, dict) or not node_id:
+        return None
+    for node in snapshot.get("nodes") or []:
+        if isinstance(node, dict) and node.get("id") == node_id:
+            label = (node.get("data") or {}).get("label")
+            return str(label) if isinstance(label, str) and label.strip() else None
+    return None
+
+
+@router.get("/approval-inbox", response_model=ApiResponse)
+async def approval_inbox(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
-    """List pending approvals assigned to the current user, plus unassigned
-    ones on runs attributed to the current user."""
-    actor = await _principal_of(db, current_user)
-    approvals = await _confirmation_service().pending_for(db, actor, kind=APPROVAL_KIND)
-    return ApiResponse(
-        data=[_approval_to_response(a).model_dump() for a in approvals]
-    )
+    """What the signed-in user is being asked to decide for workflow runs.
+
+    Approval steps assigned to them or, unassigned, on runs that are
+    theirs, and confirmations of connector actions on runs that are theirs
+    (for a trigger key or a schedule: the workflow owner's). Each item
+    says which workflow and step asks, who started the run and when the
+    request runs out. Deciding is ``POST /api/confirmations/{id}/respond``;
+    a request someone else decided first answers 409
+    ``confirmation_already_decided`` with how it was decided.
+    """
+    rows = await _inbox_rows(db, current_user)
+    run_ids = {str(row.workflow_run_id) for row in rows}
+    runs: dict[str, WorkflowRun] = {}
+    workflows: dict[str, Workflow] = {}
+    starters: dict[str, User] = {}
+    if run_ids:
+        runs = {
+            run.id: run
+            for run in (
+                await db.execute(select(WorkflowRun).where(WorkflowRun.id.in_(run_ids)))
+            ).scalars()
+        }
+        workflow_ids = {run.workflow_id for run in runs.values()}
+        if workflow_ids:
+            workflows = {
+                wf.id: wf
+                for wf in (
+                    await db.execute(select(Workflow).where(Workflow.id.in_(workflow_ids)))
+                ).scalars()
+            }
+        user_ids = {run.user_id for run in runs.values()}
+        if user_ids:
+            starters = {
+                user.id: user
+                for user in (await db.execute(select(User).where(User.id.in_(user_ids)))).scalars()
+            }
+
+    items: list[ApprovalInboxItem] = []
+    for row in rows:
+        run = runs.get(str(row.workflow_run_id))
+        workflow = workflows.get(run.workflow_id) if run is not None else None
+        starter = starters.get(run.user_id) if run is not None else None
+        payload = row.payload if isinstance(row.payload, dict) else {}
+        items.append(
+            ApprovalInboxItem(
+                id=row.id,
+                kind=row.kind,
+                status=row.status,
+                title=row.title or "",
+                description=row.description,
+                workflow_id=workflow.id if workflow is not None else None,
+                workflow_name=workflow.name if workflow is not None else None,
+                run_id=str(row.workflow_run_id),
+                run_mode=run.mode if run is not None else None,
+                node_id=row.node_id or "",
+                step_label=_step_label(run, row.node_id),
+                started_by=(
+                    ApprovalInboxUser(
+                        id=starter.id,
+                        name=starter.display_name or starter.username or starter.email or "",
+                    )
+                    if starter is not None
+                    else None
+                ),
+                # What a flagged connector action is about to be called with.
+                action=str(payload.get("tool_name")) if row.kind == "confirmation" else None,
+                arguments=payload.get("tool_args") if row.kind == "confirmation" else None,
+                created_at=_iso(row.created_at) or "",
+                expires_at=_iso(row.expires_at),
+            )
+        )
+    return ApiResponse(data={"items": [item.model_dump() for item in items], "count": len(items)})
 
 
-@router.post("/approvals/{approval_id}/approve", response_model=ApiResponse)
-async def approve_approval(
-    approval_id: str,
-    body: ApprovalDecisionRequest,
+@router.get("/approval-inbox/count", response_model=ApiResponse)
+async def approval_inbox_count(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
-    """Approve a pending workflow approval."""
-    return await _decide_approval(approval_id, body, current_user, db, decision="approve")
-
-
-@router.post("/approvals/{approval_id}/reject", response_model=ApiResponse)
-async def reject_approval(
-    approval_id: str,
-    body: ApprovalDecisionRequest,
-    current_user: User = Depends(get_current_user),  # noqa: B008
-    db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> ApiResponse:
-    """Reject a pending workflow approval."""
-    return await _decide_approval(approval_id, body, current_user, db, decision="reject")
+    """How many requests wait for the signed-in user's decision (for a badge)."""
+    return ApiResponse(data={"count": len(await _inbox_rows(db, current_user))})
 
 
 # ---------------------------------------------------------------------------

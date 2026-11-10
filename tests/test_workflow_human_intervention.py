@@ -484,19 +484,6 @@ def test_approval_response_schema() -> None:
     assert data["assignee"] == "user-1"
 
 
-def test_approval_decision_request_schema() -> None:
-    """ApprovalDecisionRequest should accept optional note."""
-    from fim_one.web.schemas.workflow import ApprovalDecisionRequest
-
-    # With note
-    req = ApprovalDecisionRequest(note="Looks good")
-    assert req.note == "Looks good"
-
-    # Without note
-    req = ApprovalDecisionRequest()
-    assert req.note is None
-
-
 # ---------------------------------------------------------------------------
 # Test: NodeType enum includes HUMAN_INTERVENTION
 # ---------------------------------------------------------------------------
