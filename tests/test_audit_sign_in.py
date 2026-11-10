@@ -215,3 +215,36 @@ class TestReadingSignIns:
 
         assert [item["method"] for item in own["items"]] == ["password"]
         assert [item["method"] for item in listed["items"]] == ["password"]
+
+
+class TestADisabledAccount:
+    async def test_a_provider_sign_in_issues_nothing_and_is_recorded_as_refused(
+        self, world: World, github: dict[str, Any]
+    ) -> None:
+        """Tokens were issued (every API then answered 403), the stored
+        refresh token was overwritten and the attempt recorded as a success."""
+        octo = await world.user("octo", is_active=False, refresh_token="kept-digest")
+        await world.add(UserOAuthBinding(user_id=octo.id, provider="github", oauth_id="gh-1001"))
+
+        response = await _callback(world)
+
+        location = response.headers["location"]
+        assert "error=account_disabled" in location and "access_token" not in location
+        (row,) = await world.logins()
+        assert _row(row) == (octo.id, octo.email, "oauth:github", False, "account_disabled")
+        assert (await world.get(User, octo.id)).refresh_token == "kept-digest"
+
+    async def test_a_disabled_account_matched_by_email_gets_no_binding(
+        self, world: World, github: dict[str, Any]
+    ) -> None:
+        from sqlalchemy import select
+
+        octo = await world.user("octo", is_active=False)  # verified email, no binding
+
+        response = await _callback(world)
+
+        assert "error=account_disabled" in response.headers["location"]
+        async with world.factory() as db:
+            assert (await db.execute(select(UserOAuthBinding))).scalars().all() == []
+        (row,) = await world.logins()
+        assert _row(row) == (octo.id, octo.email, "oauth:github", False, "account_disabled")

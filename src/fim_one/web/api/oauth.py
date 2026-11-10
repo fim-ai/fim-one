@@ -485,6 +485,25 @@ async def _handle_login(
 
     # Keep legacy columns in sync for backward compatibility
     assert user is not None  # guaranteed by above branches
+    if not user.is_active:
+        # A disabled account does not sign in, whatever the provider says:
+        # no tokens, and the stored refresh token is left alone. Nothing
+        # added above (a binding made by email match) is kept.
+        refused = (user.id, user.username, user.email)
+        await db.rollback()
+        await audit.record_login(
+            user_id=refused[0],
+            username=refused[1],
+            email=refused[2],
+            success=False,
+            method=method,
+            failure_reason="account_disabled",
+            db=db,
+        )
+        await db.commit()
+        return RedirectResponse(
+            url=f"{frontend_url}/auth/callback?error=account_disabled", status_code=302
+        )
     if not user.oauth_provider:
         user.oauth_provider = user_info.provider
         user.oauth_id = user_info.id
