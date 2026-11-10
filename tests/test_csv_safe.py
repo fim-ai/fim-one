@@ -20,6 +20,12 @@ class TestSafeCell:
         for text in (FORMULA, "+1+1", "-2+3", "@SUM(1)", "\tx", "\rx"):
             assert safe_cell(text) == "'" + text
 
+    def test_the_full_width_forms_get_one_too(self) -> None:
+        """A spreadsheet in an East Asian locale reads ``＝`` as ``=``."""
+        for text in ("＝cmd|' /C calc'!A0", "＋1+1", "－2+3", "＠SUM(1)"):
+            assert safe_cell(text) == "'" + text
+        assert safe_cell("a＝b") == "a＝b"
+
     def test_numbers_other_types_and_ordinary_text_are_untouched(self) -> None:
         assert [safe_cell(v) for v in ("-5", "+1,234.50", "-12%", "a=b", "", None, -5, True)] == [
             "-5", "+1,234.50", "-12%", "a=b", "", None, -5, True,
