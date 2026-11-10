@@ -22,6 +22,7 @@ import { MCPServerDialog, type MCPServerInitialValues } from "@/components/tools
 import { MCPHubDialog } from "@/components/tools/mcp-hub-dialog"
 import { EmptyState } from "@/components/shared/empty-state"
 import { MCP_SERVER_ADDRESS_PRIVATE } from "@/lib/mcp-server-notice"
+import { useAddressPrivateWarning } from "@/hooks/use-address-private-warning"
 import type { MCPServerResponse } from "@/types/mcp-server"
 import type { ScopeValue } from "@/hooks/use-scope-filter"
 
@@ -41,6 +42,7 @@ interface MCPServersSectionProps {
 
 export function MCPServersSection({ onReady, currentUserId, scope = "all", searchQuery = "", currentPage = 1, onPageChange }: MCPServersSectionProps) {
   const t = useTranslations("tools")
+  const addressWarning = useAddressPrivateWarning()
   const tc = useTranslations("common")
   const [servers, setServers] = useState<MCPServerResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -195,7 +197,7 @@ export function MCPServersSection({ onReady, currentUserId, scope = "all", searc
       setServers((prev) => prev.map((s) => (s.id === id ? { ...updated, source: (s as any).source } : s)))
       toast.success(t("mcpServerPublished"))
       if (updated.warning === MCP_SERVER_ADDRESS_PRIVATE) {
-        toast.warning(t("addressPrivateWarning"), { duration: 15000 })
+        toast.warning(addressWarning(updated.warning_reasons), { duration: 15000 })
       }
     } catch {
       toast.error(t("mcpServerPublishFailed"))

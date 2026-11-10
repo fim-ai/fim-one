@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest"
 
-import { MCP_SERVER_ADDRESS_PRIVATE, mcpServerNotice } from "../mcp-server-notice"
+import toolsMessages from "../../../messages/en/tools.json"
+import {
+  ADDRESS_REASONS,
+  MCP_SERVER_ADDRESS_PRIVATE,
+  knownAddressReasons,
+  mcpServerNotice,
+} from "../mcp-server-notice"
 
 const base = { allow_fallback: false, address_private: false, warning: null, my_has_credentials: false }
 
@@ -34,5 +40,24 @@ describe("mcpServerNotice", () => {
 
   it("reads a response from before the fields existed as unmarked", () => {
     expect(mcpServerNotice({ allow_fallback: true, my_has_credentials: false }, false)).toBeNull()
+  })
+})
+
+describe("knownAddressReasons", () => {
+  it("keeps the reasons this interface can word, in the order given", () => {
+    expect(knownAddressReasons(["url_query", "something_new", "arg_name"])).toEqual([
+      "url_query",
+      "arg_name",
+    ])
+    expect(knownAddressReasons(undefined)).toEqual([])
+  })
+
+  it("has a label for every reason", () => {
+    const labels = (toolsMessages as { addressReasons: Record<string, string> }).addressReasons
+    expect(Object.keys(labels).sort()).toEqual([...ADDRESS_REASONS].sort())
+    // The warning names the part and says what switching fallback on lends.
+    expect(toolsMessages.addressPrivateWarning).toContain("{parts}")
+    expect(toolsMessages.addressPrivateWarning).toContain("may contain a credential")
+    expect(toolsMessages.addressPrivateWarning).toContain("headers and environment variables")
   })
 })

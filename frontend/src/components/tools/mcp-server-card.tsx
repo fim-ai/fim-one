@@ -41,6 +41,7 @@ import { mcpServerApi } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
 import { MARKET_ORG_ID } from "@/lib/constants"
 import { mcpServerNotice } from "@/lib/mcp-server-notice"
+import { useAddressPrivateWarning } from "@/hooks/use-address-private-warning"
 import type { MCPServerResponse } from "@/types/mcp-server"
 
 interface MCPServerCardProps {
@@ -100,6 +101,7 @@ export function MCPServerCard({
   // What the card says about using the server: keys to configure, or that
   // its address holds a credential and only the owner can connect.
   const notice = mcpServerNotice(server, isOwner)
+  const addressWarning = useAddressPrivateWarning()
   // A personal credential must supply what the transport reads: stdio servers
   // read environment variables, SSE / HTTP servers read request headers.
   const usesHeaders = server.transport !== "stdio"
@@ -426,7 +428,7 @@ export function MCPServerCard({
             <TooltipContent side="bottom" sideOffset={5} className="max-w-72">
               <p>
                 {notice === "addressPrivateOwner"
-                  ? t("addressPrivateWarning")
+                  ? addressWarning(server.warning_reasons)
                   : t("addressPrivateMemberReason")}
               </p>
             </TooltipContent>

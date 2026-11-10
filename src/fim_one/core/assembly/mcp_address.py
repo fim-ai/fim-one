@@ -21,11 +21,13 @@ The classification is by shape, not by knowledge of the server:
   (``/mcp/hunter2/sse``) is not recognised, and an opaque id that is no
   secret is;
 - a launch argument carries a secret when it matches one of the shapes
-  listed at :func:`launch_args_carry_secret`. A secret passed as a bare
+  listed at :func:`launch_arg_reasons`. A secret passed as a bare
   positional argument with no known prefix, or after a flag whose name says
   nothing (``-k``, ``--id``), is not recognised.
 
-Both lists err towards flagging. A false positive costs the owner a
+Both lists lean towards flagging where the shape is ambiguous (any query
+string counts), and name what they found (``*_reasons``) so that the owner
+is told which part to look at. A false positive costs the owner a
 decision (switch ``allow_fallback`` on, or move the value into ``env`` or
 ``headers``) before others can use the server; a miss puts the owner's
 credential in someone else's hands.
@@ -42,7 +44,9 @@ from urllib.parse import unquote, urlsplit
 __all__ = [
     "SECRET_NAME_WORDS",
     "address_carries_secret",
+    "address_secret_reasons",
     "error_without_url_secrets",
+    "launch_arg_reasons",
     "launch_args_carry_secret",
     "strip_url_secrets",
     "traceback_without_url_secrets",
@@ -145,8 +149,12 @@ def traceback_without_url_secrets(exc: BaseException) -> str:
 # Does the address carry a secret?
 # ---------------------------------------------------------------------------
 
-# A flag or a ``NAME=value`` assignment whose name contains one of these
-# (case-insensitive, anywhere in the name) is taken to hold a secret.
+# A flag, an assignment or a header is "named after a secret" when one of
+# these is a whole word of its name. A name is cut into words at ``-``,
+# ``_``, ``.`` and camelCase humps, so ``--api-key``, ``API_KEY`` and
+# ``apiKey`` have the word ``key`` and ``--keyboard-layout``, ``--hotkey``
+# and ``--monkey`` do not. The singular only: ``--max-tokens 100`` and
+# ``--allowed-keys a,b`` say how many or which, not what the secret is.
 SECRET_NAME_WORDS = (
     "token",
     "key",
@@ -155,28 +163,81 @@ SECRET_NAME_WORDS = (
     "passwd",
     "pwd",
     "auth",
+    "authorization",
     "credential",
+    "credentials",
     "bearer",
+    # Written without a separator.
+    "apikey",
+    "accesskey",
+    "secretkey",
+    "privatekey",
+    "authtoken",
+    "accesstoken",
 )
+# A name that starts with one of these switches something off: ``--no-auth``.
+_NEGATING_WORDS = frozenset({"no", "disable", "disabled", "skip", "without"})
+# A name that ends in one of these says where the secret is or how it is
+# used, and its value is that: ``--key-file /path``, ``--auth-type basic``,
+# ``--token-url https://…`` (a URL is judged as a URL).
+_DESCRIBING_WORDS = frozenset(
+    {
+        "file",
+        "path",
+        "dir",
+        "directory",
+        "type",
+        "mode",
+        "method",
+        "scheme",
+        "name",
+        "header",
+        "prefix",
+        "url",
+        "uri",
+        "endpoint",
+        "host",
+        "port",
+        "timeout",
+        "ttl",
+        "length",
+        "size",
+        "limit",
+        "count",
+        "enabled",
+        "required",
+    }
+)
+# Values that switch something rather than authenticate.
+_SWITCH_VALUES = frozenset({"true", "false", "yes", "no", "on", "off", "none", "null", "0", "1"})
 
 # Values that are a credential whatever they are passed as. A prefix counts
 # at the start of the argument or after a character that cannot be part of
 # a token (``=``, ``:``, a space, a quote), so ``task-list`` is not ``sk-``.
 _NOT_AFTER_TOKEN_CHAR = r"(?<![A-Za-z0-9_\-])"
-_TOKEN_SHAPES = re.compile(
-    _NOT_AFTER_TOKEN_CHAR + r"(?:"
+_TOKEN_BODY = (
+    r"(?:"
     # OpenAI-style, GitHub and Slack tokens: the prefix and at least eight more characters.
     r"(?:sk-|ghp_|gho_|github_pat_|xoxb-|xoxp-)[A-Za-z0-9_\-]{8,}"
     # An AWS access key id.
     r"|AKIA[0-9A-Z]{16}"
-    # A JWT: three base64url parts, the first starting with ``{"``.
-    r"|eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]*"
+    # A JWT: base64url parts joined by dots, the first starting with ``{"``.
+    r"|eyJ[A-Za-z0-9_\-]{6,}\.[A-Za-z0-9_\-]{4,}"
     r")"
 )
-_BEARER = re.compile(r"(?i)(?<![A-Za-z0-9_\-])bearer(?:\s+\S|$)")
+_TOKEN_SHAPES = re.compile(_NOT_AFTER_TOKEN_CHAR + _TOKEN_BODY)
+# In a launch argument a ``/`` before the prefix means a file path
+# (``/data/sk-archive-2024``); a URL in an argument is judged segment by
+# segment by the URL rule instead.
+_TOKEN_IN_ARGUMENT = re.compile(r"(?<![A-Za-z0-9_\-/])" + _TOKEN_BODY)
+# ``Bearer <token>``: the word alone (``--mode bearer``) or in a sentence
+# (``bearer of news``) is not one.
+_BEARER = re.compile(
+    r"(?i)(?<![A-Za-z0-9_\-])bearer\s+(?:\$\S+|[A-Za-z0-9._~+/=\-]{8,})(?!\S*\s+\w)"
+)
 # ``NAME=value``, and ``Name: value`` as a header is written.
 _ASSIGNMENT = re.compile(r"^([A-Za-z_][A-Za-z0-9_.\-]*)\s*[=:]\s*(\S.*)$", re.DOTALL)
-
+_NAME_WORDS = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|[0-9]+")
 
 # Why a URL is taken to carry a secret (:func:`url_secret_reasons`).
 URL_USER_INFO = "url_user_info"
@@ -270,77 +331,108 @@ def url_carries_secret(url: str | None) -> bool:
     return bool(url_secret_reasons(url))
 
 
+# Why launch arguments are taken to carry a secret
+# (:func:`launch_arg_reasons`); a URL inside an argument gives the URL's own.
+ARG_NAME = "arg_name"
+ARG_TOKEN = "arg_token"
+
+
+def _name_words(name: str) -> list[str]:
+    """The words of a flag, variable or header name, lower-cased."""
+    return [word.lower() for word in _NAME_WORDS.findall(name)]
+
+
 def _names_a_secret(name: str) -> bool:
-    lowered = name.lower()
-    return any(word in lowered for word in SECRET_NAME_WORDS)
+    """Whether *name* says its value is a secret (see :data:`SECRET_NAME_WORDS`)."""
+    words = _name_words(name)
+    if not words or not any(word in SECRET_NAME_WORDS for word in words):
+        return False
+    return words[0] not in _NEGATING_WORDS and words[-1] not in _DESCRIBING_WORDS
 
 
-def _value_is_secret(text: str) -> bool:
-    """Whether *text* holds a known token shape or a URL that carries a secret."""
-    if _TOKEN_SHAPES.search(text) or _BEARER.search(text):
-        return True
-    return any(url_carries_secret(match.group(0)) for match in _URL_IN_TEXT.finditer(text))
+def _holds_a_secret(name: str, value: str) -> bool:
+    """Whether ``name value`` is a secret by its name and is not a mere switch."""
+    return _names_a_secret(name) and value.strip().lower() not in _SWITCH_VALUES
+
+
+def _value_reasons(text: str) -> list[str]:
+    """Why *text* is a secret by its own shape: a token, or a URL that carries one."""
+    reasons: list[str] = []
+    for match in _URL_IN_TEXT.finditer(text):
+        reasons.extend(url_secret_reasons(match.group(0).rstrip(_TRAILING_PUNCTUATION)))
+    if _TOKEN_IN_ARGUMENT.search(_URL_IN_TEXT.sub(" ", text)) or _BEARER.search(text):
+        reasons.append(ARG_TOKEN)
+    return reasons
+
+
+def launch_arg_reasons(args: Sequence[Any] | None) -> list[str]:
+    """Why the arguments a stdio server is started with carry a secret; empty when not.
+
+    - ``arg_name``: a flag, an assignment or a header named after a secret
+      is given a value: ``--api-key VALUE``, ``--api-key=VALUE``, the
+      single-dash spelling of a word (``-token VALUE``), ``API_KEY=VALUE``,
+      ``X-Api-Key: VALUE``. "Named after a secret": one of
+      :data:`SECRET_NAME_WORDS` is a whole word of the name, the name does
+      not start by negating (``--no-auth``) and does not end by describing
+      (``--key-file``, ``--auth-type``). A one-letter flag (``-k VALUE``)
+      says nothing. A flag with no value (the last argument, or followed by
+      another flag) or with a switch for one (``true``, ``none``) holds
+      nothing;
+    - ``arg_token``: a value shaped like a known credential, wherever it
+      stands: ``sk-…``, ``ghp_…``, ``gho_…``, ``github_pat_…``, ``xoxb-…``,
+      ``xoxp-…`` (each with at least eight more characters), an AWS access
+      key id (``AKIA`` and sixteen capitals or digits), a JWT (``eyJ…``
+      with a dot), or ``Bearer <token>``;
+    - the reasons of :func:`url_secret_reasons` for a URL that is an
+      argument or stands inside one (``--endpoint=https://user:pass@host/``).
+    """
+    if not args:
+        return []
+    reasons: list[str] = []
+    items = [str(arg) for arg in args]
+    for index, arg in enumerate(items):
+        reasons.extend(_value_reasons(arg))
+        if arg.startswith("-"):
+            name, has_value, value = arg.lstrip("-").partition("=")
+            if len(name) < 2:
+                # ``-k`` says nothing about what follows; ``-token`` does.
+                continue
+            if not has_value:
+                following = items[index + 1] if index + 1 < len(items) else ""
+                value = "" if following.startswith("-") else following
+            if value and _holds_a_secret(name, value):
+                reasons.append(ARG_NAME)
+            continue
+        assignment = _ASSIGNMENT.match(arg)
+        if assignment is not None and _holds_a_secret(assignment.group(1), assignment.group(2)):
+            reasons.append(ARG_NAME)
+    return list(dict.fromkeys(reasons))
 
 
 def launch_args_carry_secret(args: Sequence[Any] | None) -> bool:
-    """Whether the arguments a stdio server is started with carry a secret.
-
-    An argument list does when any of these holds:
-
-    - a flag named after a secret is given a value: ``--api-key VALUE``,
-      ``--api-key=VALUE``, and the single-dash spelling of a whole word
-      (``-token VALUE``, ``-password=VALUE``). "Named after a secret" is
-      :data:`SECRET_NAME_WORDS` anywhere in the name. A one-letter flag
-      (``-k VALUE``) is not: its name says nothing. A flag with no value
-      (the last argument, or followed by another flag) holds nothing;
-    - an assignment to such a name: ``API_KEY=VALUE``, or ``X-Api-Key: VALUE``
-      as a header is written;
-    - a URL with user-info, a query string or a fragment, alone or inside
-      an argument (``--endpoint=https://user:pass@host/``);
-    - a value shaped like a known credential, wherever it stands:
-      ``sk-…``, ``ghp_…``, ``gho_…``, ``github_pat_…``, ``xoxb-…``,
-      ``xoxp-…`` (each with at least eight more characters), an AWS access
-      key id (``AKIA`` and sixteen capitals or digits), a JWT (``eyJ…`` in
-      three dotted parts), or ``Bearer …``.
-    """
-    if not args:
-        return False
-    items = [str(arg) for arg in args]
-    for index, arg in enumerate(items):
-        if _value_is_secret(arg):
-            return True
-        if arg.startswith("-"):
-            name, has_value, value = arg.lstrip("-").partition("=")
-            # ``-k`` says nothing about what follows; ``-token`` does.
-            if len(name) < 2 or not _names_a_secret(name):
-                continue
-            if has_value:
-                if value:
-                    return True
-                continue
-            following = items[index + 1] if index + 1 < len(items) else ""
-            if following and not following.startswith("-"):
-                return True
-            continue
-        assignment = _ASSIGNMENT.match(arg)
-        if assignment is not None and _names_a_secret(assignment.group(1)):
-            return True
-    return False
+    """Whether the launch arguments carry a secret (:func:`launch_arg_reasons`)."""
+    return bool(launch_arg_reasons(args))
 
 
-def address_carries_secret(server: Any) -> bool:
-    """Whether the address of MCP server *server* carries a secret.
+def address_secret_reasons(server: Any) -> list[str]:
+    """Why the address of MCP server *server* is taken to carry a secret; empty when not.
 
     The address is what the transport is opened with besides ``env`` and
     ``headers``: the launch arguments of a stdio server, the URL of an SSE
     or streamable-HTTP server. A row with any other transport cannot be
-    connected; both are looked at.
+    connected; both are looked at. The reasons name the part, never its
+    value, so they can be shown to the owner.
     """
     transport = getattr(server, "transport", None)
     url = getattr(server, "url", None)
     args = getattr(server, "args", None)
     if transport == "stdio":
-        return launch_args_carry_secret(args)
+        return launch_arg_reasons(args)
     if transport in ("sse", "streamable_http"):
-        return url_carries_secret(url)
-    return url_carries_secret(url) or launch_args_carry_secret(args)
+        return url_secret_reasons(url)
+    return list(dict.fromkeys([*url_secret_reasons(url), *launch_arg_reasons(args)]))
+
+
+def address_carries_secret(server: Any) -> bool:
+    """Whether the address of MCP server *server* carries a secret."""
+    return bool(address_secret_reasons(server))

@@ -119,10 +119,10 @@ Resources that don't require credentials — such as a read-only public API conn
 
 A member's own credential for an MCP server is a set of environment variables (stdio servers) or request headers (SSE and HTTP servers). The server's URL and its launch arguments have no per-member counterpart: whoever connects, connects to what the owner configured. If the owner put a credential there, a member's own credential does not replace it.
 
-So with fallback disabled, an MCP server whose address looks like it carries a credential can be used by its owner only. Other members are refused with `mcp_server_address_private`, whether or not they saved credentials of their own, and the server's card tells them so instead of asking for keys. The owner sees a warning on the card and in the editor once the server is shared (the save and publish responses carry `warning: "mcp_server_address_private"`), and has two ways out:
+So with fallback disabled, an MCP server whose address looks like it carries a credential can be used by its owner only. Other members are refused with `mcp_server_address_private`, whether or not they saved credentials of their own, and the server's card tells them so instead of asking for keys. The owner sees a warning on the card and in the editor once the server is shared (the save and publish responses carry `warning: "mcp_server_address_private"` and, in `warning_reasons`, which part of the address counted: the query string, the user-info, a path segment, an argument name and so on, never the value), and has two ways out:
 
 - move the credential into a header or an environment variable, so that each member brings their own; or
-- enable fallback, which lends the server as configured, address included.
+- enable fallback, which lends the server as configured: the address, and with it the headers and environment variables saved on the server. Members without credentials of their own then act under the owner's.
 
 What counts as "carries a credential" is decided by shape:
 
@@ -130,11 +130,11 @@ What counts as "carries a credential" is decided by shape:
 | --- | --- | --- |
 | URL | user-info, any query string, a fragment | `https://user:pass@host/mcp`, `https://host/mcp?token=…` |
 | URL | a path segment shaped like a token: a UUID, 16 or more hex digits, 20 or more characters mixing letters and digits, or a known token prefix; a `;name=value` path parameter | `https://mcp.zapier.com/api/mcp/s/<secret>/mcp`, `https://host/<32 hex>/sse`, `https://host/mcp;token=…` |
-| Launch arguments | a flag or assignment whose name contains `token`, `key`, `secret`, `password`, `passwd`, `pwd`, `auth`, `credential` or `bearer`, given a value | `--api-key VALUE`, `--token=VALUE`, `API_KEY=VALUE`, `X-Api-Key: VALUE` |
-| Launch arguments | a URL with user-info, a query string or a fragment | `--endpoint=https://host/?key=…` |
-| Launch arguments | a known token shape | `sk-…`, `ghp_…`, `gho_…`, `github_pat_…`, `xoxb-…`, `xoxp-…`, `AKIA…`, a JWT, `Bearer …` |
+| Launch arguments | a flag, assignment or header with `token`, `key`, `secret`, `password`, `passwd`, `pwd`, `auth`, `authorization`, `credential(s)` or `bearer` as a whole word of its name, given a value | `--api-key VALUE`, `--token=VALUE`, `API_KEY=VALUE`, `apiKey=VALUE`, `X-Api-Key: VALUE` |
+| Launch arguments | a URL that counts by the URL rows above | `--endpoint=https://host/?key=…`, `mcp-remote https://host/<32 hex>/sse` |
+| Launch arguments | a known token shape | `sk-…`, `ghp_…`, `gho_…`, `github_pat_…`, `xoxb-…`, `xoxp-…`, `AKIA…`, a JWT, `Bearer <token>` |
 
-The check errs towards flagging: `--keyboard-layout us` counts, because the name contains `key`. The path rule is a heuristic, which is why the warning says the address *may* contain a credential: an opaque id in the path that is no secret counts, and a short or worded secret segment (`https://host/mcp/hunter2/sse`) does not. The fixed addresses of the well-known remote servers (GitHub, Linear, Notion, Sentry, Atlassian, Context7, Cloudflare, Asana, Hugging Face) are not flagged. The check also does not recognise a secret passed as a bare positional argument, or after a flag whose name says nothing (`-k VALUE`, `--id VALUE`). Keep credentials in headers and environment variables, where they are encrypted at rest and never shown to other members.
+Names are read word by word (split at `-`, `_`, `.` and camelCase), so `--keyboard-layout`, `--tokenizer`, `--author` and `--hotkey` do not count; neither do plurals (`--max-tokens 100`), a name that negates (`--no-auth true`), a name that describes where or how (`--key-file /path`, `--auth-type basic`), or a switch for a value (`--auth none`). Any query string counts, `?v=2` included: nothing tells a version from a token. The path rule is a heuristic, which is why the warning says the address *may* contain a credential: an opaque id in the path that is no secret counts, and a short or worded secret segment (`https://host/mcp/hunter2/sse`) does not. The fixed addresses of the well-known remote servers (GitHub, Linear, Notion, Sentry, Atlassian, Context7, Cloudflare, Asana, Hugging Face) are not flagged. The check also does not recognise a secret passed as a bare positional argument, or after a flag whose name says nothing (`-k VALUE`, `--id VALUE`). Keep credentials in headers and environment variables, where they are encrypted at rest and never shown to other members.
 
 Other members never see a shared server's URL, command or launch arguments, with fallback on or off.
 

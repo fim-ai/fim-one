@@ -28,6 +28,7 @@ import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { mcpServerApi } from "@/lib/api"
 import { MCP_SERVER_ADDRESS_PRIVATE } from "@/lib/mcp-server-notice"
+import { useAddressPrivateWarning } from "@/hooks/use-address-private-warning"
 import { toast } from "sonner"
 import type { MCPServerResponse, MCPServerCreate, MCPServerUpdate } from "@/types/mcp-server"
 
@@ -59,6 +60,7 @@ export function MCPServerDialog({
   allowStdio = true,
 }: MCPServerDialogProps) {
   const t = useTranslations("tools")
+  const addressWarning = useAddressPrivateWarning()
   const tc = useTranslations("common")
   const isEdit = !!server
 
@@ -283,7 +285,7 @@ export function MCPServerDialog({
       toast.success(isEdit ? t("mcpServerUpdated") : t("mcpServerCreated"))
       if (saved.warning === MCP_SERVER_ADDRESS_PRIVATE) {
         // Saved, and shared: say what the save means for everyone else.
-        toast.warning(t("addressPrivateWarning"), { duration: 15000 })
+        toast.warning(addressWarning(saved.warning_reasons), { duration: 15000 })
       }
       onOpenChange(false)
     } catch {
@@ -578,7 +580,7 @@ export function MCPServerDialog({
               className="flex items-start gap-1.5 rounded-md border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400"
             >
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>{t("addressPrivateWarning")}</span>
+              <span>{addressWarning(server.warning_reasons)}</span>
             </p>
           )}
         </div>

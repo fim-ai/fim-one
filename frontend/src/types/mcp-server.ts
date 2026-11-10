@@ -21,6 +21,8 @@ export interface MCPServerResponse {
   address_private?: boolean
   /** For the owner of a shared server: why others cannot use it as saved. */
   warning?: string | null
+  /** With `warning`: which part of the address counted (never its value). */
+  warning_reasons?: string[]
   my_has_credentials: boolean
   visibility?: string
   org_id?: string | null

@@ -15,6 +15,27 @@ export const MCP_SERVER_ADDRESS_PRIVATE = "mcp_server_address_private"
  */
 export type MCPServerNotice = "addressPrivateOwner" | "addressPrivateMember" | "keysRequired"
 
+/** The parts of an address the backend can name; each has a label in `tools.addressReasons`. */
+export const ADDRESS_REASONS = [
+  "url_user_info",
+  "url_query",
+  "url_fragment",
+  "url_path_segment",
+  "url_path_parameter",
+  "url_token",
+  "url_unparseable",
+  "arg_name",
+  "arg_token",
+] as const
+export type AddressReason = (typeof ADDRESS_REASONS)[number]
+
+/** The reasons of a response that this interface has a label for, in the order given. */
+export function knownAddressReasons(reasons: readonly string[] | null | undefined): AddressReason[] {
+  return (reasons ?? []).filter((r): r is AddressReason =>
+    (ADDRESS_REASONS as readonly string[]).includes(r),
+  )
+}
+
 type NoticeFields = Pick<
   MCPServerResponse,
   "allow_fallback" | "address_private" | "warning" | "my_has_credentials"

@@ -9,6 +9,8 @@ import pytest
 from fim_one.core.assembly.mcp_address import (
     SECRET_NAME_WORDS,
     address_carries_secret,
+    address_secret_reasons,
+    launch_arg_reasons,
     launch_args_carry_secret,
     strip_url_secrets,
     url_carries_secret,
@@ -177,18 +179,40 @@ class TestLaunchArguments:
             ["xoxp-0123-4567-abcdef"],
             ["AKIAIOSFODNN7EXAMPLE"],
             ["eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln"],
-            ["Bearer abc"],
-            ["Bearer", "abc"],
+            ["Bearer abc123def456"],
+            ["Bearer ${TOKEN}"],
             ["--header", "Authorization: Bearer abc"],
+            ["--header", "Authorization:${AUTH_HEADER}"],
+            ["pk.eyJ1IjoiYSJ9.abcdef"],
+            ["--apiKey", "abc"],
+            ["--APIKey=abc"],
+            ["--apikey", "abc"],
+            ["GITHUB_PERSONAL_ACCESS_TOKEN=abc"],
             ["-k=sk-0123456789abcdef"],
             ["--opt", "value:sk-0123456789abcdef"],
-            # err towards flagging: the name contains a word
-            ["--keyboard-layout", "us"],
-            ["--author", "someone"],
         ],
     )
     def test_a_secret_shape_counts(self, args: list[str]) -> None:
         assert launch_args_carry_secret(args) is True
+
+    @pytest.mark.parametrize(
+        ("args", "reasons"),
+        [
+            (["--api-key", "abc"], ["arg_name"]),
+            (["API_KEY=abc"], ["arg_name"]),
+            (["sk-0123456789abcdef"], ["arg_token"]),
+            (["--api-key", "sk-0123456789abcdef"], ["arg_name", "arg_token"]),
+            (["mcp-remote", "https://host.example/mcp?v=2"], ["url_query"]),
+            (["mcp-remote", f"https://mcp.zapier.com/api/mcp/s/{T32}/mcp"], ["url_path_segment"]),
+            (["postgresql://app:pw@db.internal/app"], ["url_user_info"]),
+            (["--token", "a", "--secret", "b"], ["arg_name"]),
+            (["-y", "pkg"], []),
+        ],
+    )
+    def test_the_reasons_name_the_part_not_the_value(
+        self, args: list[str], reasons: list[str]
+    ) -> None:
+        assert launch_arg_reasons(args) == reasons
 
     @pytest.mark.parametrize(
         "args",
@@ -200,6 +224,31 @@ class TestLaunchArguments:
             ["--transport=stdio"],
             ["run", "server.py"],
             ["https://host.example/mcp"],  # a plain URL
+            # A secret word inside another word is not the word.
+            ["--keyboard-layout", "us"],
+            ["--tokenizer", "gpt2"],
+            ["--author", "someone"],
+            ["--authority", "host"],
+            ["--hotkey=F1"],
+            ["--monkey", "1"],
+            ["KEYBOARD=us"],
+            ["turnkey: x"],
+            # Plurals say how many or which, not what the secret is.
+            ["--max-tokens", "100"],
+            ["--allowed-keys", "a,b"],
+            # A name that negates, or that describes where or how.
+            ["--no-auth", "true"],
+            ["--key-file", "/etc/ssl/key.pem"],
+            ["--auth-type", "basic"],
+            ["--token-url", "https://login.example/oauth/token"],
+            # A switch for a value.
+            ["--auth", "none"],
+            ["--auth=false"],
+            # The word alone, or in a sentence.
+            ["--mode", "bearer"],
+            ["--description", "bearer of news"],
+            # A file path, not a token.
+            ["/data/sk-archive-2024"],
             ["--no-auth"],  # a flag with no value holds nothing
             ["--token"],
             ["--token", "--verbose"],
@@ -252,6 +301,14 @@ class TestAddress:
         assert address_carries_secret(_server("websocket", url="wss://h/?t=1", args=None)) is True
         assert address_carries_secret(_server(None, url=None, args=["--token", "x"])) is True
         assert address_carries_secret(_server(None, url="https://h/mcp", args=[])) is False
+
+    def test_the_reasons_are_those_of_the_part_the_transport_uses(self) -> None:
+        stdio = _server("stdio", args=["--api-key", "abc"], url="https://h.example/?t=1")
+        http = _server("sse", args=["--api-key", "abc"], url="https://h.example/?t=1")
+        other = _server(None, args=["--api-key", "abc"], url="https://h.example/?t=1")
+        assert address_secret_reasons(stdio) == ["arg_name"]
+        assert address_secret_reasons(http) == ["url_query"]
+        assert address_secret_reasons(other) == ["url_query", "arg_name"]
 
     def test_a_row_without_the_fields_carries_nothing(self) -> None:
         assert address_carries_secret(SimpleNamespace(transport="stdio")) is False

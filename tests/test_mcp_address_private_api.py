@@ -123,6 +123,10 @@ class TestTheOwnerIsWarnedOnceTheServerIsShared:
 
         assert published["visibility"] == "org"
         assert published["warning"] == CODE
+        # Which part of the address counted, so the owner knows where to look.
+        assert published["warning_reasons"] == ["url_user_info", "url_query", "url_fragment"]
+        for secret in ("pw-in-url", "tok-in-url", "frag-in-url"):
+            assert secret not in repr(published["warning_reasons"])
 
     async def test_a_stdio_server_is_judged_by_its_launch_arguments(
         self, session: AsyncSession
@@ -132,6 +136,7 @@ class TestTheOwnerIsWarnedOnceTheServerIsShared:
         published = await _publish(session, created["id"])
 
         assert published["warning"] == CODE
+        assert published["warning_reasons"] == ["arg_name", "arg_token"]
 
     async def test_an_edit_that_puts_a_credential_in_the_address_answers_with_the_warning(
         self, session: AsyncSession
@@ -226,6 +231,7 @@ class TestWhatSomeoneElseSees:
             assert seen["my_has_credentials"] is True
             # The warning is the owner's to act on.
             assert seen["warning"] is None
+            assert seen["warning_reasons"] == []
 
     @pytest.mark.parametrize("allow_fallback", [True, False])
     @pytest.mark.parametrize(

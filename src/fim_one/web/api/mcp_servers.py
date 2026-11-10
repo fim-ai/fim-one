@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.core.assembly.credentials import address_is_private, personal_credential_fits
 from fim_one.core.assembly.errors import MCP_SERVER_ADDRESS_PRIVATE
-from fim_one.core.assembly.mcp_address import error_without_url_secrets
+from fim_one.core.assembly.mcp_address import address_secret_reasons, error_without_url_secrets
 from fim_one.core.security import is_stdio_allowed, validate_stdio_command, validate_url
 from fim_one.db import get_session
 from fim_one.web.exceptions import AppError
@@ -71,6 +71,7 @@ def _to_response(srv: MCPServer, *, is_owner: bool, my_has_credentials: bool = F
     # is when it starts to matter.
     address_private = address_is_private(srv)
     shared = getattr(srv, "visibility", "personal") != "personal"
+    warn = is_owner and address_private and shared
     return MCPServerResponse(
         id=srv.id,
         user_id=srv.user_id or "",
@@ -87,7 +88,8 @@ def _to_response(srv: MCPServer, *, is_owner: bool, my_has_credentials: bool = F
         tool_count=srv.tool_count,
         allow_fallback=getattr(srv, "allow_fallback", True),
         address_private=address_private,
-        warning=MCP_SERVER_ADDRESS_PRIVATE if is_owner and address_private and shared else None,
+        warning=MCP_SERVER_ADDRESS_PRIVATE if warn else None,
+        warning_reasons=address_secret_reasons(srv) if warn else [],
         forked_from=getattr(srv, "forked_from", None),
         my_has_credentials=my_has_credentials,
         visibility=getattr(srv, "visibility", "personal"),
