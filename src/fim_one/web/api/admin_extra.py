@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.core.audit import actions
 from fim_one.core.audit import writer as audit
+from fim_one.core.usage import ledger as usage_ledger
 from fim_one.web.csv_safe import safe_writer
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_admin
@@ -155,15 +156,14 @@ async def analytics_usage(
     """Per-user token usage breakdown, sorted by total_tokens descending."""
     cutoff = _period_cutoff(period)
 
-    # Build subquery for conversation aggregates per user
-    conv_q = (
-        select(
-            Conversation.user_id,
-            func.coalesce(func.sum(Conversation.total_tokens), 0).label("total_tokens"),
-            func.count().label("conversation_count"),
-        )
-        .group_by(Conversation.user_id)
-    )
+    # Tokens come from the usage ledger (what the user consumed in the
+    # period, deleted conversations included); the conversation count is of
+    # the conversations created in it that still exist.
+    usage_sub = usage_ledger.usage_per_user_subquery(cutoff)
+    conv_q = select(
+        Conversation.user_id,
+        func.count().label("conversation_count"),
+    ).group_by(Conversation.user_id)
     if cutoff is not None:
         conv_q = conv_q.where(Conversation.created_at >= cutoff)
     conv_sub = conv_q.subquery()
@@ -174,12 +174,13 @@ async def analytics_usage(
             User.id,
             User.username,
             User.email,
-            func.coalesce(conv_sub.c.total_tokens, 0).label("total_tokens"),
+            func.coalesce(usage_sub.c.total_tokens, 0).label("total_tokens"),
             func.coalesce(conv_sub.c.conversation_count, 0).label("conversation_count"),
             User.token_quota,
         )
+        .outerjoin(usage_sub, User.id == usage_sub.c.user_id)
         .outerjoin(conv_sub, User.id == conv_sub.c.user_id)
-        .order_by(func.coalesce(conv_sub.c.total_tokens, 0).desc())
+        .order_by(func.coalesce(usage_sub.c.total_tokens, 0).desc())
         .limit(top_n)
     )
 
@@ -240,22 +241,14 @@ async def export_users(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> StreamingResponse:
     """Export all users as CSV."""
-    # Compute monthly tokens per user (last 30 days)
+    # What each user consumed in the last 30 days, from the usage ledger.
     cutoff = datetime.now(timezone.utc) - timedelta(days=30)
-    monthly_sub = (
-        select(
-            Conversation.user_id,
-            func.coalesce(func.sum(Conversation.total_tokens), 0).label("monthly_tokens"),
-        )
-        .where(Conversation.created_at >= cutoff)
-        .group_by(Conversation.user_id)
-        .subquery()
-    )
+    monthly_sub = usage_ledger.usage_per_user_subquery(cutoff)
 
     query = (
         select(
             User,
-            func.coalesce(monthly_sub.c.monthly_tokens, 0).label("monthly_tokens"),
+            func.coalesce(monthly_sub.c.total_tokens, 0).label("monthly_tokens"),
         )
         .outerjoin(monthly_sub, User.id == monthly_sub.c.user_id)
         .order_by(User.created_at)

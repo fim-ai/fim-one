@@ -1,0 +1,243 @@
+"""The usage figures people are shown are read from the usage ledger (B20, B22).
+
+The user's own Usage card (the period's total, the days, the agents), the
+administrators' per-user usage and user list, and the user export. They
+summed ``conversations.total_tokens``: a figure fell when conversations
+were deleted, left out workflow runs and the helper endpoints, and the
+card's breakdown did not add up to the number the quota was enforced on.
+"""
+
+from __future__ import annotations
+
+import csv
+import io
+import re
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+import fim_one
+from fim_one.db.models import User
+
+from .harness import Usage, usage  # noqa: F401
+from .provider import UNIT, Provider, provider  # noqa: F401
+from .test_entry_matrix import _workflow, runs  # noqa: F401
+
+
+@pytest.fixture()
+async def alice(usage: Usage) -> User:  # noqa: F811
+    await usage.cap(10_000_000)
+    return await usage.user("alice")
+
+
+@pytest.fixture()
+async def root(usage: Usage) -> User:  # noqa: F811
+    return await usage.user("root", is_admin=True)
+
+
+async def _everything(usage: Usage, provider: Provider, by: User) -> dict[str, Any]:  # noqa: F811
+    """A turn with an agent, one without, a workflow run and an AI-assisted
+    helper; what each of them was billed."""
+    billed: dict[str, Any] = {}
+    agent = await usage.agent(by, name="Helper")
+    with_agent = await usage.conversation(by, agent=agent)
+    await usage.turn("/api/react", by, conversation=with_agent, agent=agent)
+    await usage.settle()
+    billed["agent"] = provider.billed
+    direct = await usage.conversation(by)
+    await usage.turn("/api/react", by, conversation=direct)
+    await usage.settle()
+    billed["direct"] = provider.billed - billed["agent"]
+    await _workflow(usage, by)
+    await usage.call("POST", "/api/workflows/wf-1/run", by=by, json={"inputs": {}})
+    billed["workflow"] = UNIT
+    before = provider.billed
+    await usage.call(
+        "POST", "/api/agents/ai/create", by=by, json={"instruction": "x"},
+        expect=tuple(range(200, 600)),
+    )  # fmt: skip
+    billed["assist"] = provider.billed - before
+    billed["conversations"] = (with_agent, direct)
+    billed["agent_row"] = agent
+    return billed
+
+
+class TestTheUsageCard:
+    async def test_the_breakdown_adds_up_to_what_is_enforced(
+        self, usage: Usage, provider: Provider, alice: User, runs: Any  # noqa: F811
+    ) -> None:
+        billed = await _everything(usage, provider, alice)
+
+        card = await usage.card(alice)
+
+        assert card["total_tokens"] == card["window_tokens"] == provider.billed
+        assert card["window_tokens"] == await usage.quota_used(alice)
+        by_agent = {row["agent_name"]: (row["agent_id"], row["tokens"]) for row in card["by_agent"]}
+        assert by_agent == {
+            "Helper": (billed["agent_row"].id, billed["agent"]),
+            "Direct Chat": (None, billed["direct"]),
+            "Workflows": (None, billed["workflow"]),
+            "AI assist": (None, billed["assist"]),
+        }
+        assert sum(tokens for _, tokens in by_agent.values()) == card["total_tokens"]
+        assert card["daily"] == [
+            {"date": datetime.now(UTC).date().isoformat(), "tokens": provider.billed}
+        ]
+        # Largest first.
+        assert [row["tokens"] for row in card["by_agent"]] == sorted(
+            (row["tokens"] for row in card["by_agent"]), reverse=True
+        )
+
+    async def test_deleting_conversations_and_the_agent_leaves_the_figures(
+        self, usage: Usage, provider: Provider, alice: User, runs: Any  # noqa: F811
+    ) -> None:
+        billed = await _everything(usage, provider, alice)
+        before = await usage.card(alice)
+
+        for conversation in billed["conversations"]:
+            await usage.call("DELETE", f"/api/conversations/{conversation.id}", by=alice)
+        await usage.call("DELETE", "/api/workflows/wf-1", by=alice)
+        await usage.call("DELETE", f"/api/agents/{billed['agent_row'].id}", by=alice)
+
+        card = await usage.card(alice)
+        assert (card["total_tokens"], card["window_tokens"], card["daily"]) == (
+            before["total_tokens"], before["window_tokens"], before["daily"],
+        )  # fmt: skip
+        by_agent = {row["agent_name"]: row["tokens"] for row in card["by_agent"]}
+        # The agent is gone and so is its name; what went through it is not.
+        assert by_agent == {
+            "Deleted agents": billed["agent"],
+            "Direct Chat": billed["direct"],
+            "Workflows": billed["workflow"],
+            "AI assist": billed["assist"],
+        }
+
+    async def test_a_period_counts_what_was_consumed_in_it(
+        self, usage: Usage, provider: Provider, alice: User  # noqa: F811
+    ) -> None:
+        """Not what the conversations created in it hold."""
+        from datetime import timedelta
+
+        from fim_one.core.usage.ledger import UsageEntry, write_entries
+        from fim_one.db import create_session
+        from fim_one.db.models.usage_ledger import UsageLedger
+        from sqlalchemy import select
+
+        await write_entries(
+            [
+                UsageEntry(user_id=alice.id, org_id=None, source_type="conversation",
+                           source_id="old", entry="chat", model="m", total_tokens=700),
+                UsageEntry(user_id=alice.id, org_id=None, source_type="conversation",
+                           source_id="new", entry="chat", model="m", total_tokens=40),
+            ]
+        )  # fmt: skip
+        async with create_session() as db:
+            row = (
+                await db.execute(select(UsageLedger).where(UsageLedger.source_id == "old"))
+            ).scalar_one()
+            row.created_at = datetime.now(UTC) - timedelta(days=20)  # the test's own doing
+            await db.commit()
+
+        week, quarter = await usage.card(alice, "7d"), await usage.card(alice, "90d")
+
+        assert (week["total_tokens"], quarter["total_tokens"]) == (40, 740)
+        assert [day["tokens"] for day in quarter["daily"]] == [700, 40]
+        assert [day["tokens"] for day in week["daily"]] == [40]
+
+    async def test_someone_elses_usage_is_not_on_the_card(
+        self, usage: Usage, provider: Provider, alice: User  # noqa: F811
+    ) -> None:
+        bob = await usage.user("bob")
+        await usage.turn("/api/react", bob)
+
+        card = await usage.card(alice)
+
+        assert (card["total_tokens"], card["window_tokens"], card["by_agent"]) == (0, 0, [])
+
+
+class TestWhatAdministratorsSee:
+    async def _rows(self, usage: Usage, root: User) -> dict[str, dict[str, Any]]:  # noqa: F811
+        await usage.settle()
+        listed = (await usage.call("GET", "/api/admin/users?size=100", by=root)).json()["items"]
+        return {row["username"]: row for row in listed}
+
+    async def test_the_user_list_counts_everything_and_keeps_it_after_a_delete(
+        self, usage: Usage, provider: Provider, alice: User, root: User, runs: Any  # noqa: F811
+    ) -> None:
+        billed = await _everything(usage, provider, alice)
+        assert (await self._rows(usage, root))["alice"]["monthly_tokens"] == provider.billed
+
+        for conversation in billed["conversations"]:
+            await usage.call("DELETE", f"/api/conversations/{conversation.id}", by=alice)
+
+        rows = await self._rows(usage, root)
+        assert rows["alice"]["monthly_tokens"] == provider.billed
+        assert rows["root"]["monthly_tokens"] == 0
+
+    async def test_per_user_usage_counts_everything_and_keeps_it_after_a_delete(
+        self, usage: Usage, provider: Provider, alice: User, root: User, runs: Any  # noqa: F811
+    ) -> None:
+        billed = await _everything(usage, provider, alice)
+        await usage.call(
+            "DELETE", f"/api/conversations/{billed['conversations'][0].id}", by=alice
+        )
+        await usage.settle()
+
+        for period in ("week", "month", "all"):
+            listed = (
+                await usage.call("GET", f"/api/admin/analytics/usage?period={period}", by=root)
+            ).json()
+            first = listed[0]
+            assert (first["username"], first["total_tokens"]) == ("alice", provider.billed), period
+            # The conversations that still exist.
+            assert first["conversation_count"] == 1
+            assert {row["username"]: row["total_tokens"] for row in listed}["root"] == 0
+
+    async def test_the_user_export_counts_everything_and_keeps_it_after_a_delete(
+        self, usage: Usage, provider: Provider, alice: User, root: User, runs: Any  # noqa: F811
+    ) -> None:
+        billed = await _everything(usage, provider, alice)
+        for conversation in billed["conversations"]:
+            await usage.call("DELETE", f"/api/conversations/{conversation.id}", by=alice)
+        await usage.settle()
+
+        export = await usage.call("GET", "/api/admin/export/users", by=root)
+
+        rows = {row["username"]: row for row in csv.DictReader(io.StringIO(export.text))}
+        assert int(rows["alice"]["monthly_tokens"]) == provider.billed
+        assert int(rows["root"]["monthly_tokens"]) == 0
+
+
+class TestNothingElseSumsTheOldTotals:
+    """Quota and the figures above read the ledger. The totals kept on
+    conversations and runs are summed only by the statistics pages, which
+    move to the ledger later (C2 phase 5), and by the run's own record."""
+
+    SRC = Path(fim_one.__file__).parent
+    # File -> how many sums it may hold. A new one anywhere fails this test.
+    STATISTICS = {
+        "web/api/admin.py": 5,  # the platform overview: totals, by model, by agent
+        "web/api/admin_analytics.py": 2,
+        "web/api/admin_extra.py": 1,  # the 30-day trend
+        "web/api/dashboard.py": 4,
+        "web/api/metrics.py": 2,
+    }
+
+    def test_sums_over_conversation_totals(self) -> None:
+        summing = re.compile(r"func\.sum\(\s*\w*Conv\w*\.total_tokens")
+        found = {
+            str(path.relative_to(self.SRC)): len(summing.findall(path.read_text(encoding="utf-8")))
+            for path in self.SRC.rglob("*.py")
+        }
+        assert {name: count for name, count in found.items() if count} == self.STATISTICS
+
+    def test_no_sum_over_run_totals(self) -> None:
+        summing = re.compile(r"func\.sum\(\s*\w*WorkflowRun\w*\.total_tokens")
+        found = sorted(
+            str(path.relative_to(self.SRC))
+            for path in self.SRC.rglob("*.py")
+            if summing.search(path.read_text(encoding="utf-8"))
+        )
+        assert found == []

@@ -12,11 +12,12 @@ import secrets
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query, Request
-from sqlalchemy import case, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.core.audit import actions
 from fim_one.core.audit import writer as audit
+from fim_one.core.usage import ledger
 from fim_one.db import get_session
 from fim_one.web.api_key_scopes import check_delegation
 from fim_one.web.audit_events import record_account
@@ -33,7 +34,6 @@ from fim_one.db.models import (
 )
 from fim_one.db.models.agent import Agent
 from fim_one.db.models.connector import Connector
-from fim_one.db.models.conversation import Conversation
 from fim_one.db.models.mcp_server import MCPServer
 from fim_one.web.services.quota_enforcer import get_user_quota_by_id
 from fim_one.web.services import quota_backend
@@ -348,6 +348,55 @@ def _parse_period(period: str) -> int:
     return mapping.get(period, 7)
 
 
+# What usage that came through no agent is listed as on the usage card.
+_DIRECT_CHAT = "Direct Chat"
+_NO_AGENT_LABELS = {
+    "workflow_run": "Workflows",
+    "eval_run": "Evaluations",
+}
+_CHAT_ENTRIES = frozenset({"chat", "dag", "auto", "react", "background"})
+
+
+def _origin_label(bucket: ledger.UsageBucket) -> str:
+    """The card's name for usage that no (existing) agent accounts for."""
+    if bucket.agent_id is not None:
+        # Recorded through an agent that has since been deleted.
+        return "Deleted agents"
+    if bucket.source_type in _NO_AGENT_LABELS:
+        return _NO_AGENT_LABELS[bucket.source_type]
+    if bucket.source_type == "conversation" or bucket.entry in _CHAT_ENTRIES:
+        return _DIRECT_CHAT
+    # AI-assisted builders, KB and DB chat, document ingestion.
+    return "AI assist"
+
+
+async def _usage_by_agent(db: AsyncSession, user_id: str, since: datetime) -> list[AgentUsage]:
+    """The user's usage from *since* on per agent, largest first.
+
+    Usage that came through no agent is grouped by what it was: chat with
+    no agent, workflow runs, evaluations, the AI-assisted helpers.
+    """
+    buckets = await ledger.used_by_origin(db, user_id, since)
+    agent_ids = {bucket.agent_id for bucket in buckets if bucket.agent_id}
+    names: dict[str, str] = {}
+    if agent_ids:
+        rows = await db.execute(select(Agent.id, Agent.name).where(Agent.id.in_(agent_ids)))
+        names = {agent_id: name for agent_id, name in rows.all()}
+
+    totals: dict[tuple[str | None, str], int] = {}
+    for bucket in buckets:
+        if bucket.agent_id and bucket.agent_id in names:
+            key: tuple[str | None, str] = (bucket.agent_id, names[bucket.agent_id])
+        else:
+            key = (None, _origin_label(bucket))
+        totals[key] = totals.get(key, 0) + bucket.total_tokens
+    return [
+        AgentUsage(agent_id=agent_id, agent_name=name, tokens=tokens)
+        for (agent_id, name), tokens in sorted(totals.items(), key=lambda item: -item[1])
+        if tokens > 0
+    ]
+
+
 @router.get("/usage", response_model=UsageResponse)
 async def get_my_usage(
     period: str = Query("7d", pattern=r"^(7d|30d|90d|month)$"),
@@ -362,57 +411,15 @@ async def get_my_usage(
         days = _parse_period(period)
         since = datetime.now(UTC) - timedelta(days=days)
 
-    # Total tokens in period
-    total_q = (
-        select(func.coalesce(func.sum(Conversation.total_tokens), 0))
-        .where(Conversation.user_id == current_user.id, Conversation.created_at >= since)
-    )
-    total_tokens = (await db.execute(total_q)).scalar() or 0
-
-    # Daily breakdown — use func.date() for cross-DB date extraction
-    daily_q = (
-        select(
-            func.date(Conversation.created_at).label("day"),
-            func.coalesce(func.sum(Conversation.total_tokens), 0).label("tokens"),
-        )
-        .where(Conversation.user_id == current_user.id, Conversation.created_at >= since)
-        .group_by(func.date(Conversation.created_at))
-        .order_by(func.date(Conversation.created_at))
-    )
-    daily_rows = (await db.execute(daily_q)).all()
-    daily = [DailyUsage(date=str(r.day), tokens=int(r.tokens)) for r in daily_rows]
-
-    # By agent breakdown. Collapse rows where the agent was deleted
-    # (Agent.name is NULL via outer join) into the "Direct Chat" bucket
-    # so orphaned conversations don't produce multiple same-named rows.
-    resolved_agent_id = case(
-        (Agent.name.isnot(None), Conversation.agent_id),
-        else_=None,
-    )
-    agent_name_expr = case(
-        (Agent.name.isnot(None), Agent.name),
-        else_="Direct Chat",
-    )
-    agent_q = (
-        select(
-            resolved_agent_id.label("agent_id"),
-            agent_name_expr.label("agent_name"),
-            func.coalesce(func.sum(Conversation.total_tokens), 0).label("tokens"),
-        )
-        .outerjoin(Agent, Conversation.agent_id == Agent.id)
-        .where(Conversation.user_id == current_user.id, Conversation.created_at >= since)
-        .group_by(resolved_agent_id, agent_name_expr)
-        .order_by(func.sum(Conversation.total_tokens).desc())
-    )
-    agent_rows = (await db.execute(agent_q)).all()
-    by_agent = [
-        AgentUsage(
-            agent_id=r.agent_id,
-            agent_name=r.agent_name or "Direct Chat",
-            tokens=int(r.tokens),
-        )
-        for r in agent_rows
+    # Everything below is read from the usage ledger: what was consumed on
+    # this account, on the day it was consumed. It does not change when a
+    # conversation, a run or an agent is deleted.
+    total_tokens = await ledger.used_since(db, current_user.id, since)
+    daily = [
+        DailyUsage(date=day, tokens=tokens)
+        for day, tokens in await ledger.used_by_day(db, current_user.id, since)
     ]
+    by_agent = await _usage_by_agent(db, current_user.id, since)
 
     # Quota window (billing-aligned) — resolved independently of the
     # selected stats `period` above so every quota-facing surface (this

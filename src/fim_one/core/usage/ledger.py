@@ -17,7 +17,16 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["UsageEntry", "used_by_users_since", "used_since", "write_entries"]
+__all__ = [
+    "UsageBucket",
+    "UsageEntry",
+    "used_by_day",
+    "used_by_origin",
+    "used_by_users_since",
+    "used_since",
+    "usage_per_user_subquery",
+    "write_entries",
+]
 
 SOURCE_TYPES = frozenset({"conversation", "workflow_run", "eval_run", "endpoint"})
 
@@ -165,3 +174,84 @@ async def used_by_users_since(
         query = query.where(UsageLedger.user_id.in_(list(user_ids)))
     rows = (await db.execute(query)).all()
     return {str(user_id): max(int(total or 0), 0) for user_id, total in rows}
+
+
+def usage_per_user_subquery(since: datetime | None = None) -> Any:
+    """A subquery of ``(user_id, total_tokens)``: what each user has recorded
+    from *since* on (over all time when ``None``), for joining to users."""
+    from sqlalchemy import func, select
+
+    from fim_one.db.models.usage_ledger import UsageLedger
+
+    query = (
+        select(
+            UsageLedger.user_id.label("user_id"),
+            func.coalesce(func.sum(UsageLedger.total_tokens), 0).label("total_tokens"),
+        )
+        .where(UsageLedger.user_id.is_not(None))
+        .group_by(UsageLedger.user_id)
+    )
+    if since is not None:
+        query = query.where(UsageLedger.created_at >= since)
+    return query.subquery()
+
+
+async def used_by_day(db: AsyncSession, user_id: str, since: datetime) -> list[tuple[str, int]]:
+    """*user_id*'s usage from *since* on per day it was recorded, oldest first.
+
+    The day is the UTC date, as ``YYYY-MM-DD``.
+    """
+    from sqlalchemy import func, select
+
+    from fim_one.db.models.usage_ledger import UsageLedger
+
+    day = func.date(UsageLedger.created_at)
+    rows = (
+        await db.execute(
+            select(day, func.coalesce(func.sum(UsageLedger.total_tokens), 0))
+            .where(UsageLedger.user_id == user_id, UsageLedger.created_at >= since)
+            .group_by(day)
+            .order_by(day)
+        )
+    ).all()
+    return [(str(found), max(int(total or 0), 0)) for found, total in rows]
+
+
+@dataclass(frozen=True)
+class UsageBucket:
+    """Usage that came about the same way: through one agent, or with none
+    through one kind of entry."""
+
+    agent_id: str | None
+    source_type: str
+    entry: str
+    total_tokens: int
+
+
+async def used_by_origin(db: AsyncSession, user_id: str, since: datetime) -> list[UsageBucket]:
+    """*user_id*'s usage from *since* on, by the agent and the entry it came through."""
+    from sqlalchemy import func, select
+
+    from fim_one.db.models.usage_ledger import UsageLedger
+
+    rows = (
+        await db.execute(
+            select(
+                UsageLedger.agent_id,
+                UsageLedger.source_type,
+                UsageLedger.entry,
+                func.coalesce(func.sum(UsageLedger.total_tokens), 0),
+            )
+            .where(UsageLedger.user_id == user_id, UsageLedger.created_at >= since)
+            .group_by(UsageLedger.agent_id, UsageLedger.source_type, UsageLedger.entry)
+        )
+    ).all()
+    return [
+        UsageBucket(
+            agent_id=agent_id,
+            source_type=source_type,
+            entry=entry,
+            total_tokens=max(int(total or 0), 0),
+        )
+        for agent_id, source_type, entry, total in rows
+    ]
