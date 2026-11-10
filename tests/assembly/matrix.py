@@ -11,9 +11,9 @@ the difference is registered in :data:`KNOWN_DEVIATIONS`.
 
 ``tests/assembly/test_matrix.py`` asserts *actual deviations == registered
 deviations*: fixing one without removing its registration fails, and so
-does introducing a new one. C1 phases 2 to 4 and T10 P4 removed all but
-one: the workflow Connector step cannot wait for a human, which is T10 P5's
-(see :data:`KNOWN_DEVIATIONS`).
+does introducing a new one. C1 phases 2 to 4 and T10 P4 and P5 removed
+them all; :data:`KNOWN_DEVIATIONS` is empty and stays as the place to
+register one, should an entry point ever have to differ for a while.
 
 A **cell** is ``(role, resource, allow_fallback, is_active, has_personal)``:
 
@@ -631,6 +631,12 @@ def outside_world(factory: async_sessionmaker[AsyncSession]) -> Iterator[Outside
     async def _approved(_self: Any, _confirmation_id: str, **_kwargs: Any) -> str:
         return "approve"
 
+    async def _approved_row(_self: Any, confirmation_id: str) -> Any:
+        # What a step that suspended its run reads when it is run again.
+        return SimpleNamespace(
+            id=confirmation_id, status="approved", expires_at=None, decision_note=None
+        )
+
     with ExitStack() as stack:
         for target, value in (
             ("fim_one.db.create_session", _create_session),
@@ -655,6 +661,7 @@ def outside_world(factory: async_sessionmaker[AsyncSession]) -> Iterator[Outside
             stack.enter_context(patch(target, value))
         stack.enter_context(patch.object(ConfirmationService, "request", _asked))
         stack.enter_context(patch.object(ConfirmationService, "wait", _approved))
+        stack.enter_context(patch.object(ConfirmationService, "get", _approved_row))
         stack.enter_context(
             patch.object(rs, "_default_service", rs.WorkflowRunService(engine_factory=_FakeEngine))
         )
@@ -978,6 +985,9 @@ def _context(scene: Scene) -> Any:
         run_id=run_id,
         user_id=scene.actor,
         workflow_id=scene.ids["workflow"],
+        # A run with a record: its steps can stop it to wait for a person.
+        db_session_factory=lambda: None,
+        can_suspend=True,
         call_context=CallContext(
             principal=provisional_principal(scene.actor),
             binding=Binding(
@@ -1007,7 +1017,14 @@ async def probe_wf_connector_node(
             NodeType.CONNECTOR,
             {"connector_id": scene.ids[resource], "action_id": action_id, "parameters": {}},
         )
-        return await ConnectorExecutor().execute(node, VariableStore(), _context(scene))
+        context = _context(scene)
+        result = await ConnectorExecutor().execute(node, VariableStore(), context)
+        if result.status == NodeStatus.WAITING:
+            # The step asked and suspended the run; the run service runs it
+            # again once the request is decided (approved, in this world).
+            context.suspensions[node.id] = result.suspension
+            result = await ConnectorExecutor().execute(node, VariableStore(), context)
+        return result
 
     results: dict[str, Outcome] = {}
     with outside_world(factory) as out:
@@ -1018,8 +1035,8 @@ async def probe_wf_connector_node(
                 results[resource] = Outcome(exposed=False, refusal_code=_classify(result.error))
                 continue
             assert len(out.http) == sent + 1
-            # The flagged action: a node that waits for a human asks the
-            # gate; one that cannot wait fails.
+            # The flagged action: the node asks the gate, the run waits, and
+            # the action runs once a human has approved.
             asked = len(out.gate_asked)
             flagged = await _run(resource, scene.actions[resource]["wipe"])
             results[resource] = Outcome(
@@ -1249,22 +1266,9 @@ def _replace(outcome: Outcome, **changes: Any) -> Outcome:
     return Outcome(**{**{f: getattr(outcome, f) for f in FIELDS}, **changes})
 
 
-def _not_confirmed(_entry: str, _cell: Cell, so_far: Outcome) -> Outcome | None:
-    return _replace(so_far, confirmed=False) if so_far.exposed else None
-
-
 # Applied in this order: a later entry sees the outcome the earlier ones left.
-KNOWN_DEVIATIONS: tuple[Deviation, ...] = (
-    Deviation(
-        name="connector-node-cannot-confirm",
-        entries=("wf_connector_node",),
-        resources=API_CONNECTORS,
-        what="An action flagged 'requires confirmation' fails the node instead of waiting.",
-        ref="design §1.3 row 'wf-节点 (连接器)'",
-        removed_in="T10 P5 (not C1)",
-        today=_not_confirmed,
-    ),
-)
+# Empty since T10 P5 (the workflow Connector step now waits for a human).
+KNOWN_DEVIATIONS: tuple[Deviation, ...] = ()
 
 
 def as_built(entry: str, cell: Cell) -> Outcome:

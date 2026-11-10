@@ -1208,36 +1208,24 @@ class _StepFailed(Exception):
 
 async def _action_tool(
     db: AsyncSession, call_context: CallContext, connector: Any, action_id: str
-) -> BaseTool:
-    """The tool that runs one action of *connector* for this step.
+) -> tuple[BaseTool, Any]:
+    """The tool that runs one action of *connector* for this step, and the action.
 
     The runner's credential, the refusal when they have none, and the call
     record all come from core/assembly: the same rule and the same record as
-    a call made from chat.
+    a call made from chat. The action is ``None`` for a database
+    connector, whose operations are not actions and carry no
+    "requires confirmation" flag.
     """
     from fim_one.core.assembly.errors import AssemblyRefusal
     from fim_one.core.assembly.toolset import connector_tools
 
     if connector.type == "database":
-        return await _database_operation_tool(db, call_context, connector, action_id)
+        return await _database_operation_tool(db, call_context, connector, action_id), None
 
     action = next((a for a in connector.actions or [] if a.id == action_id), None)
     if not action:
         raise _StepFailed(f"Action '{action_id}' not found")
-
-    # Fail closed on confirmation-required actions (audit P0#3b).
-    # A workflow has no per-call interactive confirmation channel,
-    # so an action flagged requires_confirmation must not run
-    # unattended (the previous behavior silently bypassed the gate).
-    # The workflow-native way to gate a sensitive step is to place a
-    # Human Intervention node before it.
-    if action.requires_confirmation:
-        raise _StepFailed(
-            f"Action '{action.name}' requires confirmation and "
-            "cannot run unattended in a workflow. Add a Human "
-            "Intervention node before this step to gate it, or "
-            "use an action that does not require confirmation."
-        )
 
     try:
         (adapter,) = await connector_tools(
@@ -1250,7 +1238,106 @@ async def _action_tool(
         )
     except AssemblyRefusal as refused:
         raise _StepFailed(refused.detail) from None
-    return adapter
+    return adapter, action
+
+
+# How long a connector action's confirmation request stays answerable.
+ACTION_CONFIRMATION_TIMEOUT_HOURS = 24.0
+
+
+async def _confirmed(
+    node: WorkflowNodeDef,
+    context: ExecutionContext,
+    call_context: CallContext,
+    connector: Any,
+    action: Any,
+    params: dict[str, Any],
+    t0: float,
+) -> NodeResult | None:
+    """Put an action flagged "requires confirmation" before a person.
+
+    ``None`` once it is approved: the action may run. Otherwise the step's
+    result: ``WAITING`` when the request was just made or is still open
+    (the run is suspended and this step is run again once it is decided),
+    ``FAILED`` when it was rejected, ran out of time, or nobody can be
+    asked here.
+
+    The request is a ``kind="confirmation"`` one bound to the workflow and
+    decided by the person the run belongs to: whoever started it, or the
+    workflow's owner for a trigger key or a schedule (administrators may
+    always decide). The same rule and the same service as a flagged tool
+    call in chat.
+    """
+    from fim_one.core.assembly.confirmation import ConfirmationService, ConfirmationSpec
+    from fim_one.core.assembly.errors import AssemblyRefusal
+
+    def failed(error: str) -> NodeResult:
+        return NodeResult(
+            node_id=node.id, status=NodeStatus.FAILED, error=error, duration_ms=_ms_since(t0)
+        )
+
+    asked = context.suspensions.get(node.id)
+    if asked is None:
+        if context.db_session_factory is None or not context.can_suspend:
+            return failed(
+                f"Action '{action.name}' requires confirmation, and there is nobody to ask "
+                "here: a single-step test and a workflow run by an agent as a tool cannot "
+                "wait for a person. Run the workflow itself to be asked."
+            )
+        binding = call_context.binding
+        principal = call_context.principal
+        spec = ConfirmationSpec(
+            kind="confirmation",
+            initiator=principal,
+            binding=binding,
+            org_id=binding.org_id if binding is not None else None,
+            title=f"Confirm: {connector.name} / {action.name}"[:500],
+            description="A workflow step is about to run an action that requires confirmation.",
+            payload={
+                "tool_name": f"{connector.name}.{action.name}",
+                "tool_args": params,
+                "connector_id": connector.id,
+                "action_id": action.id,
+            },
+            eligible_scope="initiator",
+            eligible_user_id=principal.user_id,
+            delivery="inline_only",
+            channel_id=None,
+            timeout_seconds=ACTION_CONFIRMATION_TIMEOUT_HOURS * 3600,
+            workflow_run_id=context.run_id,
+            node_id=node.id,
+        )
+        try:
+            request = await ConfirmationService(context.db_session_factory).request(spec)
+        except AssemblyRefusal as refusal:
+            return failed(refusal.detail)
+        return NodeResult(
+            node_id=node.id,
+            status=NodeStatus.WAITING,
+            suspension=_suspension_of(request),
+            duration_ms=_ms_since(t0),
+        )
+
+    if context.db_session_factory is None:
+        return failed(f"Action '{action.name}' requires confirmation and its request is gone.")
+    outcome, record = await _awaited_decision(context, asked)
+    if outcome == "pending":
+        return NodeResult(
+            node_id=node.id, status=NodeStatus.WAITING, suspension=asked, duration_ms=_ms_since(t0)
+        )
+    if outcome == "approve":
+        return None
+    if outcome == "reject":
+        note = getattr(record, "decision_note", None)
+        return failed(
+            f"Action '{action.name}' was not run: the confirmation was rejected"
+            + (f" ({note})" if note else "")
+            + "."
+        )
+    return failed(
+        f"Action '{action.name}' was not run: nobody confirmed it within "
+        f"{ACTION_CONFIRMATION_TIMEOUT_HOURS:g} hours."
+    )
 
 
 async def _database_operation_tool(
@@ -1437,6 +1524,9 @@ class ConnectorExecutor:
     ``parameters`` are the action's. For a database connector ``action_id``
     is ``list_tables``, ``describe_table`` (``parameters.table_name``) or
     ``query`` (``parameters.sql``).
+
+    An action flagged "requires confirmation" is put before a person first
+    (:func:`_confirmed`): the run waits, and the action runs once approved.
     """
 
     @staticmethod
@@ -1509,7 +1599,9 @@ class ConnectorExecutor:
                         duration_ms=_ms_since(t0),
                     )
                 try:
-                    adapter = await _action_tool(db, call_context, _usable[0], action_id)
+                    adapter, action = await _action_tool(
+                        db, call_context, _usable[0], action_id
+                    )
                 except _StepFailed as failed_step:
                     return NodeResult(
                         node_id=node.id,
@@ -1517,6 +1609,16 @@ class ConnectorExecutor:
                         error=failed_step.detail,
                         duration_ms=_ms_since(t0),
                     )
+                connector = _usable[0]
+
+            if action is not None and action.requires_confirmation:
+                # Asked after the checks above, so nobody is asked to
+                # confirm a call that would be refused anyway.
+                unconfirmed = await _confirmed(
+                    node, context, call_context, connector, action, params, t0
+                )
+                if unconfirmed is not None:
+                    return unconfirmed
 
             sql_template = params_template.get("sql")
             if (
@@ -1813,7 +1915,7 @@ def _suspension_of(request: Any) -> dict[str, Any]:
     expires_at = getattr(request, "expires_at", None)
     return {
         "confirmation_id": str(request.id),
-        "kind": str(request.kind),
+        "kind": str(getattr(request, "kind", "") or ""),
         "expires_at": expires_at.isoformat() if expires_at is not None else None,
     }
 

@@ -887,3 +887,166 @@ class TestLiveState:
         ]
         assert "suspend_state" not in shown
 
+
+
+# ---------------------------------------------------------------------------
+# A connector action that requires confirmation
+# ---------------------------------------------------------------------------
+
+
+class _Adapter:
+    """Stands in for the connector action's tool: records what it is run with."""
+
+    category = "connector"
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    async def run(self, **params: Any) -> str:
+        self.calls.append(params)
+        return "wiped"
+
+
+@pytest.fixture()
+async def flagged(rig: Rig) -> AsyncIterator[_Adapter]:
+    """The workflow becomes start -> a flagged connector action -> end."""
+    from fim_one.db.models.connector import Connector, ConnectorAction
+
+    async with rig.factory() as s:
+        connector = Connector(
+            id=str(uuid.uuid4()),
+            user_id=rig.owner.id,
+            name="Ledger",
+            type="api",
+            base_url="https://ledger.example.test",
+            auth_type="none",
+            status="published",
+            is_active=True,
+        )
+        s.add(connector)
+        await s.flush()
+        s.add(
+            ConnectorAction(
+                id="wipe-1",
+                connector_id=connector.id,
+                name="wipe",
+                method="POST",
+                path="/wipe",
+                requires_confirmation=True,
+            )
+        )
+        await s.commit()
+    await rig.workflow(
+        {
+            "schema_version": 2,
+            "nodes": [
+                _node("start_1", "start", "START"),
+                _node(
+                    "connector_1",
+                    "connector",
+                    "CONNECTOR",
+                    connector_id=connector.id,
+                    action_id="wipe-1",
+                    parameters={"target": "{{start_1.q}}"},
+                ),
+                _node("end_1", "end", "END", output_mapping={"result": "{{connector_1.output}}"}),
+            ],
+            "edges": [_edge("start_1", "connector_1"), _edge("connector_1", "end_1")],
+            "viewport": {"x": 0, "y": 0, "zoom": 1},
+        }
+    )
+    adapter = _Adapter()
+    with patch(
+        "fim_one.core.assembly.toolset.connector_tools", new=AsyncMock(return_value=[adapter])
+    ):
+        yield adapter
+
+
+class TestConnectorActionConfirmation:
+    async def test_the_run_waits_and_the_action_runs_once_approved(
+        self, rig: Rig, flagged: _Adapter, hooked: rs.WorkflowRunService
+    ) -> None:
+        outcome = await rig.start(inputs={"q": "ledger-7"})
+
+        assert outcome.status == "waiting"
+        assert flagged.calls == []  # not run before anyone said yes
+        request = await rig.request_of(outcome.run_id)
+        assert (request.kind, request.status, request.node_id) == (
+            "confirmation",
+            "pending",
+            "connector_1",
+        )
+        # Decided by whoever the run belongs to.
+        assert (request.eligible_scope, request.eligible_user_id) == ("initiator", rig.owner.id)
+        assert request.payload["tool_name"] == "Ledger.wipe"
+        assert request.payload["tool_args"] == {"target": "ledger-7"}
+        assert request.title == "Confirm: Ledger / wipe"
+
+        await rig.decide(request.id, "approve")
+
+        run = await rig.ended(outcome.run_id)
+        assert run.status == "completed"
+        assert flagged.calls == [{"target": "ledger-7"}]
+        assert run.outputs == {"result": "wiped"}
+
+    async def test_rejected_the_step_fails_and_the_action_never_runs(
+        self, rig: Rig, flagged: _Adapter, hooked: rs.WorkflowRunService
+    ) -> None:
+        outcome = await rig.start()
+        request = await rig.request_of(outcome.run_id)
+
+        await rig.decide(request.id, "reject", note="wrong ledger")
+
+        run = await rig.ended(outcome.run_id)
+        assert run.status == "failed"
+        assert run.node_results["connector_1"]["error"] == (
+            "Action 'wipe' was not run: the confirmation was rejected (wrong ledger)."
+        )
+        assert flagged.calls == []
+
+    async def test_unanswered_the_step_fails_when_the_request_runs_out(
+        self, rig: Rig, flagged: _Adapter
+    ) -> None:
+        outcome = await rig.start()
+        request = await rig.request_of(outcome.run_id)
+        await rig.flip(request.id, expires_at=datetime.now(UTC) - timedelta(seconds=1))
+
+        await WorkflowRunSupervisor(rig.service).sweep()
+
+        run = await rig.ended(outcome.run_id)
+        assert run.status == "failed"
+        assert run.node_results["connector_1"]["error"] == (
+            "Action 'wipe' was not run: nobody confirmed it within 24 hours."
+        )
+        assert flagged.calls == []
+
+    async def test_a_trigger_run_is_confirmed_by_the_workflows_owner(
+        self, rig: Rig, flagged: _Adapter, hooked: rs.WorkflowRunService
+    ) -> None:
+        async with rig.factory() as s:
+            stranger = User(id=str(uuid.uuid4()), email="stranger@x.io")
+            s.add(stranger)
+            await s.commit()
+
+        outcome = await rig.start(caller_id=None, mode=rs.RunMode.TRIGGER)
+
+        request = await rig.request_of(outcome.run_id)
+        assert (request.eligible_scope, request.eligible_user_id) == ("initiator", rig.wf.user_id)
+        with pytest.raises(AssemblyRefusal) as refused:
+            await rig.decide(request.id, "approve", by=stranger)
+        assert refused.value.error_code == "confirmation_forbidden"
+        await rig.decide(request.id, "approve", by=rig.admin)  # an administrator may
+        assert (await rig.ended(outcome.run_id)).status == "completed"
+        assert len(flagged.calls) == 1
+
+    async def test_a_workflow_run_as_a_tool_cannot_ask_and_fails_the_step(
+        self, rig: Rig, flagged: _Adapter
+    ) -> None:
+        outcome = await rig.start(mode=rs.RunMode.TOOL)
+
+        assert outcome.status == "failed"
+        error = outcome.node_results["connector_1"]["error"]
+        assert "requires confirmation, and there is nobody to ask here" in error
+        assert flagged.calls == []
+        async with rig.factory() as s:
+            assert (await s.execute(select(ConfirmationRequest))).scalars().all() == []
