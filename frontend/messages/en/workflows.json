@@ -194,6 +194,7 @@
   "historyFilterFailed": "Failed",
   "historyFilterCancelled": "Cancelled",
   "historyFilterRunning": "Running",
+  "historyFilterWaiting": "Waiting for a decision",
   "historyEmpty": "No runs yet",
   "historyEmptyFiltered": "No runs match the selected filter",
   "historyLoadFailed": "Failed to load run history",

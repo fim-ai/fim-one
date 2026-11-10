@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useTranslations } from "next-intl"
 import {
   CheckCircle2,
@@ -52,7 +52,12 @@ import {
 import { cn } from "@/lib/utils"
 import { fmtDuration } from "@/lib/utils"
 import { useDateFormatter } from "@/hooks/use-date-formatter"
-import { workflowApi } from "@/lib/api"
+import { ApiError, workflowApi } from "@/lib/api"
+import { getErrorMessage } from "@/lib/error-utils"
+import {
+  isActiveRunStatus,
+  nodeResultOfRecord,
+} from "@/components/workflows/editor-page/run-record"
 import { RunComparisonDialog } from "@/components/workflows/run-comparison-dialog"
 import type {
   WorkflowRunResponse,
@@ -147,6 +152,16 @@ function NodeOutputCollapsible({ output }: { output: unknown }) {
   )
 }
 
+/** How often the list is read again while it shows a run that has not ended. */
+export const HISTORY_REFRESH_INTERVAL_MS = 3000
+
+/** A run's steps as node results (the record stores them as its events reported them). */
+function nodeResultsOf(run: WorkflowRunResponse): Record<string, NodeRunResult> {
+  return Object.fromEntries(
+    Object.entries(run.node_results ?? {}).map(([nodeId, entry]) => [nodeId, nodeResultOfRecord(entry)]),
+  )
+}
+
 function inputSummary(inputs: Record<string, unknown> | null): string {
   if (!inputs) return ""
   const keys = Object.keys(inputs)
@@ -169,6 +184,7 @@ export function RunHistorySheet({
 }: RunHistorySheetProps) {
   const t = useTranslations("workflows")
   const tc = useTranslations("common")
+  const tError = useTranslations("errors")
   const { formatRelativeTime } = useDateFormatter()
 
   const [runs, setRuns] = useState<WorkflowRunResponse[]>([])
@@ -234,18 +250,24 @@ export function RunHistorySheet({
           return next
         })
         toast.success(t("historyRunDeleted"))
-      } catch {
-        toast.error(t("historyRunDeleteFailed"))
+      } catch (err) {
+        // A run that is still in progress (running, or waiting for a
+        // decision) is refused; the refusal says so.
+        toast.error(
+          err instanceof ApiError && err.errorCode
+            ? getErrorMessage(err, tError)
+            : t("historyRunDeleteFailed"),
+        )
       }
     },
-    [workflowId, t],
+    [workflowId, t, tError],
   )
 
   const handleClearRuns = useCallback(async () => {
     try {
       const res = await workflowApi.clearRuns(workflowId)
       const count = res.data?.deleted_count ?? 0
-      setRuns((prev) => prev.filter((r) => r.status === "running" || r.status === "pending"))
+      setRuns((prev) => prev.filter((r) => isActiveRunStatus(r.status)))
       setSelectedForCompare(new Set())
       toast.success(t("historyRunsCleared", { count }))
     } catch {
@@ -287,6 +309,7 @@ export function RunHistorySheet({
         { value: "failed", label: t("historyFilterFailed") },
         { value: "cancelled", label: t("historyFilterCancelled") },
         { value: "running", label: t("historyFilterRunning") },
+        { value: "waiting", label: t("historyFilterWaiting") },
       ] as const,
     [t],
   )
@@ -313,6 +336,49 @@ export function RunHistorySheet({
       cancelled = true
     }
   }, [open, workflowId, statusFilter, t])
+
+  // Live state: while the sheet shows a run that has not ended (it runs, or
+  // waits for a decision), the list and the open run are read again every
+  // few seconds, quietly. It stops once nothing shown can change.
+  const selectedRunId = selectedRun?.id ?? null
+  const hasActiveRun =
+    runs.some((r) => isActiveRunStatus(r.status)) ||
+    (selectedRun !== null && isActiveRunStatus(selectedRun.status))
+  const selectedRunIdRef = useRef(selectedRunId)
+  selectedRunIdRef.current = selectedRunId
+  useEffect(() => {
+    if (!open || !workflowId || !hasActiveRun) return
+    let cancelled = false
+    const apiStatus = statusFilter === "__all__" ? undefined : statusFilter
+    const timer = setInterval(() => {
+      workflowApi
+        .getRuns(workflowId, 1, 20, apiStatus)
+        .then((data) => {
+          if (!cancelled) setRuns(data.items)
+        })
+        .catch(() => {
+          // Quiet: the next read may succeed.
+        })
+      const detailId = selectedRunIdRef.current
+      if (detailId) {
+        workflowApi
+          .getRun(workflowId, detailId)
+          .then((detail) => {
+            if (!cancelled && selectedRunIdRef.current === detailId) setSelectedRun(detail)
+          })
+          .catch(() => {})
+      }
+    }, HISTORY_REFRESH_INTERVAL_MS)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [open, workflowId, statusFilter, hasActiveRun])
+
+  const selectedNodeResults = useMemo(
+    () => (selectedRun ? nodeResultsOf(selectedRun) : {}),
+    [selectedRun],
+  )
 
   const handleSelectRun = useCallback(
     async (run: WorkflowRunResponse) => {
@@ -364,13 +430,13 @@ export function RunHistorySheet({
                     ` -- ${fmtDuration(selectedRun.duration_ms / 1000)}`}
                 </SheetDescription>
               </div>
-              {onViewRunOnCanvas && selectedRun.node_results && Object.keys(selectedRun.node_results).length > 0 && (
+              {onViewRunOnCanvas && Object.keys(selectedNodeResults).length > 0 && (
                 <Button
                   variant="ghost"
                   size="sm"
                   className="h-7 gap-1.5 text-xs shrink-0"
                   onClick={() => {
-                    onViewRunOnCanvas(selectedRun.node_results!)
+                    onViewRunOnCanvas(selectedNodeResults)
                     onOpenChange(false)
                   }}
                 >
@@ -502,11 +568,10 @@ export function RunHistorySheet({
                 )}
 
               {/* Node results */}
-              {selectedRun.node_results &&
-                Object.keys(selectedRun.node_results).length > 0 && (
+              {Object.keys(selectedNodeResults).length > 0 && (
                   <div className="space-y-2">
                     <p className="text-xs font-medium">{t("runPanelNodeResults")}</p>
-                    {Object.entries(selectedRun.node_results).map(
+                    {Object.entries(selectedNodeResults).map(
                       ([nodeId, result]: [string, NodeRunResult]) => (
                         <div
                           key={nodeId}
@@ -640,7 +705,7 @@ export function RunHistorySheet({
                       </div>
                     </div>
                   </button>
-                  {run.status !== "running" && run.status !== "pending" && (
+                  {!isActiveRunStatus(run.status) && (
                     <Button
                       variant="ghost"
                       size="icon-sm"
