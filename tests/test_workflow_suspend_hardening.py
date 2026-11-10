@@ -1096,3 +1096,114 @@ class TestTheFlagRemovedWhileARequestWaits:
         assert "changed after the confirmation was requested" in (
             run.node_results["connector_1"]["error"]
         )
+
+
+# ---------------------------------------------------------------------------
+# Round 2, B. What a run spent is recorded, however it ended
+# ---------------------------------------------------------------------------
+
+
+def _spending(tokens: int, release: asyncio.Event | None = None) -> Any:
+    from fim_one.core.workflow.types import NodeResult, NodeStatus
+
+    async def execute(node: Any, store: Any, ctx: Any) -> Any:
+        await ctx.usage_tracker.record({"total_tokens": tokens})
+        if release is not None:
+            await release.wait()
+        return NodeResult(node_id=node.id, status=NodeStatus.COMPLETED, output="ok")
+
+    return execute
+
+
+class TestTokensAreRecorded:
+    async def test_of_a_run_cancelled_from_another_process(self, rig: Rig) -> None:
+        here, elsewhere = _new_service(), _new_service()
+        release = asyncio.Event()
+        with patch(
+            "fim_one.core.workflow.nodes.StartExecutor.execute",
+            side_effect=_spending(50_000, release),
+        ):
+            started = await here.start_run(
+                await rig.workflow(), caller_id=rig.owner.id, inputs={}, mode=rs.RunMode.INTERACTIVE
+            )
+            await asyncio.sleep(0.2)
+            assert await elsewhere.cancel_stored_run(started.run_id) is True
+            release.set()
+            await started.wait()
+
+        run = await rig.run(started.run_id)
+        assert (run.status, run.total_tokens) == ("cancelled", 50_000)
+        assert run.outputs is None and run.duration_ms
+
+    async def test_of_the_part_before_a_wait_and_of_every_continuation_once(
+        self, rig: Rig
+    ) -> None:
+        """start(100) -> approval -> connector step(20) that also waits -> end:
+        the run is stored twice as waiting and continued twice."""
+        from fim_one.core.workflow.types import NodeResult, NodeStatus
+
+        async def second_gate(node: Any, store: Any, ctx: Any) -> Any:
+            await ctx.usage_tracker.record({"total_tokens": 20})
+            if node.id not in ctx.suspensions:
+                return NodeResult(
+                    node_id=node.id,
+                    status=NodeStatus.WAITING,
+                    suspension={"confirmation_id": "gone", "kind": "confirmation"},
+                )
+            return NodeResult(node_id=node.id, status=NodeStatus.COMPLETED, output="ok")
+
+        await rig.workflow(
+            {
+                "schema_version": 2,
+                "nodes": [
+                    _node("start_1", "start", "START"),
+                    APPROVAL,
+                    _node("second", "connector", "CONNECTOR"),
+                    _node("end_1", "end", "END"),
+                ],
+                "edges": [
+                    _edge("start_1", "human_1"),
+                    _edge("human_1", "second"),
+                    _edge("second", "end_1"),
+                ],
+                "viewport": {"x": 0, "y": 0, "zoom": 1},
+            }
+        )
+        with (
+            patch("fim_one.core.workflow.nodes.StartExecutor.execute", side_effect=_spending(100)),
+            patch("fim_one.core.workflow.nodes.ConnectorExecutor.execute", side_effect=second_gate),
+        ):
+            outcome = await rig.start()
+            assert (await rig.run(outcome.run_id)).total_tokens == 100  # at the first wait
+
+            await rig.flip((await rig.request_of(outcome.run_id)).id, status="approved")
+            first = await rig.service.resume_run(outcome.run_id)
+            assert first is not None and (await first.wait()).status == "waiting"
+            # The second step's request does not exist, so the run is
+            # continued again right away, by itself.
+            run = await rig.ended(outcome.run_id)
+
+        assert run.status == "completed"
+        assert _CountingEngine.continued == [run.id, run.id]
+        assert run.total_tokens == 140  # 100 + 20 + 20, each part once
+
+    async def test_quota_used_up_while_the_run_waited_stops_the_continuation(
+        self, rig: Rig, hooked: Any
+    ) -> None:
+        """Readmission through the real gate, by its effect."""
+        from unittest.mock import AsyncMock
+
+        outcome = await rig.start()
+        request = await rig.request_of(outcome.run_id)
+
+        with patch(
+            "fim_one.web.services.quota_backend.usage_and_cap",
+            new=AsyncMock(return_value=(1_000, 1_000)),
+        ):
+            await rig.decide(request.id, "approve")
+            run = await rig.ended(outcome.run_id)
+
+        assert run.status == "failed"
+        assert "(token_quota_exceeded)" in (run.error or "")
+        assert _CountingEngine.continued == []
+        assert run.node_results.get("end_1", {}).get("status") != "completed"

@@ -563,6 +563,9 @@ class StartedRun:
             )
         finally:
             out.duration_ms = self._prior_duration_ms + int((time.time() - start) * 1000)
+            # The engine's own count, in case it ended without a last event
+            # to report it (cancelled mid-step, or it raised).
+            out.total_tokens = max(out.total_tokens, self._tokens_so_far())
             suspended = out.status == "waiting" and self._suspend_state is not None
             closed_elsewhere = False
             # Each step runs even if an earlier one raises; the end marker
@@ -629,6 +632,17 @@ class StartedRun:
                                 logger.exception("Webhook dispatch failed for %s", self.run_id)
             finally:
                 self._queue.put_nowait(self._END)
+
+    def _tokens_so_far(self) -> int:
+        tracker = getattr(self._context, "usage_tracker", None)
+        if tracker is None:
+            return 0
+        try:
+            spent = int(tracker.get_summary().total_tokens or 0)
+        except Exception:
+            return 0
+        before = int((self._resume_state or {}).get("total_tokens") or 0)
+        return before + spent
 
     async def _take_slot_when_free(self) -> None:
         """Wait for one of the principal's concurrent-run slots (a continued run).
@@ -1547,7 +1561,7 @@ class WorkflowRunService:
         when the record was written, else ``(status, error)`` as the
         record has them: that, not *out*, is then how the run ended.
         """
-        from sqlalchemy import CursorResult, select, update
+        from sqlalchemy import CursorResult, func, select, update
 
         from fim_one.core.assembly.confirmation import close_requests_of_runs
         from fim_one.db import create_session
@@ -1581,6 +1595,20 @@ class WorkflowRunService:
                 # Ended here, or closed elsewhere: either way nobody is
                 # asked to decide for it any more.
                 await close_requests_of_runs(db, [out.run_id])
+                if not written:
+                    # How the run ended is someone else's entry; what it
+                    # spent here is still spent, and counts toward quota.
+                    await db.execute(
+                        update(WorkflowRun)
+                        .where(WorkflowRun.id == out.run_id)
+                        .values(
+                            total_tokens=func.max(WorkflowRun.total_tokens, out.total_tokens)
+                            if _dialect_of(db) == "sqlite"
+                            else func.greatest(WorkflowRun.total_tokens, out.total_tokens),
+                            duration_ms=out.duration_ms,
+                        )
+                        .execution_options(synchronize_session=False)
+                    )
                 await db.commit()
                 if written:
                     return None
