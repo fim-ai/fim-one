@@ -279,12 +279,23 @@ class TestAListInAnInList:
             f"AND b = {_hex('x')}"
         )
 
-    def test_an_empty_list_matches_nothing(self) -> None:
+    def test_an_empty_list_is_an_empty_set_not_null(self) -> None:
+        """``IN (NULL)`` is unknown, so ``NOT IN (NULL)`` matched nothing either."""
         template = parse_sql_template(self.SQL, dialect="postgresql")
         assert render_sql(template, "numeric", [[], "x"]) == (
-            "SELECT a FROM t WHERE id IN (NULL) AND b = $1",
-            ["x"],
+            "SELECT a FROM t WHERE id = ANY($1) AND b = $2",
+            [[], "x"],
         )
+        negated = parse_sql_template(
+            "SELECT a FROM t WHERE id not  in ( {{ids}} ) AND b = {{b}}", dialect="postgresql"
+        )
+        assert render_sql(negated, "numeric", [[], "x"]) == (
+            "SELECT a FROM t WHERE id <> ALL($1 ) AND b = $2",
+            [[], "x"],
+        )
+        for style in ("qmark", "literal"):
+            sql, _ = render_sql(negated, style, [[], "x"])  # type: ignore[arg-type]
+            assert "id not  in ( SELECT NULL FROM DUAL WHERE 1 = 0 )" in sql
 
     def test_one_value_in_an_in_list_is_one_value(self) -> None:
         template = parse_sql_template(self.SQL, dialect="postgresql")

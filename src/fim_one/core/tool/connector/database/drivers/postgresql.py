@@ -281,14 +281,17 @@ def _fit_parameter(kind: str, value: Any) -> Any:
                 f"integer ({kind})"
             )
         return int(value)
-    if kind.endswith("[]") and isinstance(value, str):
-        # ``= ANY({{ids}})``: a list arrives as JSON text.
-        import json
+    if kind.endswith("[]"):
+        # ``= ANY({{ids}})``: a list arrives as JSON text (or, for an
+        # empty IN list, as a list).
+        items = value
+        if isinstance(value, str):
+            import json
 
-        try:
-            items = json.loads(value)
-        except ValueError:
-            return value
+            try:
+                items = json.loads(value)
+            except ValueError:
+                return value
         if isinstance(items, list):
             return [_fit_parameter(kind[:-2], item) for item in items]
         return value

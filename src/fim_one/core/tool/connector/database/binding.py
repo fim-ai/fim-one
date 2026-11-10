@@ -314,6 +314,9 @@ def parse_sql_template(sql: str, *, dialect: SqlDialect) -> SqlTemplate:
 
 
 _OPENS_IN_LIST = re.compile(r"(?<![\w$.])IN\s*\(\s*$", re.IGNORECASE)
+_OPENS_IN_LIST_WITH_NOT = re.compile(
+    r"(?:(?<![\w$.])(?P<not>NOT)\s+)?(?<![\w$.])IN\s*\(\s*$", re.IGNORECASE
+)
 
 
 _AFTER_COUNT_KEYWORD = re.compile(r"(?<![\w$.])(?:LIMIT|OFFSET)\s*$", re.IGNORECASE)
@@ -403,11 +406,23 @@ def render_sql(
         position = template.positions[index] if template.positions else "value"
         raw = values[index]
         if position == "list" and isinstance(raw, (list, tuple)):
-            # ``IN ({{ids}})``: one bound value per item. An empty list is
-            # ``IN (NULL)``, which matches nothing.
+            # ``IN ({{ids}})``: one bound value per item.
             items = [bound_value(item) for item in raw]
             if not items:
-                out.append("NULL")
+                # Nothing is in an empty list and everything is not in it.
+                # ``IN (NULL)`` would say "unknown" to both.
+                if style == "numeric":
+                    # PostgreSQL: an empty array, which takes the column's
+                    # type (a subquery with no rows would need one).
+                    opening = _OPENS_IN_LIST_WITH_NOT.search(out[-1])
+                    assert opening is not None
+                    out[-1] = out[-1][: opening.start()] + (
+                        "<> ALL(" if opening.group("not") else "= ANY("
+                    )
+                    parameters.append([])
+                    out.append(f"${len(parameters)}")
+                else:
+                    out.append("SELECT NULL FROM DUAL WHERE 1 = 0")
                 continue
         else:
             items = [bound_value(raw)]

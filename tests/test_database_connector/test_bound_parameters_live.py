@@ -95,6 +95,12 @@ class _BoundValues:
         assert json.loads(await _query(live, in_list, {"ids": [1, 2, 9]}))["rows"] == [[1], [2]]
         assert json.loads(await _query(live, in_list, {"ids": ["2"]}))["rows"] == [[2]]
         assert json.loads(await _query(live, in_list, {"ids": []}))["rows"] == []
+        # Everything is "not in" an empty list.
+        not_in = f"SELECT id FROM {live.orders} WHERE id NOT IN ({{{{ids}}}}) ORDER BY id"
+        assert json.loads(await _query(live, not_in, {"ids": []}))["rows"] == [[1], [2]]
+        assert json.loads(await _query(live, not_in, {"ids": [1]}))["rows"] == [[2]]
+        text_col = f"SELECT id FROM {live.orders} WHERE customer NOT IN ({{{{ids}}}}) ORDER BY id"
+        assert json.loads(await _query(live, text_col, {"ids": []}))["rows"] == [[1], [2]]
         assert json.loads(await _query(live, in_list, {"ids": 1}))["rows"] == [[1]]
         names = f"SELECT id FROM {live.orders} WHERE customer IN ({{{{names}}}})"
         payload = ["alice') OR ('1'='1", f"x' UNION SELECT token FROM {live.secrets} --"]
