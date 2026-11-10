@@ -736,6 +736,11 @@ _TRIGGER_FAILURE_MESSAGES = {
 }
 
 
+_TRIGGER_INVALID_BLUEPRINT = (
+    "The workflow cannot run as it is saved. Its owner can see why in the editor."
+)
+
+
 async def _resolve_trigger_workflow(raw_key: str | None, db: AsyncSession) -> Workflow:
     from fim_one.web.services.workflow_trigger_keys import (
         TriggerKeyRejectedError,
@@ -813,6 +818,12 @@ async def _execute_trigger(
             single_flight=True,
         )
     except RunRefusedError as exc:
+        if exc.error_code.startswith("invalid_blueprint"):
+            # The refusal quotes the blueprint's fault, step ids included.
+            # A key holder gets the code and a fixed sentence.
+            raise AppError(
+                "invalid_blueprint", status_code=exc.status_code, detail=_TRIGGER_INVALID_BLUEPRINT
+            ) from None
         raise _refused(exc) from None
 
     # The key holder is not a signed-in user: they learn that the run failed

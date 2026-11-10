@@ -143,6 +143,7 @@
   "workflow_versions_owner_only": "Only the workflow's author can view its version history.",
   "import_invalid_format": "This file is not a workflow export.",
   "import_invalid_blueprint": "The workflow in this file cannot be read.",
+  "invalid_blueprint": "The workflow cannot run as it is saved. Its owner can see why in the editor.",
   "workflow_inactive": "This workflow is switched off.",
   "workflow_owner_inactive": "The workflow owner's account is disabled.",
   "run_identity_missing": "Sign in to run this workflow.",

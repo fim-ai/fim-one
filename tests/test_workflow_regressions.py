@@ -560,7 +560,11 @@ class TestTriggerRateLimitSlot:
         ):
             await wf_api._execute_trigger(wf, WorkflowTriggerRequest(inputs={}))
 
-        assert exc.value.error_code.startswith("invalid_blueprint")
+        # A key holder gets the code and a fixed sentence: the reason (which
+        # names steps) is for the owner, in the editor.
+        assert exc.value.error_code == "invalid_blueprint"
+        assert exc.value.detail == wf_api._TRIGGER_INVALID_BLUEPRINT
+        assert "BOGUS" not in exc.value.detail and "'x'" not in exc.value.detail
         assert not limiter._active_runs.get("owner-1")
 
 
