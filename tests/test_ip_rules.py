@@ -152,7 +152,7 @@ class TestSelfLockoutGuard:
 
     @pytest.mark.asyncio
     async def test_allowlist_with_own_ip_accepted(self, db: AsyncSession) -> None:
-        with patch("fim_one.web.api.admin_security.write_audit", AsyncMock()):
+        with patch("fim_one.web.api.admin_security.stage_audit", AsyncMock()):
             resp = await create_ip_rule(
                 IpRuleCreateRequest(ip_address="198.51.100.0/24", rule_type="allow", note=None),
                 _admin_request("198.51.100.7"),

@@ -17,7 +17,7 @@ from fim_one.web.auth import get_current_admin
 from fim_one.web.exceptions import AppError
 from fim_one.db.models import IpRule, LoginHistory, User
 
-from fim_one.web.api.admin_utils import write_audit  # noqa: E402
+from fim_one.web.api.admin_utils import stage_audit  # noqa: E402
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -302,10 +302,8 @@ async def create_ip_rule(
         created_by_id=current_user.id,
     )
     db.add(rule)
-    await _commit_unless_self_lockout(db, request)
-    await db.refresh(rule)
-
-    await write_audit(
+    await db.flush()
+    await stage_audit(
         db,
         current_user,
         "ip_rule.create",
@@ -313,6 +311,8 @@ async def create_ip_rule(
         target_id=rule.id,
         detail=f"{body.rule_type} {body.ip_address}",
     )
+    await _commit_unless_self_lockout(db, request)
+    await db.refresh(rule)
 
     return IpRuleResponse.model_validate(rule)
 
@@ -332,10 +332,8 @@ async def toggle_ip_rule(
         raise AppError("ip_rule_not_found", status_code=404)
 
     rule.is_active = body.is_active
-    await _commit_unless_self_lockout(db, request)
-
     action = "ip_rule.enable" if body.is_active else "ip_rule.disable"
-    await write_audit(
+    await stage_audit(
         db,
         current_user,
         action,
@@ -343,6 +341,7 @@ async def toggle_ip_rule(
         target_id=rule_id,
         detail=f"{rule.rule_type} {rule.ip_address}",
     )
+    await _commit_unless_self_lockout(db, request)
 
     return IpRuleResponse.model_validate(rule)
 
@@ -362,9 +361,8 @@ async def delete_ip_rule(
 
     detail = f"{rule.rule_type} {rule.ip_address}"
     await db.delete(rule)
-    await _commit_unless_self_lockout(db, request)
-
-    await write_audit(
+    await db.flush()
+    await stage_audit(
         db,
         current_user,
         "ip_rule.delete",
@@ -372,6 +370,7 @@ async def delete_ip_rule(
         target_id=rule_id,
         detail=detail,
     )
+    await _commit_unless_self_lockout(db, request)
 
 
 # ---------------------------------------------------------------------------
@@ -482,15 +481,13 @@ async def batch_import_ip_rules(
         existing_pairs.add(pair)  # Prevent duplicates within the same batch
         added += 1
 
-    if added > 0:
-        await _commit_unless_self_lockout(db, request)
-
-    await write_audit(
+    await stage_audit(
         db,
         current_user,
         "ip_rule.batch_import",
         detail=f"Imported {added} IP rule(s), skipped {skipped}",
     )
+    await _commit_unless_self_lockout(db, request)
 
     return IpRuleBatchImportResponse(
         added=added,

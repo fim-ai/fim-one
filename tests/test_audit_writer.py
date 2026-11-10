@@ -292,7 +292,7 @@ def _written_action_literals() -> Iterator[str]:
                 if isinstance(func, ast.Name)
                 else func.attr if isinstance(func, ast.Attribute) else None
             )
-            if name == "write_audit":
+            if name in ("write_audit", "stage_audit"):
                 if len(node.args) >= 3:
                     yield from _literals(node.args[2])
                 for keyword in node.keywords:

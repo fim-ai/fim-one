@@ -17,7 +17,7 @@ from fim_one.web.auth import get_current_admin
 from fim_one.web.exceptions import AppError
 from fim_one.db.models import ApiKey, User
 
-from .admin_utils import write_audit
+from .admin_utils import stage_audit
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -161,10 +161,8 @@ async def create_api_key(
         expires_at=body.expires_at,
     )
     db.add(api_key)
-    await db.commit()
-    await db.refresh(api_key)
-
-    await write_audit(
+    await db.flush()
+    await stage_audit(
         db,
         admin=current_user,
         action="api_key.create",
@@ -173,6 +171,8 @@ async def create_api_key(
         target_label=api_key.name,
         detail=f"prefix={key_prefix}, scopes={body.scopes or 'all'}",
     )
+    await db.commit()
+    await db.refresh(api_key)
 
     return ApiKeyCreateResponse(
         id=api_key.id,
@@ -200,11 +200,8 @@ async def toggle_api_key_active(
         raise AppError("api_key_not_found", status_code=404)
 
     api_key.is_active = body.is_active
-    await db.commit()
-    await db.refresh(api_key)
-
     action = "api_key.enable" if body.is_active else "api_key.disable"
-    await write_audit(
+    await stage_audit(
         db,
         admin=current_user,
         action=action,
@@ -212,6 +209,8 @@ async def toggle_api_key_active(
         target_id=api_key.id,
         target_label=api_key.name,
     )
+    await db.commit()
+    await db.refresh(api_key)
 
     return ApiKeyInfo(
         id=api_key.id,
@@ -243,9 +242,8 @@ async def delete_api_key(
     key_id_val = api_key.id
 
     await db.delete(api_key)
-    await db.commit()
-
-    await write_audit(
+    await db.flush()
+    await stage_audit(
         db,
         admin=current_user,
         action="api_key.delete",
@@ -253,3 +251,5 @@ async def delete_api_key(
         target_id=key_id_val,
         target_label=key_name,
     )
+    await db.commit()
+
