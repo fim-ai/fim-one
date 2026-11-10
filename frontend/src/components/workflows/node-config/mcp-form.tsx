@@ -24,6 +24,7 @@ import {
   type ArgumentField,
   type McpStepTool,
 } from "./mcp-arguments"
+import { keepJsonDraft, keptJsonDraft, type JsonDraft } from "./mcp-json-drafts"
 import { forgetMcpTools, rememberMcpTools, rememberedMcpTools } from "./mcp-tools-memory"
 import { resourceOptions } from "./resource-options"
 import type { NodeFormProps } from "./types"
@@ -36,7 +37,7 @@ type ToolListing =
   | { state: "ready"; serverId: string; tools: McpStepTool[] }
   | { state: "failed"; serverId: string; message: string }
 
-export function MCPForm({ data, setField, setFields, otherNodes }: NodeFormProps<"mcp">) {
+export function MCPForm({ nodeId, data, setField, setFields, otherNodes }: NodeFormProps<"mcp">) {
   const t = useTranslations("workflows")
   const tError = useTranslations("errors")
   const serverId = data.server_id ?? ""
@@ -91,18 +92,29 @@ export function MCPForm({ data, setField, setFields, otherNodes }: NodeFormProps
   const fields = useMemo(() => (tool ? argumentFields(tool.input_schema) : null), [tool])
   const missing = fields ? missingArguments(fields, parameters) : []
 
-  // Fields when the tool's schema gives them, JSON otherwise or on request.
-  const [asJson, setAsJson] = useState(false)
-  const showJson = asJson || fields === null
   // The JSON editor keeps what is typed, valid or not; `parameters` follows
   // only while it is a JSON object.
   // A draft holds for the parameters it was typed against: when they change
   // from elsewhere (undo, another field), the editor shows them again.
-  const [draft, setJsonDraftState] = useState<{ text: string; over: string } | null>(null)
+  // Text that is not a JSON object yet is also kept for the step outside
+  // this form, which is mounted anew whenever the step is selected: coming
+  // back to the step shows the text and its error again.
   const stored = JSON.stringify(parameters)
+  const [draft, setJsonDraftState] = useState<JsonDraft | null>(() =>
+    nodeId ? keptJsonDraft(nodeId) : null,
+  )
   const jsonDraft = draft !== null && draft.over === stored ? draft.text : null
-  const setJsonDraft = (text: string | null, over: Record<string, unknown> = parameters) =>
-    setJsonDraftState(text === null ? null : { text, over: JSON.stringify(over) })
+  const setJsonDraft = (text: string | null, over: Record<string, unknown> = parameters) => {
+    const next = text === null ? null : { text, over: JSON.stringify(over) }
+    setJsonDraftState(next)
+    if (nodeId) {
+      keepJsonDraft(nodeId, next !== null && parseArgumentsJson(next.text) === null ? next : null)
+    }
+  }
+  // Fields when the tool's schema gives them, JSON otherwise or on request,
+  // and when the step was left with JSON that is not finished.
+  const [asJson, setAsJson] = useState(() => jsonDraft !== null)
+  const showJson = asJson || fields === null
   const jsonText = jsonDraft ?? toArgumentsJson(parameters)
   const jsonInvalid = jsonDraft !== null && parseArgumentsJson(jsonDraft) === null
   // The field a picked variable goes into: the last one that had focus.
@@ -250,7 +262,12 @@ export function MCPForm({ data, setField, setFields, otherNodes }: NodeFormProps
             }}
           />
           {jsonInvalid ? (
-            <p className="text-sm text-destructive">{t("configArgumentsJsonInvalid")}</p>
+            <>
+              <p className="text-sm text-destructive">{t("configArgumentsJsonInvalid")}</p>
+              <p className="text-[10px] text-muted-foreground/60">
+                {t("configArgumentsJsonInvalidKept")}
+              </p>
+            </>
           ) : (
             <p className="text-[10px] text-muted-foreground/60">
               {fields === null && toolName

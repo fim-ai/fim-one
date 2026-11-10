@@ -7,6 +7,7 @@ import workflows from "../../../../../messages/en/workflows.json"
 import errors from "../../../../../messages/en/errors.json"
 import { defaultNodeData } from "@/lib/workflow-blueprint"
 import { MCPForm } from "../mcp-form"
+import { forgetJsonDrafts } from "../mcp-json-drafts"
 import { forgetMcpTools, MCP_TOOLS_TTL_MS } from "../mcp-tools-memory"
 import {
   argumentFields,
@@ -250,6 +251,7 @@ afterEach(() => {
   cleanup()
   backend.listTools = null
   forgetMcpTools()
+  forgetJsonDrafts()
   window.localStorage.clear()
   vi.restoreAllMocks()
 })
@@ -260,12 +262,13 @@ const TOOLS = [
   { name: "raw", description: "", input_schema: null },
 ]
 
-function renderMcp(data: Record<string, unknown> = {}) {
+function renderMcp(data: Record<string, unknown> = {}, nodeId?: string) {
   const setField = vi.fn()
   const setFields = vi.fn()
   render(
     <NextIntlClientProvider locale="en" messages={{ workflows, errors }}>
       <MCPForm
+        nodeId={nodeId}
         data={{ ...defaultNodeData("mcp"), ...data }}
         setField={setField}
         setFields={setFields}
@@ -572,5 +575,69 @@ describe("MCP step form: where a picked variable goes", () => {
     renderMcp({ server_id: "s-1", tool_name: "switches", parameters: {} })
     await screen.findByRole("option", { name: "deep" })
     expect(screen.queryByRole("button", { name: "insert variable" })).toBeNull()
+  })
+})
+
+describe("MCP step form: unfinished JSON survives selecting another step", () => {
+  const step = { server_id: "s-1", tool_name: "raw", parameters: { a: 1 } }
+  const editor = () => screen.findByLabelText(workflows.configArgumentsJson) as Promise<HTMLTextAreaElement>
+  const invalid = 'Arguments must be a JSON object, for example { "text": "hello" }.'
+
+  it("shows the text and its error again when the step is selected again", async () => {
+    backend.listTools = () => Promise.resolve(TOOLS)
+    const { setField } = renderMcp(step, "mcp_1")
+    fireEvent.change(await editor(), { target: { value: '{"a": 1, "b": ' } })
+    expect(screen.getByText(invalid)).toBeTruthy()
+    expect(screen.getByText(workflows.configArgumentsJsonInvalidKept)).toBeTruthy()
+    // Nothing invalid was stored in the step.
+    expect(setField).not.toHaveBeenCalled()
+
+    // Another step is selected (the form is unmounted), then this one again.
+    cleanup()
+    renderMcp(step, "mcp_1")
+    expect((await editor()).value).toBe('{"a": 1, "b": ')
+    expect(screen.getByText(invalid)).toBeTruthy()
+  })
+
+  it("opens the JSON editor for a tool with fields when unfinished JSON was left", async () => {
+    backend.listTools = () => Promise.resolve(TOOLS)
+    const search = { server_id: "s-1", tool_name: "search", parameters: { query: "otters" } }
+    renderMcp(search, "mcp_1")
+    await screen.findByLabelText(/^query/)
+    fireEvent.click(screen.getByRole("button", { name: workflows.configArgumentsAsJson }))
+    fireEvent.change(await editor(), { target: { value: "{" } })
+    cleanup()
+    renderMcp(search, "mcp_1")
+    expect((await editor()).value).toBe("{")
+  })
+
+  it("belongs to one step, and is gone once the JSON is finished", async () => {
+    backend.listTools = () => Promise.resolve(TOOLS)
+    renderMcp(step, "mcp_1")
+    fireEvent.change(await editor(), { target: { value: "{" } })
+    cleanup()
+    // Another MCP step does not get it.
+    renderMcp(step, "mcp_2")
+    expect(JSON.parse((await editor()).value)).toEqual({ a: 1 })
+    cleanup()
+    // Finished: stored in the step, nothing left to keep.
+    const { setField } = renderMcp(step, "mcp_1")
+    fireEvent.change(await editor(), { target: { value: '{"a": 2}' } })
+    expect(setField).toHaveBeenLastCalledWith("parameters", { a: 2 })
+    cleanup()
+    renderMcp({ ...step, parameters: { a: 2 } }, "mcp_1")
+    expect(JSON.parse((await editor()).value)).toEqual({ a: 2 })
+    expect(screen.queryByText(invalid)).toBeNull()
+  })
+
+  it("is not shown over arguments that changed since it was typed", async () => {
+    backend.listTools = () => Promise.resolve(TOOLS)
+    renderMcp(step, "mcp_1")
+    fireEvent.change(await editor(), { target: { value: "{" } })
+    cleanup()
+    // Undo, or an import, changed the step meanwhile.
+    renderMcp({ ...step, parameters: { a: 9 } }, "mcp_1")
+    expect(JSON.parse((await editor()).value)).toEqual({ a: 9 })
+    expect(screen.queryByText(invalid)).toBeNull()
   })
 })

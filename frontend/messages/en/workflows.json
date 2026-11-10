@@ -498,6 +498,7 @@
   "configArgumentsJsonHint": "A JSON object. Use '{{node_id.output}}' inside a text value to reference upstream outputs.",
   "configArgumentsNoSchemaHint": "This tool's arguments are not described, so they are written as a JSON object. Use '{{node_id.output}}' inside a text value to reference upstream outputs.",
   "configArgumentsJsonInvalid": "Arguments must be a JSON object, for example '{' \"text\": \"hello\" '}'.",
+  "configArgumentsJsonInvalidKept": "Until it is, the step keeps its last valid arguments. This text stays here while the page is open.",
   "configArgumentsNone": "This tool takes no arguments.",
   "configArgumentUnset": "Not set",
   "configArgumentRequired": "This argument is required.",
