@@ -306,3 +306,25 @@ class TestResolveReferences:
             "Node 'mcp_1' (MCP) references mcp server 'srv-gone' "
             "which was not found or is not accessible."
         ]
+
+    async def test_a_reference_the_access_rule_says_nothing_about_is_unresolved(
+        self, factory: async_sessionmaker[AsyncSession]
+    ) -> None:
+        """Neither returned as usable nor refused: not usable, and no crash."""
+        from unittest.mock import patch
+
+        from fim_one.core.assembly.visibility import UseDecision
+
+        async def _silent(*_args: Any, **_kwargs: Any) -> UseDecision:
+            return UseDecision()
+
+        bp = _minimal_blueprint(_make_node("mcp_1", NodeType.MCP, server_id="srv-1"))
+        with patch("fim_one.core.assembly.visibility.authorize_use", _silent):
+            async with factory() as db:
+                result = await resolve_blueprint_references(bp, db, "user-1")
+        assert result.resolved == []
+        assert [ref.referenced_id for ref in result.unresolved] == ["srv-1"]
+        assert result.warnings == [
+            "Node 'mcp_1' (MCP) references mcp server 'srv-1' "
+            "which was not found or is not accessible."
+        ]

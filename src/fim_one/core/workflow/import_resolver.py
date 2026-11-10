@@ -114,11 +114,15 @@ async def resolve_blueprint_references(
 
     The importing user becomes the workflow's author, and a step uses a
     resource on its author's access. So a reference is resolved when that
-    user could use the resource in a step today, by the rule the steps
-    themselves ask (``core.assembly.visibility.authorize_use``): visible to
-    them, switched on, and for a database connector or a knowledge base,
+    user passes the access rule the steps themselves ask
+    (``core.assembly.visibility.authorize_use``): the resource is visible
+    to them, switched on, and for a database connector or a knowledge base,
     their own. Anything else is unresolved, and its warning says why. The
     import goes ahead either way.
+
+    Credentials are not looked at. A resolved connector or MCP server can
+    still fail in a run with ``credential_required``: the credential is the
+    runner's, who may be someone else, and is checked when the step runs.
     """
     from fim_one.core.assembly.errors import RESOURCE_NOT_FOUND
     from fim_one.core.assembly.principal import CallContext, provisional_principal
@@ -146,8 +150,10 @@ async def resolve_blueprint_references(
     for ref in refs:
         decision = decisions[ref.resource_type]
         refusal = decision.refused.get(ref.referenced_id)
-        if refusal is None:
-            row = next(r for r in decision.usable if r.id == ref.referenced_id)
+        row = next((r for r in decision.usable if r.id == ref.referenced_id), None)
+        # A decision that neither returns the row nor refuses it does not
+        # make the reference usable: it is unresolved, like one not found.
+        if refusal is None and row is not None:
             resolution.resolved.append(
                 ResolvedReference(
                     node_id=ref.node_id,
@@ -171,7 +177,7 @@ async def resolve_blueprint_references(
         type_label = ref.resource_type.replace("_", " ")
         reason = (
             "which was not found or is not accessible."
-            if refusal.error_code == RESOURCE_NOT_FOUND
+            if refusal is None or refusal.error_code == RESOURCE_NOT_FOUND
             else f"which cannot be used: {refusal.detail}."
         )
         resolution.warnings.append(
