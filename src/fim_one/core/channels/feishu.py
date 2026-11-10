@@ -26,6 +26,7 @@ import httpx
 from .base import (
     format_duration as _format_duration,
     format_tools as _format_tools,
+    neutralise_lark_mentions as _inert,
     truncate as _truncate,
     ApprovalRequestSummary,
     BaseChannel,
@@ -353,7 +354,8 @@ class FeishuChannel(BaseChannel):
         chat_id = str(self.config.get("chat_id") or "").strip()
         if not chat_id:
             return ChannelSendResult(ok=False, error="channel has no chat_id configured")
-        text = f"{title}\n\n{body}" if body else title
+        # A text message reads ``<at user_id="all">`` as a mention.
+        text = _inert(f"{title}\n\n{body}" if body else title)
         return await self.send_message(
             {"chat_id": chat_id, "msg_type": "text", "content": text}
         )
@@ -692,6 +694,12 @@ def build_confirmation_card(
     must return ``{"toast": {...}, "card": ... (optional)}`` — see
     ``fim_one.web.api.channels``.
     """
+    # The summary, the tool name and its arguments come from a model's tool
+    # call: an ``<at id=all></at>`` in them must not notify the chat.
+    summary = _inert(summary[:2000])
+    approver_hint = _inert(approver_hint[:300]) if approver_hint else approver_hint
+    tool_name = _inert(tool_name)
+    tool_args_preview = _inert(tool_args_preview[:800])
     return {
         "schema": "2.0",
         "config": {
@@ -707,13 +715,13 @@ def build_confirmation_card(
             "elements": [
                 {
                     "tag": "markdown",
-                    "content": summary[:2000],
+                    "content": summary,
                 },
                 *(
                     [
                         {
                             "tag": "markdown",
-                            "content": f"> {approver_hint[:300]}",
+                            "content": f"> {approver_hint}",
                         }
                     ]
                     if approver_hint
@@ -753,7 +761,7 @@ def build_confirmation_card(
                 {
                     "tag": "markdown",
                     "content": (
-                        f"**Arguments**\n```\n{tool_args_preview[:800]}\n```"
+                        f"**Arguments**\n```\n{tool_args_preview}\n```"
                     ),
                 },
                 {
@@ -858,9 +866,9 @@ def build_decided_card(
 
     lines: list[str] = []
     if tool_name:
-        lines.append(f"**Tool** · {tool_name}")
+        lines.append(f"**Tool** · {_inert(tool_name)}")
     if decided_by:
-        lines.append(f"**Decided by** · {decided_by}")
+        lines.append(f"**Decided by** · {_inert(decided_by)}")
     if was_already_decided:
         lines.append(
             "_This request had already been finalized; the new click "
@@ -933,8 +941,9 @@ def _build_completion_card(summary: CompletionSummary) -> dict[str, Any]:
             }
         )
 
-    user_preview = _truncate(summary.user_message or "", 200)
-    answer_preview = _truncate(summary.final_answer or "", 600)
+    # What the user and the agent wrote must not notify the chat's members.
+    user_preview = _inert(_truncate(summary.user_message or "", 200))
+    answer_preview = _inert(_truncate(summary.final_answer or "", 600))
 
     return {
         "schema": "2.0",

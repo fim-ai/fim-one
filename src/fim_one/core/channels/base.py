@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import abc
+import re
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, runtime_checkable
 
@@ -246,6 +247,23 @@ def format_tools(tools: list[str]) -> str:
     if len(unique) <= 6:
         return ", ".join(unique)
     return ", ".join(unique[:6]) + ", …"
+
+
+# A zero-width space: put after the "<" of a mention tag, the platform no
+# longer reads a tag there and shows the text as it was written.
+_ZERO_WIDTH_SPACE = "\u200b"
+_LARK_AT_TAG_RE = re.compile(r"<(?=\s*/?\s*at\b)", re.IGNORECASE)
+
+
+def neutralise_lark_mentions(text: str) -> str:
+    """*text* with Lark / Feishu ``<at ...>`` tags made inert.
+
+    In a card's markdown and in a text message ``<at id=all></at>`` (or
+    ``user_id=``, ``open_id=``, ``email=``) notifies people. Text that comes
+    from a user, a model or a tool call must not be able to do that: the
+    tag is kept readable but no longer parsed.
+    """
+    return _LARK_AT_TAG_RE.sub("<" + _ZERO_WIDTH_SPACE, text)
 
 
 def completion_notice(summary: CompletionSummary) -> tuple[str, str]:

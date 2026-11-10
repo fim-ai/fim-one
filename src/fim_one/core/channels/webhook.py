@@ -14,7 +14,13 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from .base import BaseChannel, ChannelSendResult, CompletionSummary, completion_notice
+from .base import (
+    BaseChannel,
+    ChannelSendResult,
+    CompletionSummary,
+    completion_notice,
+    neutralise_lark_mentions,
+)
 
 __all__ = [
     "LarkWebhookChannel",
@@ -132,7 +138,11 @@ class LarkWebhookChannel(WebhookChannel):
                     "title": {"tag": "plain_text", "content": title[:100]},
                     "template": "blue",
                 },
-                "elements": [{"tag": "markdown", "content": body[:4000]}],
+                # The body carries text a user, a model or a tool wrote: an
+                # ``<at id=all></at>`` in it must not notify the group.
+                "elements": [
+                    {"tag": "markdown", "content": neutralise_lark_mentions(body)[:4000]}
+                ],
             },
         }
 
@@ -161,10 +171,22 @@ class SlackWebhookChannel(WebhookChannel):
                 {
                     "type": "section",
                     # Slack section text limit
-                    "text": {"type": "mrkdwn", "text": body[:3000]},
+                    "text": {"type": "mrkdwn", "text": self.escape(body)[:3000]},
                 },
             ]
         }
+
+    @staticmethod
+    def escape(text: str) -> str:
+        """*text* with Slack's three control characters escaped.
+
+        In ``mrkdwn`` everything between ``<`` and ``>`` is markup:
+        ``<!channel>``, ``<!here>``, ``<@U…>`` and ``<!subteam^…>`` notify
+        people, ``<url|label>`` hides where a link goes. The body carries
+        text a user, a model or a tool wrote, so it is escaped the way Slack
+        documents for text that is not markup.
+        """
+        return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
     def delivery_error(self, response: httpx.Response) -> str | None:
         if response.status_code == 200 and response.text == "ok":
@@ -181,10 +203,17 @@ class WeComWebhookChannel(WebhookChannel):
 
     def build_payload(self, title: str, body: str) -> dict[str, Any]:
         # WeCom markdown supports: bold, links, quotes, colored text
+        # ``<@userid>`` in WeCom markdown notifies that member.
+        content = self.neutralise_mentions(f"**{title}**\n\n{body}")
         return {
             "msgtype": "markdown",
-            "markdown": {"content": f"**{title}**\n\n{body}"[:4096]},  # WeCom limit
+            "markdown": {"content": content[:4096]},  # WeCom limit
         }
+
+    @staticmethod
+    def neutralise_mentions(text: str) -> str:
+        """*text* with ``<@userid>`` mentions made inert (kept readable)."""
+        return text.replace("<@", "<\u200b@")
 
     def delivery_error(self, response: httpx.Response) -> str | None:
         data = response.json()

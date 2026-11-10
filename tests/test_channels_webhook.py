@@ -9,6 +9,7 @@ Covers:
 from __future__ import annotations
 
 import os
+import re
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -412,6 +413,102 @@ class TestCompletion:
         assert "Run the pipeline" in content
         assert "Done, 42 items processed." in content
         assert "https://fim.example/?c=conv-12345678" in content
+
+
+MENTIONS = "<!channel> <!here> <!everyone> <@U012AB3CD> <!subteam^S123> <at id=all></at>"
+
+
+def _texts(node: Any) -> list[str]:
+    """Every string in a JSON-like payload."""
+    if isinstance(node, str):
+        return [node]
+    if isinstance(node, dict):
+        return [text for value in node.values() for text in _texts(value)]
+    if isinstance(node, list):
+        return [text for value in node for text in _texts(value)]
+    return []
+
+
+class TestMentionsAreInert:
+    """Text a user, a model or a tool wrote cannot notify the members of a chat."""
+
+    def test_slack_markup_is_escaped(self) -> None:
+        payload = SlackWebhookChannel({"webhook_url": SLACK_URL}).build_payload(
+            "Title", f"Hi {MENTIONS} see <https://evil.example|our wiki> & more"
+        )
+        text = payload["blocks"][1]["text"]["text"]
+        assert "<" not in text and ">" not in text
+        assert "&lt;!channel&gt; &lt;!here&gt; &lt;!everyone&gt; &lt;@U012AB3CD&gt;" in text
+        assert "&lt;https://evil.example|our wiki&gt; &amp; more" in text
+
+    def test_slack_text_that_is_already_escaped_stays_text(self) -> None:
+        escape = SlackWebhookChannel.escape
+        assert escape("a &lt;!here&gt; b") == "a &amp;lt;!here&amp;gt; b"
+
+    @pytest.mark.parametrize(
+        "tag",
+        [
+            "<at id=all></at>",
+            '<at user_id="all">everyone</at>',
+            "<at id=ou_123></at>",
+            "<AT ID=all></AT>",
+            "< at id=all></at>",
+            "<at\tid=all></ at>",
+            "<at email=a@b.io></at>",
+        ],
+    )
+    def test_lark_at_tags_are_inert(self, tag: str) -> None:
+        payload = LarkWebhookChannel({"webhook_url": LARK_URL}).build_payload("T", f"Hi {tag}!")
+        content = payload["card"]["elements"][0]["content"]
+        assert not re.search(r"<\s*/?\s*at\b", content, re.IGNORECASE), content
+        # Still readable: only an invisible character was added.
+        assert content.replace("\u200b", "") == f"Hi {tag}!"
+
+    def test_lark_other_text_is_untouched(self) -> None:
+        body = "**Duration**: 2s\n> quote\n1 < 2, <attachment>, a<b, [link](https://x.io)"
+        payload = LarkWebhookChannel({"webhook_url": LARK_URL}).build_payload("T", body)
+        assert payload["card"]["elements"][0]["content"] == body
+
+    def test_wecom_member_mentions_are_inert(self) -> None:
+        payload = WeComWebhookChannel({"webhook_url": WECOM_URL}).build_payload(
+            "<@boss> Title", "Hi <@zhangsan> and <@all>"
+        )
+        content = payload["markdown"]["content"]
+        assert "<@" not in content
+        assert content.replace("\u200b", "") == "**<@boss> Title**\n\nHi <@zhangsan> and <@all>"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("cls", "url", "response"),
+        [
+            (SlackWebhookChannel, SLACK_URL, {"status": 200, "text": "ok"}),
+            (LarkWebhookChannel, LARK_URL, {"data": {"code": 0}}),
+            (WeComWebhookChannel, WECOM_URL, {"data": {"errcode": 0}}),
+        ],
+    )
+    async def test_a_completion_summary_cannot_ping(
+        self, cls: type[WebhookChannel], url: str, response: dict[str, Any]
+    ) -> None:
+        summary = CompletionSummary(
+            agent_name="Summariser",
+            duration_seconds=2,
+            tools_used=[],
+            user_message=f"please {MENTIONS} <@zhangsan>",
+            final_answer=f"done {MENTIONS} <@zhangsan>",
+            conversation_id=None,
+            conversation_url=None,
+        )
+        patcher, client = _http(_response(**response))
+        with patcher:
+            result = await cls({"webhook_url": url}).send_completion(summary)
+        assert result.ok is True
+        sent = " ".join(_texts(client.post.await_args.kwargs["json"]))
+        for live in ("<!channel>", "<!here>", "<@U012AB3CD>", "<at id=all>", "<@zhangsan>"):
+            if cls is LarkWebhookChannel and not live.startswith("<at"):
+                continue  # not markup on Lark
+            if cls is WeComWebhookChannel and not live.startswith("<@"):
+                continue  # not markup on WeCom
+            assert live not in sent, (cls.__name__, live)
 
 
 class TestEmailCompletion:

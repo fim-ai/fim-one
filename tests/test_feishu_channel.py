@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from fim_one.core.channels import FeishuChannel, build_channel
-from fim_one.core.channels.feishu import build_confirmation_card
+from fim_one.core.channels.feishu import build_confirmation_card, build_decided_card
 from fim_one.core.channels.registry import CHANNEL_TYPES, get_channel_class
 
 
@@ -302,6 +303,87 @@ class TestListChats:
             mock_async_client.return_value = mock_client
             items = await channel.list_chats()
         assert items == []
+
+
+# ---------------------------------------------------------------------------
+# Mentions: text from a user or a tool call cannot notify the chat
+# ---------------------------------------------------------------------------
+
+_AT_ALL = '<at id=all></at> <at user_id="all">everyone</at>'
+_LIVE_AT = re.compile(r"<\s*/?\s*at\b", re.IGNORECASE)
+
+
+def _strings(node: Any) -> list[str]:
+    if isinstance(node, str):
+        return [node]
+    if isinstance(node, dict):
+        return [text for value in node.values() for text in _strings(value)]
+    if isinstance(node, list):
+        return [text for value in node for text in _strings(value)]
+    return []
+
+
+class TestMentionsAreInert:
+    def test_completion_card(self) -> None:
+        from fim_one.core.channels import CompletionSummary
+        from fim_one.core.channels.feishu import _build_completion_card
+
+        card = _build_completion_card(
+            CompletionSummary(
+                agent_name="A",
+                duration_seconds=1,
+                tools_used=[],
+                user_message=f"hello {_AT_ALL}",
+                final_answer=f"done {_AT_ALL} 1 < 2",
+                conversation_id=None,
+                conversation_url=None,
+            )
+        )
+        texts = _strings(card)
+        assert not any(_LIVE_AT.search(text) for text in texts), texts
+        joined = " ".join(texts).replace("\u200b", "")
+        assert f"hello {_AT_ALL}" in joined
+        assert "1 < 2" in joined
+
+    def test_confirmation_and_decided_cards(self) -> None:
+        card = build_confirmation_card(
+            confirmation_id="c1",
+            title="Approve?",
+            summary=f"Agent wants to run a tool {_AT_ALL}",
+            tool_name="send<at id=all></at>",
+            tool_args_preview='{"note": "<at id=all></at>"}',
+            approver_hint="Only <at id=ou_1></at> may decide",
+        )
+        decided = build_decided_card(
+            confirmation_id="c1",
+            decision="approved",
+            tool_name="send<at id=all></at>",
+            decided_by="Eve <at id=all></at>",
+        )
+        for built in (card, decided):
+            texts = _strings(built)
+            assert not any(_LIVE_AT.search(text) for text in texts), texts
+        # The buttons still carry the request they decide.
+        assert '"confirmation_id": "c1"' in json.dumps(card)
+
+    @pytest.mark.asyncio
+    async def test_a_notice_is_sent_as_inert_text(self) -> None:
+        channel = FeishuChannel({"app_id": "cli_x", "app_secret": "s", "chat_id": "oc_x"})
+        mock_client = MagicMock()
+        mock_client.post = AsyncMock(
+            side_effect=[
+                _make_async_response({"code": 0, "tenant_access_token": "tok"}),
+                _make_async_response({"code": 0}),
+            ]
+        )
+        with patch("httpx.AsyncClient") as mock_async_client:
+            mock_async_client.return_value.__aenter__.return_value = mock_client
+            mock_async_client.return_value.__aexit__.return_value = None
+            result = await channel.send_notice(f"Title {_AT_ALL}", f"Body {_AT_ALL}")
+        assert result.ok is True
+        text = json.loads(mock_client.post.await_args_list[1].kwargs["json"]["content"])["text"]
+        assert not _LIVE_AT.search(text)
+        assert text.replace("\u200b", "") == f"Title {_AT_ALL}\n\nBody {_AT_ALL}"
 
 
 # ---------------------------------------------------------------------------
