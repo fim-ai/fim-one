@@ -24,6 +24,10 @@ logger = logging.getLogger(__name__)
 # server that does not know it answers with.
 _COM_RESET_CONNECTION = 0x1F
 _ER_UNKNOWN_COM_ERROR = 1047
+_ER_UNKNOWN_SYSTEM_VARIABLE = 1193
+# "Query execution was interrupted": MySQL's MAX_EXECUTION_TIME (3024) and
+# MariaDB's max_statement_time (1969).
+_STATEMENT_TIMED_OUT = (3024, 1969)
 
 
 class MySQLDriver(DatabaseDriver):
@@ -254,52 +258,81 @@ class MySQLDriver(DatabaseDriver):
         start = time.monotonic()
         try:
             async with self._session() as conn:
-                async with conn.cursor() as cur:
-                    # Set session-level query timeout
-                    await cur.execute(
-                        "SET SESSION MAX_EXECUTION_TIME = %s",
-                        (int(timeout_s * 1000),),
+                cur = await conn.cursor()
+                try:
+                    await self._limit_statement_time(cur, timeout_s)
+                    if read_only:
+                        await cur.execute("START TRANSACTION READ ONLY")
+                    await asyncio.wait_for(cur.execute(sql), timeout=timeout_s)
+
+                    # Fetch max_rows + 1 to detect truncation
+                    rows_raw = await asyncio.wait_for(
+                        cur.fetchmany(max_rows + 1), timeout=timeout_s
                     )
-                    try:
-                        if read_only:
-                            await cur.execute("START TRANSACTION READ ONLY")
-                        await asyncio.wait_for(cur.execute(sql), timeout=timeout_s)
 
-                        # Fetch max_rows + 1 to detect truncation
-                        rows_raw = await asyncio.wait_for(
-                            cur.fetchmany(max_rows + 1), timeout=timeout_s
-                        )
+                    truncated = len(rows_raw) > max_rows
+                    if truncated:
+                        rows_raw = rows_raw[:max_rows]
 
-                        truncated = len(rows_raw) > max_rows
-                        if truncated:
-                            rows_raw = rows_raw[:max_rows]
+                    columns = [desc[0] for desc in cur.description] if cur.description else []
+                    rows = [list(r) for r in rows_raw]
 
-                        columns = (
-                            [desc[0] for desc in cur.description]
-                            if cur.description
-                            else []
-                        )
-                        rows = [list(r) for r in rows_raw]
-
-                        elapsed = (time.monotonic() - start) * 1000
-                        return QueryResult(
-                            columns=columns,
-                            rows=_serialize_rows(rows),
-                            row_count=len(rows),
-                            truncated=truncated,
-                            execution_time_ms=round(elapsed, 2),
-                        )
-                    finally:
-                        if read_only:
-                            # Ends the transaction; there is nothing to keep.
-                            await cur.execute("ROLLBACK")
-                        await cur.execute("SET SESSION MAX_EXECUTION_TIME = 0")
-        except asyncio.TimeoutError:
+                    elapsed = (time.monotonic() - start) * 1000
+                    return QueryResult(
+                        columns=columns,
+                        rows=_serialize_rows(rows),
+                        row_count=len(rows),
+                        truncated=truncated,
+                        execution_time_ms=round(elapsed, 2),
+                    )
+                finally:
+                    await _finish(conn, cur, rollback=read_only)
+        except TimeoutError:
             raise TimeoutError(f"Query timed out after {timeout_s}s") from None
         except Exception as exc:
-            if "TimeoutError" in type(exc).__name__:
-                raise
+            if getattr(exc, "args", (None,))[0] in _STATEMENT_TIMED_OUT:
+                raise TimeoutError(f"Query timed out after {timeout_s}s") from None
             raise RuntimeError(f"MySQL error: {exc}") from exc
+
+    @staticmethod
+    async def _limit_statement_time(cur: Any, timeout_s: int) -> None:
+        """Have the server stop a statement that runs past *timeout_s*.
+
+        MySQL and MariaDB name the setting differently. A server with
+        neither is still bounded by the client-side timeout, which drops
+        the connection.
+        """
+        for statement, value in (
+            ("SET SESSION MAX_EXECUTION_TIME = %s", int(timeout_s * 1000)),
+            ("SET SESSION max_statement_time = %s", int(timeout_s)),
+        ):
+            try:
+                await cur.execute(statement, (value,))
+                return
+            except Exception as exc:
+                if getattr(exc, "args", (None,))[0] != _ER_UNKNOWN_SYSTEM_VARIABLE:
+                    raise
+        logger.debug("This MySQL server has no statement time limit setting")
+
+
+async def _finish(conn: Any, cur: Any, *, rollback: bool) -> None:
+    """End the read-only transaction and close the cursor, if the connection is still there.
+
+    aiomysql closes a connection whose query was cancelled (a timeout, a
+    cancelled task). There is then nothing to roll back, and trying would
+    raise over the cancellation or the timeout that is on its way out.
+    The session's settings need no undoing: the next checkout resets it.
+    """
+    if conn.closed:
+        return
+    try:
+        if rollback:
+            # Ends the transaction; there is nothing to keep.
+            await cur.execute("ROLLBACK")
+        await cur.close()
+    except Exception:
+        logger.debug("Cleaning up after a MySQL query failed", exc_info=True)
+        conn.close()
 
 
 def _serialize_rows(rows: list[list[Any]]) -> list[list[Any]]:

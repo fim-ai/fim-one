@@ -156,13 +156,23 @@ class TestMySQL:
         driver = await _driver(live_mysql)
         assert driver.enforces_read_only
         orders = live_mysql.orders
+        mariadb = "MariaDB" in (await _rows(live_mysql, "SELECT VERSION()"))[0][0]
+        # MariaDB writes it "ANALYZE DELETE ..."; MySQL "EXPLAIN ANALYZE DELETE ...".
+        explain = "ANALYZE" if mariadb else "EXPLAIN ANALYZE"
         for sql in (
             f"DELETE FROM {orders}",
             f"UPDATE {orders} SET note = 'x'",
             f"INSERT INTO {orders} VALUES (9, 'z', 'z')",
-            f"EXPLAIN ANALYZE DELETE o FROM {orders} o JOIN {orders} p ON o.id = p.id",
-            f"WITH o AS (SELECT id FROM {orders}) DELETE FROM {orders} "
-            "WHERE id IN (SELECT id FROM o)",
+            f"{explain} DELETE o FROM {orders} o JOIN {orders} p ON o.id = p.id",
+            # MySQL only: MariaDB 10.6 has no DELETE after a WITH clause.
+            *(
+                ()
+                if mariadb
+                else (
+                    f"WITH o AS (SELECT id FROM {orders}) DELETE FROM {orders} "
+                    "WHERE id IN (SELECT id FROM o)",
+                )
+            ),
             f"SELECT id FROM {orders} FOR UPDATE",
         ):
             with pytest.raises(RuntimeError, match="READ ONLY transaction"):

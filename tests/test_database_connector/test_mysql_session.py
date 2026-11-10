@@ -198,3 +198,68 @@ class TestReset:
     def test_the_character_set_is_the_connectors_or_utf8mb4(self) -> None:
         assert MySQLDriver({})._connection_settings()["charset"] == "utf8mb4"
         assert MySQLDriver({"charset": "latin1"})._connection_settings()["charset"] == "latin1"
+
+
+class TestCancellationAndTimeouts:
+    """A cancelled or timed-out query says so, and leaves a usable driver."""
+
+    SLOW = (
+        "SELECT COUNT(*) FROM information_schema.columns a, information_schema.columns b, "
+        "information_schema.columns c"
+    )
+
+    async def test_cancelling_the_task_raises_cancellation(self, live_mysql: LiveDatabase) -> None:
+        import asyncio
+
+        tool = _tool(live_mysql, read_only=True)
+        task = asyncio.create_task(tool.run(sql=self.SLOW))
+        await asyncio.sleep(0.5)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        # The driver still works: the dropped connection is not handed out.
+        assert json.loads(await tool.run(sql="SELECT 1"))["rows"] == [[1]]
+
+    @pytest.mark.parametrize("read_only", [True, False])
+    async def test_a_query_past_its_time_is_reported_as_a_timeout(
+        self, live_mysql: LiveDatabase, read_only: bool
+    ) -> None:
+        tool = DatabaseToolAdapter.create_tools(
+            connector_name="live",
+            connector_id=live_mysql.connector_id,
+            db_config={**live_mysql.config, "read_only": read_only, "query_timeout": 1},
+            schema_tables=[],
+            on_call_complete=None,
+        )[2]
+        text = await tool.run(sql=self.SLOW)
+        assert text.startswith("[Timeout]"), text
+        assert json.loads(await tool.run(sql="SELECT 1"))["rows"] == [[1]]
+
+    async def test_the_client_side_timeout_is_a_timeout_too(
+        self, live_mysql: LiveDatabase, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Where the server has no limit of its own, the connection is dropped."""
+
+        async def _no_limit(_cur: Any, _timeout_s: int) -> None:
+            return None
+
+        monkeypatch.setattr(MySQLDriver, "_limit_statement_time", staticmethod(_no_limit))
+        driver = await ConnectionPoolManager.get_instance().get_driver(
+            live_mysql.connector_id, live_mysql.config
+        )
+        with pytest.raises(TimeoutError, match="timed out after 1s"):
+            await driver.execute_query(self.SLOW, timeout_s=1)
+        assert (await driver.execute_query("SELECT 1")).rows == [[1]]
+
+    async def test_nothing_is_rolled_back_on_a_connection_that_is_gone(self) -> None:
+        conn = MagicMock(closed=True)
+        cur = MagicMock()
+        cur.execute = AsyncMock(side_effect=AssertionError("must not be called"))
+        await mysql_driver._finish(conn, cur, rollback=True)
+
+    async def test_a_failing_cleanup_does_not_hide_the_querys_own_error(self) -> None:
+        conn = MagicMock(closed=False)
+        cur = MagicMock()
+        cur.execute = AsyncMock(side_effect=RuntimeError("Cancelled during execution"))
+        await mysql_driver._finish(conn, cur, rollback=True)
+        conn.close.assert_called_once()

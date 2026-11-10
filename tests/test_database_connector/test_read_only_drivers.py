@@ -44,8 +44,9 @@ class TestMySQL:
         cursor.execute = _execute
         cursor.fetchmany = AsyncMock(return_value=[])
         cursor.description = None
-        conn = MagicMock()
-        conn.cursor = MagicMock(return_value=_Acquire(cursor))
+        cursor.close = AsyncMock()
+        conn = MagicMock(closed=False)
+        conn.cursor = AsyncMock(return_value=cursor)
         driver = MySQLDriver({})
         driver._pool = MagicMock()
         driver._session = lambda: _Acquire(conn)  # type: ignore[method-assign]
@@ -58,11 +59,11 @@ class TestMySQL:
 
     async def test_a_read_only_query_runs_inside_a_read_only_transaction(self) -> None:
         ran = await self._statements(read_only=True)
-        assert ran[1:-1] == ["START TRANSACTION READ ONLY", "SELECT 1", "ROLLBACK"]
+        assert ran[1:] == ["START TRANSACTION READ ONLY", "SELECT 1", "ROLLBACK"]
 
     async def test_the_transaction_is_ended_when_the_query_fails(self) -> None:
         ran = await self._statements(read_only=True, fails=True)
-        assert ran[1:-1] == ["START TRANSACTION READ ONLY", "DELETE FROM t", "ROLLBACK"]
+        assert ran[1:] == ["START TRANSACTION READ ONLY", "DELETE FROM t", "ROLLBACK"]
 
     async def test_a_connector_that_allows_writes_opens_no_transaction(self) -> None:
         ran = await self._statements(read_only=False)
