@@ -193,3 +193,59 @@ async def test_window_excludes_usage_before_subscription_anniversary(
     reset = datetime.fromisoformat(body["reset_at"])
     assert reset > now
     assert reset - now <= timedelta(days=32)
+
+
+async def _add_workflow_run(db: AsyncSession, user: User, *, tokens: int, days_ago: int) -> None:
+    from fim_one.db.models.workflow import WorkflowRun
+
+    run = WorkflowRun(
+        id=str(uuid.uuid4()),
+        workflow_id=str(uuid.uuid4()),
+        user_id=user.id,
+        blueprint_snapshot={"nodes": [], "edges": []},
+        status="completed",
+        total_tokens=tokens,
+    )
+    run.created_at = datetime.now(UTC) - timedelta(days=days_ago)  # type: ignore[assignment]
+    db.add(run)
+    await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_the_card_counts_workflow_runs_like_enforcement_does(
+    client: AsyncClient, db_session: AsyncSession, user: User
+) -> None:
+    """The card summed conversations only: a user stopped at 100% saw less."""
+    from fim_one.web.services.quota_backend import usage_and_cap
+
+    await _add_conversation(db_session, user, tokens=5000, days_ago=0)
+    await _add_workflow_run(db_session, user, tokens=7000, days_ago=0)
+
+    resp = await client.get("/api/me/usage?period=month", headers=_auth_headers(user))
+    assert resp.status_code == 200
+    body = resp.json()
+
+    enforced_used, cap = await usage_and_cap(user.id)
+    assert enforced_used == 12000 and cap == 1_000_000
+    assert body["window_tokens"] == enforced_used
+    assert body["quota_used_pct"] == pytest.approx(1.2)
+
+
+@pytest.mark.asyncio
+async def test_the_card_and_enforcement_read_one_function(
+    client: AsyncClient, db_session: AsyncSession, user: User
+) -> None:
+    from fim_one.web.services import quota_backend
+
+    reset = datetime.now(UTC) + timedelta(days=3)
+
+    async def _used(_session: AsyncSession, _user_id: str) -> tuple[int, datetime]:
+        return 4242, reset
+
+    with patch.object(quota_backend, "window_usage", _used):
+        resp = await client.get("/api/me/usage?period=month", headers=_auth_headers(user))
+        enforced_used, _cap = await quota_backend.usage_and_cap(user.id)
+
+    body = resp.json()
+    assert body["window_tokens"] == enforced_used == 4242
+    assert datetime.fromisoformat(body["reset_at"]) == reset

@@ -33,7 +33,7 @@ from fim_one.db.models.connector import Connector
 from fim_one.db.models.conversation import Conversation
 from fim_one.db.models.mcp_server import MCPServer
 from fim_one.web.services.quota_enforcer import get_user_quota_by_id
-from fim_one.web.services.quota_window import resolve_quota_window
+from fim_one.web.services import quota_backend
 from fim_one.web.schemas.user_settings import (
     AgentUsage,
     ConnectorCredentialInfo,
@@ -390,14 +390,9 @@ async def get_my_usage(
     # users) so the billing tab can render an honest "usage this period"
     # without recomputing a different window client-side. The
     # daily/by-agent breakdowns above intentionally keep using ``since``.
-    window_start, window_reset = await resolve_quota_window(db, current_user.id)
-    window_q = select(
-        func.coalesce(func.sum(Conversation.total_tokens), 0)
-    ).where(
-        Conversation.user_id == current_user.id,
-        Conversation.created_at >= window_start,
-    )
-    window_tokens = int((await db.execute(window_q)).scalar() or 0)
+    # ``window_tokens`` is the number the quota is enforced against: the
+    # same function, so workflow runs billed to the user are in it too.
+    window_tokens, window_reset = await quota_backend.window_usage(db, current_user.id)
 
     # Quota — unified precedence chain (plan tier / admin override /
     # default). ``None`` means "unlimited".

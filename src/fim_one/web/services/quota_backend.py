@@ -9,11 +9,54 @@ start-up by :func:`fim_one.web.services.assembly_ports.register_assembly_ports`.
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import func
 from sqlalchemy import select as sa_select
 
-__all__ = ["WebQuotaBackend", "next_month_reset", "reset_at", "unentitled", "usage_and_cap"]
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+__all__ = [
+    "WebQuotaBackend",
+    "next_month_reset",
+    "reset_at",
+    "unentitled",
+    "usage_and_cap",
+    "window_usage",
+]
+
+
+async def window_usage(session: AsyncSession, user_id: str) -> tuple[int, datetime]:
+    """``(tokens used in the current quota window, when it resets)``.
+
+    What counts against a user's quota: their conversations and the
+    workflow runs billed to them (trigger keys and schedules included).
+    The enforced number and the one the usage card shows are both this.
+
+    The window is billing-aligned: paid users reset on their subscription's
+    monthly anniversary, free users on the calendar month. Resolution falls
+    back to the calendar month on failure.
+    """
+    from fim_one.db.models import Conversation
+    from fim_one.db.models.workflow import WorkflowRun
+    from fim_one.web.services.quota_window import resolve_quota_window
+
+    window_start, window_reset = await resolve_quota_window(session, user_id)
+    chat_tokens = await session.execute(
+        sa_select(func.coalesce(func.sum(Conversation.total_tokens), 0)).where(
+            Conversation.user_id == user_id,
+            Conversation.created_at >= window_start,
+        )
+    )
+    run_tokens = await session.execute(
+        sa_select(func.coalesce(func.sum(WorkflowRun.total_tokens), 0)).where(
+            WorkflowRun.user_id == user_id,
+            WorkflowRun.created_at >= window_start,
+        )
+    )
+    used = int(chat_tokens.scalar_one() or 0) + int(run_tokens.scalar_one() or 0)
+    return used, window_reset
 
 
 async def usage_and_cap(user_id: str) -> tuple[int, int]:
@@ -21,13 +64,13 @@ async def usage_and_cap(user_id: str) -> tuple[int, int]:
 
     The cap is the one chain in ``quota_enforcer.get_user_quota_by_id``:
     admin override, then the plan (only while the instance sells access by
-    plan), then the system default. The usage card reads the same function.
+    plan), then the system default. The usage card reads the same function,
+    and its "used" figure is :func:`window_usage`, as here.
     A cap of ``0`` means no cap; usage is then not summed and reads ``0``.
     A failed lookup raises: the caller refuses, it does not let the run
     through on a guess.
     """
     from fim_one.db import create_session
-    from fim_one.db.models import Conversation
     from fim_one.web.services.quota_enforcer import get_user_quota_by_id
 
     async with create_session() as session:
@@ -37,31 +80,7 @@ async def usage_and_cap(user_id: str) -> tuple[int, int]:
         if cap is None or cap <= 0:
             return (0, 0)
 
-        from fim_one.web.services.quota_window import resolve_quota_window
-
-        # The usage window is billing-aligned: paid users reset on their
-        # subscription's monthly anniversary, free users on the calendar
-        # month. Resolution falls back to the calendar month on failure.
-        window_start, _reset_at = await resolve_quota_window(session, user_id)
-        monthly_result = await session.execute(
-            sa_select(func.coalesce(func.sum(Conversation.total_tokens), 0)).where(
-                Conversation.user_id == user_id,
-                Conversation.created_at >= window_start,
-            )
-        )
-        monthly_tokens = int(monthly_result.scalar_one() or 0)
-
-        # Workflow runs billed to this user (trigger keys and schedules
-        # included) count against the same quota as chat.
-        from fim_one.db.models.workflow import WorkflowRun
-
-        wf_result = await session.execute(
-            sa_select(func.coalesce(func.sum(WorkflowRun.total_tokens), 0)).where(
-                WorkflowRun.user_id == user_id,
-                WorkflowRun.created_at >= window_start,
-            )
-        )
-        monthly_tokens += int(wf_result.scalar_one() or 0)
+        monthly_tokens, _reset_at = await window_usage(session, user_id)
         return (monthly_tokens, int(cap))
 
 
