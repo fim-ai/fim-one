@@ -10,6 +10,8 @@ import { MCPForm } from "../mcp-form"
 import { forgetMcpTools, MCP_TOOLS_TTL_MS } from "../mcp-tools-memory"
 import {
   argumentFields,
+  argumentProblem,
+  committedArgument,
   fromArgumentText,
   missingArguments,
   parseArgumentsJson,
@@ -121,6 +123,46 @@ describe("fromArgumentText", () => {
       expect(toArgumentText(fromArgumentText(text, type))).toBe(text)
     }
     expect(toArgumentText(undefined)).toBe("")
+  })
+})
+
+describe("committedArgument", () => {
+  it("stores a number written another way as the number it is", () => {
+    expect(committedArgument("1.0", "number")).toBe(1)
+    expect(committedArgument(".5", "number")).toBe(0.5)
+    expect(committedArgument("1e3", "number")).toBe(1000)
+    expect(committedArgument("007", "integer")).toBe(7)
+    expect(committedArgument("1.0", "integer")).toBe(1)
+    expect(committedArgument("1.", "number")).toBe(1)
+    expect(committedArgument(" +2 ", "integer")).toBe(2)
+  })
+
+  it("leaves what is not a number of the type, a variable, and other types alone", () => {
+    expect(committedArgument("abc", "number")).toBe("abc")
+    expect(committedArgument("1.5", "integer")).toBe("1.5")
+    expect(committedArgument("0x10", "integer")).toBe("0x10")
+    expect(committedArgument("Infinity", "number")).toBe("Infinity")
+    expect(committedArgument("1e999", "number")).toBe("1e999")
+    expect(committedArgument("12345678901234567890", "integer")).toBe("12345678901234567890")
+    expect(committedArgument("{{start_1.n}}", "integer")).toBe("{{start_1.n}}")
+    expect(committedArgument("007", "string")).toBe("007")
+    expect(committedArgument(7, "integer")).toBe(7)
+  })
+})
+
+describe("argumentProblem", () => {
+  it("names text in a number field that is not a number of the type", () => {
+    expect(argumentProblem("abc", "number")).toBe("number")
+    expect(argumentProblem("1.5", "integer")).toBe("integer")
+    expect(argumentProblem("0x10", "integer")).toBe("integer")
+  })
+
+  it("finds nothing wrong with numbers, variables, empty fields and other types", () => {
+    expect(argumentProblem(5, "integer")).toBeNull()
+    expect(argumentProblem("1.0", "integer")).toBeNull()
+    expect(argumentProblem("{{start_1.n}} items", "integer")).toBeNull()
+    expect(argumentProblem(undefined, "number")).toBeNull()
+    expect(argumentProblem("abc", "string")).toBeNull()
   })
 })
 
@@ -435,5 +477,52 @@ describe("MCP step form: the tool listing is kept for a short while", () => {
     fireEvent.click(screen.getByRole("button", { name: workflows.configToolsRetry }))
     await screen.findByRole("option", { name: "search" })
     expect(backend.listTools).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("MCP step form: numbers", () => {
+  it("stores a number written another way as a number when the field is left", async () => {
+    backend.listTools = () => Promise.resolve(TOOLS)
+    for (const [typed, stored] of [
+      ["1.0", 1],
+      ["007", 7],
+      ["1e3", 1000],
+    ] as const) {
+      // What typing left in the step: the text, so the keystrokes were kept.
+      const { setField } = renderMcp({
+        server_id: "s-1",
+        tool_name: "search",
+        parameters: { query: "otters", limit: typed },
+      })
+      const limit = (await screen.findByLabelText(/^limit/)) as HTMLInputElement
+      expect(limit.value).toBe(typed)
+      fireEvent.blur(limit)
+      expect(setField).toHaveBeenLastCalledWith("parameters", { query: "otters", limit: stored })
+      cleanup()
+    }
+  })
+
+  it("marks text that is not a number, and leaves a variable alone", async () => {
+    backend.listTools = () => Promise.resolve(TOOLS)
+    const { setField } = renderMcp({
+      server_id: "s-1",
+      tool_name: "search",
+      parameters: { query: "otters", limit: "many" },
+    })
+    const limit = await screen.findByLabelText(/^limit/)
+    expect(limit.getAttribute("aria-invalid")).toBe("true")
+    expect(screen.getByText("Enter a whole number, or a {{variable}}.")).toBeTruthy()
+    fireEvent.blur(limit)
+    expect(setField).not.toHaveBeenCalled()
+    cleanup()
+
+    renderMcp({
+      server_id: "s-1",
+      tool_name: "search",
+      parameters: { query: "otters", limit: "{{start_1.n}}" },
+    })
+    const withVariable = await screen.findByLabelText(/^limit/)
+    expect(withVariable.getAttribute("aria-invalid")).toBe("false")
+    expect(screen.queryByText("Enter a whole number, or a {{variable}}.")).toBeNull()
   })
 })

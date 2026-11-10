@@ -501,6 +501,8 @@
   "configArgumentsNone": "This tool takes no arguments.",
   "configArgumentUnset": "Not set",
   "configArgumentRequired": "This argument is required.",
+  "configArgumentNotNumber": "Enter a number, or a '{{variable}}'.",
+  "configArgumentNotInteger": "Enter a whole number, or a '{{variable}}'.",
   "configToolId": "Tool",
   "configToolIdPlaceholder": "Select a builtin tool",
 

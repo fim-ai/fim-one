@@ -111,6 +111,43 @@ export function fromArgumentText(text: string, type: ArgumentType): unknown {
   return parsed === undefined ? text : parsed
 }
 
+/** A decimal number as a person writes one: `7`, `007`, `1.0`, `.5`, `1e3`. */
+const NUMBER_TEXT = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/
+
+/** The number `text` is, when it is one a field of `type` can hold. */
+function numberOf(text: string, type: "number" | "integer"): number | null {
+  const trimmed = text.trim()
+  if (!NUMBER_TEXT.test(trimmed)) return null
+  const n = Number(trimmed)
+  if (!Number.isFinite(n)) return null
+  // Past 2^53 a JavaScript number is no longer the integer that was typed.
+  if (type === "integer" && !Number.isSafeInteger(n)) return null
+  return n
+}
+
+/**
+ * What a field holds once the user is done typing in it (it lost focus).
+ * While typing, a number that does not read back the same (`1.0`, `.5`,
+ * `1e3`, `007`) is kept as text so the keystrokes are not undone; left that
+ * way it would reach the tool as text. Here it becomes the number it is.
+ */
+export function committedArgument(value: unknown, type: ArgumentType): unknown {
+  if (typeof value !== "string" || value.includes("{{")) return value
+  if (type !== "number" && type !== "integer") return value
+  return numberOf(value, type) ?? value
+}
+
+/**
+ * What is wrong with a stored value for a field of `type`, if anything:
+ * text in a number field that is not a number (or not a whole one). Text
+ * with a `{{variable}}` is judged when the step runs, not here.
+ */
+export function argumentProblem(value: unknown, type: ArgumentType): "number" | "integer" | null {
+  if (type !== "number" && type !== "integer") return null
+  if (typeof value !== "string" || value === "" || value.includes("{{")) return null
+  return numberOf(value, type) === null ? type : null
+}
+
 /** `parameters` with one argument set, or removed when `value` is undefined. */
 export function withArgument(
   parameters: Record<string, unknown>,

@@ -12,6 +12,8 @@ import { getErrorMessage } from "@/lib/error-utils"
 import { InsertVariableBar, ResourceSelect, SectionHeader } from "./fields"
 import {
   argumentFields,
+  argumentProblem,
+  committedArgument,
   fromArgumentText,
   missingArguments,
   parseArgumentsJson,
@@ -107,6 +109,14 @@ export function MCPForm({ data, setField, setFields, otherNodes }: NodeFormProps
 
   const setArgument = (field: ArgumentField, text: string) => {
     setField("parameters", withArgument(parameters, field.name, fromArgumentText(text, field.type)))
+  }
+
+  // Done typing in a field: a number written `1.0`, `.5`, `1e3` or `007`
+  // is stored as the number it is.
+  const commitArgument = (field: ArgumentField) => {
+    const value = parameters[field.name]
+    const committed = committedArgument(value, field.type)
+    if (committed !== value) setField("parameters", withArgument(parameters, field.name, committed))
   }
 
   const insertVariable = (reference: string) => {
@@ -252,6 +262,7 @@ export function MCPForm({ data, setField, setFields, otherNodes }: NodeFormProps
           {fields.map((field) => {
             const text = toArgumentText(parameters[field.name])
             const isMissing = missing.includes(field.name)
+            const problem = argumentProblem(parameters[field.name], field.type)
             return (
               <div key={field.name} className="space-y-1">
                 <label className="text-xs font-medium font-mono" htmlFor={`mcp-arg-${field.name}`}>
@@ -299,14 +310,23 @@ export function MCPForm({ data, setField, setFields, otherNodes }: NodeFormProps
                   <Input
                     id={`mcp-arg-${field.name}`}
                     className="h-7 text-xs"
-                    aria-invalid={isMissing}
+                    aria-invalid={isMissing || problem !== null}
                     value={text}
                     onFocus={() => setFocused(field.name)}
                     onChange={(e) => setArgument(field, e.target.value)}
+                    onBlur={() => commitArgument(field)}
                   />
                 )}
                 {isMissing ? (
                   <p className="text-sm text-destructive">{t("configArgumentRequired")}</p>
+                ) : problem !== null ? (
+                  <p className="text-sm text-destructive">
+                    {t(
+                      problem === "integer"
+                        ? "configArgumentNotInteger"
+                        : "configArgumentNotNumber",
+                    )}
+                  </p>
                 ) : (
                   field.description && (
                     <p className="text-[10px] text-muted-foreground/60">{field.description}</p>
