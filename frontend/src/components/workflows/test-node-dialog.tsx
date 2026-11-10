@@ -44,6 +44,12 @@ interface TestNodeDialogProps {
   nodeLabel: string
   open: boolean
   onOpenChange: (open: boolean) => void
+  /**
+   * Awaited before the test is requested: the server tests the step as it
+   * has it stored, so what is on the canvas is saved first. False (the
+   * save failed, and said so): the test does not run.
+   */
+  beforeRun?: () => Promise<boolean>
 }
 
 export function TestNodeDialog({
@@ -53,6 +59,7 @@ export function TestNodeDialog({
   nodeLabel,
   open,
   onOpenChange,
+  beforeRun,
 }: TestNodeDialogProps) {
   const t = useTranslations("workflows")
   const tError = useTranslations("errors")
@@ -123,6 +130,7 @@ export function TestNodeDialog({
     setIsRunning(true)
     setResult(null)
     try {
+      if (beforeRun && !(await beforeRun().catch(() => false))) return
       const response = await workflowApi.testNode(workflowId, {
         node_id: nodeId,
         variables: varsMap,
@@ -139,7 +147,7 @@ export function TestNodeDialog({
     } finally {
       setIsRunning(false)
     }
-  }, [workflowId, nodeId, variables, envVars, t, tError])
+  }, [workflowId, nodeId, variables, envVars, beforeRun, t, tError])
 
   // Reset state when dialog closes
   const handleOpenChange = useCallback(

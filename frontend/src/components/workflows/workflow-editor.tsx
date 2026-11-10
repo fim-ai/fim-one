@@ -105,6 +105,8 @@ const getMinimapNodeColor = (node: Node) => minimapNodeColor[node.type ?? ""] ??
 
 interface WorkflowEditorProps {
   workflowId: string
+  /** Saves what is on the canvas before a step is tested; false when that save failed. */
+  saveBeforeRun?: () => Promise<boolean>
   blueprint: WorkflowBlueprint
   onBlueprintChange: (blueprint: WorkflowBlueprint) => void
   onUndoRedoChange?: (canUndo: boolean, canRedo: boolean) => void
@@ -152,6 +154,7 @@ export interface WorkflowEditorHandle {
 
 export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorProps>(function WorkflowEditor({
   workflowId,
+  saveBeforeRun,
   blueprint,
   onBlueprintChange,
   onUndoRedoChange,
@@ -544,6 +547,7 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
       {testNodeTarget && (
         <TestNodeDialog
           workflowId={workflowId}
+          beforeRun={saveBeforeRun}
           nodeId={testNodeTarget.nodeId}
           nodeType={testNodeTarget.nodeType}
           nodeLabel={testNodeTarget.label}

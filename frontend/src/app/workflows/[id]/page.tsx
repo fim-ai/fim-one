@@ -288,6 +288,7 @@ export default function WorkflowEditorPage() {
         // A new key when the blueprint was replaced as a whole (import,
         // version restore): the canvas starts over from it.
         key={doc.canvasRevision}
+        saveBeforeRun={doc.saveBeforeRun}
         ref={editorRef}
         workflowId={workflowId}
         blueprint={workflow.blueprint}
@@ -520,6 +521,7 @@ export default function WorkflowEditorPage() {
       {/* Batch Run Dialog */}
       <BatchRunDialog
         workflowId={workflowId}
+        beforeRun={doc.saveBeforeRun}
         open={panels.isOpen("batchRun")}
         onOpenChange={panels.setter("batchRun")}
       />

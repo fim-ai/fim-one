@@ -36,6 +36,8 @@ interface BatchRunDialogProps {
   workflowId: string
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Awaited before the batch is requested; false means the save failed and the batch does not start. */
+  beforeRun?: () => Promise<boolean>
 }
 
 type DialogPhase = "input" | "running" | "results"
@@ -85,6 +87,7 @@ export function BatchRunDialog({
   workflowId,
   open,
   onOpenChange,
+  beforeRun,
 }: BatchRunDialogProps) {
   const t = useTranslations("workflows")
   const tError = useTranslations("errors")
@@ -121,6 +124,11 @@ export function BatchRunDialog({
 
     setPhase("running")
     try {
+      // The server runs the workflow it has stored: save the canvas first.
+      if (beforeRun && !(await beforeRun().catch(() => false))) {
+        setPhase("input")
+        return
+      }
       const result = await workflowApi.batchRun(workflowId, inputs, maxParallel)
       setBatchResponse(result)
       setPhase("results")
@@ -136,7 +144,7 @@ export function BatchRunDialog({
       }
       setPhase("input")
     }
-  }, [inputText, maxParallel, workflowId, t, tError])
+  }, [inputText, maxParallel, workflowId, t, tError, beforeRun])
 
   const handleExportResults = useCallback(() => {
     if (!batchResponse) return
