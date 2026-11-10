@@ -7,11 +7,17 @@ import logging
 from typing import Any
 
 from fim_one.core.security import validate_url as _validate_url
+from fim_one.core.security.log_secrets import install_url_secret_log_filter
 from fim_one.core.tool.base import Tool
 
 from .adapter import MCPToolAdapter
 
 logger = logging.getLogger(__name__)
+
+# The HTTP client under the SDK logs each request with its full URL, and
+# the SDK logs failed connections with theirs. Whatever process opens an
+# MCP server (a web worker, a scheduler, a script) has them stripped.
+install_url_secret_log_filter()
 
 
 def _loggable_url(url: str) -> str:
