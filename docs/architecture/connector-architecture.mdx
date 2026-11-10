@@ -109,6 +109,13 @@ The owner's own query playground is not masked. Masking governs what
 reaches an agent and the conversation transcript, not what the person who
 configured the connection can inspect.
 
+### Values bound into a workflow step's SQL
+
+A `{{variable}}` in the SQL of a workflow database step is sent to the database as a value, never as SQL text. How it is compared is then up to the database:
+
+- **PostgreSQL, KingbaseES, HighGo, DM8**: a parameter of the type the query expects. Text that is not a number fails the step where a number is expected.
+- **MySQL, MariaDB**: every value is sent as text. Compared with a text column it is compared as text. Compared with a numeric column, MySQL converts the text by its own lenient rule: `'5abc'` counts as 5 and text with no leading digits as 0, with a warning and no error, so `WHERE id = {{v}}` with `abc` matches the row whose id is 0. `CAST({{v}} AS SIGNED)` follows the same rule and does not help. If an input must be a number, check it before the query, in a Condition step ahead of the database step; the Start step records the inputs it is given and does not check their type.
+
 ## Deployment Model
 
 Everything runs in a single Docker Compose deployment. The client installs nothing.
