@@ -96,7 +96,9 @@ def db_now(dialect: str) -> Any:
     if dialect == "sqlite":
         # With milliseconds; CURRENT_TIMESTAMP has whole seconds only.
         return func.strftime("%Y-%m-%d %H:%M:%f", "now")
-    return func.now()
+    # The moment the statement runs, not the moment its transaction began:
+    # a stamp that waited behind a lock must not come out old.
+    return func.clock_timestamp()
 
 
 def db_seconds_ago(dialect: str, seconds: float) -> Any:
@@ -105,7 +107,7 @@ def db_seconds_ago(dialect: str, seconds: float) -> Any:
 
     if dialect == "sqlite":
         return func.strftime("%Y-%m-%d %H:%M:%f", "now", f"-{seconds:.3f} seconds")
-    return func.now() - func.make_interval(0, 0, 0, 0, 0, 0, seconds)
+    return func.clock_timestamp() - func.make_interval(0, 0, 0, 0, 0, 0, seconds)
 
 
 def _dialect_of(db: Any) -> str:

@@ -1207,3 +1207,179 @@ class TestTokensAreRecorded:
         assert "(token_quota_exceeded)" in (run.error or "")
         assert _CountingEngine.continued == []
         assert run.node_results.get("end_1", {}).get("status") != "completed"
+
+
+# ---------------------------------------------------------------------------
+# Round 2, C. The heartbeat thread cannot fail silently, hang, or write late
+# ---------------------------------------------------------------------------
+
+
+class _HeldEngine(_CountingEngine):
+    release: asyncio.Event
+
+    async def execute_streaming(self, *args: Any, **kwargs: Any) -> Any:
+        await _HeldEngine.release.wait()
+        yield "run_completed", {"status": "completed", "outputs": {}}
+
+
+async def _held_run(rig: Rig) -> tuple[rs.WorkflowRunService, Any]:
+    _HeldEngine.release = asyncio.Event()
+    service = rs.WorkflowRunService(engine_factory=_HeldEngine)
+    started = await service.start_run(
+        await rig.workflow(), caller_id=rig.owner.id, inputs={}, mode=rs.RunMode.INTERACTIVE
+    )
+    return service, started
+
+
+async def _age_stamp(rig: Rig, run_id: str, seconds: float) -> None:
+    async with rig.factory() as s:
+        await s.execute(
+            update(WorkflowRun)
+            .where(WorkflowRun.id == run_id)
+            .values(heartbeat_at=rs.db_seconds_ago(rig.backend, seconds))
+        )
+        await s.commit()
+
+
+async def _stamp_age(rig: Rig, run_id: str) -> float:
+    """How old the run's heartbeat is, by the database's clock (seconds)."""
+    from sqlalchemy import func
+
+    async with rig.factory() as s:
+        fresh = (
+            await s.execute(
+                select(func.count()).where(
+                    WorkflowRun.id == run_id,
+                    WorkflowRun.heartbeat_at > rs.db_seconds_ago(rig.backend, 5),
+                )
+            )
+        ).scalar_one()
+    return 0.0 if fresh else 999.0
+
+
+class TestTheHeartbeatThread:
+    def test_its_connection_has_short_connect_lock_and_statement_timeouts(
+        self, tmp_path: Any
+    ) -> None:
+        from fim_one.core.workflow.run_recovery import sync_connect_args, sync_engine_for
+
+        pg = sync_connect_args("postgresql")
+        assert pg["connect_timeout"] == 5
+        assert "lock_timeout=2000" in pg["options"] and "statement_timeout=5000" in pg["options"]
+        assert sync_connect_args("sqlite") == {"timeout": 5}
+        engine = sync_engine_for("postgresql+asyncpg://u:p@127.0.0.1:1/db")
+        assert engine.dialect.driver == "psycopg2"
+        assert sync_engine_for(f"sqlite+aiosqlite:///{tmp_path / 'x.db'}").dialect.name == "sqlite"
+        assert sync_engine_for("sqlite+aiosqlite:///:memory:") is None
+
+    async def test_a_thread_that_cannot_reach_the_database_hands_stamping_to_the_loop(
+        self, rig: Rig, tmp_path: Any
+    ) -> None:
+        """Alive but failing every beat: before, the loop saw "alive" and
+        never stamped, and a peer closed the healthy run."""
+        from sqlalchemy import create_engine
+
+        service, started = await _held_run(rig)
+        await _age_stamp(rig, started.run_id, 3600)
+        broken = create_engine(f"sqlite:///{tmp_path}/no/such/dir/x.db")
+        supervisor = WorkflowRunSupervisor(
+            service, heartbeat_seconds=0.05, sweep_seconds=3600, sync_engine=broken
+        )
+
+        watching = asyncio.create_task(supervisor.run_loop())
+        try:
+            await asyncio.sleep(0.6)
+            thread = supervisor._heartbeat
+            assert thread is not None and thread.is_alive()
+            assert thread.failures > 0 and thread.stamping() is False
+            assert await _stamp_age(rig, started.run_id) < 5  # the loop stamped it
+            peer = WorkflowRunSupervisor(_new_service(), heartbeat_seconds=1, stale_seconds=90)
+            assert (await peer.sweep()).closed == []
+        finally:
+            watching.cancel()
+            _HeldEngine.release.set()
+            await started.wait()
+
+    async def test_a_thread_that_works_again_takes_stamping_back(
+        self, rig: Rig, tmp_path: Any
+    ) -> None:
+        from fim_one.core.workflow.run_recovery import HeartbeatThread, sync_engine_for
+
+        if rig.backend != "sqlite":
+            pytest.skip("uses the SQLite file")
+        service, started = await _held_run(rig)
+        engine = sync_engine_for(f"sqlite+aiosqlite:///{tmp_path / 'suspend.db'}")
+        thread = HeartbeatThread(engine, service, asyncio.get_running_loop(), 0.05)
+        beat, failing = thread.beat, {"on": True}
+
+        def flaky() -> None:
+            if failing["on"]:
+                raise OSError("connection lost")
+            beat()
+
+        thread.beat = flaky  # type: ignore[method-assign]
+        thread.start()
+        try:
+            await asyncio.sleep(0.3)
+            assert thread.stamping() is False and thread.failures > 0
+            failing["on"] = False
+            for _ in range(100):  # the pause had grown; it comes back
+                await asyncio.sleep(0.1)
+                if thread.stamping():
+                    break
+            assert thread.stamping() is True and thread.failures == 0
+        finally:
+            thread.stop()
+            _HeldEngine.release.set()
+            await started.wait()
+
+    async def test_a_locked_row_does_not_delay_the_others_or_get_an_old_time(
+        self, rig: Rig
+    ) -> None:
+        """PostgreSQL: another transaction holds one run's row (a progress
+        save not yet committed). The other run is stamped at once."""
+        import os
+
+        from sqlalchemy import create_engine, text
+        from sqlalchemy.engine import make_url
+
+        from fim_one.core.workflow.run_recovery import HeartbeatThread, sync_connect_args
+
+        if rig.backend != "postgresql":
+            pytest.skip("row locks are PostgreSQL's")
+        async with rig.factory() as s:
+            schema = (await s.execute(text("select current_schema()"))).scalar_one()
+        url = make_url(os.environ["FIM_TEST_PG_URL"]).set(drivername="postgresql+psycopg2")
+        args = sync_connect_args("postgresql")
+        args["options"] += f" -csearch_path={schema}"
+        engine = create_engine(url, connect_args=args, isolation_level="AUTOCOMMIT")
+        holder = create_engine(url, connect_args={"options": f"-csearch_path={schema}"})
+
+        service, locked = await _held_run(rig)
+        free = await service.start_run(
+            await rig.workflow(), caller_id=rig.owner.id, inputs={}, mode=rs.RunMode.INTERACTIVE
+        )
+        for run in (locked, free):
+            await _age_stamp(rig, run.run_id, 3600)
+        thread = HeartbeatThread(engine, service, asyncio.get_running_loop(), 0.05)
+        try:
+            with holder.connect() as conn:
+                conn.execute(
+                    text("select id from workflow_runs where id = :id for update"),
+                    {"id": locked.run_id},
+                )
+                began = time.monotonic()
+                await asyncio.to_thread(thread.beat)
+                took = time.monotonic() - began
+                assert took < 1.5, f"the beat waited {took:.1f}s behind the lock"
+                assert await _stamp_age(rig, free.run_id) < 5
+                assert await _stamp_age(rig, locked.run_id) > 5  # skipped, not stamped late
+                conn.rollback()
+            await asyncio.to_thread(thread.beat)
+            assert await _stamp_age(rig, locked.run_id) < 5
+        finally:
+            engine.dispose()
+            holder.dispose()
+            _HeldEngine.release.set()
+            await locked.wait()
+            await free.wait()

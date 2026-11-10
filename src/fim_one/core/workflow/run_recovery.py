@@ -70,6 +70,7 @@ __all__ = [
     "SweepReport",
     "WorkflowRunSupervisor",
     "install_resume_on_decision",
+    "sync_connect_args",
     "sync_engine_for",
 ]
 
@@ -97,11 +98,35 @@ def install_resume_on_decision(
     return ConfirmationService.on_decided(continue_run)
 
 
+# The heartbeat's connection must never hang: a stamp that cannot be
+# written within these is given up, and the next one tried.
+HEARTBEAT_CONNECT_TIMEOUT_SECONDS = 5
+HEARTBEAT_LOCK_TIMEOUT_MS = 2000
+HEARTBEAT_STATEMENT_TIMEOUT_MS = 5000
+
+
+def sync_connect_args(backend: str) -> dict[str, Any]:
+    """Connection settings of the heartbeat thread's own connection."""
+    if backend == "sqlite":
+        return {"timeout": HEARTBEAT_CONNECT_TIMEOUT_SECONDS}
+    if backend == "postgresql":
+        return {
+            "connect_timeout": HEARTBEAT_CONNECT_TIMEOUT_SECONDS,
+            "options": (
+                f"-c lock_timeout={HEARTBEAT_LOCK_TIMEOUT_MS} "
+                f"-c statement_timeout={HEARTBEAT_STATEMENT_TIMEOUT_MS}"
+            ),
+        }
+    return {}
+
+
 def sync_engine_for(database_url: str) -> Any:
     """A synchronous engine on the application's database, for the heartbeat thread.
 
-    One connection, used by that thread alone. ``None`` for an in-memory
-    SQLite database, which a second connection cannot see.
+    One connection, used by that thread alone, in autocommit, with short
+    connect, lock and statement timeouts (:func:`sync_connect_args`).
+    ``None`` for an in-memory SQLite database, which a second connection
+    cannot see.
     """
     from sqlalchemy import create_engine
     from sqlalchemy.engine import make_url
@@ -111,17 +136,17 @@ def sync_engine_for(database_url: str) -> Any:
     if backend == "sqlite":
         if not url.database or url.database == ":memory:":
             return None
-        return create_engine(
-            url.set(drivername="sqlite"), connect_args={"timeout": 30}, pool_size=1, max_overflow=0
-        )
-    if backend == "postgresql":
-        return create_engine(
-            url.set(drivername="postgresql+psycopg2"),
-            pool_size=1,
-            max_overflow=0,
-            pool_pre_ping=True,
-        )
-    return create_engine(url, pool_size=1, max_overflow=0, pool_pre_ping=True)
+        url = url.set(drivername="sqlite")
+    elif backend == "postgresql":
+        url = url.set(drivername="postgresql+psycopg2")
+    return create_engine(
+        url,
+        connect_args=sync_connect_args(backend),
+        pool_size=1,
+        max_overflow=0,
+        pool_pre_ping=True,
+        isolation_level="AUTOCOMMIT",
+    )
 
 
 class HeartbeatThread(threading.Thread):
@@ -134,8 +159,16 @@ class HeartbeatThread(threading.Thread):
     the service at once (the engine reads that before its next step) and
     their cancel is handed to the event loop.
 
+    Each run is stamped by a statement of its own, in autocommit, with the
+    clock read as the statement runs, and a row someone holds a lock on is
+    skipped (whoever holds it is writing the run, heartbeat included): one
+    busy row neither delays the others nor gets an old time written.
+
     A step that blocks the event loop for minutes does not stop this
-    thread, so the run it belongs to keeps its heartbeat.
+    thread, so the run it belongs to keeps its heartbeat. A beat that
+    fails (connection lost, timeout) is retried with a fresh connection
+    after a growing pause; :meth:`stamping` then says no, and the
+    supervisor's loop stamps in its place until this thread succeeds again.
     """
 
     def __init__(
@@ -151,16 +184,40 @@ class HeartbeatThread(threading.Thread):
         self._loop = loop
         self._interval = interval
         self._halt = threading.Event()
+        self._last_success = time.monotonic()
+        self.failures = 0
 
     def stop(self) -> None:
         self._halt.set()
 
+    def stamping(self) -> bool:
+        """Whether this thread is doing its job: alive, and its last
+        successful beat no more than two intervals ago."""
+        return self.is_alive() and time.monotonic() - self._last_success <= 2 * self._interval
+
     def run(self) -> None:
-        while not self._halt.wait(self._interval):
+        pause = self._interval
+        while not self._halt.wait(pause):
             try:
                 self.beat()
             except Exception:
-                logger.exception("Workflow run heartbeat failed")
+                self.failures += 1
+                if self.failures in (1, 10) or self.failures % 100 == 0:
+                    logger.exception(
+                        "Workflow run heartbeat failed (%d in a row); the event loop "
+                        "stamps meanwhile",
+                        self.failures,
+                    )
+                # A new connection next time, after a pause that grows.
+                try:
+                    self._engine.dispose()
+                except Exception:
+                    pass
+                pause = min(self._interval * 2 ** min(self.failures, 5), 30.0)
+            else:
+                self.failures = 0
+                self._last_success = time.monotonic()
+                pause = self._interval
         self._engine.dispose()
 
     def beat(self) -> None:
@@ -173,12 +230,20 @@ class HeartbeatThread(threading.Thread):
         ids = self._service.active_run_ids()
         if not ids:
             return
-        with self._engine.begin() as conn:
-            conn.execute(
-                update(WorkflowRun)
-                .where(WorkflowRun.id.in_(ids), WorkflowRun.status == "running")
-                .values(heartbeat_at=db_now(conn.dialect.name))
-            )
+        with self._engine.connect() as conn:
+            now = db_now(conn.dialect.name)
+            for run_id in ids:
+                free = (
+                    select(WorkflowRun.id)
+                    .where(WorkflowRun.id == run_id, WorkflowRun.status == "running")
+                    .with_for_update(skip_locked=True)
+                )
+                conn.execute(
+                    update(WorkflowRun)
+                    .where(WorkflowRun.id.in_(free))
+                    .values(heartbeat_at=now)
+                    .execution_options(synchronize_session=False)
+                )
             closed_elsewhere = list(
                 conn.execute(
                     select(WorkflowRun.id).where(
@@ -518,7 +583,9 @@ class WorkflowRunSupervisor:
         while True:
             try:
                 await asyncio.sleep(self.heartbeat_seconds)
-                if self._heartbeat is None or not self._heartbeat.is_alive():
+                # The thread stamps; this loop does when there is none, or
+                # when the thread has not managed to for two intervals.
+                if self._heartbeat is None or not self._heartbeat.stamping():
                     await self.beat()
                 if time.monotonic() - last_sweep >= self.sweep_seconds:
                     last_sweep = time.monotonic()
