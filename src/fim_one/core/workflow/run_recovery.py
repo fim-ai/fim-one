@@ -464,7 +464,7 @@ class WorkflowRunSupervisor:
         read in one light query, then taken a batch at a time, each batch
         with one query for its runs' states and one for their requests.
         """
-        from sqlalchemy import select
+        from sqlalchemy import Text, cast, func, select
 
         from fim_one.db import create_session
         from fim_one.db.models import WorkflowRun
@@ -494,7 +494,13 @@ class WorkflowRunSupervisor:
                             select(
                                 WorkflowRun.id,
                                 WorkflowRun.waiting_on,
-                                WorkflowRun.suspend_state.is_(None),
+                                # "Has no state", without loading it. Its
+                                # length, because an emptied JSON column
+                                # holds SQL NULL or JSON null.
+                                func.coalesce(
+                                    func.length(cast(WorkflowRun.suspend_state, Text)), 0
+                                )
+                                < 10,
                             ).where(
                                 WorkflowRun.id.in_(batch), WorkflowRun.status == "waiting"
                             )
