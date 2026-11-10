@@ -809,6 +809,23 @@ _TRIGGER_INVALID_BLUEPRINT = (
 )
 
 
+def _presented_key_hint(raw_key: str | None) -> str:
+    """What is recorded of a key that matched no workflow.
+
+    Anything can be sent as the key: a password, another service's token.
+    The start is kept only of a value that has the shape of a trigger key
+    (the display prefix, never more than a third of it), which is enough
+    to tell a mistyped key from a guess; of anything else only its length.
+    """
+    from fim_one.web.services.workflow_trigger_keys import DISPLAY_PREFIX_LEN, TRIGGER_KEY_PREFIX
+
+    if not raw_key:
+        return "(none)"
+    if raw_key.startswith(TRIGGER_KEY_PREFIX) and len(raw_key) >= 3 * DISPLAY_PREFIX_LEN:
+        return f"{redact_hint(raw_key, keep=DISPLAY_PREFIX_LEN)}"
+    return f"(not a trigger key; {len(raw_key)} characters)"
+
+
 async def _resolve_trigger_workflow(raw_key: str | None, db: AsyncSession) -> Workflow:
     from fim_one.web.services.workflow_trigger_keys import (
         TriggerKeyRejectedError,
@@ -826,7 +843,7 @@ async def _resolve_trigger_workflow(raw_key: str | None, db: AsyncSession) -> Wo
             await record_refusal(
                 actions.WORKFLOW_TRIGGER_KEY_INVALID,
                 source=meta.ip if meta else None,
-                detail=f"key={redact_hint(raw_key, keep=6) or '(none)'}",
+                detail=f"key={_presented_key_hint(raw_key)}",
             )
         raise AppError(exc.error_code, status_code=401, detail=exc.detail) from None
 

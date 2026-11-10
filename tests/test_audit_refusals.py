@@ -227,9 +227,9 @@ class TestAnUnknownTriggerKey:
         assert (row.actor_kind, row.ip_address, row.detail) == (
             "anonymous",
             CLIENT_IP,
-            "key=wf_not…",
+            "key=wf_not-a-r…",
         )
-        world.assert_absent(row, self.BAD_KEY, self.BAD_KEY[:12])
+        world.assert_absent(row, self.BAD_KEY, self.BAD_KEY[:14])
 
     async def test_the_key_in_the_url_route_and_a_missing_key(self, world: World) -> None:
         await world.enable_module("workflows")
@@ -241,7 +241,29 @@ class TestAnUnknownTriggerKey:
         await world.call("POST", "/api/workflows/trigger", json={"inputs": {}}, expect=401)
 
         with_key, without = await world.events("workflow.trigger_key_invalid")
-        assert (with_key.detail, without.detail) == ("key=wf_not…", "key=(none)")
+        assert (with_key.detail, without.detail) == ("key=wf_not-a-r…", "key=(none)")
+
+    @pytest.mark.parametrize(
+        "presented", ["hunter2", "wf_short", "sk-live-0123456789abcdef0123456789abcdef"]
+    )
+    async def test_of_something_that_is_not_a_trigger_key_only_the_length_is_kept(
+        self, world: World, presented: str
+    ) -> None:
+        """Six characters were kept of whatever was sent: all of a short
+        password, the start of another service's token."""
+        await world.enable_module("workflows")
+
+        await world.call(
+            "POST",
+            "/api/workflows/trigger",
+            headers={"Authorization": f"Bearer {presented}"},
+            json={"inputs": {}},
+            expect=401,
+        )
+
+        row = await world.one("workflow.trigger_key_invalid", actor=None, outcome="denied")
+        assert row.detail == f"key=(not a trigger key; {len(presented)} characters)"
+        world.assert_absent(row, presented, presented[:5])
 
 
 class TestDirectly:
