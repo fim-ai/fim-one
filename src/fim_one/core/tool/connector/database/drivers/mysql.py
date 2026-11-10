@@ -97,24 +97,33 @@ class MySQLDriver(DatabaseDriver):
         assert self._pool is not None
         if self._can_reset:
             conn = await self._pool.acquire()
+            # From here to the release below nothing may get in the way of
+            # the release, a cancellation least of all: a connection that
+            # is not released stays counted as in use for ever, and five
+            # of them are the whole pool. The release itself is not a
+            # coroutine. A connection goes back open only if everything
+            # between ran to its end; otherwise it is closed first, and the
+            # pool drops it.
+            reusable = False
+            clean = False
             try:
                 clean = await self._reset(conn)
-            except BaseException:
-                conn.close()
-                await self._pool.release(conn)
-                raise
+                if clean:
+                    try:
+                        yield conn
+                    finally:
+                        # Reset again before the connection waits in the
+                        # pool: a named lock (GET_LOCK) or a temporary
+                        # table would otherwise be held for as long as it
+                        # idles there.
+                        await self._clear(conn)
+                        reusable = True
+            finally:
+                if not reusable:
+                    conn.close()
+                self._pool.release(conn)
             if clean:
-                try:
-                    yield conn
-                finally:
-                    # Reset again before the connection waits in the pool:
-                    # a named lock (GET_LOCK) or a temporary table would
-                    # otherwise be held for as long as it idles there.
-                    await self._clear(conn)
-                    await self._pool.release(conn)
                 return
-            conn.close()
-            await self._pool.release(conn)
         conn = await aiomysql.connect(**self._connection_settings())
         try:
             await self._set_sql_mode(conn)

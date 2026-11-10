@@ -13,6 +13,7 @@ Live tests need ``FIM_TEST_MYSQL_URL``; the rest run anywhere.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
 from typing import Any
@@ -236,7 +237,7 @@ class TestReset:
         async def _acquire() -> MagicMock:
             return pooled
 
-        async def _release(conn: Any) -> None:
+        def _release(conn: Any) -> None:
             released.append(conn)
 
         driver._pool = MagicMock(acquire=_acquire, release=_release)
@@ -420,3 +421,128 @@ class TestTheServerAndTheCheckReadTheSameStatement:
 
     def test_the_combination_modes_that_imply_ansi_quotes_are_dropped_too(self) -> None:
         assert {"ANSI", "ORACLE", "MSSQL"} <= mysql_driver._QUOTING_MODES
+
+
+class _CountingPool:
+    """Stands in for the aiomysql pool: who holds what."""
+
+    def __init__(self) -> None:
+        self.used: list[Any] = []
+        self.dropped: list[Any] = []
+        self.handed_out = 0
+
+    async def acquire(self) -> Any:
+        self.handed_out += 1
+        conn = MagicMock(closed=False)
+        conn.close = lambda: setattr(conn, "closed", True)
+        self.used.append(conn)
+        return conn
+
+    def release(self, conn: Any) -> Any:
+        # Not a coroutine in aiomysql either.
+        self.used.remove(conn)
+        if conn.closed:
+            self.dropped.append(conn)
+        return asyncio.get_running_loop().create_future()
+
+
+class TestAConnectionIsAlwaysGivenBack:
+    """Five connections not given back are the whole pool, until a restart."""
+
+    async def _cancel_inside(
+        self, monkeypatch: pytest.MonkeyPatch, *, where: str, times: int = 20
+    ) -> _CountingPool:
+        driver = MySQLDriver({})
+        pool = _CountingPool()
+        driver._pool = pool
+        entered = asyncio.Event()
+
+        async def _stuck(*_args: Any) -> bool:
+            entered.set()
+            await asyncio.sleep(3600)
+            return True
+
+        async def _fine(*_args: Any) -> bool:
+            return True
+
+        monkeypatch.setattr(MySQLDriver, "_reset", _stuck if where == "reset" else _fine)
+        monkeypatch.setattr(
+            MySQLDriver, "_clear", staticmethod(_stuck if where == "clear" else _fine)
+        )
+
+        async def _use() -> None:
+            async with driver._session():
+                if where == "body":
+                    await _stuck()
+
+        for _ in range(times):
+            entered.clear()
+            task = asyncio.create_task(_use())
+            await entered.wait()
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        return pool
+
+    @pytest.mark.parametrize("where", ["reset", "body", "clear"])
+    async def test_a_cancellation_anywhere_between_checkout_and_release(
+        self, monkeypatch: pytest.MonkeyPatch, where: str
+    ) -> None:
+        pool = await self._cancel_inside(monkeypatch, where=where)
+        assert pool.handed_out == 20
+        assert pool.used == []
+        if where != "body":
+            # Cut off in the middle of a reset: not reused, closed and dropped.
+            assert len(pool.dropped) == 20
+
+    async def test_an_error_in_the_query_gives_the_connection_back_open(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def _fine(*_args: Any) -> bool:
+            return True
+
+        monkeypatch.setattr(MySQLDriver, "_reset", _fine)
+        monkeypatch.setattr(MySQLDriver, "_clear", staticmethod(_fine))
+        driver = MySQLDriver({})
+        pool = _CountingPool()
+        driver._pool = pool
+        with pytest.raises(RuntimeError):
+            async with driver._session():
+                raise RuntimeError("syntax error")
+        assert pool.used == [] and pool.dropped == []
+
+    async def test_live_the_pool_still_serves_after_twenty_cancels_in_the_release_reset(
+        self, live_mysql: LiveDatabase, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        tool = _tool(live_mysql, read_only=True)
+        assert json.loads(await tool.run(sql="SELECT 1"))["rows"] == [[1]]
+        clear = MySQLDriver._clear
+        cancelled = 0
+
+        async def _slow_clear(conn: Any) -> None:
+            nonlocal cancelled
+            try:
+                await asyncio.sleep(0.3)
+            except asyncio.CancelledError:
+                cancelled += 1
+                raise
+            await clear(conn)
+
+        monkeypatch.setattr(MySQLDriver, "_clear", staticmethod(_slow_clear))
+        for _ in range(20):
+            task = asyncio.create_task(tool.run(sql="SELECT 1"))
+            await asyncio.sleep(0.15)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        assert cancelled == 20
+        monkeypatch.setattr(MySQLDriver, "_clear", staticmethod(clear))
+        driver = await ConnectionPoolManager.get_instance().get_driver(
+            live_mysql.connector_id, live_mysql.config
+        )
+        assert isinstance(driver, MySQLDriver) and driver._pool is not None
+        assert len(driver._pool._used) == 0
+        answers = await asyncio.wait_for(
+            asyncio.gather(*(tool.run(sql="SELECT 1") for _ in range(8))), timeout=10
+        )
+        assert all(json.loads(text)["rows"] == [[1]] for text in answers)
