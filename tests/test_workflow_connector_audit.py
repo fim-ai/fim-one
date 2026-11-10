@@ -158,8 +158,7 @@ async def test_a_connector_that_takes_no_credential_runs_for_any_runner_who_sees
 async def test_an_agent_steps_connector_call_is_recorded_as_a_workflow_call(
     factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    """It was recorded as a chat call; the run id follows when the agent step
-    is assembled through the layer itself."""
+    """It was recorded as a chat call, and with no run to trace it back to."""
     from fim_one.core.workflow.nodes import AgentExecutor
 
     scene = await m.seed_scene(factory, m.SceneKey("owner", True, True, False))
@@ -181,3 +180,4 @@ async def test_an_agent_steps_connector_call_is_recorded_as_a_workflow_call(
 
     (log,) = await _records(factory)
     assert (log.entry, log.agent_id) == ("workflow_node", scene.carrier_agent_id)
+    assert log.workflow_run_id == "run-1"

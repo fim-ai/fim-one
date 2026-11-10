@@ -166,7 +166,7 @@ At runtime, all active, non-builder Agents visible to the user are assembled int
 
 ### Full tool inheritance
 
-When a delegated agent is invoked via `call_agent(agent_id, task)`, it receives a complete `ToolRegistry` built from its own configuration — including its bound Connectors, KB, and built-in tools. Delegated agents are full execution units, not text-only advisors.
+When a delegated agent is invoked via `call_agent(agent_id, task)`, it is assembled the way a chat with that agent is: a complete `ToolRegistry` built from its own configuration — its bound Connectors, Knowledge Bases and MCP servers (connected for the duration of the call) and its built-in tool categories — together with its own approval gate. Delegated agents are full execution units, not text-only advisors. An agent that has been switched off or is no longer visible to the user when it is called is reported as unavailable instead of being run.
 
 ### One-level delegation
 

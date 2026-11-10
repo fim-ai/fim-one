@@ -8,6 +8,7 @@ __all__ = [
     "ACCOUNT_DISABLED",
     "AGENT_UNAVAILABLE",
     "APPROVAL_ASSIGNEE_NOT_IN_ORG",
+    "AUTHENTICATION_REQUIRED",
     "CONFIRMATION_ALREADY_DECIDED",
     "CONFIRMATION_FORBIDDEN",
     "CONFIRMATION_NOT_FOUND",
@@ -15,14 +16,19 @@ __all__ = [
     "CREDENTIAL_REQUIRED",
     "CREDENTIAL_UNAVAILABLE",
     "OWNER_ONLY",
+    "QUOTA_UNAVAILABLE",
     "RESOURCE_INACTIVE",
     "RESOURCE_NOT_FOUND",
+    "SUBSCRIPTION_REQUIRED",
+    "TOKEN_QUOTA_EXCEEDED",
+    "WORKFLOW_OWNER_INACTIVE",
     "AssemblyRefusal",
 ]
 
 # Error codes share the API's ``AppError`` namespace; the frontend's
 # ``errors.json`` carries the message for each.
 ACCOUNT_DISABLED = "account_disabled"
+AUTHENTICATION_REQUIRED = "authentication_required"
 RESOURCE_NOT_FOUND = "resource_not_found"
 RESOURCE_INACTIVE = "resource_inactive"
 OWNER_ONLY = "owner_only"
@@ -34,6 +40,10 @@ CONFIRMATION_FORBIDDEN = "confirmation_forbidden"
 CONFIRMATION_ALREADY_DECIDED = "confirmation_already_decided"
 APPROVAL_ASSIGNEE_NOT_IN_ORG = "approval_assignee_not_in_org"
 AGENT_UNAVAILABLE = "agent_unavailable"
+SUBSCRIPTION_REQUIRED = "subscription_required"
+TOKEN_QUOTA_EXCEEDED = "token_quota_exceeded"
+QUOTA_UNAVAILABLE = "quota_unavailable"
+WORKFLOW_OWNER_INACTIVE = "workflow_owner_inactive"
 
 
 class AssemblyRefusal(Exception):  # noqa: N818 - a refusal is an outcome, not a fault

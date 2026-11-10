@@ -114,6 +114,28 @@ class TestCoreHasNoTopLevelWebImport:
         )
 
 
+class TestCoreDoesNotReachIntoChatOrTheHookBootstrap:
+    """An agent's runtime reaches core through the ``core.assembly.runtime`` port.
+
+    ``call_agent`` and the workflow Agent step used to import chat's private
+    resolvers and the web hook bootstrap inside their functions.
+    """
+
+    FORBIDDEN = ("fim_one.web.api.chat", "fim_one.web.hooks_bootstrap")
+
+    def test_no_import_at_any_level(self) -> None:
+        offenders = [
+            f"{py.relative_to(SRC)}: {module}"
+            for py in _core_py_files()
+            for module, _top in _collect_imports(py)
+            if module in self.FORBIDDEN
+        ]
+        assert not offenders, (
+            "core modules get an agent runtime from fim_one.core.assembly.runtime:\n  "
+            + "\n  ".join(offenders)
+        )
+
+
 class TestCoreDoesNotImportWebVisibility:
     """The visibility rule lives in core.assembly; core must not reach back.
 
@@ -369,3 +391,94 @@ class TestConfirmationsHaveOneService:
         from fim_one.web.hooks_bootstrap import HOOK_FACTORIES
 
         assert HOOK_FACTORIES["approval_gate"] is HOOK_FACTORIES["feishu_gate"]
+
+
+# The quota chain's former homes: chat's private helpers and the gate that
+# wrapped them. Comments count, so nothing points at a name that is gone.
+QUOTA_FORMER_COPIES = (
+    "_check_token_quota",
+    "_get_quota_status",
+    "_get_plan_quota_for_user",
+    "ChatRunGate",
+)
+
+
+class TestQuotaHasOneGate:
+    """Plan and quota are checked by ``core/assembly/quota.py``.
+
+    Chat, the AI-assisted endpoints and the workflow run service all call
+    it; the numbers come from ``web/services/quota_backend.py`` through the
+    registered port.
+    """
+
+    def test_the_former_copies_are_gone(self) -> None:
+        files = [py for py in sorted(SRC.rglob("*.py")) if "migrations" not in py.parts]
+        offenders = [hit for needle in QUOTA_FORMER_COPIES for hit in _occurrences(needle, files)]
+        assert not offenders, (
+            "quota is checked by fim_one.core.assembly.quota:\n  " + "\n  ".join(offenders)
+        )
+
+
+# What chat's endpoints and tools used to call directly to assemble an agent.
+# In chat.py each name may appear once: where it is defined.
+CHAT_ASSEMBLY_HELPERS = (
+    "_resolve_tools(",
+    "_connect_pending_mcp_servers(",
+    "_resolve_llm(",
+)
+
+
+class TestAgentsAreAssembledByTheRuntime:
+    """Chat turns, ``call_agent`` delegates and workflow Agent steps get an
+    agent's models, tools and hooks from ``web/services/agent_runtime.py``
+    (through the ``core.assembly.runtime`` port outside the web layer)."""
+
+    def test_chat_calls_the_runtime_stages_not_its_own_helpers(self) -> None:
+        chat = SRC / "web" / "api" / "chat.py"
+        # The vision model falls back to the main one inside its own resolver.
+        vision_fallback = "return await _resolve_llm(agent_cfg, db)"
+        offenders = [
+            f"{chat.relative_to(SRC)}:{lineno}: {line.strip()}"
+            for needle in CHAT_ASSEMBLY_HELPERS
+            for lineno, line in _source_lines(chat)
+            if needle in line and f"def {needle}" not in line and vision_fallback not in line
+        ]
+        offenders += _occurrences("build_hook_registry_for_agent", [chat])
+        assert not offenders, (
+            "chat.py assembles through fim_one.web.services.agent_runtime:\n  "
+            + "\n  ".join(offenders)
+        )
+
+    def test_call_agent_holds_no_resolver_of_its_own(self) -> None:
+        tool = CORE / "tool" / "builtin" / "call_agent.py"
+        offenders = [
+            hit
+            for needle in ("fim_one.web", "_resolver", "get_llm_from_config", "get_model_registry")
+            for hit in _occurrences(needle, [tool])
+        ]
+        assert not offenders, (
+            "call_agent builds its delegate with core.assembly.runtime:\n  "
+            + "\n  ".join(offenders)
+        )
+
+
+class TestWorkflowStepsHoldNoRuleOfTheirOwn:
+    """T10 section 2: a workflow step asks ``core.assembly``; it does not decide.
+
+    Visibility, the fallback switch and credentials are not read under
+    ``core/workflow`` (``TestCredentialsAndCallRecordsLiveInTheAssemblyLayer``
+    covers the last two, with the workflow's own env vars as the one
+    exception), and no step imports the web layer for an agent's runtime.
+    """
+
+    def test_no_visibility_query_in_core_workflow(self) -> None:
+        files = sorted((CORE / "workflow").rglob("*.py"))
+        offenders = [
+            hit
+            for needle in ("resolve_visibility", "build_visibility_filter")
+            for hit in _occurrences(needle, files)
+        ]
+        assert not offenders, (
+            "core/workflow asks fim_one.core.assembly.visibility.authorize_use:\n  "
+            + "\n  ".join(offenders)
+        )

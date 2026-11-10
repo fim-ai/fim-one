@@ -433,12 +433,19 @@ class TestVersionHistoryAuthorOnly:
 class TestAuthorEnvNotInjectedForOthers:
     def test_env_only_for_author(self) -> None:
         from fim_one.core.security.encryption import encrypt_credential
-        from fim_one.core.workflow.run_service import Principal, author_env_vars
+        from fim_one.core.assembly.principal import CallContext, provisional_principal
+        from fim_one.core.workflow.run_service import author_env_vars, workflow_binding
 
-        wf = Workflow(user_id="author", name="x", blueprint={})
+        wf = Workflow(id="wf", user_id="author", name="x", blueprint={})
         wf.env_vars_blob = encrypt_credential({"API_TOKEN": "s3cret"})
-        as_author = Principal(user_id="author", author_id="author")
-        as_subscriber = Principal(user_id="subscriber", author_id="author")
+        as_author, as_subscriber = (
+            CallContext(
+                principal=provisional_principal(user),
+                binding=workflow_binding(wf),
+                entry="workflow_node",
+            )
+            for user in ("author", "subscriber")
+        )
         assert author_env_vars(wf, as_author) == {"API_TOKEN": "s3cret"}
         assert author_env_vars(wf, as_subscriber) == {}
 
@@ -469,7 +476,7 @@ class TestTestNodeQuotaAndUsage:
 
         with (
             patch(
-                "fim_one.core.workflow.run_service.ChatRunGate.check",
+                "fim_one.core.assembly.quota.AssemblyRunGate.check",
                 new=AsyncMock(side_effect=RunRefusedError("token_quota_exceeded", 429)),
             ),
             pytest.raises(AppError) as exc,
@@ -497,7 +504,7 @@ class TestTestNodeQuotaAndUsage:
                 yield s
 
         with (
-            patch("fim_one.core.workflow.run_service.ChatRunGate.check", new=AsyncMock()),
+            patch("fim_one.core.assembly.quota.AssemblyRunGate.check", new=AsyncMock()),
             patch(
                 "fim_one.core.workflow.nodes.get_executor",
                 return_value=_TokenSpendingExecutor(),

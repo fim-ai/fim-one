@@ -5,7 +5,10 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
+
+if TYPE_CHECKING:
+    from fim_one.core.assembly.principal import CallContext
 
 
 class NodeType(str, Enum):
@@ -123,3 +126,14 @@ class ExecutionContext:
     # Shared across all nodes of a run: accumulates LLM/Agent token usage so the
     # run total can be billed to the workflow owner (see WorkflowRun.total_tokens).
     usage_tracker: Any = None  # core.model.usage.UsageTracker | None
+    # Who the run executes as and the workflow as the binding its steps use
+    # resources through (``core.assembly.principal.CallContext``); set by the
+    # run service. ``None`` for a context built by hand: steps then act as
+    # ``user_id`` directly, with no binding.
+    call_context: CallContext | None = None
+    # The run's own sandbox directory (``core.assembly.sandbox``): where the
+    # shell, code-execution and file tools of its Agent steps work. Set by
+    # the run service, which removes the directory when the run ends.
+    # ``None`` for a context built by hand: its Agent steps get none of
+    # those tools.
+    sandbox_id: str | None = None

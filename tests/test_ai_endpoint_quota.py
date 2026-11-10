@@ -54,7 +54,7 @@ async def test_gate_refuses_over_quota_user() -> None:
     user = MagicMock(id="u1")
     with (
         patch(
-            "fim_one.web.api.chat._check_token_quota",
+            "fim_one.core.assembly.quota.check_quota",
             AsyncMock(side_effect=AppError("token_quota_exceeded", status_code=429)),
         ),
         pytest.raises(AppError) as exc,
@@ -66,5 +66,5 @@ async def test_gate_refuses_over_quota_user() -> None:
 @pytest.mark.asyncio
 async def test_gate_passes_user_within_quota() -> None:
     user = MagicMock(id="u1")
-    with patch("fim_one.web.api.chat._check_token_quota", AsyncMock(return_value=None)):
+    with patch("fim_one.core.assembly.quota.check_quota", AsyncMock(return_value=None)):
         assert await get_quota_checked_user(user) is user

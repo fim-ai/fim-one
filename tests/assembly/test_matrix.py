@@ -154,10 +154,7 @@ async def test_authorize_use_implements_the_visibility_part_of_the_rule(
         async with factory() as db:
             for resource in m.RESOURCES:
                 cell = key.cell(resource)
-                # ``wf_agent_node`` binds every resource kind it reaches and
-                # surfaces refusal codes for the agent; ``trigger`` does for a
-                # directly used one. Either gives the rule with codes kept.
-                want = m.rule("trigger", cell, subject="owner" if bound else key.role)
+                want = m.rule(m.DIRECT, cell, subject="owner" if bound else key.role)
                 decision = await authorize_use(db, ctx, _KINDS[resource], [scene.ids[resource]])
                 got = None if decision.usable else decision.refused[scene.ids[resource]].error_code
                 want_code = (
@@ -208,9 +205,7 @@ async def test_resolve_credential_implements_the_credential_part_of_the_rule(
         async with factory() as db:
             for resource in (*m.CREDENTIALED, "db"):
                 cell = key.cell(resource)
-                # ``trigger`` surfaces refusal codes and binds nothing: the rule
-                # for a direct use by the acting user.
-                want = m.rule("trigger", cell, subject=key.role)
+                want = m.rule(m.DIRECT, cell, subject=key.role)
                 if want.refusal_code in ("resource_not_found", "resource_inactive"):
                     continue  # never reaches the credential rule
                 decision = await authorize_use(db, ctx, _KINDS[resource], [scene.ids[resource]])

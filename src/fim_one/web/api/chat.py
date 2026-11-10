@@ -44,6 +44,7 @@ background.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import base64
 import json
 import logging
@@ -52,7 +53,7 @@ import time
 import uuid
 from collections.abc import AsyncGenerator, Sequence
 from contextlib import suppress
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -70,11 +71,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fim_one.core.agent import ReActAgent
 from fim_one.core.agent.react import FINISH_SIGNAL_ENABLED
 from fim_one.core.assembly.principal import (
-    Binding,
+    AuthMethod,
     CallContext,
     Entry,
+    Principal,
     provisional_principal,
+    resolve_principal,
 )
+from fim_one.core.assembly.quota import check_quota, quota_reset_at, quota_status
+from fim_one.core.assembly.sandbox import is_run_sandbox, sandbox_base
+from fim_one.core.assembly.sandbox import sandbox_root as run_sandbox_root
 from fim_one.core.assembly.toolset import (
     connector_tools,
     database_tools,
@@ -116,6 +122,7 @@ from fim_one.core.utils import (
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_user
 from fim_one.web.exceptions import AppError
+from fim_one.web.services import agent_runtime
 from fim_one.db.models import User
 
 from ..deps import (
@@ -880,11 +887,17 @@ async def _classify_deliverables(
 
 async def _resolve_user(
     token: str | None,
-) -> tuple[str | None, str | None, str | None, str | None]:
+) -> tuple[Principal | None, str | None, str | None, str | None]:
     """Validate a JWT/API-key token and return
-    ``(user_id, system_instructions, preferred_language, timezone)``.
+    ``(principal, system_instructions, preferred_language, timezone)``.
 
-    Returns ``(None, None, None, None)`` when *token* is not provided.
+    The principal is who the turn acts as: the account, its organizations,
+    how it authenticated and, for an API key, the key's scopes. Decoding
+    the token, its type and its revocation are checked here; the principal
+    itself is built by the assembly layer.
+
+    Returns ``(None, None, None, None)`` when *token* is not provided, the
+    account is switched off, or the token was revoked.
     Raises HTTPException(401) on invalid/expired tokens.
     """
     if not token:
@@ -902,7 +915,13 @@ async def _resolve_user(
             # Every caller of this helper is a chat stream endpoint.
             enforce_scope(scopes, "chat")
             return (
-                user.id,
+                await resolve_principal(
+                    session,
+                    user_id=user.id,
+                    auth=AuthMethod.API_KEY,
+                    scopes=frozenset(scopes) if scopes is not None else None,
+                    user=user,
+                ),
                 user.system_instructions,
                 user.preferred_language,
                 getattr(user, "timezone", None),
@@ -938,6 +957,7 @@ async def _resolve_user(
     system_instructions: str | None = None
     preferred_language: str | None = None
     user_timezone: str | None = None
+    principal: Principal | None = None
     try:
         from fim_one.db import create_session
         from fim_one.db.models import User
@@ -967,12 +987,19 @@ async def _resolve_user(
             system_instructions = user.system_instructions
             preferred_language = user.preferred_language
             user_timezone = getattr(user, "timezone", None)
+            principal = await resolve_principal(
+                session, user_id=user_id, auth=AuthMethod.SESSION, user=user
+            )
     except HTTPException:
         raise
     except Exception:
         logger.warning("Failed to load user record", exc_info=True)
 
-    return user_id, system_instructions, preferred_language, user_timezone
+    # The record could not be read (the token itself was valid): the turn
+    # goes on as that user, with nothing known beyond the id.
+    if principal is None:
+        principal = provisional_principal(user_id)
+    return principal, system_instructions, preferred_language, user_timezone
 
 
 async def _validate_conversation_ownership(
@@ -994,169 +1021,6 @@ async def _validate_conversation_ownership(
             raise AppError("conversation_not_found", status_code=404)
 
 
-async def _get_plan_quota_for_user(session: Any, user_id: str) -> int | None:
-    """Return the user's plan-bound ``monthly_token_quota`` or ``None``.
-
-    Plan-aware lookup added by P2 billing — separated from the legacy
-    ``User.token_quota`` query so existing test fakes that mock a
-    single-column ``scalar_one_or_none`` keep working.
-
-    Defensively swallows query errors: a mock-shaped session that does
-    not understand the join still produces a valid (legacy) quota.
-    """
-    from fim_one.db.models import BillingPlan, User
-
-    try:
-        result = await session.execute(
-            sa_select(BillingPlan.monthly_token_quota)
-            .select_from(User)
-            .join(BillingPlan, User.plan_id == BillingPlan.id)
-            .where(User.id == user_id)
-        )
-        value = result.scalar_one_or_none()
-        return int(value) if value is not None else None
-    except Exception:
-        return None
-
-
-async def _get_quota_status(user_id: str) -> tuple[int, int]:
-    """Return ``(monthly_tokens_used, effective_quota)`` for *user_id*.
-
-    ``effective_quota`` is resolved by the Scheme A precedence chain
-    (override-first):
-
-      1. ``user.token_quota == 0``  → ``0`` (unlimited; admin VIP gift)
-      2. ``user.token_quota >  0``  → that value (admin hard cap)
-      3. ``user.token_quota IS NULL`` → ``user.plan.monthly_token_quota``
-      4. *(fallback)* the system-wide ``default_token_quota`` admin setting
-      5. ``0`` → unlimited / disabled (callers skip enforcement)
-
-    A returned cap of ``0`` means "unlimited / disabled" — callers
-    short-circuit and skip quota enforcement when this is returned.
-
-    This helper is shared by the pre-stream gate (``_check_token_quota``)
-    and the mid-stream guard (``_quota_exceeded`` inside the answer loop)
-    so both paths see identical numbers and the same rounding rules.
-    """
-    from fim_one.db import create_session
-    from fim_one.web.api.admin_utils import get_setting
-    from fim_one.db.models import Conversation, User
-
-    async with create_session() as session:
-        result = await session.execute(sa_select(User.token_quota).where(User.id == user_id))
-        user_quota: int | None = result.scalar_one_or_none()
-
-        # Plan lookup is fired unconditionally so the legacy mock
-        # contract (3-step FIFO: user_quota, plan_quota, sum) keeps
-        # working — see tests/test_chat_quota_streaming.py.
-        plan_quota = await _get_plan_quota_for_user(session, user_id)
-
-        # Scheme A: admin override wins over plan, with the 3-state
-        # ``users.token_quota`` semantic (NULL=follow plan, 0=unlimited,
-        # N>0=hard cap).
-        if user_quota is not None:
-            if user_quota == 0:
-                return (0, 0)
-            # user_quota > 0 → hard cap, ignore plan_quota.
-        else:
-            # No override → fall through to plan tier, then default.
-            if plan_quota is not None:
-                user_quota = plan_quota
-            else:
-                default_str = await get_setting(session, "default_token_quota", "0")
-                user_quota = int(default_str) if default_str.isdigit() else 0
-
-        if not user_quota or user_quota <= 0:
-            return (0, 0)
-
-        from sqlalchemy import func as _func
-
-        from fim_one.web.services.quota_window import resolve_quota_window
-
-        # Window the usage sum to the user's billing-aligned quota period:
-        # paid users reset on their subscription's monthly anniversary,
-        # free users on the calendar month. Resolution is defensive — it
-        # falls back to the calendar month on any lookup failure.
-        window_start, _reset_at = await resolve_quota_window(session, user_id)
-        monthly_result = await session.execute(
-            sa_select(_func.coalesce(_func.sum(Conversation.total_tokens), 0)).where(
-                Conversation.user_id == user_id,
-                Conversation.created_at >= window_start,
-            )
-        )
-        monthly_tokens = int(monthly_result.scalar_one() or 0)
-
-        # Include unattended workflow runs (webhook/cron) billed to this owner,
-        # so their LLM usage counts against the same quota as chat instead of
-        # being a free, unmetered spigot.
-        from fim_one.db.models.workflow import WorkflowRun
-
-        wf_result = await session.execute(
-            sa_select(_func.coalesce(_func.sum(WorkflowRun.total_tokens), 0)).where(
-                WorkflowRun.user_id == user_id,
-                WorkflowRun.created_at >= window_start,
-            )
-        )
-        monthly_tokens += int(wf_result.scalar_one() or 0)
-        return (monthly_tokens, int(user_quota))
-
-
-def _next_month_reset_iso() -> str:
-    """Return the ISO-8601 timestamp of the next quota-reset boundary.
-
-    Quotas reset on the first day of each calendar month at 00:00 UTC.
-    Returned as an ISO string so the frontend can parse with ``new Date``.
-    """
-    today = date.today()
-    if today.month == 12:
-        next_reset = datetime(today.year + 1, 1, 1, tzinfo=UTC)
-    else:
-        next_reset = datetime(today.year, today.month + 1, 1, tzinfo=UTC)
-    return next_reset.isoformat()
-
-
-async def _check_token_quota(user_id: str) -> None:
-    """Raise 429 if the user has exceeded their monthly token quota.
-
-    ``paid_only`` users with no plan raise 402 ``subscription_required``.
-    That check uses a separate session so the quota-status FIFO mock
-    contract in ``test_chat_quota_streaming`` stays intact.
-    """
-    monthly_tokens, user_quota = await _get_quota_status(user_id)
-
-    from fim_one.db import create_session
-    from fim_one.web.services.quota_enforcer import is_user_unentitled
-
-    try:
-        async with create_session() as session:
-            unentitled = await is_user_unentitled(user_id, session)
-    except Exception:
-        unentitled = False
-    if unentitled:
-        raise AppError("subscription_required", status_code=402)
-
-    if user_quota > 0 and monthly_tokens >= user_quota:
-        raise AppError("token_quota_exceeded", status_code=429)
-
-
-async def _quota_reset_iso(user_id: str) -> str:
-    """ISO-8601 timestamp of *user_id*'s next quota reset.
-
-    Billing-aligned: paid users reset on their subscription's monthly
-    anniversary, free users on the first of next calendar month. Falls
-    back to the calendar-month boundary if the window cannot be resolved.
-    """
-    from fim_one.db import create_session
-    from fim_one.web.services.quota_window import resolve_quota_window
-
-    try:
-        async with create_session() as session:
-            _start, reset_at = await resolve_quota_window(session, user_id)
-        return reset_at.isoformat()
-    except Exception:
-        return _next_month_reset_iso()
-
-
 def _build_quota_terminator_payload(
     *,
     monthly_tokens: int,
@@ -1175,7 +1039,7 @@ def _build_quota_terminator_payload(
     - ``tokens_used`` / ``quota``: live counters for the dialog.
     - ``reset_at``: ISO-8601 of the next quota reset — billing-aligned
       (subscription anniversary for paid, calendar month for free),
-      resolved by the caller via :func:`_quota_reset_iso`.
+      resolved by the caller via ``core.assembly.quota.quota_reset_at``.
     - ``plan_slug``: reserved for the upcoming Stripe billing
       integration; ``"free"`` for now since plan tiers don't exist yet.
     """
@@ -1225,24 +1089,11 @@ def _use_context(
     judged by the agent owner's view (the binding is a delegation); with no
     agent, or an agent config that names no owner, by the caller's own.
     """
-    binding: Binding | None = None
-    owner_id = agent_cfg.get("owner_user_id") if agent_cfg else None
-    # Which agent the call is made through is a fact of its own: an agent
-    # with no owner still has an id, and call records carry it.
-    agent_id = str(agent_cfg.get("agent_id") or agent_cfg.get("id") or "") if agent_cfg else ""
-    if agent_cfg and owner_id:
-        binding = Binding(
-            kind="agent",
-            id=agent_id,
-            owner_id=owner_id,
-            org_id=agent_cfg.get("org_id"),
-        )
-    return CallContext(
-        principal=provisional_principal(user_id or ""),
-        binding=binding,
-        entry=entry or ("chat" if agent_cfg else "chat_noagent"),
+    return agent_runtime.call_context(
+        provisional_principal(user_id or ""),
+        agent_cfg,
         conversation_id=conversation_id,
-        agent_id=agent_id or None,
+        entry=entry,
     )
 
 
@@ -1252,19 +1103,22 @@ async def _resolve_agent_config(
     user_id: str | None = None,
     *,
     refuse_unavailable: bool = False,
+    ctx: CallContext | None = None,
 ) -> dict[str, Any] | None:
     """Load agent configuration from DB.
 
     Resolution priority: explicit ``agent_id`` > conversation's bound agent.
     When *user_id* is provided, the agent must be usable by that user: one
-    they own or are subscribed to, and switched on.
+    they own or are subscribed to, and switched on. *ctx*, when given, is
+    the context the agent is entered under and replaces the plain "this
+    user, directly" one built from *user_id*.
 
     An agent that is not usable is, with ``refuse_unavailable``, a refusal
     (the chat endpoints): ``agent_unavailable`` (409) when the conversation
     is bound to it, so the user is told to start a new conversation;
     ``resource_not_found`` / ``resource_inactive`` for an agent named
     explicitly. Without it, ``None``: the caller carries on with no agent
-    (the composer's vision check; the workflow Agent step until C1 phase 4).
+    (the composer's vision check, the only caller that does not refuse).
 
     Returns a dict with ``instructions``, ``tool_categories``,
     ``model_config_json``, ``kb_ids``, and ``grounding_config``, or ``None``.
@@ -1291,13 +1145,13 @@ async def _resolve_agent_config(
         if user_id:
             _agent_decision = await authorize_use(
                 session,
-                _use_context(user_id, None, entry="chat"),
+                ctx or _use_context(user_id, None, entry="chat"),
                 ResourceKind.AGENT,
                 [resolved_id],
             )
             if not refuse_unavailable:
-                # The workflow Agent step keeps running a switched-off agent
-                # until C1 phase 4 (B16; registered in tests/assembly/matrix.py).
+                # The composer's vision check: a switched-off agent still
+                # names the model its conversation would be answered by.
                 _agents = _agent_decision.including("resource_inactive")
                 agent = _agents[0] if _agents else None
             elif _agent_decision.usable:
@@ -1345,7 +1199,7 @@ async def _resolve_agent_config(
 
 
 async def _admit_turn(
-    user_id: str, conversation_id: str | None, agent_id: str | None
+    principal: Principal, conversation_id: str | None, agent_id: str | None
 ) -> dict[str, Any] | None:
     """The checks a chat turn passes before it streams; returns the agent config.
 
@@ -1355,12 +1209,32 @@ async def _admit_turn(
     due. The quota check and the agent resolution then run together.
     """
     if conversation_id:
-        await _validate_conversation_ownership(conversation_id, user_id)
+        await _validate_conversation_ownership(conversation_id, principal.user_id)
     _, agent_cfg = await asyncio.gather(
-        _check_token_quota(user_id),
-        _resolve_agent_config(agent_id, conversation_id, user_id=user_id, refuse_unavailable=True),
+        check_quota(principal),
+        agent_runtime.resolve_agent(
+            CallContext(principal=principal, binding=None, entry="chat"),
+            agent_id,
+            conversation_id=conversation_id,
+        ),
     )
     return agent_cfg
+
+
+@dataclasses.dataclass(frozen=True)
+class _AdmittedTurn:
+    """A chat turn that passed :func:`_admit_turn`, and who it acts as.
+
+    Auto mode admits the turn before it asks a model how to route, then
+    hands this to the endpoint it routes to, so the user is resolved and
+    the turn admitted once.
+    """
+
+    principal: Principal
+    system_instructions: str | None
+    preferred_language: str | None
+    timezone: str | None
+    agent_cfg: dict[str, Any] | None
 
 
 async def _resolve_llm(
@@ -1646,7 +1520,7 @@ def _conversation_sandbox_root(conversation_id: str | None) -> Path | None:
     """
     if not conversation_id:
         return None
-    return _PROJECT_ROOT.parent / "data" / "sandbox" / conversation_id
+    return sandbox_base() / conversation_id
 
 
 def _conversation_workspace(conversation_id: str | None) -> AgentWorkspace | None:
@@ -1708,22 +1582,41 @@ async def _resolve_tools(
     user_id: str | None = None,
     *,
     entry: Entry | None = None,
+    ctx: CallContext | None = None,
+    sandbox_id: str | None = None,
 ) -> ToolRegistry:
     """Build tool registry, optionally scoped to a per-conversation sandbox.
 
     *entry* names where the tools will be used when that is not a chat turn
-    (a ``call_agent`` delegate); it is what their call records carry.
+    (a ``call_agent`` delegate); it is what their call records carry. *ctx*,
+    when the caller already holds the run's call context, is used as it is.
+
+    *sandbox_id* names the directory the shell, code-execution and file
+    tools work in when that is not *conversation_id*'s: a run's own
+    directory (``core.assembly.sandbox``), or the conversation a delegate
+    was called from. With neither, the registry has none of those tools.
     """
     # The context connector and MCP tools are built and recorded under.
-    _tool_ctx = _use_context(user_id, agent_cfg, conversation_id=conversation_id, entry=entry)
-    sandbox_root = _conversation_sandbox_root(conversation_id)
+    _tool_ctx = ctx or _use_context(
+        user_id, agent_cfg, conversation_id=conversation_id, entry=entry
+    )
     sandbox_config = agent_cfg.get("sandbox_config") if agent_cfg else None
-    # Per-conversation uploads dir so generated images are isolated and
-    # cleaned up when the conversation is deleted.
+    sandbox_root: Path | None
     uploads_root: Path | None = None
-    if conversation_id:
-        uploads_base = Path(os.environ.get("UPLOADS_DIR", "uploads"))
-        uploads_root = uploads_base / "conversations" / conversation_id
+    if is_run_sandbox(sandbox_id):
+        # A run's own directory: everything the run writes is under it, so
+        # removing it when the run ends removes all of it.
+        assert sandbox_id is not None
+        sandbox_root = run_sandbox_root(sandbox_id)
+        uploads_root = sandbox_root / "uploads"
+    else:
+        _files_of = sandbox_id or conversation_id
+        sandbox_root = _conversation_sandbox_root(_files_of)
+        # Per-conversation uploads dir so generated images are isolated and
+        # cleaned up when the conversation is deleted.
+        if _files_of:
+            uploads_base = Path(os.environ.get("UPLOADS_DIR", "uploads"))
+            uploads_root = uploads_base / "conversations" / _files_of
     tools = get_tools(
         sandbox_root=sandbox_root,
         sandbox_config=sandbox_config,
@@ -2166,8 +2059,7 @@ async def _resolve_tools(
 
     # ------------------------------------------------------------------
     # Register CallAgentTool with all visible agents for multi-agent
-    # delegation.  The tool_resolver callback allows delegated agents to
-    # inherit the full tool set (minus call_agent itself).
+    # delegation.
     # Only available when no specific agent is selected — prevents
     # marketplace agents from accessing other agents' private prompts.
     # ------------------------------------------------------------------
@@ -2185,68 +2077,29 @@ async def _resolve_tools(
                 )
 
             if _visible_agents:
-                _agent_catalog = [
-                    {
-                        "id": a.id,
-                        "name": a.name,
-                        "description": a.description or "",
-                        "instructions": a.instructions,
-                        "model_config_json": a.model_config_json,
-                        "tool_categories": a.tool_categories,
-                        "kb_ids": a.kb_ids,
-                        "connector_ids": a.connector_ids,
-                        "mcp_server_ids": a.mcp_server_ids,
-                        "grounding_config": a.grounding_config,
-                        "sandbox_config": a.sandbox_config,
-                        "owner_user_id": a.user_id,
-                    }
-                    for a in _visible_agents
-                ]
-
-                async def _sub_agent_tool_resolver(
-                    sub_cfg: dict[str, Any], conv_id: str | None
-                ) -> Any:
-                    return await _resolve_tools(
-                        sub_cfg, conv_id, user_id=user_id, entry="sub_agent"
-                    )
-
-                async def _sub_agent_llm_resolver(
-                    sub_cfg: dict[str, Any],
-                ) -> Any:
-                    """Resolve LLM for a sub-agent with full DB-backed 3-tier fallback."""
-                    from fim_one.db import create_session as _cs_llm
-
-                    async with _cs_llm() as _llm_db:
-                        return await _resolve_llm(sub_cfg, _llm_db)
-
-                async def _sub_agent_hook_resolver(
-                    sub_cfg: dict[str, Any],
-                ) -> Any:
-                    """Build a delegated agent's own enforcement registry.
-
-                    Without this the delegate ran with an empty registry, so
-                    a sensitive connector call skipped the confirmation gate
-                    purely by being reached through ``call_agent``.
-                    """
-                    from fim_one.db import create_session as _cs_hook
-                    from fim_one.web.hooks_bootstrap import (
-                        build_hook_registry_for_agent,
-                    )
-
-                    _sub_shim = SimpleNamespace(
-                        model_config_json=sub_cfg.get("model_config_json")
-                    )
-                    return await build_hook_registry_for_agent(_sub_shim, _cs_hook)
-
                 from fim_one.core.tool.builtin.call_agent import CallAgentTool
 
+                # A catalogue of names. The delegate's configuration, tools
+                # (its MCP servers included) and hooks are assembled by the
+                # agent runtime when it is called, as for a chat with it.
                 tools.register(
                     CallAgentTool(
-                        available_agents=_agent_catalog,
-                        calling_user_id=user_id,
-                        tool_resolver=_sub_agent_tool_resolver,
-                        llm_resolver=_sub_agent_llm_resolver,
-                        hook_resolver=_sub_agent_hook_resolver,
+                        available_agents=[
+                            {"id": a.id, "name": a.name, "description": a.description or ""}
+                            for a in _visible_agents
+                        ],
+                        # The delegate's calls are recorded as its own,
+                        # not as the conversation's.
+                        call_context=dataclasses.replace(
+                            _tool_ctx,
+                            binding=None,
+                            entry="sub_agent",
+                            conversation_id=None,
+                            agent_id=None,
+                        ),
+                        # Its files are the conversation's, as in a chat
+                        # with that agent in this conversation.
+                        sandbox_id=conversation_id,
                     )
                 )
         except Exception:
@@ -2973,6 +2826,15 @@ async def react_endpoint(
     body : ChatStreamRequest
         JSON request body containing the query and optional parameters.
     """
+    return await _react_turn(request, body, None)
+
+
+async def _react_turn(
+    request: Request,
+    body: ChatStreamRequest,
+    admitted: _AdmittedTurn | None,
+) -> StreamingResponse:
+    """A ReAct turn. *admitted* is set when Auto mode already admitted it."""
     q = body.q
     conversation_id = body.conversation_id
     agent_id = body.agent_id
@@ -2994,14 +2856,22 @@ async def react_endpoint(
         )
 
     # -- Pre-stream resolution (before StreamingResponse) -------------------
-    (
-        current_user_id,
-        user_system_instructions,
-        preferred_language,
-        user_timezone,
-    ) = await _resolve_user(token)
-    if current_user_id is None:
+    principal: Principal | None
+    if admitted is not None:
+        principal = admitted.principal
+        user_system_instructions = admitted.system_instructions
+        preferred_language = admitted.preferred_language
+        user_timezone = admitted.timezone
+    else:
+        (
+            principal,
+            user_system_instructions,
+            preferred_language,
+            user_timezone,
+        ) = await _resolve_user(token)
+    if principal is None:
         raise AppError("authentication_required", status_code=401)
+    current_user_id: str = principal.user_id
 
     # Bind the user id to the rate-limiter contextvar so per-user token
     # buckets can partition state without threading user_id through every
@@ -3014,15 +2884,23 @@ async def react_endpoint(
     if not user_timezone:
         user_timezone = request.headers.get("X-Timezone") or None
 
-    agent_cfg = await _admit_turn(current_user_id, conversation_id, agent_id)
+    # Auto mode admitted the turn before routing it here; once is enough.
+    agent_cfg = (
+        admitted.agent_cfg
+        if admitted is not None
+        else await _admit_turn(principal, conversation_id, agent_id)
+    )
+    # The context this turn's resources are used and recorded under.
+    turn_ctx = agent_runtime.call_context(
+        principal, agent_cfg, conversation_id=conversation_id
+    )
 
     from fim_one.db import create_session as _create_session
 
     try:
         async with _create_session() as _llm_db:
-            llm, fast_llm, _context_budget, model_supports_vision = await asyncio.gather(
-                _resolve_llm(agent_cfg, _llm_db),
-                _resolve_fast_llm(agent_cfg, _llm_db),
+            (llm, fast_llm), _context_budget, model_supports_vision = await asyncio.gather(
+                agent_runtime.resolve_models(agent_cfg, _llm_db),
                 get_effective_context_budget(_llm_db),
                 _resolve_model_supports_vision(agent_cfg, _llm_db),
             )
@@ -3051,7 +2929,7 @@ async def react_endpoint(
     from fim_one.core.planner.domain import classify_domain
 
     tools, _react_domain_hint = await asyncio.gather(
-        _resolve_tools(agent_cfg, conversation_id, user_id=current_user_id),
+        agent_runtime.resolve_toolset(turn_ctx, agent_cfg),
         classify_domain(q, fast_llm),
     )
 
@@ -3218,7 +3096,7 @@ async def react_endpoint(
         yield _emit(sse_events, "step", {"type": "thinking", "status": "start", "iteration": 1})
 
         # -- MCP connection (must happen inside generator for anyio cancel scope) --
-        user_mcp_client = await _connect_pending_mcp_servers(tools, agent_cfg)
+        user_mcp_client = await agent_runtime.connect_mcp(tools, agent_cfg)
 
         # -- Optional persistence setup ------------------------------------
         db_session = None
@@ -3604,14 +3482,8 @@ async def react_endpoint(
             # so hooks can open/commit their own transactions (ApprovalGateHook
             # polls the ``confirmation_requests`` table from a background
             # task while the request is still streaming).
-            from fim_one.db import create_session as _create_hook_session
-            from fim_one.web.hooks_bootstrap import build_hook_registry_for_agent
-
-            _agent_shim_ns = SimpleNamespace(
-                model_config_json=(agent_cfg or {}).get("model_config_json")
-            )
-            _hook_registry = await build_hook_registry_for_agent(
-                _agent_shim_ns, _create_hook_session, conversation_id=conversation_id
+            _hook_registry = await agent_runtime.build_hooks(
+                agent_cfg, conversation_id=conversation_id
             )
 
             agent = ReActAgent(
@@ -3818,10 +3690,8 @@ async def react_endpoint(
                             _approx_total = (
                                 _result_tokens_so_far + _est_completion_tokens
                             )
-                            (
-                                _monthly_used,
-                                _quota_cap,
-                            ) = await _get_quota_status(current_user_id)
+                            _quota_now = await quota_status(current_user_id)
+                            _monthly_used, _quota_cap = _quota_now.used, _quota_now.cap
                             if (
                                 _quota_cap > 0
                                 and _monthly_used + _est_completion_tokens
@@ -3834,9 +3704,9 @@ async def react_endpoint(
                                             _monthly_used + _est_completion_tokens
                                         ),
                                         user_quota=_quota_cap,
-                                        reset_at=await _quota_reset_iso(
-                                            current_user_id
-                                        ),
+                                        reset_at=(
+                                            await quota_reset_at(current_user_id)
+                                        ).isoformat(),
                                     )
                                 )
                                 logger.info(
@@ -4278,6 +4148,15 @@ async def dag_endpoint(
     body : ChatStreamRequest
         JSON request body containing the query and optional parameters.
     """
+    return await _dag_turn(request, body, None)
+
+
+async def _dag_turn(
+    request: Request,
+    body: ChatStreamRequest,
+    admitted: _AdmittedTurn | None,
+) -> StreamingResponse:
+    """A plan (DAG) turn. *admitted* is set when Auto mode already admitted it."""
     q = body.q
     conversation_id = body.conversation_id
     agent_id = body.agent_id
@@ -4287,14 +4166,22 @@ async def dag_endpoint(
     dag_doc_mode = body.doc_mode
 
     # -- Pre-stream resolution ----------------------------------------------
-    (
-        current_user_id,
-        user_system_instructions,
-        preferred_language,
-        user_timezone,
-    ) = await _resolve_user(token)
-    if current_user_id is None:
+    principal: Principal | None
+    if admitted is not None:
+        principal = admitted.principal
+        user_system_instructions = admitted.system_instructions
+        preferred_language = admitted.preferred_language
+        user_timezone = admitted.timezone
+    else:
+        (
+            principal,
+            user_system_instructions,
+            preferred_language,
+            user_timezone,
+        ) = await _resolve_user(token)
+    if principal is None:
         raise AppError("authentication_required", status_code=401)
+    current_user_id: str = principal.user_id
 
     # Bind the user id to the rate-limiter contextvar (see ReAct handler
     # above for the rationale).
@@ -4304,21 +4191,28 @@ async def dag_endpoint(
     if not user_timezone:
         user_timezone = request.headers.get("X-Timezone") or None
 
-    agent_cfg = await _admit_turn(current_user_id, conversation_id, agent_id)
+    # Auto mode admitted the turn before routing it here; once is enough.
+    agent_cfg = (
+        admitted.agent_cfg
+        if admitted is not None
+        else await _admit_turn(principal, conversation_id, agent_id)
+    )
+    # The context this turn's resources are used and recorded under.
+    turn_ctx = agent_runtime.call_context(
+        principal, agent_cfg, conversation_id=conversation_id
+    )
 
     from fim_one.db import create_session as _create_session
 
     try:
         async with _create_session() as _llm_db:
             (
-                llm,
-                fast_llm,
+                (llm, fast_llm),
                 _fast_context_budget,
                 _context_budget,
                 dag_model_supports_vision,
             ) = await asyncio.gather(
-                _resolve_llm(agent_cfg, _llm_db),
-                _resolve_fast_llm(agent_cfg, _llm_db),
+                agent_runtime.resolve_models(agent_cfg, _llm_db),
                 get_effective_fast_context_budget(_llm_db),
                 get_effective_context_budget(_llm_db),
                 _resolve_model_supports_vision(agent_cfg, _llm_db),
@@ -4346,7 +4240,7 @@ async def dag_endpoint(
     if fast_llm and fast_llm is not llm:
         llm = FallbackLLM(primary=llm, fallback=fast_llm)
 
-    tools = await _resolve_tools(agent_cfg, conversation_id, user_id=current_user_id)
+    tools = await agent_runtime.resolve_toolset(turn_ctx, agent_cfg)
     agent_instructions = agent_cfg["instructions"] if agent_cfg else None
     lang_directive = get_language_directive(preferred_language)
 
@@ -4415,7 +4309,7 @@ async def dag_endpoint(
         sse_events: list[dict[str, Any]] = []
 
         # -- MCP connection (must happen inside generator for anyio cancel scope) --
-        dag_user_mcp_client = await _connect_pending_mcp_servers(tools, agent_cfg)
+        dag_user_mcp_client = await agent_runtime.connect_mcp(tools, agent_cfg)
 
         # -- Optional persistence setup ------------------------------------
         db_session = None
@@ -4790,16 +4684,8 @@ async def dag_endpoint(
                         tool.set_usage_tracker(fast_usage_tracker)
 
                 # --- Hook System bootstrap for DAG ---
-                from fim_one.db import create_session as _create_hook_session_dag
-                from fim_one.web.hooks_bootstrap import (
-                    build_hook_registry_for_agent,
-                )
-
-                _agent_shim_ns_dag = SimpleNamespace(
-                    model_config_json=(agent_cfg or {}).get("model_config_json")
-                )
-                _hook_registry_dag = await build_hook_registry_for_agent(
-                    _agent_shim_ns_dag, _create_hook_session_dag, conversation_id=conversation_id
+                _hook_registry_dag = await agent_runtime.build_hooks(
+                    agent_cfg, conversation_id=conversation_id
                 )
 
                 agent = ReActAgent(
@@ -5071,10 +4957,8 @@ async def dag_endpoint(
                                 _dag_est_completion = (
                                     sum(len(c) for c in answer_chunks) // 4
                                 )
-                                (
-                                    _dag_used,
-                                    _dag_cap,
-                                ) = await _get_quota_status(current_user_id)
+                                _dag_quota_now = await quota_status(current_user_id)
+                                _dag_used, _dag_cap = _dag_quota_now.used, _dag_quota_now.cap
                                 if (
                                     _dag_cap > 0
                                     and _dag_used + _dag_est_completion >= _dag_cap
@@ -5086,9 +4970,9 @@ async def dag_endpoint(
                                                 _dag_used + _dag_est_completion
                                             ),
                                             user_quota=_dag_cap,
-                                            reset_at=await _quota_reset_iso(
-                                                current_user_id
-                                            ),
+                                            reset_at=(
+                                                await quota_reset_at(current_user_id)
+                                            ).isoformat(),
                                         )
                                     )
                                     logger.info(
@@ -5582,24 +5466,31 @@ async def auto_endpoint(
     token = body.token
 
     # -- Pre-stream: resolve auth to get fast_llm for classification --------
-    current_user_id, _, _, _ = await _resolve_user(token)
-    if current_user_id is None:
+    principal, system_instructions, preferred_language, user_timezone = await _resolve_user(
+        token
+    )
+    if principal is None:
         raise AppError("authentication_required", status_code=401)
+
+    # The admission of the endpoint this turn is routed to, before the
+    # classification below spends a model call: the conversation is the
+    # caller's, plan and quota allow the turn, the agent is usable. The
+    # routed endpoint is handed the result and does not admit again.
+    agent_cfg = await _admit_turn(principal, body.conversation_id, body.agent_id)
+    admitted = _AdmittedTurn(
+        principal=principal,
+        system_instructions=system_instructions,
+        preferred_language=preferred_language,
+        timezone=user_timezone,
+        agent_cfg=agent_cfg,
+    )
 
     # Determine execution mode
     from fim_one.core.planner.router import classify_execution_mode
     from fim_one.db import create_session as _create_session
 
     async with _create_session() as _llm_db:
-        fast_llm = await _resolve_fast_llm(
-            await _resolve_agent_config(
-                body.agent_id,
-                body.conversation_id,
-                user_id=current_user_id,
-                refuse_unavailable=True,
-            ),
-            _llm_db,
-        )
+        fast_llm = await _resolve_fast_llm(agent_cfg, _llm_db)
 
     decision = await classify_execution_mode(q, fast_llm)
     mode = decision.mode
@@ -5623,9 +5514,9 @@ async def auto_endpoint(
 
     # Wrap the inner endpoint's StreamingResponse to prepend the routing event
     if mode == "dag":
-        inner_response = await dag_endpoint(request, body)
+        inner_response = await _dag_turn(request, body, admitted)
     else:
-        inner_response = await react_endpoint(request, body)
+        inner_response = await _react_turn(request, body, admitted)
 
     async def auto_generate() -> AsyncGenerator[str, None]:
         # Emit routing decision first

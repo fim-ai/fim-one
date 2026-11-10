@@ -26,6 +26,7 @@ from fim_one.core.workflow.types import (
 )
 from fim_one.core.workflow.variable_store import VariableStore
 from fim_one.db.base import Base
+from fim_one.db.models import SystemSetting, User
 from fim_one.db.models.conversation import Conversation
 from fim_one.db.models.workflow import WorkflowRun
 
@@ -113,6 +114,9 @@ async def test_quota_window_includes_workflow_run_tokens(
     """Chat usage + unattended workflow-run usage share one quota window."""
     user = "owner-1"
     async with session_factory() as s:
+        # No override and no plan: the cap is the default_token_quota setting.
+        s.add(User(id=user, email="o@x.io", username=user))
+        s.add(SystemSetting(key="default_token_quota", value="100"))
         s.add(Conversation(user_id=user, mode="chat", total_tokens=30))
         s.add(
             WorkflowRun(
@@ -125,17 +129,10 @@ async def test_quota_window_includes_workflow_run_tokens(
         )
         await s.commit()
 
-    from fim_one.web.api.chat import _get_quota_status
+    from fim_one.web.services.quota_backend import usage_and_cap
 
-    # No user/plan row → cap comes from the default_token_quota admin setting.
-    with (
-        patch("fim_one.db.create_session", new=lambda: session_factory()),
-        patch(
-            "fim_one.web.api.admin_utils.get_setting",
-            new=AsyncMock(return_value="100"),
-        ),
-    ):
-        used, cap = await _get_quota_status(user)
+    with patch("fim_one.db.create_session", new=lambda: session_factory()):
+        used, cap = await usage_and_cap(user)
 
     assert cap == 100
     # 30 (chat) + 50 (workflow run) must both count.

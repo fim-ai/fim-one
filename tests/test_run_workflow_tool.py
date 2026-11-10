@@ -27,6 +27,7 @@ from fim_one.core.workflow import run_service as rs
 from fim_one.db.base import Base
 from fim_one.db.models.user import User
 from fim_one.db.models.workflow import Workflow, WorkflowRun
+from fim_one.core.assembly.errors import AssemblyRefusal
 from fim_one.web.exceptions import AppError
 
 _BLUEPRINT = {
@@ -89,7 +90,7 @@ def service() -> Iterator[rs.WorkflowRunService]:
     svc = rs.WorkflowRunService(engine_factory=_FakeEngine)
     with (
         patch.object(rs, "_default_service", svc),
-        patch("fim_one.web.api.chat._check_token_quota", new=AsyncMock()),
+        patch("fim_one.core.assembly.quota.check_quota", new=AsyncMock()),
     ):
         yield svc
 
@@ -218,11 +219,11 @@ async def test_over_quota_caller_is_refused(db: async_sessionmaker[AsyncSession]
     _, caller, wf_id = await _setup(db)
     checked: list[str] = []
 
-    async def _quota(user_id: str) -> None:
-        checked.append(user_id)
-        raise AppError("token_quota_exceeded", status_code=429)
+    async def _quota(principal: Any) -> None:
+        checked.append(principal.user_id)
+        raise AssemblyRefusal("token_quota_exceeded", 429)
 
-    with patch("fim_one.web.api.chat._check_token_quota", new=_quota):
+    with patch("fim_one.core.assembly.quota.check_quota", new=_quota):
         out = await RunWorkflowTool(workflow_ids=[wf_id], user_id=caller).run(
             name="nightly_reconcile"
         )

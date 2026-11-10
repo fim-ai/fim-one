@@ -218,6 +218,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
     except Exception:
         logger.exception("Context budget sanity check failed (non-fatal)")
 
+    # The assembly layer's ports (quota numbers, agent runtime). Registered
+    # in create_app(); checked here so a process that would refuse every
+    # turn does not come up at all.
+    from fim_one.core.assembly.quota import get_quota_backend
+    from fim_one.core.assembly.runtime import get_agent_runtime_factory
+
+    get_quota_backend()
+    get_agent_runtime_factory()
+
     # Bridge the core ``emit_inline_confirmation`` hook to the chat SSE
     # stream.  Must run before any agent turn — any tool flagged
     # requires_confirmation would otherwise skip the inline push.
@@ -325,6 +334,10 @@ def create_app() -> FastAPI:
         "Copyright 2024-2026 FIM Labs Pte. Ltd.",
         file=sys.stderr,
     )
+
+    from fim_one.web.services.assembly_ports import register_assembly_ports
+
+    register_assembly_ports()
 
     app = FastAPI(
         title="FIM One API",

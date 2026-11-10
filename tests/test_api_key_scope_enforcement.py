@@ -310,14 +310,32 @@ class TestChatStreamScope:
     async def test_chat_key_can_stream(self, db_env: None) -> None:
         owner = await _seed_owner()
         key = await _seed_key(owner, "chat")
-        user_id, *_ = await _resolve_user(key)
-        assert user_id == owner.id
+        principal, *_ = await _resolve_user(key)
+        assert principal is not None
+        assert principal.user_id == owner.id
 
     async def test_unrestricted_key_can_stream(self, db_env: None) -> None:
         owner = await _seed_owner()
         key = await _seed_key(owner, None)
-        user_id, *_ = await _resolve_user(key)
-        assert user_id == owner.id
+        principal, *_ = await _resolve_user(key)
+        assert principal is not None
+        assert principal.user_id == owner.id
+
+    async def test_the_turn_acts_as_a_principal_that_names_the_key_and_its_scopes(
+        self, db_env: None
+    ) -> None:
+        from fim_one.core.assembly.principal import AuthMethod
+
+        owner = await _seed_owner()
+        scoped, *_ = await _resolve_user(await _seed_key(owner, "chat"))
+        open_key, *_ = await _resolve_user(await _seed_key(owner, None))
+        session, *_ = await _resolve_user(create_access_token(owner.id, owner.email or ""))
+
+        assert scoped is not None and open_key is not None and session is not None
+        assert (scoped.auth, scoped.scopes) == (AuthMethod.API_KEY, frozenset({"chat"}))
+        assert (open_key.auth, open_key.scopes) == (AuthMethod.API_KEY, None)
+        assert (session.auth, session.scopes) == (AuthMethod.SESSION, None)
+        assert session.user_id == owner.id and session.is_admin is bool(owner.is_admin)
 
 
 # ---------------------------------------------------------------------------

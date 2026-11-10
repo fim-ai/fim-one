@@ -2,27 +2,15 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from fim_one.core.agent.hooks import HookRegistry
-from fim_one.core.model.base import BaseLLM
 from fim_one.core.tool.base import BaseTool
 
+if TYPE_CHECKING:
+    from fim_one.core.assembly.principal import CallContext
+    from fim_one.core.assembly.runtime import AgentRuntime, AgentRuntimeFactory
+
 logger = logging.getLogger(__name__)
-
-# Type alias for the LLM resolver callback.
-# Signature: (agent_cfg) -> BaseLLM
-# The callback implements the full 3-tier resolution logic with DB access.
-LLMResolver = Callable[[dict[str, Any]], Awaitable[BaseLLM]]
-
-# Type alias for the hook resolver callback.
-# Signature: (agent_cfg) -> HookRegistry
-# Builds the *delegate's own* registry rather than inheriting the caller's.
-# ``build_hook_registry_for_agent`` auto-attaches the confirmation gate to
-# every agent, so rebuilding from the delegate's config is a superset of
-# inheritance: it yields the gate plus any hooks the delegate declares.
-HookResolver = Callable[[dict[str, Any]], Awaitable[HookRegistry]]
 
 
 class CallAgentTool(BaseTool):
@@ -30,42 +18,45 @@ class CallAgentTool(BaseTool):
 
     Dynamically builds its description and parameter enum from the list
     of available agents provided at construction time.
+
+    The delegate's runtime (its model, its bound connectors, knowledge bases
+    and MCP servers, its enforcement hooks) comes from the assembly layer's
+    agent runtime port, the same assembly a chat with that agent gets. The
+    tool holds a catalogue of names only: the delegate's configuration is
+    read, and its availability checked, when it is called.
     """
 
     def __init__(
         self,
         available_agents: list[dict[str, Any]],
-        calling_user_id: str,
-        tool_resolver: Callable[[dict[str, Any], str | None], Awaitable[Any]] | None = None,
-        llm_resolver: LLMResolver | None = None,
-        hook_resolver: HookResolver | None = None,
+        call_context: CallContext,
+        *,
+        runtime_factory: AgentRuntimeFactory | None = None,
+        sandbox_id: str | None = None,
     ):
         """
         Parameters
         ----------
         available_agents:
-            list of {id, name, description, instructions, model_config_json, ...}
-        calling_user_id:
-            ID of the user initiating the call.
-        tool_resolver:
-            optional async callback ``(agent_cfg, conv_id) -> ToolRegistry``
-        llm_resolver:
-            optional async callback ``(agent_cfg) -> BaseLLM`` that resolves
-            the LLM for a delegated agent using the full 3-tier fallback
-            (config_id -> inline config -> system default).
-        hook_resolver:
-            optional async callback ``(agent_cfg) -> HookRegistry`` building
-            the delegate's enforcement hooks.  When omitted, the delegate
-            runs with no hooks — acceptable only for callers that have no
-            hooks to enforce (core-level tests, offline eval).  Web call
-            sites MUST wire this: without it a delegated connector write
-            skips the confirmation gate the same call would hit inline.
+            The catalogue offered to the model: ``{id, name, description}``.
+        call_context:
+            Who delegates, and from where. The delegate is judged by this
+            context's subject; credentials resolve for its principal; call
+            records carry its entry.
+        runtime_factory:
+            Builds the delegate's runtime. Defaults to the factory the web
+            layer registered (``core.assembly.runtime``).
+        sandbox_id:
+            The conversation the delegation is made from: the delegate's
+            shell, code-execution and file tools work in that conversation's
+            directory, as in a chat with the delegate there. Without one
+            each delegation gets a directory of its own, removed when the
+            delegation ends.
         """
         self._agents = {a["id"]: a for a in available_agents}
-        self._calling_user_id = calling_user_id
-        self._tool_resolver = tool_resolver
-        self._llm_resolver = llm_resolver
-        self._hook_resolver = hook_resolver
+        self._call_context = call_context
+        self._runtime_factory = runtime_factory
+        self._sandbox_id = sandbox_id
         agent_list = "\n".join(
             f"  - {a['name']} (id={a['id']}): {a.get('description', '')}"
             for a in available_agents
@@ -102,108 +93,64 @@ class CallAgentTool(BaseTool):
             "required": ["agent_id", "task"],
         }
 
-    async def _resolve_llm(self, agent_cfg: dict[str, Any]) -> BaseLLM:
-        """Resolve an LLM for the delegated agent using the injected callback or ENV fallback.
+    async def _build_runtime(self, agent_id: str, sandbox_id: str) -> AgentRuntime:
+        from fim_one.core.assembly.runtime import get_agent_runtime_factory
 
-        Resolution order:
-        1. Injected ``llm_resolver`` callback (has full DB access for 3-tier resolution)
-        2. Inline ``model_config_json`` via ``get_llm_from_config()`` (no DB needed)
-        3. ENV-based ``get_model_registry()`` default (no DB needed)
-        """
-        # Tier 1: Use the injected resolver if available (supports DB lookups)
-        if self._llm_resolver is not None:
-            return await self._llm_resolver(agent_cfg)
-
-        # Tier 2: Try inline model_config_json (no DB needed)
-        from fim_one.web.deps import get_llm_from_config
-
-        model_cfg = agent_cfg.get("model_config_json") or {}
-        if model_cfg and isinstance(model_cfg, dict):
-            llm = get_llm_from_config(model_cfg)
-            if llm is not None:
-                return llm
-
-        # Tier 3: Fall back to ENV-based model registry
-        from fim_one.web.deps import get_model_registry
-
-        registry = get_model_registry()
-        return registry.get_default()
+        factory = self._runtime_factory or get_agent_runtime_factory()
+        return await factory.build(
+            self._call_context, agent_id, conversation_id=None, sandbox_id=sandbox_id
+        )
 
     async def run(self, **kwargs: Any) -> str:
         """Run the specified agent on the task and return its response."""
         agent_id: str = kwargs.get("agent_id", "")
         task: str = kwargs.get("task", "")
-        from fim_one.core.agent.react import ReActAgent
+        from fim_one.core.assembly.sandbox import delegation_sandbox_id, release_sandbox
 
-        agent_cfg = self._agents.get(agent_id)
-        if not agent_cfg:
+        if agent_id not in self._agents:
             return f"Error: agent {agent_id} not found"
 
-        # Resolve full tools for the delegated agent via callback
-        if self._tool_resolver:
-            try:
-                delegate_tools = await self._tool_resolver(agent_cfg, None)
-                # Exclude call_agent to prevent infinite recursion
-                delegate_tools = delegate_tools.exclude_by_name("call_agent")
-            except Exception:
-                logger.warning(
-                    "Failed to resolve tools for agent %s", agent_id,
-                    exc_info=True,
-                )
-                from fim_one.core.tool.registry import ToolRegistry
-                delegate_tools = ToolRegistry()
-        else:
-            from fim_one.core.tool.registry import ToolRegistry
-            delegate_tools = ToolRegistry()
-
-        # Resolve model using the 3-tier fallback
+        # The directory the delegate's shell, code and file tools work in:
+        # the calling conversation's, or one of this delegation's own
+        # (``release_sandbox`` removes only the latter).
+        sandbox_id = self._sandbox_id or delegation_sandbox_id()
         try:
-            llm = await self._resolve_llm(agent_cfg)
+            return await self._delegate(agent_id, task, sandbox_id)
+        finally:
+            await release_sandbox(sandbox_id)
+
+    async def _delegate(self, agent_id: str, task: str, sandbox_id: str) -> str:
+        from fim_one.core.agent.react import ReActAgent
+        from fim_one.core.assembly.errors import AssemblyRefusal
+
+        # The delegate's whole runtime, or no delegation. Fail CLOSED: a
+        # delegate that cannot be assembled (no model, no enforcement hooks)
+        # would otherwise run stripped of the gates the same call hits when
+        # made in a chat with that agent.
+        try:
+            runtime = await self._build_runtime(agent_id, sandbox_id)
+        except AssemblyRefusal as refusal:
+            return f"Error: agent {agent_id} is not available: {refusal.detail}"
         except Exception:
             logger.error(
-                "Failed to resolve LLM for agent %s", agent_id,
-                exc_info=True,
+                "Failed to assemble agent %s — refusing to delegate", agent_id, exc_info=True
             )
-            return f"Error: could not load model for agent {agent_id}"
-
-        # Resolve the delegate's own enforcement hooks.  Fail CLOSED: a
-        # delegate that cannot build its hooks would run its tools past an
-        # approval gate that the same call would hit when made inline, so
-        # abort the delegation instead of silently running it unguarded.
-        hook_registry: HookRegistry | None = None
-        if self._hook_resolver is not None:
-            try:
-                hook_registry = await self._hook_resolver(agent_cfg)
-            except Exception:
-                logger.error(
-                    "Failed to resolve hooks for agent %s — refusing to "
-                    "delegate unguarded",
-                    agent_id,
-                    exc_info=True,
-                )
-                return (
-                    f"Error: could not load enforcement hooks for agent "
-                    f"{agent_id}; delegation aborted"
-                )
-
-        instructions = agent_cfg.get("instructions") or ""
-
-        # ``agent_id``/``user_id`` are what make the hooks above effective:
-        # ApprovalGateHook keys off ``HookContext.agent_id`` to load the
-        # delegate's row (and its ``require_confirmation_for_all``), and
-        # bows out entirely when it is absent.  Passing the registry without
-        # these would leave the gate a no-op.
-        delegate = ReActAgent(
-            llm=llm,
-            tools=delegate_tools,
-            extra_instructions=instructions,
-            max_iterations=5,
-            hook_registry=hook_registry,
-            agent_id=agent_id,
-            user_id=self._calling_user_id or None,
-        )
+            return f"Error: could not set up agent {agent_id}; delegation aborted"
 
         try:
+            # ``agent_id``/``user_id`` are what make the hooks effective:
+            # the approval gate keys off ``HookContext.agent_id`` to load the
+            # delegate's row (and its ``require_confirmation_for_all``).
+            delegate = ReActAgent(
+                llm=runtime.llm,
+                # Exclude call_agent to prevent infinite recursion
+                tools=runtime.tools.exclude_by_name("call_agent"),
+                extra_instructions=runtime.instructions or "",
+                max_iterations=5,
+                hook_registry=runtime.hooks,
+                agent_id=agent_id,
+                user_id=self._call_context.principal.user_id or None,
+            )
             result = await delegate.run(task)
             # Return the delegate's answer, never the ``AgentResult`` itself.
             # It is a plain dataclass, so ``str()`` renders its whole repr —
@@ -222,3 +169,12 @@ class CallAgentTool(BaseTool):
                 exc_info=True,
             )
             return f"Agent delegation error: {e}"
+        finally:
+            # The MCP connections the runtime opened, in the task that
+            # opened them.
+            try:
+                await runtime.aclose()
+            except Exception:
+                logger.warning(
+                    "Failed to close the runtime of agent %s", agent_id, exc_info=True
+                )

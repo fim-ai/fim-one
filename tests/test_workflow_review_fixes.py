@@ -22,6 +22,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from fim_one.core.assembly.principal import Binding, CallContext, provisional_principal
 from fim_one.core.workflow import run_service as rs
 from fim_one.db.base import Base
 from fim_one.db.models.organization import Organization, OrgMembership
@@ -178,7 +179,11 @@ class TestWebhookPayload:
         self, sent_webhooks: list[dict[str, Any]]
     ) -> None:
         wf = MagicMock(id="w", webhook_url="https://hooks.example.com/x")
-        principal = rs.Principal(user_id="a", author_id="a")
+        principal = CallContext(
+            principal=provisional_principal("a"),
+            binding=Binding(kind="workflow", id="w", owner_id="a"),
+            entry="schedule",
+        )
         out = rs.RunOutcome(run_id="r", status="failed", error="boom")
         spawned: list[Any] = []
         with patch("fim_one.core.utils.spawn_background", spawned.append):

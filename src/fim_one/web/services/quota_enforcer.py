@@ -27,9 +27,9 @@ The semantic 3-state for ``users.token_quota`` (preserve, do not change):
 - ``0``     → "unlimited (VIP gift)"
 - ``N > 0`` → "hard cap at N, overrides plan"
 
-The ``None`` return is also load-bearing: chat.py's ``_get_quota_status``
-returns ``(0, 0)`` for "no cap" and skips enforcement.  Returning
-``None`` here is what propagates that contract upward.
+The ``None`` return is also load-bearing: a cap of ``0`` means "no cap" to
+``core.assembly.quota`` and enforcement is skipped.  Returning ``None``
+here is what propagates that contract upward.
 """
 
 from __future__ import annotations
@@ -140,8 +140,7 @@ async def get_user_quota(user: User, db: AsyncSession) -> int | None:
 async def get_user_quota_by_id(user_id: str, db: AsyncSession) -> int | None:
     """Like :func:`get_user_quota` but takes a user id.
 
-    Used by chat.py's ``_get_quota_status`` which only has the id in
-    scope. Performs a single ``SELECT`` joining ``BillingPlan`` so the
+    For callers that only have the id in scope. Performs a single ``SELECT`` joining ``BillingPlan`` so the
     plan-bound quota and the legacy override come back in one round-trip.
     The system-default row is fetched separately only when both upper
     tiers are unset.
@@ -217,9 +216,10 @@ async def get_quota_checked_user(
     DB chat, eval runs); chat runs the same check before each turn. These
     calls are not yet counted in the user's usage.
     """
-    from fim_one.web.api.chat import _check_token_quota
+    from fim_one.core.assembly.principal import provisional_principal
+    from fim_one.core.assembly.quota import check_quota
 
-    await _check_token_quota(user.id)
+    await check_quota(provisional_principal(user.id))
     return user
 
 

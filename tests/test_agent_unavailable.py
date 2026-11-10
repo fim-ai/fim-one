@@ -226,7 +226,7 @@ class TestChatEndpoints:
         assert body["error_args"]["agent_id"] == world.agent
 
 
-    @pytest.mark.parametrize("endpoint", ["/api/react", "/api/dag"])
+    @pytest.mark.parametrize("endpoint", ["/api/react", "/api/dag", "/api/auto"])
     async def test_someone_elses_conversation_is_not_found_whatever_its_agent(
         self, app: FastAPI, world: World, endpoint: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:

@@ -20,6 +20,7 @@ from fim_one.core.model.types import ChatMessage
 from fim_one.db import create_session, get_session
 from fim_one.web.auth import get_current_user
 from fim_one.web.services.quota_enforcer import get_quota_checked_user
+from fim_one.core.assembly.sandbox import eval_run_sandbox_id, release_sandbox, sandbox_root
 from fim_one.web.deps import get_effective_fast_llm, get_effective_llm, get_llm_from_config, get_tools
 from fim_one.web.exceptions import AppError
 from fim_one.db.models.agent import Agent
@@ -178,7 +179,12 @@ async def _execute_eval_run(
         run.status = "running"
         await db.commit()
 
-        tools = get_tools()
+        # The run's own directory for the shell, code and file tools: cases
+        # of one run share it, no other run or user does, and it goes when
+        # the run ends.
+        sandbox_id = eval_run_sandbox_id(run_id)
+        run_root = sandbox_root(sandbox_id)
+        tools = get_tools(sandbox_root=run_root, uploads_root=run_root / "uploads")
         sem = asyncio.Semaphore(5)
 
         try:
@@ -228,6 +234,8 @@ async def _execute_eval_run(
                 run.error_message = str(exc)
                 run.completed_at = datetime.now(UTC)
                 await db.commit()
+        finally:
+            await release_sandbox(sandbox_id)
 
 
 # ---------------------------------------------------------------------------

@@ -51,6 +51,39 @@ async def session() -> AsyncIterator[AsyncSession]:
 
 
 class TestResolvePrincipal:
+    async def test_a_row_the_entry_point_already_loaded_is_not_read_again(
+        self, session: AsyncSession
+    ) -> None:
+        admin_row = await session.get(User, "u-admin")
+        off_row = await session.get(User, "u-off")
+        statements: list[str] = []
+
+        from sqlalchemy import event
+
+        def _record(_conn: object, _cursor: object, statement: str, *_: object) -> None:
+            statements.append(statement)
+
+        engine = session.bind.sync_engine  # type: ignore[union-attr]
+        event.listen(engine, "before_cursor_execute", _record)
+        try:
+            admin = await resolve_principal(
+                session, user_id="u-admin", auth=AuthMethod.SESSION, user=admin_row
+            )
+            with pytest.raises(AssemblyRefusal):
+                await resolve_principal(
+                    session, user_id="u-off", auth=AuthMethod.SESSION, user=off_row
+                )
+            # Someone else's row is not taken for the user's.
+            plain = await resolve_principal(
+                session, user_id="u-plain", auth=AuthMethod.SESSION, user=admin_row
+            )
+        finally:
+            event.remove(engine, "before_cursor_execute", _record)
+
+        assert admin.is_admin is True
+        assert plain.is_admin is False and plain.org_ids == frozenset({"org-1", "org-2"})
+        assert sum("FROM users" in s for s in statements) == 1  # only for u-plain
+
     async def test_loads_orgs_and_admin_flag(self, session: AsyncSession) -> None:
         plain = await resolve_principal(session, user_id="u-plain", auth=AuthMethod.SESSION)
         admin = await resolve_principal(
