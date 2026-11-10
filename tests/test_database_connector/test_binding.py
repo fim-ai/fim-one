@@ -208,16 +208,16 @@ class TestOddCharactersInATemplate:
     @pytest.mark.parametrize(
         "sql",
         [
-            "SELECT 1 --\u3000'\n + {{v}} + '",
-            "SELECT 1 --\x7f'\n WHERE a = {{v}} --\x7f'",
             "SELECT\u00a0a FROM t WHERE b = {{v}}",
-            "SELECT a FROM t WHERE b = {{v}} /* \x00 */",
+            "SELECT a FROM t WHERE b = {{v}}\u3000AND c = 1",
+            "\ufeffSELECT {{v}}",
+            "SELECT a FROM t WHERE b = {{v}} \x00",
         ],
     )
-    def test_a_control_or_invisible_character_outside_quotes_is_refused(self, sql: str) -> None:
+    def test_a_control_or_invisible_character_in_the_statement_is_refused(self, sql: str) -> None:
         dialects: tuple[SqlDialect, ...] = ("postgresql", "mysql", "generic")
         for dialect in dialects:
-            with pytest.raises(SqlBindingError):
+            with pytest.raises(SqlBindingError, match="invisible or control character"):
                 parse_sql_template(sql, dialect=dialect)
 
     def test_inside_quotes_it_is_text(self) -> None:
@@ -225,6 +225,30 @@ class TestOddCharactersInATemplate:
             "SELECT a FROM t WHERE b = 'x\u3000y' AND c = {{v}}", dialect="mysql"
         )
         assert template.variables == ("v",)
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT a FROM t WHERE b = {{v}} -- 中文\u3000注释",
+            "SELECT a FROM t /* 说明\u3000全角 \u200b */ WHERE b = {{v}}",
+            "SELECT a FROM t WHERE b = {{v}} /* \x00 */",
+        ],
+    )
+    def test_inside_a_comment_it_is_left_out_with_the_comment(self, sql: str) -> None:
+        dialects: tuple[SqlDialect, ...] = ("postgresql", "mysql", "generic")
+        for dialect in dialects:
+            bound, _ = render_sql(parse_sql_template(sql, dialect=dialect), "qmark", ["x"])
+            assert "?" in bound
+            assert not any(ch in bound for ch in "\u3000\u200b\x00注说")
+
+    def test_mysql_still_wants_an_ascii_space_after_two_dashes(self) -> None:
+        """Before U+3000 or U+007F MySQL's "--" may or may not be a comment: refused."""
+        for sql in (
+            "SELECT 1 --\u3000'\n + {{v}} + '",
+            "SELECT 1 --\x7f'\n WHERE a = {{v}} --\x7f'",
+        ):
+            with pytest.raises(SqlBindingError, match="'--'"):
+                parse_sql_template(sql, dialect="mysql")
 
 
 class TestPlaceholdersAlreadyInTheSql:

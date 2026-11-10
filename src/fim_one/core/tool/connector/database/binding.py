@@ -246,7 +246,8 @@ def parse_sql_template(sql: str, *, dialect: SqlDialect) -> SqlTemplate:
     tokens = sql_tokens(sql, dialect=dialect, strict=True)
 
     for token in tokens:
-        if token.kind != "quoted" and (odd := next(filter(is_odd, token.text), None)):
+        # In the statement itself; a comment is not sent (see below).
+        if token.kind == "code" and (odd := next(filter(is_odd, token.text), None)):
             # Lexers disagree about these down to the byte; see reading.is_odd.
             raise SqlBindingError(
                 f"The SQL has an invisible or control character (U+{ord(odd):04X}) outside "

@@ -93,9 +93,9 @@ class Lexeme:
     ``executable``: a MySQL ``/*! ... */`` or MariaDB ``/*M! ... */``
     comment, whose inside the server runs as SQL. ``odd``: a character
     outside quotes that :func:`is_odd` names (also inside a comment, which
-    is otherwise left out). ``unicode_escaped``: PostgreSQL's ``U&"..."``
-    or ``U&'...'``, whose text is spelled with ``\XXXX`` escapes (a name
-    written that way is not the name this reading sees).
+    is otherwise left out; see ``odd_in``). ``unicode_escaped``: PostgreSQL's
+    ``U&"..."`` or ``U&'...'``, whose text is spelled with ``\\XXXX`` escapes
+    (a name written that way is not the name this reading sees).
     """
 
     kind: Literal[
@@ -160,7 +160,20 @@ def read_sql(
                     depth += 1
 
     def odd_in(start: int, end: int) -> None:
-        out.extend(Lexeme("odd", ch, depth) for ch in sql[start:end] if is_odd(ch))
+        """Odd characters inside the comment ``sql[start:end]``.
+
+        Where a comment ends is decided on ASCII bytes alone (a newline, a
+        carriage return, ``*/``), so on PostgreSQL and MySQL a non-ASCII
+        character in its body changes nothing: a full-width space in a
+        Chinese comment, an emoji's joiner. ASCII control characters stay
+        odd there too (MySQL ends a line comment at a NUL byte). For DM8,
+        whose lexer is not known here, everything odd stays odd.
+        """
+        out.extend(
+            Lexeme("odd", ch, depth)
+            for ch in sql[start:end]
+            if is_odd(ch) and (dialect == "generic" or ch < "\x80")
+        )
         if dialect == "generic" and lone_cr(start, end):
             out.append(Lexeme("odd", "\r", depth))
 

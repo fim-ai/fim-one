@@ -162,6 +162,13 @@ READS: tuple[str, ...] = (
     "SELECT 1 AS \"a\u3000b\"",
     "SELECT\n\t1\r\nFROM t\n;\n",
     "SELECT 5 - -3, 5--3, 5 -- 3",
+    # Inside a comment, whose end ASCII alone decides, they change nothing.
+    "SELECT 1 -- 中文注释\u3000带全角空格",
+    "SELECT 1 /* 说明\u3000全角 */",
+    "SELECT 姓名, 金额 FROM 订单表 WHERE 状态 = '已完成' -- 查询已完成订单\u3000",
+    "SELECT 1 -- zwj \U0001f468\u200d\U0001f469\u200d\U0001f467 in comment",
+    "SELECT 1 -- zero\u200bwidth, rtl \u200f mark, soft\u00adhyphen, nbsp\u00a0",
+    "SELECT 1 /* \u2028 line separator */ FROM t",
     # Comments that only look like MySQL's executable ones.
     "/*/!CREATE TABLE pwn AS*/ SELECT 1",
     "/*\n!CREATE TABLE pwn AS*/ SELECT 1",
@@ -206,6 +213,14 @@ NOT_ON: dict[SqlDialect, frozenset[str]] = {
             "SELECT 'it\\'s' AS a, 'delete' AS b",
             "SELECT id FROM t WHERE note = 'it\\'s' OR customer = 'update'",
             "SELECT $$a;b$$",
+            # DM8's lexer is not known here: odd characters stay refused
+            # in its comments too.
+            "SELECT 1 -- 中文注释\u3000带全角空格",
+            "SELECT 1 /* 说明\u3000全角 */",
+            "SELECT 姓名, 金额 FROM 订单表 WHERE 状态 = '已完成' -- 查询已完成订单\u3000",
+            "SELECT 1 -- zwj \U0001f468\u200d\U0001f469\u200d\U0001f467 in comment",
+            "SELECT 1 -- zero\u200bwidth, rtl \u200f mark, soft\u00adhyphen, nbsp\u00a0",
+            "SELECT 1 /* \u2028 line separator */ FROM t",
         }
     ),
 }
@@ -298,15 +313,12 @@ WRITES: tuple[str, ...] = (
     "SELECT 1 --\x7f'\n/*!INTO OUTFILE '/tmp/rv_out2'*/ --\x7f'",
     "SELECT 1 --\x7f'\nINTO @leak --\x7f'",
     "SELECT 7 --\x7f'\nFOR SHARE --\x7f'",
-    "SELECT 1 FROM t `\u3000a` WHERE 1 --\u3000a.id INTO OUTFILE '/tmp/rv_out3'",
-    "SELECT 1 FROM t `\u00a0a` WHERE 1 --\u00a0a.id INTO @leak2",
-    "SELECT 1 FROM t `\u0085a` WHERE 1 --\u0085a.id INTO OUTFILE '/tmp/rv_out4'",
     "\u3000SELECT 1",
     "SELECT\x001",
     "\x00/*!CREATE TABLE pwn AS*/ SELECT 1",
     "SELECT 1 \x00 /*!INTO OUTFILE '/tmp/rv_out5'*/",
     "SELECT 1 /* \x0b */",
-    "SELECT 1 -- zero\u200bwidth",
+    "SELECT 1 -- nul \x00 in a comment",
     "SELECT\u00a01",
     "SELECT 1\x0c",
     # Functions that act outside the query; PostgreSQL runs them in a
@@ -404,6 +416,11 @@ ONLY_ON: dict[SqlDialect, tuple[str, ...]] = {
         "SELECT 1 /*!UNION SELECT token FROM secrets*/",
         "/*M!CREATE TABLE pwn AS*/ SELECT * FROM secrets",
         "/*M!100100 DROP TABLE t, `*/ SELECT /*M!`*/",
+        # "--" before a non-ASCII "space" is two minus signs to MySQL, and
+        # what follows is SQL. (To PostgreSQL it is a comment, and stays one.)
+        "SELECT 1 FROM t `\u3000a` WHERE 1 --\u3000a.id INTO OUTFILE '/tmp/rv_out3'",
+        "SELECT 1 FROM t `\u00a0a` WHERE 1 --\u00a0a.id INTO @leak2",
+        "SELECT 1 FROM t `\u0085a` WHERE 1 --\u0085a.id INTO OUTFILE '/tmp/rv_out4'",
         "/**/ /*!CREATE TABLE pwn AS*/ SELECT 1",
         "/*!SET SESSION character_set_client = (*/ SELECT 'gbk' /*!)*/",
         # "--" starts a comment only before whitespace: this is 5 - -1.
@@ -417,6 +434,9 @@ ONLY_ON: dict[SqlDialect, tuple[str, ...]] = {
     ),
     "generic": (
         "WITH $$ AS (SELECT 1) DELETE FROM t WHERE 1 = 1 /* $$ */",
+        "SELECT 1 FROM t `\u3000a` WHERE 1 --\u3000a.id INTO OUTFILE '/tmp/rv_out3'",
+        "SELECT 1 FROM t `\u00a0a` WHERE 1 --\u00a0a.id INTO @leak2",
+        "SELECT 1 FROM t `\u0085a` WHERE 1 --\u0085a.id INTO OUTFILE '/tmp/rv_out4'",
         "WITH d AS (SELECT 1 # ) DELETE FROM t\n) SELECT * FROM d",
         'SELECT "SLEEP"(2)',
         # Standard strings end at the backslash-quote; MySQL's rule is
@@ -707,12 +727,12 @@ class TestReading:
         def odd(sql: str, dialect: SqlDialect = "mysql") -> list[str]:
             return [lex.text for lex in read_sql(sql, dialect=dialect) if lex.kind == "odd"]
 
-        assert odd("SELECT\x00 1 \u3000 -- \x7f\n /* \u200b */") == [
-            "\x00",
-            "\u3000",
-            "\x7f",
-            "\u200b",
-        ]
+        sql = "SELECT\x00 1 \u3000 -- \x7f\n /* \u200b */"
+        # In a comment only ASCII control characters are odd ...
+        assert odd(sql) == ["\x00", "\u3000", "\x7f"]
+        assert odd(sql, "postgresql") == ["\x00", "\u3000", "\x7f"]
+        # ... except for DM8, where everything odd is.
+        assert odd(sql, "generic") == ["\x00", "\u3000", "\x7f", "\u200b"]
         assert odd("SELECT '\x00\u3000', `\u00a0`, \"\x7f\"") == []
         assert odd("SELECT 1\r\nFROM t\n") == []
         # DM8: nobody here knows where its "--" comment ends.
