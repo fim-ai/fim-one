@@ -622,7 +622,7 @@ def outside_world(factory: async_sessionmaker[AsyncSession]) -> Iterator[Outside
             ("fim_one.core.agent.ReActAgent", _RecordingAgent),
             ("fim_one.core.agent.react.ReActAgent", _RecordingAgent),
             ("fim_one.web.services.feature_flags.is_feature_enabled", AsyncMock(return_value=True)),
-            ("fim_one.web.api.chat._get_quota_status", AsyncMock(return_value=(0, 0))),
+            ("fim_one.web.services.quota_backend.usage_and_cap", AsyncMock(return_value=(0, 0))),
             (
                 "fim_one.web.services.quota_enforcer.is_user_unentitled",
                 AsyncMock(return_value=False),

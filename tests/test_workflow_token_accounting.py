@@ -125,7 +125,7 @@ async def test_quota_window_includes_workflow_run_tokens(
         )
         await s.commit()
 
-    from fim_one.web.api.chat import _get_quota_status
+    from fim_one.web.services.quota_backend import usage_and_cap
 
     # No user/plan row → cap comes from the default_token_quota admin setting.
     with (
@@ -135,7 +135,7 @@ async def test_quota_window_includes_workflow_run_tokens(
             new=AsyncMock(return_value="100"),
         ),
     ):
-        used, cap = await _get_quota_status(user)
+        used, cap = await usage_and_cap(user)
 
     assert cap == 100
     # 30 (chat) + 50 (workflow run) must both count.

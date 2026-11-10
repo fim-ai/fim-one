@@ -214,7 +214,7 @@ async def rig(database: tuple[str, AsyncEngine]) -> AsyncIterator[Rig]:
     with (
         patch("fim_one.db.create_session", _cs),
         patch.object(rs, "_default_service", service),
-        patch("fim_one.web.api.chat._get_quota_status", new=AsyncMock(return_value=(0, 0))),
+        patch("fim_one.web.services.quota_backend.usage_and_cap", new=AsyncMock(return_value=(0, 0))),
         patch(
             "fim_one.web.services.quota_enforcer.is_user_unentitled",
             new=AsyncMock(return_value=False),

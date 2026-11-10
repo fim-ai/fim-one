@@ -172,7 +172,7 @@ async def world(tmp_path: Path) -> AsyncIterator[World]:
     with (
         patch("fim_one.db.create_session", _cs),
         patch.object(rs, "_default_service", service),
-        patch("fim_one.web.api.chat._get_quota_status", new=AsyncMock(return_value=(0, 0))),
+        patch("fim_one.web.services.quota_backend.usage_and_cap", new=AsyncMock(return_value=(0, 0))),
         patch(
             "fim_one.web.services.quota_enforcer.is_user_unentitled",
             new=AsyncMock(return_value=False),
@@ -272,7 +272,7 @@ def _expected_principal(entry: str, w: World) -> str:
 @pytest.mark.parametrize("entry", ENTRIES)
 async def test_over_quota_is_refused(entry: str, world: World) -> None:
     with patch(
-        "fim_one.web.api.chat._get_quota_status", new=AsyncMock(return_value=(100, 50))
+        "fim_one.web.services.quota_backend.usage_and_cap", new=AsyncMock(return_value=(100, 50))
     ):
         result = await _drive(entry, world)
     assert result.refused == "token_quota_exceeded"
@@ -495,7 +495,7 @@ async def test_dry_run_reports_what_a_real_run_is_refused_for(
             await s.commit()
 
     with (
-        patch("fim_one.web.api.chat._get_quota_status", new=AsyncMock(return_value=quota)),
+        patch("fim_one.web.services.quota_backend.usage_and_cap", new=AsyncMock(return_value=quota)),
         patch(
             "fim_one.web.services.quota_enforcer.is_user_unentitled",
             new=AsyncMock(return_value=scenario == "subscription_required"),

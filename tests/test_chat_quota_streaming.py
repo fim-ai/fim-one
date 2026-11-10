@@ -3,9 +3,9 @@
 These tests cover the two paths that protect users from mid-stream
 quota cutoffs being misread as generic network errors:
 
-1. **Pre-stream quota gate** — ``_check_token_quota`` raises 429
+1. **Pre-stream quota gate** — ``check_quota`` raises 429
    before any LLM work begins.
-2. **Mid-stream quota terminator** — ``_get_quota_status`` /
+2. **Mid-stream quota terminator** — ``usage_and_cap`` /
    ``_build_quota_terminator_payload`` produce the structured
    ``error`` event that the streaming generator emits when the
    user runs out of budget partway through the answer.
@@ -22,14 +22,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from fim_one.web.api.chat import (
-    _build_quota_terminator_payload,
-    _check_token_quota,
-    _get_quota_status,
-    _next_month_reset_iso,
-    _quota_reset_iso,
-)
-from fim_one.web.exceptions import AppError
+from fim_one.core.assembly.errors import AssemblyRefusal
+from fim_one.core.assembly.principal import provisional_principal
+from fim_one.core.assembly.quota import check_quota
+from fim_one.web.api.chat import _build_quota_terminator_payload
+from fim_one.web.services.quota_backend import next_month_reset, reset_at, usage_and_cap
 
 
 # ---------------------------------------------------------------------------
@@ -41,7 +38,7 @@ class _FakeSession:
     """Minimal async-context-manager session whose ``execute`` returns a
     pre-baked sequence of scalar results.
 
-    ``_get_quota_status`` issues four queries in order:
+    ``usage_and_cap`` issues four queries in order:
       1. ``User.token_quota`` -> ``int | None``
       2. ``BillingPlan.monthly_token_quota`` (via plan_id join) -> ``int | None``
       3. ``resolve_quota_window`` subscription lookup (read via ``.first()``)
@@ -99,7 +96,7 @@ class _FakeSession:
 def _patch_create_session(session: _FakeSession) -> Any:
     """Patch ``fim_one.db.create_session`` to return *session*.
 
-    ``chat._get_quota_status`` imports ``create_session`` lazily, so we
+    ``usage_and_cap`` imports ``create_session`` lazily, so we
     have to patch the attribute on the source module rather than on
     ``chat`` itself.
     """
@@ -119,12 +116,12 @@ def _patch_get_setting(value: str) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# _get_quota_status
+# usage_and_cap
 # ---------------------------------------------------------------------------
 
 
 class TestGetQuotaStatus:
-    """``_get_quota_status`` must expose the (used, cap) pair the
+    """``usage_and_cap`` must expose the (used, cap) pair the
     streaming generator depends on for its mid-stream guard."""
 
     @pytest.mark.asyncio
@@ -133,7 +130,7 @@ class TestGetQuotaStatus:
     ) -> None:
         session = _FakeSession(user_quota=None, monthly_tokens=0)
         with _patch_create_session(session), _patch_get_setting("0"):
-            used, cap = await _get_quota_status("user-1")
+            used, cap = await usage_and_cap("user-1")
         assert used == 0
         assert cap == 0
 
@@ -143,7 +140,7 @@ class TestGetQuotaStatus:
     ) -> None:
         session = _FakeSession(user_quota=None, monthly_tokens=42)
         with _patch_create_session(session), _patch_get_setting("1000"):
-            used, cap = await _get_quota_status("user-1")
+            used, cap = await usage_and_cap("user-1")
         assert cap == 1000
         assert used == 42
 
@@ -151,7 +148,7 @@ class TestGetQuotaStatus:
     async def test_uses_explicit_user_quota_when_set(self) -> None:
         session = _FakeSession(user_quota=500, monthly_tokens=120)
         with _patch_create_session(session), _patch_get_setting("9999"):
-            used, cap = await _get_quota_status("user-1")
+            used, cap = await usage_and_cap("user-1")
         assert cap == 500
         assert used == 120
 
@@ -167,7 +164,7 @@ class TestGetQuotaStatus:
             monthly_tokens=120,
         )
         with _patch_create_session(session), _patch_get_setting("0"):
-            used, cap = await _get_quota_status("user-1")
+            used, cap = await usage_and_cap("user-1")
         assert cap == 500
         assert used == 120
 
@@ -181,7 +178,7 @@ class TestGetQuotaStatus:
             monthly_tokens=120,
         )
         with _patch_create_session(session), _patch_get_setting("0"):
-            used, cap = await _get_quota_status("user-1")
+            used, cap = await usage_and_cap("user-1")
         assert cap == 5_000_000
         assert used == 120
 
@@ -195,13 +192,13 @@ class TestGetQuotaStatus:
             monthly_tokens=10_000_000,
         )
         with _patch_create_session(session), _patch_get_setting("0"):
-            used, cap = await _get_quota_status("user-1")
+            used, cap = await usage_and_cap("user-1")
         assert cap == 0  # 0 = unlimited / disabled in chat.py's contract
         assert used == 0
 
 
 # ---------------------------------------------------------------------------
-# _check_token_quota (pre-stream gate)
+# check_quota (pre-stream gate)
 # ---------------------------------------------------------------------------
 
 
@@ -213,8 +210,8 @@ class TestCheckTokenQuota:
     async def test_raises_when_quota_already_exceeded(self) -> None:
         session = _FakeSession(user_quota=100, monthly_tokens=100)
         with _patch_create_session(session), _patch_get_setting("0"):
-            with pytest.raises(AppError) as exc_info:
-                await _check_token_quota("user-1")
+            with pytest.raises(AssemblyRefusal) as exc_info:
+                await check_quota(provisional_principal("user-1"))
         assert exc_info.value.error_code == "token_quota_exceeded"
         assert exc_info.value.status_code == 429
 
@@ -223,15 +220,15 @@ class TestCheckTokenQuota:
         # E.g. last turn overshot — pre-stream gate must still close the door.
         session = _FakeSession(user_quota=100, monthly_tokens=250)
         with _patch_create_session(session), _patch_get_setting("0"):
-            with pytest.raises(AppError):
-                await _check_token_quota("user-1")
+            with pytest.raises(AssemblyRefusal):
+                await check_quota(provisional_principal("user-1"))
 
     @pytest.mark.asyncio
     async def test_passes_when_under_cap(self) -> None:
         session = _FakeSession(user_quota=100, monthly_tokens=10)
         with _patch_create_session(session), _patch_get_setting("0"):
             # No raise = pass.
-            await _check_token_quota("user-1")
+            await check_quota(provisional_principal("user-1"))
 
     @pytest.mark.asyncio
     async def test_passes_when_quota_disabled_zero(self) -> None:
@@ -239,7 +236,7 @@ class TestCheckTokenQuota:
         # monthly usage is huge.
         session = _FakeSession(user_quota=0, monthly_tokens=10_000_000)
         with _patch_create_session(session), _patch_get_setting("0"):
-            await _check_token_quota("user-1")
+            await check_quota(provisional_principal("user-1"))
 
 
 # ---------------------------------------------------------------------------
@@ -265,7 +262,7 @@ class TestQuotaTerminatorPayload:
 
     def test_reset_at_passes_through_verbatim(self) -> None:
         # The builder is a pure passthrough for reset_at; the value is
-        # computed upstream by _quota_reset_iso (covered below).
+        # computed upstream by reset_at (covered below).
         payload = _build_quota_terminator_payload(
             monthly_tokens=1,
             user_quota=1,
@@ -275,17 +272,17 @@ class TestQuotaTerminatorPayload:
 
 
 class TestQuotaResetIso:
-    """``_quota_reset_iso`` resolves the billing-aligned reset boundary.
+    """``reset_at`` resolves the billing-aligned reset boundary.
 
     With no subscription the window is the calendar month, so the reset
     is the first of next month — the same contract the old inline
-    ``_next_month_reset_iso`` provided."""
+    ``next_month_reset`` provided."""
 
     @pytest.mark.asyncio
     async def test_free_user_resets_on_first_of_next_month(self) -> None:
         session = _FakeSession(user_quota=None, monthly_tokens=0)
         with _patch_create_session(session):
-            iso = await _quota_reset_iso("user-1")
+            iso = (await reset_at("user-1")).isoformat()
         parsed = datetime.fromisoformat(iso)
         assert parsed.day == 1
         assert parsed.tzinfo is not None
@@ -298,9 +295,9 @@ class TestNextMonthResetIso:
     bugs — pin it down explicitly."""
 
     def test_december_rolls_into_next_year(self) -> None:
-        with patch("fim_one.web.api.chat.date") as mock_date:
+        with patch("fim_one.web.services.quota_backend.date") as mock_date:
             mock_date.today.return_value = datetime(2026, 12, 15).date()
-            iso = _next_month_reset_iso()
+            iso = next_month_reset().isoformat()
         # Should be 2027-01-01T00:00:00+00:00 (or equivalent).
         parsed = datetime.fromisoformat(iso)
         assert parsed.year == 2027
@@ -308,9 +305,9 @@ class TestNextMonthResetIso:
         assert parsed.day == 1
 
     def test_mid_year_rolls_to_next_month(self) -> None:
-        with patch("fim_one.web.api.chat.date") as mock_date:
+        with patch("fim_one.web.services.quota_backend.date") as mock_date:
             mock_date.today.return_value = datetime(2026, 5, 15).date()
-            iso = _next_month_reset_iso()
+            iso = next_month_reset().isoformat()
         parsed = datetime.fromisoformat(iso)
         assert parsed.year == 2026
         assert parsed.month == 6
@@ -332,7 +329,7 @@ class TestMidStreamGuardComposition:
     async def test_does_not_trigger_when_well_under_budget(self) -> None:
         session = _FakeSession(user_quota=10_000, monthly_tokens=100)
         with _patch_create_session(session), _patch_get_setting("0"):
-            used, cap = await _get_quota_status("user-1")
+            used, cap = await usage_and_cap("user-1")
         # Imagine 50 estimated completion tokens added on top.
         triggered = cap > 0 and used + 50 >= cap
         assert triggered is False
@@ -343,7 +340,7 @@ class TestMidStreamGuardComposition:
     ) -> None:
         session = _FakeSession(user_quota=200, monthly_tokens=180)
         with _patch_create_session(session), _patch_get_setting("0"):
-            used, cap = await _get_quota_status("user-1")
+            used, cap = await usage_and_cap("user-1")
         # 50 estimated completion tokens push us over 200.
         triggered = cap > 0 and used + 50 >= cap
         assert triggered is True
@@ -359,7 +356,7 @@ class TestMidStreamGuardComposition:
     async def test_unlimited_plan_skips_guard(self) -> None:
         session = _FakeSession(user_quota=0, monthly_tokens=1_000_000)
         with _patch_create_session(session), _patch_get_setting("0"):
-            used, cap = await _get_quota_status("user-1")
+            used, cap = await usage_and_cap("user-1")
         # cap == 0 short-circuits the guard regardless of usage.
         triggered = cap > 0 and used + 50 >= cap
         assert triggered is False

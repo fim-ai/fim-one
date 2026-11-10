@@ -108,3 +108,16 @@ def human_intervention_enabled(
 ) -> None:
     """Switch Human Intervention workflow nodes on (they are off by default)."""
     monkeypatch.setenv("WORKFLOW_HUMAN_INTERVENTION_ENABLED", "true")
+
+
+@pytest.fixture(autouse=True)
+def _assembly_ports() -> None:
+    """Register the assembly layer's ports the way the app does at start-up.
+
+    The real web implementations, so a test that replaces one of their
+    ingredients (the usage numbers, the plan check) sees it take effect. A
+    test of the unregistered state unregisters the port itself.
+    """
+    from fim_one.web.services.assembly_ports import register_assembly_ports
+
+    register_assembly_ports()

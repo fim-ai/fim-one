@@ -75,6 +75,7 @@ from fim_one.core.assembly.principal import (
     Entry,
     provisional_principal,
 )
+from fim_one.core.assembly.quota import check_quota, quota_reset_at, quota_status
 from fim_one.core.assembly.toolset import (
     connector_tools,
     database_tools,
@@ -994,169 +995,6 @@ async def _validate_conversation_ownership(
             raise AppError("conversation_not_found", status_code=404)
 
 
-async def _get_plan_quota_for_user(session: Any, user_id: str) -> int | None:
-    """Return the user's plan-bound ``monthly_token_quota`` or ``None``.
-
-    Plan-aware lookup added by P2 billing — separated from the legacy
-    ``User.token_quota`` query so existing test fakes that mock a
-    single-column ``scalar_one_or_none`` keep working.
-
-    Defensively swallows query errors: a mock-shaped session that does
-    not understand the join still produces a valid (legacy) quota.
-    """
-    from fim_one.db.models import BillingPlan, User
-
-    try:
-        result = await session.execute(
-            sa_select(BillingPlan.monthly_token_quota)
-            .select_from(User)
-            .join(BillingPlan, User.plan_id == BillingPlan.id)
-            .where(User.id == user_id)
-        )
-        value = result.scalar_one_or_none()
-        return int(value) if value is not None else None
-    except Exception:
-        return None
-
-
-async def _get_quota_status(user_id: str) -> tuple[int, int]:
-    """Return ``(monthly_tokens_used, effective_quota)`` for *user_id*.
-
-    ``effective_quota`` is resolved by the Scheme A precedence chain
-    (override-first):
-
-      1. ``user.token_quota == 0``  → ``0`` (unlimited; admin VIP gift)
-      2. ``user.token_quota >  0``  → that value (admin hard cap)
-      3. ``user.token_quota IS NULL`` → ``user.plan.monthly_token_quota``
-      4. *(fallback)* the system-wide ``default_token_quota`` admin setting
-      5. ``0`` → unlimited / disabled (callers skip enforcement)
-
-    A returned cap of ``0`` means "unlimited / disabled" — callers
-    short-circuit and skip quota enforcement when this is returned.
-
-    This helper is shared by the pre-stream gate (``_check_token_quota``)
-    and the mid-stream guard (``_quota_exceeded`` inside the answer loop)
-    so both paths see identical numbers and the same rounding rules.
-    """
-    from fim_one.db import create_session
-    from fim_one.web.api.admin_utils import get_setting
-    from fim_one.db.models import Conversation, User
-
-    async with create_session() as session:
-        result = await session.execute(sa_select(User.token_quota).where(User.id == user_id))
-        user_quota: int | None = result.scalar_one_or_none()
-
-        # Plan lookup is fired unconditionally so the legacy mock
-        # contract (3-step FIFO: user_quota, plan_quota, sum) keeps
-        # working — see tests/test_chat_quota_streaming.py.
-        plan_quota = await _get_plan_quota_for_user(session, user_id)
-
-        # Scheme A: admin override wins over plan, with the 3-state
-        # ``users.token_quota`` semantic (NULL=follow plan, 0=unlimited,
-        # N>0=hard cap).
-        if user_quota is not None:
-            if user_quota == 0:
-                return (0, 0)
-            # user_quota > 0 → hard cap, ignore plan_quota.
-        else:
-            # No override → fall through to plan tier, then default.
-            if plan_quota is not None:
-                user_quota = plan_quota
-            else:
-                default_str = await get_setting(session, "default_token_quota", "0")
-                user_quota = int(default_str) if default_str.isdigit() else 0
-
-        if not user_quota or user_quota <= 0:
-            return (0, 0)
-
-        from sqlalchemy import func as _func
-
-        from fim_one.web.services.quota_window import resolve_quota_window
-
-        # Window the usage sum to the user's billing-aligned quota period:
-        # paid users reset on their subscription's monthly anniversary,
-        # free users on the calendar month. Resolution is defensive — it
-        # falls back to the calendar month on any lookup failure.
-        window_start, _reset_at = await resolve_quota_window(session, user_id)
-        monthly_result = await session.execute(
-            sa_select(_func.coalesce(_func.sum(Conversation.total_tokens), 0)).where(
-                Conversation.user_id == user_id,
-                Conversation.created_at >= window_start,
-            )
-        )
-        monthly_tokens = int(monthly_result.scalar_one() or 0)
-
-        # Include unattended workflow runs (webhook/cron) billed to this owner,
-        # so their LLM usage counts against the same quota as chat instead of
-        # being a free, unmetered spigot.
-        from fim_one.db.models.workflow import WorkflowRun
-
-        wf_result = await session.execute(
-            sa_select(_func.coalesce(_func.sum(WorkflowRun.total_tokens), 0)).where(
-                WorkflowRun.user_id == user_id,
-                WorkflowRun.created_at >= window_start,
-            )
-        )
-        monthly_tokens += int(wf_result.scalar_one() or 0)
-        return (monthly_tokens, int(user_quota))
-
-
-def _next_month_reset_iso() -> str:
-    """Return the ISO-8601 timestamp of the next quota-reset boundary.
-
-    Quotas reset on the first day of each calendar month at 00:00 UTC.
-    Returned as an ISO string so the frontend can parse with ``new Date``.
-    """
-    today = date.today()
-    if today.month == 12:
-        next_reset = datetime(today.year + 1, 1, 1, tzinfo=UTC)
-    else:
-        next_reset = datetime(today.year, today.month + 1, 1, tzinfo=UTC)
-    return next_reset.isoformat()
-
-
-async def _check_token_quota(user_id: str) -> None:
-    """Raise 429 if the user has exceeded their monthly token quota.
-
-    ``paid_only`` users with no plan raise 402 ``subscription_required``.
-    That check uses a separate session so the quota-status FIFO mock
-    contract in ``test_chat_quota_streaming`` stays intact.
-    """
-    monthly_tokens, user_quota = await _get_quota_status(user_id)
-
-    from fim_one.db import create_session
-    from fim_one.web.services.quota_enforcer import is_user_unentitled
-
-    try:
-        async with create_session() as session:
-            unentitled = await is_user_unentitled(user_id, session)
-    except Exception:
-        unentitled = False
-    if unentitled:
-        raise AppError("subscription_required", status_code=402)
-
-    if user_quota > 0 and monthly_tokens >= user_quota:
-        raise AppError("token_quota_exceeded", status_code=429)
-
-
-async def _quota_reset_iso(user_id: str) -> str:
-    """ISO-8601 timestamp of *user_id*'s next quota reset.
-
-    Billing-aligned: paid users reset on their subscription's monthly
-    anniversary, free users on the first of next calendar month. Falls
-    back to the calendar-month boundary if the window cannot be resolved.
-    """
-    from fim_one.db import create_session
-    from fim_one.web.services.quota_window import resolve_quota_window
-
-    try:
-        async with create_session() as session:
-            _start, reset_at = await resolve_quota_window(session, user_id)
-        return reset_at.isoformat()
-    except Exception:
-        return _next_month_reset_iso()
-
-
 def _build_quota_terminator_payload(
     *,
     monthly_tokens: int,
@@ -1175,7 +1013,7 @@ def _build_quota_terminator_payload(
     - ``tokens_used`` / ``quota``: live counters for the dialog.
     - ``reset_at``: ISO-8601 of the next quota reset — billing-aligned
       (subscription anniversary for paid, calendar month for free),
-      resolved by the caller via :func:`_quota_reset_iso`.
+      resolved by the caller via ``core.assembly.quota.quota_reset_at``.
     - ``plan_slug``: reserved for the upcoming Stripe billing
       integration; ``"free"`` for now since plan tiers don't exist yet.
     """
@@ -1357,7 +1195,7 @@ async def _admit_turn(
     if conversation_id:
         await _validate_conversation_ownership(conversation_id, user_id)
     _, agent_cfg = await asyncio.gather(
-        _check_token_quota(user_id),
+        check_quota(provisional_principal(user_id)),
         _resolve_agent_config(agent_id, conversation_id, user_id=user_id, refuse_unavailable=True),
     )
     return agent_cfg
@@ -3818,10 +3656,8 @@ async def react_endpoint(
                             _approx_total = (
                                 _result_tokens_so_far + _est_completion_tokens
                             )
-                            (
-                                _monthly_used,
-                                _quota_cap,
-                            ) = await _get_quota_status(current_user_id)
+                            _quota_now = await quota_status(current_user_id)
+                            _monthly_used, _quota_cap = _quota_now.used, _quota_now.cap
                             if (
                                 _quota_cap > 0
                                 and _monthly_used + _est_completion_tokens
@@ -3834,9 +3670,9 @@ async def react_endpoint(
                                             _monthly_used + _est_completion_tokens
                                         ),
                                         user_quota=_quota_cap,
-                                        reset_at=await _quota_reset_iso(
-                                            current_user_id
-                                        ),
+                                        reset_at=(
+                                            await quota_reset_at(current_user_id)
+                                        ).isoformat(),
                                     )
                                 )
                                 logger.info(
@@ -5071,10 +4907,8 @@ async def dag_endpoint(
                                 _dag_est_completion = (
                                     sum(len(c) for c in answer_chunks) // 4
                                 )
-                                (
-                                    _dag_used,
-                                    _dag_cap,
-                                ) = await _get_quota_status(current_user_id)
+                                _dag_quota_now = await quota_status(current_user_id)
+                                _dag_used, _dag_cap = _dag_quota_now.used, _dag_quota_now.cap
                                 if (
                                     _dag_cap > 0
                                     and _dag_used + _dag_est_completion >= _dag_cap
@@ -5086,9 +4920,9 @@ async def dag_endpoint(
                                                 _dag_used + _dag_est_completion
                                             ),
                                             user_quota=_dag_cap,
-                                            reset_at=await _quota_reset_iso(
-                                                current_user_id
-                                            ),
+                                            reset_at=(
+                                                await quota_reset_at(current_user_id)
+                                            ).isoformat(),
                                         )
                                     )
                                     logger.info(

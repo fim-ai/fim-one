@@ -369,3 +369,29 @@ class TestConfirmationsHaveOneService:
         from fim_one.web.hooks_bootstrap import HOOK_FACTORIES
 
         assert HOOK_FACTORIES["approval_gate"] is HOOK_FACTORIES["feishu_gate"]
+
+
+# The quota chain's former homes: chat's private helpers and the gate that
+# wrapped them. Comments count, so nothing points at a name that is gone.
+QUOTA_FORMER_COPIES = (
+    "_check_token_quota",
+    "_get_quota_status",
+    "_get_plan_quota_for_user",
+    "ChatRunGate",
+)
+
+
+class TestQuotaHasOneGate:
+    """Plan and quota are checked by ``core/assembly/quota.py``.
+
+    Chat, the AI-assisted endpoints and the workflow run service all call
+    it; the numbers come from ``web/services/quota_backend.py`` through the
+    registered port.
+    """
+
+    def test_the_former_copies_are_gone(self) -> None:
+        files = [py for py in sorted(SRC.rglob("*.py")) if "migrations" not in py.parts]
+        offenders = [hit for needle in QUOTA_FORMER_COPIES for hit in _occurrences(needle, files)]
+        assert not offenders, (
+            "quota is checked by fim_one.core.assembly.quota:\n  " + "\n  ".join(offenders)
+        )

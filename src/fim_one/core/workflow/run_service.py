@@ -4,13 +4,12 @@ Every entry point (interactive SSE run, batch run, trigger key, schedule,
 the ``run_workflow`` agent tool, and single-node test) goes through
 :class:`WorkflowRunService`. The service decides, once:
 
-- **who the run is for** (:func:`resolve_principal`): the author for trigger
-  keys and schedules; the caller for everything else. The principal's
-  identity is the one used for credentials, visibility and quota, and the
-  run record is attributed to it.
+- **who the run is for** (:func:`run_identity`): the author for trigger
+  keys and schedules; the caller for everything else. That principal is the
+  one used for credentials and quota, and the run record is attributed to
+  it; the workflow is the binding its steps use resources through.
 - **whether it may start** (:class:`RunGate`): account state, token quota and
-  plan entitlement. The default gate wraps chat's existing checks; the C1
-  assembly layer replaces it without changing this module's callers.
+  plan entitlement, decided by the assembly layer.
 - **what the run gets**: the author's env vars only when the principal is the
   author, a full :class:`ExecutionContext` (approval nodes persist and wait),
   the workflow's own run-time limit.
@@ -36,6 +35,15 @@ from enum import StrEnum
 from typing import Any, Protocol
 
 from fim_one.core.assembly.errors import AssemblyRefusal
+from fim_one.core.assembly.principal import (
+    AuthMethod,
+    Binding,
+    CallContext,
+    Entry,
+    Principal,
+    provisional_principal,
+)
+from fim_one.core.assembly.quota import AssemblyRunGate
 
 from .node_gates import (
     HUMAN_INTERVENTION_DISABLED,
@@ -80,41 +88,54 @@ class RunRefusedError(AssemblyRefusal):
     """
 
 
-@dataclass(frozen=True)
-class Principal:
-    """The identity a run executes as."""
-
-    user_id: str
-    author_id: str
-
-    @property
-    def is_author(self) -> bool:
-        return self.user_id == self.author_id
+# What a run is recorded as in call records and confirmation requests.
+_ENTRY: dict[RunMode, Entry] = {
+    RunMode.TRIGGER: "trigger",
+    RunMode.SCHEDULE: "schedule",
+    RunMode.TOOL: "run_workflow",
+}
 
 
-def resolve_principal(workflow: Any, caller_id: str | None, mode: RunMode) -> Principal:
-    """Who a run of *workflow* started through *mode* by *caller_id* runs as.
+def run_identity(workflow: Any, caller_id: str | None, mode: RunMode) -> tuple[str, AuthMethod]:
+    """Whose run this is: ``(user id, how that identity was established)``.
 
     Trigger keys and schedules have no caller and run as the author. Every
     other entry point runs as the caller, including a shared workflow run by
     someone who is not its author (decision 1, 2026-11-04).
     """
-    if mode in AUTHOR_MODES:
-        return Principal(user_id=workflow.user_id, author_id=workflow.user_id)
+    if mode == RunMode.TRIGGER:
+        return workflow.user_id, AuthMethod.TRIGGER_KEY
+    if mode == RunMode.SCHEDULE:
+        return workflow.user_id, AuthMethod.SCHEDULE
     if not caller_id:
         raise RunRefusedError(
             "run_identity_missing", 403, "A workflow run needs a user identity"
         )
-    return Principal(user_id=caller_id, author_id=workflow.user_id)
+    return caller_id, AuthMethod.SESSION
 
 
-def author_env_vars(workflow: Any, principal: Principal) -> dict[str, str]:
+def workflow_binding(workflow: Any) -> Binding:
+    """The workflow as the binding its steps use resources through."""
+    return Binding(
+        kind="workflow",
+        id=workflow.id,
+        owner_id=workflow.user_id,
+        org_id=getattr(workflow, "org_id", None),
+    )
+
+
+def runs_as_author(ctx: CallContext) -> bool:
+    """Whether the run executes as the workflow's author."""
+    return ctx.binding is not None and ctx.principal.user_id == ctx.binding.owner_id
+
+
+def author_env_vars(workflow: Any, ctx: CallContext) -> dict[str, str]:
     """Decrypted workflow env vars, for runs that execute as the author only.
 
     A run as anyone else gets none: the author's secrets would otherwise be
     interpolated into outputs that person reads.
     """
-    if not principal.is_author:
+    if not runs_as_author(ctx):
         return {}
     return decrypt_workflow_env(workflow)
 
@@ -145,47 +166,14 @@ def run_timeout_ms(workflow: Any) -> int:
 
 
 class RunGate(Protocol):
-    """Decides whether *principal* may start a run of a workflow.
+    """Decides whether *principal* may start a run through *binding*.
 
-    Raises :class:`RunRefusedError` to refuse. The C1 assembly layer will
-    provide the production implementation; until then
-    :class:`ChatRunGate` wraps chat's existing checks.
+    Raises :class:`~fim_one.core.assembly.errors.AssemblyRefusal` to refuse.
+    The production implementation is the assembly layer's
+    :class:`~fim_one.core.assembly.quota.AssemblyRunGate`.
     """
 
-    async def check(self, principal: Principal) -> None: ...
-
-
-class ChatRunGate:
-    """Default gate: active accounts, then chat's quota and plan check."""
-
-    async def check(self, principal: Principal) -> None:
-        from sqlalchemy import select
-
-        from fim_one.db import create_session
-        from fim_one.db.models import User
-
-        async with create_session() as db:
-            rows = await db.execute(
-                select(User.id, User.is_active).where(
-                    User.id.in_({principal.user_id, principal.author_id})
-                )
-            )
-            active = {uid: bool(is_active) for uid, is_active in rows.all()}
-        # A disabled author's workflows stop running for everyone.
-        if not active.get(principal.author_id, False):
-            raise RunRefusedError(
-                "workflow_owner_inactive", 403, "The workflow owner's account is disabled"
-            )
-        if not active.get(principal.user_id, False):
-            raise RunRefusedError("account_disabled", 403, "Account disabled")
-
-        from fim_one.web.api.chat import _check_token_quota
-        from fim_one.web.exceptions import AppError
-
-        try:
-            await _check_token_quota(principal.user_id)
-        except AppError as exc:
-            raise RunRefusedError(exc.error_code, exc.status_code, str(exc.detail)) from None
+    async def check(self, principal: Principal, binding: Binding | None = None) -> None: ...
 
 
 # ---------------------------------------------------------------------------
@@ -223,7 +211,7 @@ class StartedRun:
         *,
         run_id: str,
         workflow: Any,
-        principal: Principal,
+        call_context: CallContext,
         mode: RunMode,
         parsed: Any,
         inputs: dict[str, Any],
@@ -234,7 +222,8 @@ class StartedRun:
     ) -> None:
         self.run_id = run_id
         self.workflow = workflow
-        self.principal = principal
+        self.call_context = call_context
+        self.principal = call_context.principal
         self.mode = mode
         self.cancel_event = cancel_event
         self.outcome = RunOutcome(run_id=run_id)
@@ -336,7 +325,7 @@ class StartedRun:
                         self._service._active_runs.pop(self.run_id, None)
                         try:
                             self._service._fire_webhook(
-                                self.workflow, out, self.mode, self.principal
+                                self.workflow, out, self.mode, self.call_context
                             )
                         except Exception:
                             logger.exception("Webhook dispatch failed for %s", self.run_id)
@@ -354,7 +343,7 @@ class WorkflowRunService:
         rate_limiter: WorkflowRateLimiter | None = None,
         engine_factory: Callable[..., Any] | None = None,
     ) -> None:
-        self.gate: RunGate = gate or ChatRunGate()
+        self.gate: RunGate = gate or AssemblyRunGate()
         self.rate_limiter = rate_limiter or WorkflowRateLimiter()
         self._engine_factory = engine_factory
         # Runs executing in this process, by run id, so any entry point's run
@@ -383,8 +372,11 @@ class WorkflowRunService:
         mode: RunMode,
         *,
         admit_batch: bool = False,
-    ) -> tuple[Principal, Any]:
-        """Run every pre-start check; return ``(principal, parsed_blueprint)``.
+    ) -> tuple[CallContext, Any]:
+        """Run every pre-start check; return ``(call_context, parsed_blueprint)``.
+
+        The call context names the principal the run executes as and the
+        workflow as its binding.
 
         *admit_batch* is for a batch, which is checked once for all its
         items: the batch counts as one start against the caller's
@@ -393,14 +385,14 @@ class WorkflowRunService:
 
         Raises :class:`RunRefusedError` on the first failed check.
         """
-        principal = resolve_principal(workflow, caller_id, mode)
+        user_id, auth = run_identity(workflow, caller_id, mode)
         if mode in ACTIVE_ONLY_MODES and not workflow.is_active:
             raise RunRefusedError("workflow_inactive", 403, "Workflow is inactive")
         blueprint = workflow.blueprint
         if not blueprint or not blueprint.get("nodes"):
             raise RunRefusedError("blueprint_empty", 400)
 
-        await self.gate.check(principal)
+        ctx = await self._admit(workflow, user_id, auth, mode)
 
         from .parser import BlueprintValidationError, parse_blueprint
 
@@ -426,10 +418,32 @@ class WorkflowRunService:
             )
 
         if admit_batch:
-            allowed, rate_error = await self.rate_limiter.admit_batch(principal.user_id)
+            allowed, rate_error = await self.rate_limiter.admit_batch(ctx.principal.user_id)
             if not allowed:
                 raise RunRefusedError("workflow_rate_limited", 429, rate_error)
-        return principal, parsed
+        return ctx, parsed
+
+    async def _admit(
+        self, workflow: Any, user_id: str, auth: AuthMethod, mode: RunMode
+    ) -> CallContext:
+        """Pass the gate; the call context of a run of *workflow* as *user_id*."""
+        # The gate checks both accounts; steps that read more of the
+        # principal than its id (an approval's organizations) resolve it.
+        principal = provisional_principal(user_id, auth=auth)
+        binding = workflow_binding(workflow)
+        try:
+            await self.gate.check(principal, binding)
+        except RunRefusedError:
+            raise
+        except AssemblyRefusal as refusal:
+            raise RunRefusedError(
+                refusal.error_code, refusal.status_code, refusal.detail, refusal.detail_args
+            ) from None
+        return CallContext(
+            principal=principal,
+            binding=binding,
+            entry=_ENTRY.get(mode, "workflow_node"),
+        )
 
     async def would_refuse(
         self, workflow: Any, caller_id: str | None, mode: RunMode
@@ -459,7 +473,7 @@ class WorkflowRunService:
         mode: RunMode,
         cancel_event: asyncio.Event | None = None,
         depth: int = 0,
-        authorized: tuple[Principal, Any] | None = None,
+        authorized: tuple[CallContext, Any] | None = None,
         acquire_slot: bool = True,
         single_flight: bool = False,
         record_refusal: bool = False,
@@ -479,7 +493,7 @@ class WorkflowRunService:
         """
         inputs = inputs or {}
         try:
-            principal, parsed = authorized or await self.authorize(workflow, caller_id, mode)
+            ctx, parsed = authorized or await self.authorize(workflow, caller_id, mode)
             if single_flight:
                 # Early answer without taking the workflow's lock. Requests
                 # that arrive together all pass it; the check that decides
@@ -490,6 +504,7 @@ class WorkflowRunService:
                 await self._record_refusal(workflow, caller_id, mode, inputs, exc)
             raise
 
+        principal = ctx.principal
         run_id = str(uuid.uuid4())
         fields = self._run_fields(run_id, workflow, principal, mode, inputs)
         record_created = False
@@ -513,7 +528,7 @@ class WorkflowRunService:
             from fim_one.db import create_session
 
             cancel_event = cancel_event or asyncio.Event()
-            env_vars = author_env_vars(workflow, principal)
+            env_vars = author_env_vars(workflow, ctx)
             context = ExecutionContext(
                 run_id=run_id,
                 user_id=principal.user_id,
@@ -536,7 +551,7 @@ class WorkflowRunService:
                 self,
                 run_id=run_id,
                 workflow=workflow,
-                principal=principal,
+                call_context=ctx,
                 mode=mode,
                 parsed=parsed,
                 inputs=inputs,
@@ -586,14 +601,15 @@ class WorkflowRunService:
         from .nodes import get_executor
         from .variable_store import VariableStore
 
-        principal = resolve_principal(workflow, caller_id, RunMode.TEST_NODE)
+        user_id, auth = run_identity(workflow, caller_id, RunMode.TEST_NODE)
         if has_disabled_node([node]):
             raise RunRefusedError(
                 HUMAN_INTERVENTION_DISABLED, 409, HUMAN_INTERVENTION_DISABLED_DETAIL
             )
-        await self.gate.check(principal)
+        ctx = await self._admit(workflow, user_id, auth, RunMode.TEST_NODE)
+        principal = ctx.principal
 
-        env_vars = {**author_env_vars(workflow, principal), **env_overrides}
+        env_vars = {**author_env_vars(workflow, ctx), **env_overrides}
         store = VariableStore(env_vars=env_vars)
         for key, value in variables.items():
             await store.set(key, value)
@@ -829,7 +845,7 @@ class WorkflowRunService:
             logger.exception("Failed to persist workflow run %s", out.run_id)
 
     def _fire_webhook(
-        self, workflow: Any, out: RunOutcome, mode: RunMode, principal: Principal
+        self, workflow: Any, out: RunOutcome, mode: RunMode, ctx: CallContext
     ) -> None:
         """POST the run result to the author's webhook.
 
@@ -846,7 +862,7 @@ class WorkflowRunService:
             "status": out.status,
             "duration_ms": out.duration_ms,
         }
-        if principal.is_author:
+        if runs_as_author(ctx):
             payload.update(
                 run_id=out.run_id,
                 outputs=out.outputs or None,

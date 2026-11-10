@@ -17,6 +17,9 @@ __all__ = [
     "OWNER_ONLY",
     "RESOURCE_INACTIVE",
     "RESOURCE_NOT_FOUND",
+    "SUBSCRIPTION_REQUIRED",
+    "TOKEN_QUOTA_EXCEEDED",
+    "WORKFLOW_OWNER_INACTIVE",
     "AssemblyRefusal",
 ]
 
@@ -34,6 +37,9 @@ CONFIRMATION_FORBIDDEN = "confirmation_forbidden"
 CONFIRMATION_ALREADY_DECIDED = "confirmation_already_decided"
 APPROVAL_ASSIGNEE_NOT_IN_ORG = "approval_assignee_not_in_org"
 AGENT_UNAVAILABLE = "agent_unavailable"
+SUBSCRIPTION_REQUIRED = "subscription_required"
+TOKEN_QUOTA_EXCEEDED = "token_quota_exceeded"
+WORKFLOW_OWNER_INACTIVE = "workflow_owner_inactive"
 
 
 class AssemblyRefusal(Exception):  # noqa: N818 - a refusal is an outcome, not a fault
