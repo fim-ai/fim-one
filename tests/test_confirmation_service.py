@@ -733,6 +733,47 @@ class TestDecide:
         assert exc.value.error_code == "confirmation_already_decided"
         assert exc.value.detail_args == {"status": "approved"}
 
+    async def test_a_request_past_its_deadline_cannot_be_decided(
+        self, factory: async_sessionmaker[AsyncSession], deciders: dict[str, Any]
+    ) -> None:
+        """Before the sweep has run, a late click still finds the request closed."""
+        row = await _request_with_scope(factory, deciders, "initiator")
+        async with factory() as db:
+            stored = await db.get(ConfirmationRequest, row.id)
+            assert stored is not None
+            stored.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+            await db.commit()
+
+        service = ConfirmationService(factory)
+        initiator = await _principal(factory, deciders["users"]["initiator"])
+        async with factory() as db:
+            with pytest.raises(AssemblyRefusal) as exc:
+                await service.decide(
+                    db, confirmation_id=row.id, actor=initiator, decision="approve"
+                )
+        assert exc.value.error_code == "confirmation_already_decided"
+        assert exc.value.detail_args == {"status": "expired"}
+        after = await _row(factory, row.id)
+        assert after.status == "expired"
+        assert after.decided_by_user_id is None
+
+    async def test_a_request_with_no_deadline_can_still_be_decided(
+        self, factory: async_sessionmaker[AsyncSession], deciders: dict[str, Any]
+    ) -> None:
+        """Rows written before the deadline column existed have none."""
+        row = await _request_with_scope(factory, deciders, "initiator")
+        async with factory() as db:
+            stored = await db.get(ConfirmationRequest, row.id)
+            assert stored is not None
+            stored.expires_at = None
+            await db.commit()
+        initiator = await _principal(factory, deciders["users"]["initiator"])
+        async with factory() as db:
+            decided = await ConfirmationService(factory).decide(
+                db, confirmation_id=row.id, actor=initiator, decision="approve"
+            )
+        assert decided.status == "approved"
+
     async def test_unknown_and_question_rows(
         self, factory: async_sessionmaker[AsyncSession], deciders: dict[str, Any]
     ) -> None:

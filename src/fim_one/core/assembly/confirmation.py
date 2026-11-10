@@ -432,8 +432,10 @@ class ConfirmationService:
         Raises :class:`AssemblyRefusal`: ``confirmation_not_found`` (404;
         also for a question, which is answered, not decided),
         ``confirmation_already_decided`` (409, ``detail_args["status"]``
-        says how) or ``confirmation_forbidden`` (403). Two decisions racing
-        for one row: exactly one wins, the other sees "already decided".
+        says how; ``expired`` for a request past its deadline, whether or
+        not the sweep has closed it) or ``confirmation_forbidden`` (403).
+        Two decisions racing for one row: exactly one wins, the other sees
+        "already decided".
         """
         from sqlalchemy import select
 
@@ -587,12 +589,14 @@ async def record_decision(
     Authorisation is the caller's business (:meth:`ConfirmationService.decide`);
     this is the write. A conditional ``UPDATE ... WHERE status='pending'``
     lets concurrent deciders race cleanly on SQLite and PostgreSQL alike:
-    one update changes the row, the rest see a rowcount of zero.
+    one update changes the row, the rest see a rowcount of zero. The
+    condition includes the deadline: a row still pending past its
+    ``expires_at`` is not decided but marked ``expired``.
 
     Returns ``(final_status, newly_applied, payload)``: ``(None, False,
     None)`` when there is no such row.
     """
-    from sqlalchemy import CursorResult, select, update
+    from sqlalchemy import CursorResult, or_, select, update
 
     from fim_one.db.models.channel import ConfirmationRequest
 
@@ -617,16 +621,40 @@ async def record_decision(
             .where(
                 ConfirmationRequest.id == confirmation_id,
                 ConfirmationRequest.status == "pending",
+                or_(
+                    ConfirmationRequest.expires_at.is_(None),
+                    ConfirmationRequest.expires_at > now,
+                ),
             )
             .values(**values)
+            # The criteria are for the database: evaluated against objects
+            # in the session, a zone-less SQLite timestamp does not compare
+            # with ``now``.
+            .execution_options(synchronize_session=False)
         ),
     )
-    await db.commit()
     newly_applied = (result.rowcount or 0) == 1
+    if not newly_applied:
+        # Still pending past its deadline: the sweep has not reached it
+        # yet. It is closed here, so the caller reads "expired".
+        await db.execute(
+            update(ConfirmationRequest)
+            .where(
+                ConfirmationRequest.id == confirmation_id,
+                ConfirmationRequest.status == "pending",
+                ConfirmationRequest.expires_at <= now,
+            )
+            .values(status="expired", responded_at=now)
+            .execution_options(synchronize_session=False)
+        )
+    await db.commit()
 
     row = (
         await db.execute(
-            select(ConfirmationRequest).where(ConfirmationRequest.id == confirmation_id)
+            select(ConfirmationRequest)
+            .where(ConfirmationRequest.id == confirmation_id)
+            # The updates above bypassed the session; read what they wrote.
+            .execution_options(populate_existing=True)
         )
     ).scalar_one_or_none()
     if row is None:
