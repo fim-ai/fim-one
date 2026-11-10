@@ -876,9 +876,18 @@ class TestCrashRecovery:
         assert (await just_started.sweep()).closed == []
         assert (await rig.run(legacy)).status == "running"
 
-        up_for_a_while = WorkflowRunSupervisor(rig.service, legacy_grace_seconds=1800)
-        up_for_a_while._born -= 1801
-        assert (await up_for_a_while.sweep()).closed == [legacy]
+        # The wait is counted from the first look, across restarts: a new
+        # process 31 minutes later does not start it again.
+        from fim_one.core.workflow.run_recovery import LEGACY_FIRST_SEEN_KEY
+        from fim_one.db.models.system_setting import SystemSetting
+
+        async with rig.factory() as db:
+            first_seen = await db.get(SystemSetting, LEGACY_FIRST_SEEN_KEY)
+            assert first_seen is not None
+            first_seen.value = (datetime.now(UTC) - timedelta(seconds=1801)).isoformat()
+            await db.commit()
+        restarted = WorkflowRunSupervisor(_new_service(), legacy_grace_seconds=1800)
+        assert (await restarted.sweep()).closed == [legacy]
         # A run a current process had its name on gets no such grace.
         named = await _left_running(rig, heartbeat_age=600)
         assert (await just_started.sweep()).closed == [named]

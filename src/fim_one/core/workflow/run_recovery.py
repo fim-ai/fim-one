@@ -77,6 +77,9 @@ __all__ = [
 _WORKFLOW_RUN_DIR = re.compile(
     r"wfrun-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
 )
+# ``system_settings`` key: when a process with heartbeats first found runs
+# without one (the start of their grace period).
+LEGACY_FIRST_SEEN_KEY = "workflow.runs_without_heartbeat_first_seen_at"
 # Rows looked at per sweep; the rest wait for the next one.
 _SWEEP_BATCH = 500
 
@@ -288,8 +291,10 @@ class WorkflowRunSupervisor:
     legacy_grace_seconds:
         A ``running`` run with no ``worker_id`` was started by a process
         from before heartbeats existed, which may still be executing it
-        (a rolling deploy). Such runs are left alone until this supervisor
-        has been up for this long, then judged by their start time.
+        (a rolling deploy). Such runs are left alone for this long after
+        a process of this version first found any (remembered in
+        ``system_settings``, so restarts do not start the wait again), then
+        judged by their start time.
     sandbox_orphan_seconds:
         A directory with no run record to ask (a single-step test, a
         delegation, an evaluation run) is removed once nothing in it has
@@ -314,7 +319,6 @@ class WorkflowRunSupervisor:
         self._sync_engine = sync_engine
         self._heartbeat: HeartbeatThread | None = None
         self.legacy_grace_seconds = legacy_grace_seconds
-        self._born = time.monotonic()
         self.heartbeat_seconds = heartbeat_seconds
         self.stale_seconds = max(stale_seconds, heartbeat_seconds * 3)
         self.sweep_seconds = sweep_seconds
@@ -439,7 +443,9 @@ class WorkflowRunSupervisor:
         # Runs no process has put its name on come from before this
         # release. During a rolling deploy the old process may still be
         # executing them, and it does not stamp: they are given time.
-        legacy_due = time.monotonic() - self._born >= self.legacy_grace_seconds
+        legacy_due = any(worker_id is None for _, worker_id in candidates) and (
+            await self._legacy_grace_over()
+        )
         for run_id, worker_id in candidates:
             if run_id in mine:
                 continue
@@ -456,6 +462,41 @@ class WorkflowRunSupervisor:
             )
             if closed is not None:
                 report.closed.append(run_id)
+
+    async def _legacy_grace_over(self) -> bool:
+        """Whether runs from before heartbeats have had their grace.
+
+        Counted from the first time any process of this version looked,
+        which is written to ``system_settings`` once: a process restarted
+        during the grace period does not start it again.
+        """
+        from datetime import UTC, datetime
+
+        from sqlalchemy import select
+        from sqlalchemy.exc import IntegrityError
+
+        from fim_one.db import create_session
+        from fim_one.db.models.system_setting import SystemSetting
+
+        now = datetime.now(UTC)
+        async with create_session() as db:
+            first_seen = (
+                await db.execute(
+                    select(SystemSetting.value).where(SystemSetting.key == LEGACY_FIRST_SEEN_KEY)
+                )
+            ).scalar_one_or_none()
+            if first_seen is None:
+                db.add(SystemSetting(key=LEGACY_FIRST_SEEN_KEY, value=now.isoformat()))
+                try:
+                    await db.commit()
+                except IntegrityError:
+                    await db.rollback()  # another process wrote it this instant
+                return self.legacy_grace_seconds <= 0
+        try:
+            since = datetime.fromisoformat(first_seen)
+        except ValueError:
+            return True
+        return (now - since).total_seconds() >= self.legacy_grace_seconds
 
     async def _resume_settled_runs(self, report: SweepReport) -> None:
         """Continue every waiting run that has something to go on with.
