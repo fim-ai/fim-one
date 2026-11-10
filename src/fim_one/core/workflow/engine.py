@@ -32,9 +32,19 @@ from .variable_store import VariableStore
 
 logger = logging.getLogger(__name__)
 
-# Asking whether the run is still this process's: tries, and the pause between.
-_OWNERSHIP_TRIES = 3
-_OWNERSHIP_RETRY_SECONDS = 0.2
+# Asking whether the run is still this process's: the pauses between tries
+# when the database does not answer (one more try than pauses, 5 s in all).
+# Long enough for a failover or a restarted pooler to pass: with one server
+# process nobody else could have closed the run meanwhile, and failing a
+# step for a blip helps no one.
+_OWNERSHIP_RETRY_PAUSES: tuple[float, ...] = (0.2, 0.4, 0.8, 1.6, 2.0)
+
+
+async def _ownership_pause(seconds: float) -> None:
+    """The pause between two tries of the ownership question."""
+    await asyncio.sleep(seconds)
+
+
 # Steps that act outside the run or spend tokens. When ownership cannot be
 # established they are not run; the others (Start, End, branches) are.
 _SIDE_EFFECT_STEPS = frozenset(
@@ -275,6 +285,8 @@ class WorkflowEngine:
 
         # Set once the run's record turned out to be closed by someone else.
         abandoned = {"run": False}
+        # The last ownership question got no answer after all its tries.
+        unanswered = {"run": False}
 
         # Failed nodes whose error strategy (CONTINUE / FAIL_BRANCH) says the
         # run should carry on.  They don't fail the run by themselves.
@@ -435,20 +447,30 @@ class WorkflowEngine:
             Asked before each step and each retry, so a run closed by
             someone else stops before its next side effect, not at the
             next heartbeat. ``None`` when the question could not be
-            answered (the database did not respond, three tries a short
-            pause apart): the caller decides by what the step would do.
+            answered: the database did not respond, over several tries
+            with growing pauses (:data:`_OWNERSHIP_RETRY_PAUSES`). The
+            caller then decides by what the step would do. Once the
+            pauses have been sat through without an answer, later steps
+            ask once and do not wait again until an answer comes: an
+            outage costs the run those seconds once, not once per step.
             """
             if ctx.still_owned is None or abandoned["run"]:
                 return not abandoned["run"]
-            for attempt in range(_OWNERSHIP_TRIES):
+            pauses = () if unanswered["run"] else _OWNERSHIP_RETRY_PAUSES
+            for attempt in range(len(pauses) + 1):
                 try:
                     owned = bool(await ctx.still_owned())
                 except Exception:
-                    if attempt + 1 < _OWNERSHIP_TRIES:
-                        await asyncio.sleep(_OWNERSHIP_RETRY_SECONDS)
+                    if attempt < len(pauses):
+                        await _ownership_pause(pauses[attempt])
                         continue
-                    logger.exception("Could not check whether run %s is still ours", self._run_id)
+                    if not unanswered["run"]:
+                        logger.exception(
+                            "Could not check whether run %s is still ours", self._run_id
+                        )
+                    unanswered["run"] = True
                     return None
+                unanswered["run"] = False
                 if not owned:
                     abandoned["run"] = True
                 return owned

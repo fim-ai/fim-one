@@ -380,7 +380,7 @@ class TestOwnershipCannotBeEstablished:
         context = ExecutionContext(run_id="r", user_id="u", workflow_id="w", still_owned=unknown)
         with (
             patch("fim_one.core.workflow.nodes.ConnectorExecutor.execute", side_effect=call),
-            patch("fim_one.core.workflow.engine._OWNERSHIP_RETRY_SECONDS", 0),
+            patch("fim_one.core.workflow.engine._OWNERSHIP_RETRY_PAUSES", (0, 0, 0, 0, 0)),
         ):
             events = [e async for e in WorkflowEngine().execute_streaming(self._bp(), {}, context)]
 
@@ -388,7 +388,47 @@ class TestOwnershipCannotBeEstablished:
         (failed,) = _named(events, "node_failed")
         assert failed["node_id"] == "call" and "could not confirm" in failed["error"]
         assert events[-1][0] == "run_failed"
-        assert asked >= 3  # a bounded retry first; Start ran without the answer
+        # A bounded retry first (Start ran without the answer); after it
+        # the steps that follow ask once each and do not wait again.
+        assert asked == 6 + 1
+
+    def test_the_retry_outlasts_a_brief_outage_and_stays_bounded(self) -> None:
+        from fim_one.core.workflow.engine import _OWNERSHIP_RETRY_PAUSES as pauses
+
+        assert 3.0 <= sum(pauses) <= 5.0
+        assert list(pauses) == sorted(pauses) and pauses[0] <= 0.25  # a blip costs little
+
+    async def test_an_outage_of_a_second_or_two_fails_nothing(self) -> None:
+        """Before, three tries 0.2 s apart: a database away for half a
+        second failed the connector step of a run nobody else could have
+        closed."""
+        clock = {"now": 0.0}
+        called: list[str] = []
+
+        async def nap(seconds: float) -> None:
+            clock["now"] += seconds
+
+        async def back_after_two_seconds() -> bool:
+            if clock["now"] < 2.0:
+                raise OSError("database unreachable")
+            return True
+
+        async def call(node: Any, store: Any, ctx: Any) -> NodeResult:
+            called.append(node.id)
+            return NodeResult(node_id=node.id, status=NodeStatus.COMPLETED, output="sent")
+
+        context = ExecutionContext(
+            run_id="r", user_id="u", workflow_id="w", still_owned=back_after_two_seconds
+        )
+        with (
+            patch("fim_one.core.workflow.nodes.ConnectorExecutor.execute", side_effect=call),
+            patch("fim_one.core.workflow.engine._ownership_pause", side_effect=nap),
+        ):
+            events = [e async for e in WorkflowEngine().execute_streaming(self._bp(), {}, context)]
+
+        assert called == ["call"]
+        assert _named(events, "run_completed")[0]["status"] == "completed"
+        assert 2.0 <= clock["now"] <= 5.0
 
     async def test_a_hiccup_that_passes_does_not_stop_anything(self) -> None:
         answers = iter([OSError("blip"), True, True, True, True, True])
@@ -405,7 +445,7 @@ class TestOwnershipCannotBeEstablished:
         context = ExecutionContext(run_id="r", user_id="u", workflow_id="w", still_owned=flaky)
         with (
             patch("fim_one.core.workflow.nodes.ConnectorExecutor.execute", side_effect=call),
-            patch("fim_one.core.workflow.engine._OWNERSHIP_RETRY_SECONDS", 0),
+            patch("fim_one.core.workflow.engine._OWNERSHIP_RETRY_PAUSES", (0, 0, 0, 0, 0)),
         ):
             events = [e async for e in WorkflowEngine().execute_streaming(self._bp(), {}, context)]
 
