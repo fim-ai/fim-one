@@ -120,6 +120,19 @@ def _fit(value: Any, limit: int) -> str | None:
     return str(value)[:limit]
 
 
+def _without_url_secrets(detail: str | None) -> str | None:
+    """*detail* with the credential cut from any URL it quotes.
+
+    Free text is where a webhook URL or an error message that quotes one
+    ends up. The stripper is the one call records and logs go through.
+    """
+    if not detail or "//" not in detail:
+        return detail
+    from fim_one.core.assembly.mcp_address import strip_url_secrets
+
+    return strip_url_secrets(detail)
+
+
 async def record(
     action: str,
     *,
@@ -145,7 +158,8 @@ async def record(
     (:mod:`.context`); *request* overrides it. *context* supplies the
     conversation, workflow run and agent the event happened in. *changes*
     comes from :func:`fim_one.core.audit.redact.diff_changes`, which keeps
-    secrets out of it.
+    secrets out of it; a URL quoted in *detail* loses its user-info, query
+    string and token-shaped path segments.
     """
     from fim_one.db.models.audit_log import AuditLog
 
@@ -166,7 +180,7 @@ async def record(
         target_label=_fit(target_label, 255),
         outcome=outcome,
         changes={name: dict(change) for name, change in changes.items()} if changes else None,
-        detail=detail,
+        detail=_without_url_secrets(detail),
         ip_address=_fit(meta.ip, 45) if meta else None,
         user_agent=_fit(meta.user_agent, 500) if meta else None,
         request_id=_fit(meta.request_id, 36) if meta else None,

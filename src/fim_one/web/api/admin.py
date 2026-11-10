@@ -48,6 +48,7 @@ from fim_one.web.services.user_deletion import purge_user_data
 # Settings helpers (delegated to admin_utils, re-exported for compatibility)
 # ---------------------------------------------------------------------------
 
+from fim_one.core.audit.redact import hint as redact_hint
 from fim_one.web.api.admin_utils import get_setting, set_setting, write_audit  # noqa: F811,E402
 from fim_one.web.api.files import _load_index, _user_dir
 from fim_one.web.services.billing_flag import (
@@ -1893,7 +1894,9 @@ async def create_invite_code(
     await db.refresh(code)
     await write_audit(
         db, current_user, "invite_code.create",
-        detail=f"code={code_str}",
+        target_type="invite_code", target_id=code.id,
+        # Enough to tell which code it was; the code itself admits whoever holds it.
+        detail=f"code={redact_hint(code_str)}",
     )
     return InviteCodeInfo(
         id=code.id, code=code.code, note=code.note,
@@ -1919,7 +1922,8 @@ async def revoke_invite_code(
     await db.commit()
     await write_audit(
         db, current_user, "invite_code.revoke",
-        detail=f"code_id={code_id}",
+        target_type="invite_code", target_id=code_id,
+        detail=f"code_id={code_id}, code={redact_hint(code.code)}",
     )
 
 

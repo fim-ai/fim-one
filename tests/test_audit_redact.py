@@ -5,7 +5,10 @@ from __future__ import annotations
 import json
 
 from fim_one.core.assembly.mcp_address import names_a_secret, value_is_secret_shaped
+from fim_one.core.audit import writer as audit
 from fim_one.core.audit.redact import diff_changes, hint, safe_text
+from fim_one.db.models.invite_code import InviteCode
+from tests.audit.harness import World, world  # noqa: F401
 
 SECRET = "sk-live-4f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c"
 
@@ -107,3 +110,67 @@ class TestTheNameAndShapeRulesAreTheAddressRules:
         assert value_is_secret_shaped("Bearer abcdefgh12345678")
         assert not value_is_secret_shaped("member")
         assert not value_is_secret_shaped(None)
+
+
+class TestInviteCodes:
+    """The code admits whoever holds it. It was written into the audit row
+    in full, and left the system in the audit export."""
+
+    async def test_the_row_and_the_export_show_only_its_first_characters(
+        self, world: World
+    ) -> None:
+        root = await world.user("root", admin=True)
+
+        created = (
+            await world.call("POST", "/api/admin/invite-codes", by=root, json={"note": "for bob"})
+        ).json()
+        code = created["code"]
+        assert len(code) == 8
+
+        row = await world.one(
+            "invite_code.create", actor=root, target=("invite_code", created["id"])
+        )
+        assert row.detail == f"code={code[:4]}…"
+        world.assert_absent(row, code)
+        export = await world.call("GET", "/api/admin/audit-log/export", by=root)
+        assert code not in export.text and code[:4] in export.text
+        listing = await world.call("GET", "/api/admin/audit-log", by=root)
+        assert code not in listing.text
+
+    async def test_revoking_names_the_code_the_same_way(self, world: World) -> None:
+        root = await world.user("root", admin=True)
+        await world.add(InviteCode(id="code-1", code="WELCOME9", created_by_id=root.id))
+
+        await world.call("DELETE", "/api/admin/invite-codes/code-1", by=root)
+
+        row = await world.one("invite_code.revoke", actor=root, target=("invite_code", "code-1"))
+        assert row.detail == "code_id=code-1, code=WELC…"
+        world.assert_absent(row, "WELCOME9")
+
+
+class TestFreeTextDetail:
+    async def test_a_url_quoted_in_the_detail_loses_what_authenticates_it(
+        self, world: World
+    ) -> None:
+        root = await world.user("root", admin=True)
+
+        await audit.record(
+            "notifications.test",
+            actor=audit.actor_of(root),
+            detail="POST https://hooks.example.com/bot/v2/hook/0123456789abcdef0123456789abcdef"
+            "?key=hunter2hunter2 returned 403",
+        )
+
+        row = await world.one("notifications.test", actor=root, ip=None)
+        assert row.detail == "POST https://hooks.example.com/bot/v2/hook/*** returned 403"
+        world.assert_absent(row, "hunter2hunter2", "0123456789abcdef0123456789abcdef")
+
+    async def test_plain_detail_is_stored_as_written(self, world: World) -> None:
+        root = await world.user("root", admin=True)
+
+        await audit.record(
+            "settings.update", actor=audit.actor_of(root), detail="registration_mode=invite; a/b"
+        )
+
+        row = await world.one("settings.update", actor=root, ip=None)
+        assert row.detail == "registration_mode=invite; a/b"
