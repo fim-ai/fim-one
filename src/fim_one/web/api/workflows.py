@@ -761,12 +761,12 @@ _TRIGGER_FAILURE_MESSAGES = {
     ),
     "workflow_run_timed_out": "The workflow run timed out.",
     "workflow_waiting_limit_reached": (
-        "The run could not wait for a decision: too many runs of this workflow's "
-        "owner are already waiting for one."
+        "Too many runs are already waiting for a decision. Decide or cancel some of "
+        "them, then run the workflow again."
     ),
     "workflow_suspend_state_too_large": (
-        "The run could not wait for a decision: its steps produced more data than a "
-        "waiting run may keep."
+        "The run could not wait for a decision: the steps before the approval produced "
+        "more data than a waiting run may keep."
     ),
     "workflow_run_cancelled": "The workflow run was cancelled.",
     "workflow_run_failed": (

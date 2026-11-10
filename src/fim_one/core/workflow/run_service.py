@@ -681,6 +681,22 @@ class StartedRun:
         await self._service._save_progress(self.run_id, self.outcome.node_results)
 
 
+_WAITING_LOCKS: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def _waiting_lock() -> asyncio.Lock:
+    """One lock per process (per event loop) for taking a place among a
+    user's waiting runs: SQLite has no lock a second connection would wait
+    on, and one process is all it serves."""
+    loop = asyncio.get_running_loop()
+    lock = _WAITING_LOCKS.get(loop)
+    if lock is None:
+        lock = _WAITING_LOCKS[loop] = asyncio.Lock()
+    return lock
+
+
 class WorkflowRunService:
     """Starts workflow runs for every entry point. See the module docstring."""
 
@@ -700,9 +716,6 @@ class WorkflowRunService:
         # Runs of this process whose record someone else closed; emptied
         # as each run's driver ends.
         self._closed_elsewhere: set[str] = set()
-        # Serialises taking a place among a user's waiting runs (SQLite has
-        # no lock a second connection would wait on).
-        self._waiting_lock = asyncio.Lock()
         # One lock per workflow with a single-flight start in progress; an
         # entry goes away once nobody holds or waits for its lock.
         self._single_flight_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = (
@@ -761,7 +774,7 @@ class WorkflowRunService:
         from fim_one.db.models import WorkflowRun
 
         limit = waiting_runs_limit()
-        async with self._waiting_lock, create_session() as db:
+        async with _waiting_lock(), create_session() as db:
             if limit > 0 and not always:
                 if _dialect_of(db) == "postgresql":
                     await db.execute(

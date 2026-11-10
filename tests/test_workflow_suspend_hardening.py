@@ -147,10 +147,23 @@ class TestClosingARunOnItsRecord:
                 assert fired["started"] is not None
             return await real_execute(self, statement, *args, **kwargs)
 
-        with patch.object(AsyncSession, "execute", execute):
-            cancelled = await rig.service.cancel_stored_run(outcome.run_id)
+        from fim_one.core.workflow.types import NodeResult, NodeStatus
 
-        await fired["started"].wait()
+        release = asyncio.Event()
+
+        async def held_end(node: Any, store: Any, ctx: Any) -> Any:
+            # The continuation is still at work when the cancel lands.
+            await release.wait()
+            return NodeResult(node_id=node.id, status=NodeStatus.COMPLETED, output={})
+
+        with (
+            patch("fim_one.core.workflow.nodes.EndExecutor.execute", side_effect=held_end),
+            patch.object(AsyncSession, "execute", execute),
+        ):
+            cancelled = await rig.service.cancel_stored_run(outcome.run_id)
+            release.set()
+            await fired["started"].wait()
+
         run = await rig.run(outcome.run_id)
         assert cancelled is True
         assert run.status == "cancelled"
@@ -1489,4 +1502,4 @@ class TestATriggerCallerLearnsWhyARunCouldNotWait:
             )
         assert response.data["status"] == "failed"
         assert response.data["error_code"] == "workflow_waiting_limit_reached"
-        assert "too many runs" in response.data["error"]
+        assert "Too many runs are already waiting" in response.data["error"]
