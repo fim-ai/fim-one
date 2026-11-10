@@ -206,9 +206,16 @@ AUDITED: dict[Route, tuple[str, ...]] = {
     ("POST", "/api/auth/reset-password"): ("auth.password_reset",),
     ("POST", "/api/auth/set-password"): ("auth.password_set",),
     ("POST", "/api/auth/setup"): ("auth.setup_admin",),
+    ("POST", "/api/channels"): ("channel.create",),
+    ("DELETE", "/api/channels/{channel_id}"): ("channel.delete",),
+    ("PATCH", "/api/channels/{channel_id}"): ("channel.update",),
+    ("POST", "/api/channels/{channel_id}/test"): ("channel.test",),
+    ("DELETE", "/api/connectors/{connector_id}/my-credentials"): ("connector.credential_delete",),
+    ("PUT", "/api/connectors/{connector_id}/my-credentials"): ("connector.credential_set",),
     ("POST", "/api/connectors/{connector_id}/publish"): ("review_log:submitted",),
     ("POST", "/api/connectors/{connector_id}/resubmit"): ("review_log:resubmitted",),
     ("POST", "/api/connectors/{connector_id}/unpublish"): ("review_log:unpublished",),
+    ("PUT", "/api/mcp-servers/{server_id}/my-credentials"): ("mcp_server.credential_set", "mcp_server.credential_delete"),
     ("POST", "/api/mcp-servers/{server_id}/publish"): ("review_log:submitted",),
     ("POST", "/api/mcp-servers/{server_id}/resubmit"): ("review_log:resubmitted",),
     ("POST", "/api/mcp-servers/{server_id}/unpublish"): ("review_log:unpublished",),
@@ -227,6 +234,7 @@ AUDITED: dict[Route, tuple[str, ...]] = {
     ("POST", "/api/skills/{skill_id}/publish"): ("review_log:submitted",),
     ("POST", "/api/skills/{skill_id}/resubmit"): ("review_log:resubmitted",),
     ("POST", "/api/skills/{skill_id}/unpublish"): ("review_log:unpublished",),
+    ("PUT", "/api/workflows/{workflow_id}/env"): ("workflow.env_update",),
     ("POST", "/api/workflows/{workflow_id}/publish"): ("review_log:submitted",),
     ("POST", "/api/workflows/{workflow_id}/resubmit"): ("review_log:resubmitted",),
     ("POST", "/api/workflows/{workflow_id}/unpublish"): ("review_log:unpublished",),
@@ -308,15 +316,6 @@ EXEMPT: dict[Route, str] = {
 }
 
 KNOWN_GAPS: dict[Route, Gap] = {
-    # 4 channels and credentials
-    ("POST", "/api/channels"): Gap("4 channels and credentials", "channel.create"),
-    ("DELETE", "/api/channels/{channel_id}"): Gap("4 channels and credentials", "channel.delete"),
-    ("PATCH", "/api/channels/{channel_id}"): Gap("4 channels and credentials", "channel.update"),
-    ("POST", "/api/channels/{channel_id}/test"): Gap("4 channels and credentials", "channel.test"),
-    ("DELETE", "/api/connectors/{connector_id}/my-credentials"): Gap("4 channels and credentials", "connector.credential_delete"),
-    ("PUT", "/api/connectors/{connector_id}/my-credentials"): Gap("4 channels and credentials", "connector.credential_set"),
-    ("PUT", "/api/mcp-servers/{server_id}/my-credentials"): Gap("4 channels and credentials", "mcp_server.credential_set"),
-    ("PUT", "/api/workflows/{workflow_id}/env"): Gap("4 channels and credentials", "workflow.env_update"),
     # 5 trigger keys and schedules
     ("DELETE", "/api/workflows/{workflow_id}/api-key"): Gap("5 trigger keys and schedules", "workflow.trigger_key_revoke"),
     ("POST", "/api/workflows/{workflow_id}/generate-api-key"): Gap("5 trigger keys and schedules", "workflow.trigger_key_generate"),

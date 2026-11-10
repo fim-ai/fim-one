@@ -16,8 +16,10 @@ from fim_one.core.assembly.credentials import address_is_private, personal_crede
 from fim_one.core.assembly.errors import MCP_SERVER_ADDRESS_PRIVATE
 from fim_one.core.assembly.mcp_address import address_secret_reasons, error_without_url_secrets
 from fim_one.core.security import is_stdio_allowed, validate_stdio_command, validate_url
+from fim_one.core.audit import actions
 from fim_one.db import get_session
 from fim_one.web.exceptions import AppError
+from fim_one.web.audit_events import record_resource
 from fim_one.web.auth import get_current_user, get_user_org_ids
 from fim_one.web.platform import MARKET_ORG_ID, is_market_org
 from fim_one.db.models.mcp_server import MCPServer
@@ -791,12 +793,16 @@ async def upsert_my_mcp_credentials(
     if not env_data and not headers_data:
         if row:
             await db.delete(row)
+            await record_resource(
+                db, current_user, actions.MCP_SERVER_CREDENTIAL_DELETE, "mcp_server", server
+            )
             await db.commit()
         return ApiResponse(data={"saved": True, "cleared": True})
 
     env_blob = env_data or None
     headers_blob = headers_data or None
 
+    replaced = row is not None
     if row:
         setattr(row, "env_blob", env_blob)
         setattr(row, "headers_blob", headers_blob)
@@ -809,5 +815,16 @@ async def upsert_my_mcp_credentials(
         )
         db.add(row)
 
+    # Which part was supplied and whether one was there before; no name or
+    # value of a variable or header.
+    supplied = "+".join(part for part, data in (("env", env_data), ("headers", headers_data)) if data)
+    await record_resource(
+        db,
+        current_user,
+        actions.MCP_SERVER_CREDENTIAL_SET,
+        "mcp_server",
+        server,
+        detail=f"{supplied}; {'replaced' if replaced else 'new'}",
+    )
     await db.commit()
     return ApiResponse(data={"saved": True})

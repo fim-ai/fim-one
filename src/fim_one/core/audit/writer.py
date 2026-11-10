@@ -63,7 +63,7 @@ def actor_of(user: Any) -> Actor:
     auth = current_request_auth()
     return Actor(
         user_id=user.id,
-        label=user.username or user.email,
+        label=getattr(user, "username", None) or getattr(user, "email", None),
         kind="admin" if getattr(user, "is_admin", False) else "user",
         auth=auth[0] if auth else None,
         credential_ref=auth[1] if auth else None,

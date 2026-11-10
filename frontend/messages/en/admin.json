@@ -595,7 +595,16 @@
       "org__delete": "Delete Organization",
       "org__member_add": "Add Organization Member",
       "org__member_role_change": "Change Member Role",
-      "org__member_remove": "Remove Organization Member"
+      "org__member_remove": "Remove Organization Member",
+      "channel__create": "Create Channel",
+      "channel__update": "Update Channel",
+      "channel__delete": "Delete Channel",
+      "channel__test": "Send Channel Test Message",
+      "connector__credential_set": "Save Personal Connector Credential",
+      "connector__credential_delete": "Delete Personal Connector Credential",
+      "mcp_server__credential_set": "Save Personal MCP Credential",
+      "mcp_server__credential_delete": "Delete Personal MCP Credential",
+      "workflow__env_update": "Update Workflow Env Vars"
     },
     "detailDialogTitle": "Audit Detail",
     "filterDateFrom": "From",

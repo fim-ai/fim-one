@@ -163,6 +163,22 @@ ORG_MEMBER_ROLE_CHANGE = "org.member_role_change"
 # Removed by an administrator of the organization, or left (detail ``left``).
 ORG_MEMBER_REMOVE = "org.member_remove"
 
+# -- Channels and credentials -------------------------------------------------
+# No record holds a credential: a config key or a secret field says only
+# that it changed.
+CHANNEL_CREATE = "channel.create"
+CHANNEL_UPDATE = "channel.update"
+CHANNEL_DELETE = "channel.delete"
+# A test message was sent through the channel.
+CHANNEL_TEST = "channel.test"
+# A user's personal credential for a connector or an MCP server.
+CONNECTOR_CREDENTIAL_SET = "connector.credential_set"
+CONNECTOR_CREDENTIAL_DELETE = "connector.credential_delete"
+MCP_SERVER_CREDENTIAL_SET = "mcp_server.credential_set"
+MCP_SERVER_CREDENTIAL_DELETE = "mcp_server.credential_delete"
+# The encrypted env vars of a workflow were replaced.
+WORKFLOW_ENV_UPDATE = "workflow.env_update"
+
 ACTIONS: frozenset[str] = frozenset(ADMIN_ACTIONS) | frozenset(
     value
     for name, value in dict(globals()).items()

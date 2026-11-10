@@ -20,9 +20,12 @@ from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import CursorResult, and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.audit import actions
+from fim_one.core.audit.redact import diff_changes
 from fim_one.db import get_session
 from fim_one.core.security import get_safe_async_client, is_private_ip
 from fim_one.web.exceptions import AppError
+from fim_one.web.audit_events import record_resource
 from fim_one.web.auth import get_current_user, get_user_org_ids
 from fim_one.web.platform import MARKET_ORG_ID, is_market_org
 from fim_one.core.assembly.confirmation import (
@@ -3238,12 +3241,27 @@ async def update_workflow_env(
     wf = await _get_owned_workflow(workflow_id, current_user.id, db)
 
     from fim_one.core.security.encryption import encrypt_credential
+    from fim_one.core.workflow.run_service import decrypt_workflow_env
 
+    names_before = sorted(decrypt_workflow_env(wf))
     if body.env_vars:
         wf.env_vars_blob = encrypt_credential(body.env_vars)
     else:
         wf.env_vars_blob = None
 
+    # The names of the variables before and after; never a value. Replacing
+    # a value under the same name shows as an event with no change of names.
+    await record_resource(
+        db,
+        current_user,
+        actions.WORKFLOW_ENV_UPDATE,
+        "workflow",
+        wf,
+        changes=diff_changes(
+            {"variables": names_before}, {"variables": sorted(body.env_vars or {})}
+        ),
+        detail=f"{len(body.env_vars or {})} variable(s) stored",
+    )
     await db.commit()
 
     # Return keys only (not values) for security

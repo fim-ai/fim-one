@@ -93,6 +93,12 @@ class World:
             await db.commit()
         return row
 
+    async def enable_module(self, name: str) -> None:
+        """Switch on a module that is shelved by default (``skills``, ``workflows``)."""
+        from fim_one.db.models import SystemSetting
+
+        await self.add(SystemSetting(key=f"feature.{name}", value="true"))
+
     async def add(self, *rows: Any) -> None:
         async with self.factory() as db:
             db.add_all(rows)

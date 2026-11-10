@@ -23,7 +23,7 @@ __all__ = ["label_of", "record_account", "record_resource"]
 
 def label_of(user: Any) -> str | None:
     """What a user is called in a record: the username, or the email."""
-    label: str | None = user.username or user.email
+    label: str | None = getattr(user, "username", None) or getattr(user, "email", None)
     return label
 
 
