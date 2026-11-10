@@ -83,6 +83,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **Every action in Admin → Audit Log has a readable name.** 42 actions that were already recorded (model groups and providers, billing plans, batch operations, workflow templates, eval cleanup, Market moderation) were shown by their internal name, such as `model_group.deactivate_all`.
 - **Workflow editor: right-click Duplicate copies the step you clicked.** It copied whichever step was selected, or nothing when none was.
 - **Workflow editor: clicking or selecting is no longer an undo step.** Undo stepped back through selections and was enabled right after opening a workflow.
 - **Workflow editor: pan and zoom are remembered.** The canvas reopened fitted to the whole graph every time. Where you left it is now saved with the workflow; moving the view alone creates no version and does not send a published workflow back to review.
