@@ -784,8 +784,28 @@ class TestWaitingRunsAreCapped:
         start; they reach the approval together. Two get a place."""
         monkeypatch.setenv("WORKFLOW_MAX_WAITING_RUNS_PER_USER", "2")
         workers = [_new_service() for _ in range(6)]
+        # No run goes on to its steps before all six have passed the check
+        # at the start. Left to timing, a run that reached that check a few
+        # tens of milliseconds late found both places taken and was
+        # refused there, which is the other test's case, not this one's.
+        check = rs.WorkflowRunService.refuse_if_cannot_wait
+        passed, all_passed = 0, asyncio.Event()
 
-        outcomes = await asyncio.gather(*(rig.start(service=worker) for worker in workers))
+        async def check_then_wait_for_the_rest(self: Any, *args: Any, **kwargs: Any) -> None:
+            nonlocal passed
+            await check(self, *args, **kwargs)
+            passed += 1
+            if passed == len(workers):
+                all_passed.set()
+            await all_passed.wait()
+
+        monkeypatch.setattr(
+            rs.WorkflowRunService, "refuse_if_cannot_wait", check_then_wait_for_the_rest
+        )
+
+        outcomes = await asyncio.wait_for(
+            asyncio.gather(*(rig.start(service=worker) for worker in workers)), timeout=30
+        )
 
         assert sorted(o.status for o in outcomes) == ["failed"] * 4 + ["waiting"] * 2
         failed = [o for o in outcomes if o.status == "failed"]
@@ -798,6 +818,114 @@ class TestWaitingRunsAreCapped:
                 await s.execute(select(WorkflowRun).where(WorkflowRun.status == "waiting"))
             ).scalars().all()
         assert len(waiting) == 2
+
+    async def test_a_run_that_starts_once_the_places_are_taken_is_refused_at_the_start(
+        self, rig: Rig, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The same six runs, but four of them reach the check at the start
+        after the first two took their places: they are refused there
+        (no run record, no step run), and still only two wait."""
+        monkeypatch.setenv("WORKFLOW_MAX_WAITING_RUNS_PER_USER", "2")
+        workers = [_new_service() for _ in range(6)]
+        check = rs.WorkflowRunService.refuse_if_cannot_wait
+        early, early_done = set(map(id, workers[:2])), asyncio.Event()
+
+        async def late_for_four(self: Any, *args: Any, **kwargs: Any) -> None:
+            if id(self) not in early:
+                await early_done.wait()
+            await check(self, *args, **kwargs)
+
+        monkeypatch.setattr(rs.WorkflowRunService, "refuse_if_cannot_wait", late_for_four)
+
+        async def start(worker: rs.WorkflowRunService) -> Any:
+            try:
+                return await rig.start(service=worker)
+            finally:
+                if id(worker) in early:
+                    early.discard(id(worker))
+                    if not early:
+                        early_done.set()
+
+        outcomes = await asyncio.wait_for(
+            asyncio.gather(*(start(w) for w in workers), return_exceptions=True), timeout=30
+        )
+
+        assert [getattr(o, "status", o) for o in outcomes[:2]] == ["waiting", "waiting"]
+        refusals = [o for o in outcomes[2:] if isinstance(o, rs.RunRefusedError)]
+        assert len(refusals) == 4
+        assert {o.error_code for o in refusals} == {"workflow_waiting_limit_reached"}
+        async with rig.factory() as s:
+            runs = (await s.execute(select(WorkflowRun))).scalars().all()
+        assert [r.status for r in runs] == ["waiting", "waiting"]
+
+    @pytest.mark.parametrize(
+        "ending",
+        [
+            pytest.param(rs.SuspendStateTooLargeError(2, 1), id="state-too-large"),
+            pytest.param(RuntimeError("could not seal"), id="failed"),
+            pytest.param(asyncio.CancelledError(), id="cancelled"),
+        ],
+    )
+    async def test_a_place_taken_is_given_back_when_the_run_does_not_wait_after_all(
+        self, rig: Rig, monkeypatch: pytest.MonkeyPatch, ending: BaseException
+    ) -> None:
+        """The run took its place (``waiting_on`` written while running)
+        and then ended instead of waiting. Its place is free again."""
+        monkeypatch.setenv("WORKFLOW_MAX_WAITING_RUNS_PER_USER", "1")
+        reserved: list[Any] = []
+
+        def seal(state: dict[str, Any]) -> dict[str, Any]:
+            raise ending
+
+        async def reserve_and_look(self: Any, run_id: str, *args: Any, **kwargs: Any) -> bool:
+            got: bool = await take(self, run_id, *args, **kwargs)
+            reserved.append((got, (await rig.run(run_id)).waiting_on))
+            return got
+
+        take = rs.WorkflowRunService._reserve_wait
+        monkeypatch.setattr(rs.WorkflowRunService, "_reserve_wait", reserve_and_look)
+        with patch.object(rs, "seal_state", seal):
+            outcome = await rig.start()
+
+        assert outcome.status in ("failed", "cancelled")
+        assert reserved and reserved[0][0] is True and reserved[0][1]  # it had the place
+        run = await rig.run(outcome.run_id)
+        assert (run.status, run.waiting_on) == (outcome.status, None)
+        async with rig.factory() as s:
+            assert await rig.service._waiting_count(s, rig.owner.id) == 0
+        assert (await rig.start()).status == "waiting"  # the one place is there to take
+
+    @pytest.mark.parametrize("closed_by", ["sweep", "cancel"])
+    async def test_a_place_held_by_a_run_whose_process_died_is_given_back(
+        self, rig: Rig, monkeypatch: pytest.MonkeyPatch, closed_by: str
+    ) -> None:
+        """A process died between taking the place and storing the wait:
+        the record stays ``running`` with ``waiting_on`` set. It counts
+        until the record is closed, by the sweep or by a cancel, not after."""
+        monkeypatch.setenv("WORKFLOW_MAX_WAITING_RUNS_PER_USER", "1")
+        async with rig.factory() as s:
+            dead = WorkflowRun(
+                workflow_id=rig.wf.id,
+                user_id=rig.owner.id,
+                blueprint_snapshot=BLUEPRINT,
+                status="running",
+                worker_id="a-process-that-died",
+                waiting_on={"human_1": {"confirmation_id": "x"}},
+            )
+            s.add(dead)
+            await s.commit()
+        await _age_stamp(rig, dead.id, 3600)
+        with pytest.raises(rs.RunRefusedError):
+            await rig.start()
+
+        if closed_by == "sweep":
+            report = await WorkflowRunSupervisor(rig.service, stale_seconds=90).sweep()
+            assert report.closed == [dead.id]
+        else:
+            assert await rig.service.cancel_stored_run(dead.id) is True
+
+        assert (await rig.run(dead.id)).waiting_on is None
+        assert (await rig.start()).status == "waiting"
 
     async def test_a_batch_starts_only_as_many_items_as_may_wait_and_says_so(
         self, rig: Rig, monkeypatch: pytest.MonkeyPatch
@@ -1548,6 +1676,49 @@ class TestTheHeartbeatThread:
             _HeldEngine.release.set()
             await locked.wait()
             await free.wait()
+
+    async def test_a_peers_sweep_does_not_wait_for_a_locked_row_and_then_close_it(
+        self, rig: Rig
+    ) -> None:
+        """PostgreSQL: the run's row is held by a progress save not yet
+        committed, so its own heartbeat skipped it and its stamp is old.
+        Before, a peer's sweep waited for the lock and then closed the
+        run; a locked row means someone alive is writing it."""
+        import os
+
+        from sqlalchemy import create_engine, text
+        from sqlalchemy.engine import make_url
+
+        if rig.backend != "postgresql":
+            pytest.skip("row locks are PostgreSQL's")
+        async with rig.factory() as s:
+            schema = (await s.execute(text("select current_schema()"))).scalar_one()
+        url = make_url(os.environ["FIM_TEST_PG_URL"]).set(drivername="postgresql+psycopg2")
+        holder = create_engine(url, connect_args={"options": f"-csearch_path={schema}"})
+
+        service, locked = await _held_run(rig)
+        await _age_stamp(rig, locked.run_id, 3600)
+        peer = WorkflowRunSupervisor(_new_service(), heartbeat_seconds=1, stale_seconds=90)
+        try:
+            with holder.connect() as conn:
+                conn.execute(
+                    text("update workflow_runs set node_results = '{}' where id = :id"),
+                    {"id": locked.run_id},
+                )
+                began = time.monotonic()
+                report = await asyncio.wait_for(peer.sweep(), timeout=10)
+                took = time.monotonic() - began
+                assert took < 1.5, f"the sweep waited {took:.1f}s behind the lock"
+                assert report.closed == []
+                conn.commit()
+            assert (await rig.run(locked.run_id)).status == "running"
+            # The control: with the row free and the stamp still old, the
+            # same sweep takes the run for dead.
+            assert (await peer.sweep()).closed == [locked.run_id]
+        finally:
+            holder.dispose()
+            _HeldEngine.release.set()
+            await locked.wait()
 
 
 class TestATriggerCallerLearnsWhyARunCouldNotWait:

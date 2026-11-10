@@ -951,12 +951,14 @@ class WorkflowRunService:
         not exist.
 
         With *stale_seconds* only a run whose heartbeat is older than that,
-        by the database's clock, is closed. The run's open confirmation requests are closed in the
+        by the database's clock, is closed, and only if nobody holds a
+        lock on its row (``None`` then, as for a run that is not stale:
+        whoever is writing it is alive). The run's open confirmation requests are closed in the
         same transaction. A run that was waiting loses its sandbox here; a
         run that was executing somewhere keeps it until that process, or
         the sweep's later pass over unused directories, removes it.
         """
-        from sqlalchemy import CursorResult, func, update
+        from sqlalchemy import CursorResult, func, select, update
 
         from fim_one.core.assembly.confirmation import close_requests_of_runs
         from fim_one.db import create_session
@@ -978,6 +980,19 @@ class WorkflowRunService:
                                 WorkflowRun.created_at,
                             )
                             < db_seconds_ago(_dialect_of(db), stale_seconds)
+                        )
+                        # A row someone holds a lock on is being written
+                        # by a live process (a progress save not yet
+                        # committed, by a loop that is busy): it is left
+                        # for the next sweep instead of waited for and
+                        # then closed. PostgreSQL; SQLite has no row locks
+                        # and renders none.
+                        conditions.append(
+                            WorkflowRun.id.in_(
+                                select(WorkflowRun.id)
+                                .where(WorkflowRun.id == run_id)
+                                .with_for_update(skip_locked=True)
+                            )
                         )
                     result = await db.execute(
                         update(WorkflowRun)
