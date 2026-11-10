@@ -24,46 +24,82 @@ from tests.audit.harness import CLIENT_IP, World, world  # noqa: F401
 @pytest.fixture(autouse=True)
 def _fresh_throttle() -> Iterator[None]:
     refusals._throttle.reset()
+    refusals._summary_pending.clear()
     yield
     refusals._throttle.reset()
+    refusals._summary_pending.clear()
 
 
 class TestTheThrottle:
     def test_the_first_from_a_source_is_written_the_rest_of_the_window_counted(self) -> None:
         throttle = RefusalThrottle(window_seconds=600)
 
-        assert throttle.admit("a", now=0) == (0, 0)
-        assert [throttle.admit("a", now=t) for t in (1, 300, 599)] == [None, None, None]
-        # After the window: written again, saying what was left out.
-        assert throttle.admit("a", now=600) == (3, 0)
-        assert throttle.admit("a", now=1200) == (0, 0)
+        assert throttle.admit("blocked", "a", now=0) is True
+        assert [throttle.admit("blocked", "a", now=t) for t in (1, 300, 599)] == [False] * 3
+        # After the window the source is forgotten: written again.
+        assert throttle.admit("blocked", "a", now=600) is True
+        assert throttle.take_left_out("blocked") == 3
+        assert throttle.take_left_out("blocked") == 0
 
     def test_sources_are_counted_apart(self) -> None:
         throttle = RefusalThrottle(window_seconds=600)
 
-        assert throttle.admit("a", now=0) == (0, 0)
-        assert throttle.admit("b", now=1) == (0, 0)
-        assert throttle.admit("a", now=2) is None
+        assert throttle.admit("blocked", "a", now=0) is True
+        assert throttle.admit("blocked", "b", now=1) is True
+        assert throttle.admit("blocked", "a", now=2) is False
 
-    def test_a_scan_from_many_addresses_is_bounded_overall(self) -> None:
+    def test_a_scan_from_many_addresses_is_bounded_per_window(self) -> None:
         throttle = RefusalThrottle(window_seconds=600, max_records_per_window=3)
 
-        written = [throttle.admit(f"ip-{n}", now=n) for n in range(10)]
+        written = [throttle.admit("blocked", f"ip-{n}", now=n) for n in range(10)]
 
-        assert written[:3] == [(0, 0)] * 3 and written[3:] == [None] * 7
-        # The next window's first record reports the seven.
-        assert throttle.admit("ip-0", now=700) == (0, 7)
+        assert written == [True] * 3 + [False] * 7
+        assert throttle.take_left_out("blocked") == 7
+        # The next window has its own budget.
+        assert throttle.admit("blocked", "ip-9", now=700) is True
 
-    def test_no_more_sources_are_remembered_than_the_limit(self) -> None:
-        throttle = RefusalThrottle(window_seconds=600, max_sources=2)
+    def test_each_kind_of_refusal_has_its_own_budget(self) -> None:
+        """A scan that uses up the blocked-address budget hid a trigger call
+        with an unknown key from a fresh address in the same window."""
+        throttle = RefusalThrottle(window_seconds=600, max_records_per_window=600)
 
-        assert throttle.admit("a", now=0) == (0, 0)
-        assert throttle.admit("b", now=0) == (0, 0)
-        assert throttle.admit("c", now=1) is None  # no room: counted as overflow
-        assert len(throttle._seen) == 2
-        # Expired sources make room.
-        assert throttle.admit("c", now=601) == (0, 1)
-        assert len(throttle._seen) <= 2
+        written = sum(throttle.admit("blocked", f"2001:db8::{n:x}", now=1) for n in range(700))
+
+        assert written == 600
+        assert throttle.admit("unknown-key", "203.0.113.50", now=2) is True
+
+    def test_sources_that_never_return_are_forgotten(self) -> None:
+        """Sources that had been counted were kept for ever; once as many as
+        the limit were held, every new address was left out until restart."""
+        throttle = RefusalThrottle(window_seconds=600, max_records_per_window=100)
+        for n in range(100):
+            assert throttle.admit("blocked", f"scan-{n}", now=0) is True
+            assert throttle.admit("blocked", f"scan-{n}", now=1) is False  # counted
+
+        later = [throttle.admit("blocked", f"new-{n}", now=10_000 + n * 700) for n in range(20)]
+
+        assert later == [True] * 20
+        assert throttle.remembered() == 1
+        assert throttle.take_left_out("blocked") == 100
+
+    def test_twenty_thousand_sources_over_hours_never_block_a_new_source(self) -> None:
+        throttle = RefusalThrottle(window_seconds=600, max_records_per_window=600)
+        budget_window, used = 0.0, 0
+        most_remembered = 0
+
+        for n in range(20_000):
+            now = n * 0.9  # five hours of one new address every 0.9 seconds
+            if now - budget_window >= 600:
+                budget_window, used = now, 0
+            admitted = throttle.admit("blocked", f"src-{n}", now=now)
+            # A new source is left out only when the window's budget is spent.
+            assert admitted is (used < 600), n
+            used += admitted
+            most_remembered = max(most_remembered, throttle.remembered())
+
+        # Memory: never more sources than one window's budget.
+        assert most_remembered <= 600
+        assert throttle.admit("blocked", "fresh", now=20_000 * 0.9 + 600) is True
 
 
 def _blocked(*rows: tuple[str, str]) -> Any:
@@ -80,23 +116,46 @@ class TestABlockedAddress:
         assert (row.actor_kind, row.actor_id, row.actor_label) == ("anonymous", None, "anonymous")
         assert (row.ip_address, row.detail) == (CLIENT_IP, "GET /api/agents")
 
-    async def test_the_next_window_says_how_many_were_left_out(
-        self, world: World, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        clock = [1000.0]
-        monkeypatch.setattr(refusals.time, "monotonic", lambda: clock[0])
-
+    async def test_what_was_left_out_is_reported_in_a_summary(self, world: World) -> None:
         with _blocked((CLIENT_IP, "deny")):
             for _ in range(4):
                 await world.call("GET", "/api/agents", expect=403)
-            clock[0] += refusals.WINDOW_SECONDS + 1
-            await world.call("POST", "/api/agents", expect=403, json={})
 
-        first, second = await world.events("security.ip_blocked")
-        assert first.detail == "GET /api/agents"
-        assert second.detail == (
-            "POST /api/agents; 3 more from this source were not recorded since its last record"
+        # The summary is scheduled one window after the first uncounted
+        # refusal; here it is written directly.
+        assert "security.ip_blocked" in refusals._summary_pending
+        assert await refusals.write_summary("security.ip_blocked") is True
+        assert await refusals.write_summary("security.ip_blocked") is False  # nothing new
+
+        first, summary = await world.events("security.ip_blocked")
+        assert (first.actor_kind, first.detail) == ("anonymous", "GET /api/agents")
+        assert (summary.actor_kind, summary.actor_label, summary.outcome) == (
+            "system",
+            "refusal summary",
+            "denied",
         )
+        assert summary.detail == (
+            "3 more refusal(s) of this kind were counted and not recorded one by one "
+            "in the last 10 minutes"
+        )
+        assert summary.ip_address is None
+
+    async def test_the_summary_is_written_by_a_timer(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import asyncio
+
+        monkeypatch.setattr(refusals, "WINDOW_SECONDS", 0.05)
+
+        assert await record_refusal("security.ip_blocked", source="203.0.113.99") is True
+        assert await record_refusal("security.ip_blocked", source="203.0.113.99") is False
+        for _ in range(100):
+            await asyncio.sleep(0.02)
+            if len(await world.events("security.ip_blocked")) == 2:
+                break
+
+        _, summary = await world.events("security.ip_blocked")
+        assert summary.actor_label == "refusal summary"
 
     async def test_a_rule_stored_by_an_administrator_blocks_and_records(
         self, world: World

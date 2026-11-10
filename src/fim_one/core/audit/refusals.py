@@ -4,49 +4,60 @@ A request from a blocked address and a trigger call with an unknown key
 need no account: someone scanning the service produces them as fast as
 they can send. Each is worth one record; a thousand a second are not.
 
-:func:`record_refusal` writes the first refusal of a kind from a source,
-then counts the rest for :data:`WINDOW_SECONDS` without writing. The next
-one recorded for that source says how many were left out. Sources are
-remembered per server process: with several processes each writes its own
-first record, which keeps the bound (one per source, per process, per
-window) and loses only the exactness of the count. A count still pending
-when a process stops is lost.
+:func:`record_refusal` writes the first refusal of a kind from a source and
+counts the rest for :data:`WINDOW_SECONDS` without writing. When the
+window is over the source is forgotten; one from it then is written again.
 
-Two more bounds hold when the sources themselves are many (a scan from a
-whole network): at most :data:`MAX_SOURCES` are remembered, and at most
-:data:`MAX_RECORDS_PER_WINDOW` records are written per window whatever
-their source. What exceeds either is counted and reported with the next
-record that is written.
+Each kind of refusal (each action) has its own budget of
+:data:`MAX_RECORDS_PER_WINDOW` records per window, whatever their source:
+a scan from a whole network cannot write more, and cannot use up another
+kind's budget. Only a source that got a record is remembered, and only for
+one window, so no more than the budget's worth of sources is ever held:
+memory is bounded by the budget, and a new source is never refused its
+first record for any reason but the budget of the current window.
+
+What was counted and not written is reported: about one window after the
+first uncounted refusal of a kind, one summary record of that kind is
+written with the system as actor and the number left out. A count still
+pending when a process stops is lost. All of this is per server process:
+with several processes each has its own budget and writes its own summary.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
-from dataclasses import dataclass
+from collections import OrderedDict
+from dataclasses import dataclass, field
 
 from . import writer as audit
 from .events import Actor
 
 __all__ = [
     "MAX_RECORDS_PER_WINDOW",
-    "MAX_SOURCES",
     "WINDOW_SECONDS",
     "RefusalThrottle",
     "record_refusal",
     "safe_path",
+    "write_summary",
 ]
 
 logger = logging.getLogger(__name__)
 
 WINDOW_SECONDS = 600.0
-MAX_SOURCES = 10_000
 MAX_RECORDS_PER_WINDOW = 600
 
 
 @dataclass
-class _Seen:
-    window_start: float
+class _Kind:
+    """What is remembered for one kind of refusal."""
+
+    # source -> when its record was written; oldest first.
+    written: OrderedDict[str, float] = field(default_factory=OrderedDict)
+    budget_start: float = 0.0
+    budget_used: int = 0
+    # Refusals counted and not written since the last summary.
     left_out: int = 0
 
 
@@ -57,64 +68,60 @@ class RefusalThrottle:
         self,
         *,
         window_seconds: float = WINDOW_SECONDS,
-        max_sources: int = MAX_SOURCES,
         max_records_per_window: int = MAX_RECORDS_PER_WINDOW,
     ) -> None:
         self._window = window_seconds
-        self._max_sources = max_sources
         self._max_records = max_records_per_window
-        self._seen: dict[str, _Seen] = {}
-        # The window of the overall bound, and what it and the source bound left out.
-        self._budget_start = 0.0
-        self._budget_used = 0
-        self._overflow = 0
+        self._kinds: dict[str, _Kind] = {}
 
-    def admit(self, key: str, *, now: float | None = None) -> tuple[int, int] | None:
-        """Whether a refusal from *key* is written now.
+    def admit(self, action: str, source: str, *, now: float | None = None) -> bool:
+        """Whether a refusal of kind *action* from *source* is written now.
 
-        ``None``: no, it was counted. Otherwise ``(repeats, overflow)``: how
-        many from this source were left out since its last record, and how
-        many from any source the overall bounds left out since they last
-        reported.
+        ``False``: it was counted (:meth:`take_left_out` reports it).
         """
         moment = time.monotonic() if now is None else now
-        seen = self._seen.get(key)
-        if seen is not None and moment - seen.window_start < self._window:
-            seen.left_out += 1
-            return None
+        kind = self._kinds.setdefault(action, _Kind())
+        self._forget_expired(kind, moment)
+        if source in kind.written:
+            kind.left_out += 1
+            return False
+        if moment - kind.budget_start >= self._window:
+            kind.budget_start, kind.budget_used = moment, 0
+        if kind.budget_used >= self._max_records:
+            kind.left_out += 1
+            return False
+        kind.written[source] = moment
+        kind.budget_used += 1
+        return True
 
-        if moment - self._budget_start >= self._window:
-            self._budget_start, self._budget_used = moment, 0
-        if seen is None and len(self._seen) >= self._max_sources:
-            self._forget_expired(moment)
-        if self._budget_used >= self._max_records or (
-            seen is None and len(self._seen) >= self._max_sources
-        ):
-            self._overflow += 1
-            return None
+    def _forget_expired(self, kind: _Kind, moment: float) -> None:
+        # Insertion order is time order: stop at the first one still fresh.
+        while kind.written:
+            source, written_at = next(iter(kind.written.items()))
+            if moment - written_at < self._window:
+                break
+            del kind.written[source]
 
-        repeats = seen.left_out if seen is not None else 0
-        self._seen[key] = _Seen(window_start=moment)
-        self._budget_used += 1
-        overflow, self._overflow = self._overflow, 0
-        return repeats, overflow
+    def take_left_out(self, action: str) -> int:
+        """How many refusals of kind *action* were counted since last asked; resets the count."""
+        kind = self._kinds.get(action)
+        if kind is None:
+            return 0
+        count, kind.left_out = kind.left_out, 0
+        return count
 
-    def _forget_expired(self, moment: float) -> None:
-        expired = [
-            key
-            for key, seen in self._seen.items()
-            if moment - seen.window_start >= self._window and seen.left_out == 0
-        ]
-        for key in expired:
-            del self._seen[key]
+    def remembered(self) -> int:
+        """How many sources are held, over all kinds."""
+        return sum(len(kind.written) for kind in self._kinds.values())
 
     def reset(self) -> None:
         """Forget everything (tests)."""
-        self._seen.clear()
-        self._budget_start, self._budget_used, self._overflow = 0.0, 0, 0
+        self._kinds.clear()
 
 
 _throttle = RefusalThrottle()
+# Kinds with a summary already scheduled.
+_summary_pending: set[str] = set()
 
 _LONGEST_PLAIN_SEGMENT = 16
 _LONGEST_PATH = 200
@@ -135,6 +142,46 @@ def safe_path(path: str) -> str:
     return "/".join(segments)[:_LONGEST_PATH]
 
 
+async def write_summary(action: str) -> bool:
+    """Write the summary record for *action* if any refusal was left out; never raises."""
+    _summary_pending.discard(action)
+    count = _throttle.take_left_out(action)
+    if not count:
+        return False
+    await audit.record(
+        action,
+        actor=audit.system_actor("refusal summary"),
+        outcome="denied",
+        detail=(
+            f"{count} more refusal(s) of this kind were counted and not recorded one by "
+            f"one in the last {int(WINDOW_SECONDS // 60)} minutes"
+        ),
+    )
+    return True
+
+
+def _schedule_summary(action: str) -> None:
+    """Have the summary for *action* written about one window from now, once."""
+    if action in _summary_pending:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:  # pragma: no cover - only reachable outside an event loop
+        return
+    _summary_pending.add(action)
+
+    def _fire() -> None:
+        task = loop.create_task(write_summary(action))
+        # Keep the task until it is done; the loop holds only a weak reference.
+        _summary_tasks.add(task)
+        task.add_done_callback(_summary_tasks.discard)
+
+    loop.call_later(WINDOW_SECONDS, _fire)
+
+
+_summary_tasks: set[asyncio.Task[bool]] = set()
+
+
 async def record_refusal(
     action: str,
     *,
@@ -148,23 +195,18 @@ async def record_refusal(
 
     *source* is what the refusals are counted by: the caller's address.
     The record is written in a session of its own with the outcome
-    ``denied``; it never raises. Returns whether a record was written.
+    ``denied``; it never raises. A refusal that is only counted is reported
+    by the kind's next summary record. Returns whether a record was written.
     """
-    verdict = _throttle.admit(f"{action}|{source or '-'}")
-    if verdict is None:
+    if not _throttle.admit(action, source or "-"):
+        _schedule_summary(action)
         return False
-    repeats, overflow = verdict
-    notes = [detail] if detail else []
-    if repeats:
-        notes.append(f"{repeats} more from this source were not recorded since its last record")
-    if overflow:
-        notes.append(f"{overflow} refusals from other sources were not recorded")
     await audit.record(
         action,
         actor=actor or Actor(user_id=None, label=None, kind="anonymous"),
         target_type=target_type,
         target_id=target_id,
         outcome="denied",
-        detail="; ".join(notes) or None,
+        detail=detail,
     )
     return True
