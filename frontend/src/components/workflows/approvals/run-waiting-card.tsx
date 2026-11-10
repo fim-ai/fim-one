@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl"
 import { Hourglass } from "lucide-react"
 import { workflowApi } from "@/lib/api"
 import { useDateFormatter } from "@/hooks/use-date-formatter"
-import type { SettledStatus } from "@/lib/workflow-approvals"
+import { announceApprovalsChanged, type SettledStatus } from "@/lib/workflow-approvals"
 import type { ApprovalInboxItem, RunWaitingItem } from "@/types/workflow"
 import { DecisionControls } from "./decision-controls"
 import { RequestDetails } from "./request-details"
@@ -56,6 +56,7 @@ export function RunWaitingCard({ waitingFor, nodeLabel, onDecided }: RunWaitingC
   const handleSettled = useCallback(
     (id: string, status: SettledStatus) => {
       setSettled((prev) => ({ ...prev, [id]: status }))
+      announceApprovalsChanged()
       onDecided()
     },
     [onDecided],

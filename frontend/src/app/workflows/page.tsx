@@ -31,6 +31,7 @@ import { workflowApi, marketApi, orgApi } from "@/lib/api"
 import type { UserOrg } from "@/lib/api"
 import { EmptyState } from "@/components/shared/empty-state"
 import { WorkflowCard } from "@/components/workflows/workflow-card"
+import { ApprovalsLink } from "@/components/workflows/approvals/approvals-link"
 import { TemplateGalleryDialog } from "@/components/workflows/template-gallery-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useScopeFilter } from "@/hooks/use-scope-filter"
@@ -296,6 +297,7 @@ function WorkflowsPageInner() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <ApprovalsLink />
           <Button variant="outline" size="sm" className="gap-1.5" onClick={handleImport}>
             <Upload className="h-3.5 w-3.5" />
             {tc("import")}
