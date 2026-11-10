@@ -89,6 +89,64 @@ RUN_INTERRUPTED_ERROR = (
     "The server stopped while this run was in progress, so it could not finish. "
     "Start the run again."
 )
+RUN_STATE_TOO_LARGE = "workflow_suspend_state_too_large"
+
+
+def suspend_state_max_bytes() -> int:
+    """How large a waiting run's stored state may be (``WORKFLOW_SUSPEND_STATE_MAX_BYTES``)."""
+    return int(os.getenv("WORKFLOW_SUSPEND_STATE_MAX_BYTES", str(5 * 1024 * 1024)))
+
+
+class SuspendStateTooLarge(Exception):
+    def __init__(self, size: int, limit: int) -> None:
+        super().__init__(
+            f"The run cannot wait here: what it would have to keep to go on later "
+            f"({size:,} bytes of step outputs and variables) is over the limit of "
+            f"{limit:,} bytes. Make the steps before the approval produce less."
+        )
+
+
+def seal_state(state: dict[str, Any]) -> dict[str, Any]:
+    """The engine's state as stored on a waiting run's record.
+
+    The state holds the run's variables: step outputs, which can be
+    connector responses. It is stored encrypted with the credential key
+    (``sealed``). Beside it, in the clear, only what the sweep and the API
+    read without the key: which request each waiting step waits on.
+    Through JSON first, so what is stored is what a later read gives back;
+    values JSON has no form for become text. Raises
+    :class:`SuspendStateTooLarge` over the limit. CPU-bound: call it off the
+    event loop.
+    """
+    from fim_one.core.security.encryption import encrypt_credential
+
+    text = json.dumps(state, default=str, ensure_ascii=False)
+    size, limit = len(text.encode("utf-8")), suspend_state_max_bytes()
+    if size > limit:
+        raise SuspendStateTooLarge(size, limit)
+    plain = json.loads(text)
+    return {
+        "version": plain.get("version"),
+        "waiting": plain.get("waiting") or {},
+        "sealed": encrypt_credential(plain),
+    }
+
+
+def unseal_state(stored: Any) -> dict[str, Any]:
+    """The engine's state from a waiting run's record; ``ValueError`` if unreadable."""
+    from fim_one.core.security.encryption import decrypt_credential
+
+    if not isinstance(stored, dict) or not isinstance(stored.get("sealed"), str):
+        raise ValueError("no usable suspend state")
+    try:
+        state = decrypt_credential(stored["sealed"])
+    except Exception as exc:
+        raise ValueError(f"the suspend state cannot be decrypted: {exc}") from None
+    if not isinstance(state, dict):
+        raise ValueError("no usable suspend state")
+    return state
+
+
 RUN_NOT_RESUMABLE_ERROR = (
     "The run was waiting for a decision but what it needs to continue could not be read."
 )
@@ -395,19 +453,34 @@ class StartedRun:
                     out.error_code = None
                     out.total_tokens = int(data.get("total_tokens", 0) or 0)
                     out.waiting = list(data.get("waiting") or [])
-                    # Through JSON here, so what is stored is what a later
-                    # read gives back; values JSON has no form for become text.
-                    self._suspend_state = json.loads(
-                        json.dumps(data.get("state") or {}, default=str)
-                    )
-                    # Readers of the stream learn that the run waits and on
-                    # what, not the run's variables.
-                    name, data = "run_waiting", {
-                        "run_id": self.run_id,
-                        "status": "waiting",
-                        "waiting": out.waiting,
-                        "ts": data.get("ts"),
-                    }
+                    try:
+                        # Serialised and encrypted in a thread: the state
+                        # can be megabytes, and other runs share this loop.
+                        self._suspend_state = await asyncio.to_thread(
+                            seal_state, data.get("state") or {}
+                        )
+                    except SuspendStateTooLarge as too_large:
+                        # Not stored: the run ends here instead of waiting.
+                        out.status = "failed"
+                        out.error = str(too_large)
+                        out.error_code = RUN_STATE_TOO_LARGE
+                        out.waiting = []
+                        name, data = "run_failed", {
+                            "run_id": self.run_id,
+                            "status": "failed",
+                            "error": out.error,
+                            "error_code": out.error_code,
+                            "ts": data.get("ts"),
+                        }
+                    else:
+                        # Readers of the stream learn that the run waits and
+                        # on what, not the run's variables.
+                        name, data = "run_waiting", {
+                            "run_id": self.run_id,
+                            "status": "waiting",
+                            "waiting": out.waiting,
+                            "ts": data.get("ts"),
+                        }
                 elif name == "run_completed":
                     out.outputs = data.get("outputs", {}) or {}
                     out.status = data.get("status", "completed")
@@ -945,8 +1018,8 @@ class WorkflowRunService:
         from .engine import SUSPEND_STATE_VERSION
         from .parser import parse_blueprint
 
-        state = run.suspend_state
-        if not isinstance(state, dict) or state.get("version") != SUSPEND_STATE_VERSION:
+        state = unseal_state(run.suspend_state)
+        if state.get("version") != SUSPEND_STATE_VERSION:
             raise ValueError("no usable suspend state")
         mode = RunMode(run.mode) if run.mode else RunMode.INTERACTIVE
         ctx = CallContext(

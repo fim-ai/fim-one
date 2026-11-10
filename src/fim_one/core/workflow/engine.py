@@ -274,7 +274,12 @@ class WorkflowEngine:
                 },
                 "node_status": {nid: st.value for nid, st in node_status.items()},
                 "node_results": {
-                    nid: _result_to_state(result) for nid, result in node_results.items()
+                    # A step's output is in the variables already; kept here
+                    # only for End steps, whose outputs are the run's.
+                    nid: _result_to_state(
+                        result, keep_output=node_index[nid].type == NodeType.END
+                    )
+                    for nid, result in node_results.items()
                 },
                 "active_edges": sorted(active_edges),
                 "completed": sorted(completed),
@@ -901,11 +906,11 @@ class WorkflowEngine:
                     pass
 
 
-def _result_to_state(result: NodeResult) -> dict[str, Any]:
+def _result_to_state(result: NodeResult, *, keep_output: bool) -> dict[str, Any]:
     """A step's result as stored in a suspended run's state."""
     return {
         "status": result.status.value,
-        "output": result.output,
+        "output": result.output if keep_output else None,
         "error": result.error,
         "active_handles": result.active_handles,
         "duration_ms": result.duration_ms,

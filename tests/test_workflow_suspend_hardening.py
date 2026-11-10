@@ -230,3 +230,87 @@ class TestClosingARunOnItsRecord:
 
         assert closed is None
         assert (await rig.run(run_id)).status == "running"
+
+
+# ---------------------------------------------------------------------------
+# L4. What a waiting run keeps
+# ---------------------------------------------------------------------------
+
+
+class TestStoredState:
+    async def test_it_is_encrypted_and_only_names_what_the_run_waits_on(self, rig: Rig) -> None:
+        import json
+
+        outcome = await rig.start(inputs={"q": "the launch code is 0000"})
+        request = await rig.request_of(outcome.run_id)
+
+        stored = (await rig.run(outcome.run_id)).suspend_state
+
+        assert "launch code" not in json.dumps(stored)
+        assert set(stored) == {"version", "waiting", "sealed"}
+        assert stored["waiting"] == {
+            "human_1": {
+                "confirmation_id": request.id,
+                "kind": "workflow_approval",
+                "expires_at": stored["waiting"]["human_1"]["expires_at"],
+            }
+        }
+        assert rs.unseal_state(stored)["variables"]["start_1.q"] == "the launch code is 0000"
+
+    async def test_a_step_output_is_kept_once(self, rig: Rig) -> None:
+        import json
+
+        marker = "only-once-" + uuid.uuid4().hex
+        outcome = await rig.start(inputs={"q": marker})
+
+        state = rs.unseal_state((await rig.run(outcome.run_id)).suspend_state)
+
+        # In the variables (start_1.q, start_1.output, input.q), not again
+        # under the Start step's stored result.
+        assert state["node_results"]["start_1"]["output"] is None
+        assert json.dumps(state["node_results"]).count(marker) == 0
+        assert json.dumps(state["variables"]).count(marker) == 3
+
+    async def test_a_run_whose_state_is_over_the_limit_fails_instead_of_waiting(
+        self, rig: Rig, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("WORKFLOW_SUSPEND_STATE_MAX_BYTES", "2000")
+
+        outcome = await rig.start(inputs={"q": "x" * 5000})
+
+        assert outcome.status == "failed"
+        assert outcome.error_code == "workflow_suspend_state_too_large"
+        assert "over the limit of 2,000 bytes" in (outcome.error or "")
+        run = await rig.run(outcome.run_id)
+        assert (run.status, run.suspend_state) == ("failed", None)
+        # Nobody is left with a request for a run that is not waiting.
+        assert [r.status for r in await _requests(rig, run.id)] == ["expired"]
+
+    async def test_a_state_this_instance_cannot_decrypt_closes_the_run(self, rig: Rig) -> None:
+        outcome = await rig.start()
+        request = await rig.request_of(outcome.run_id)
+        async with rig.factory() as db:
+            run = await db.get(WorkflowRun, outcome.run_id)
+            assert run is not None
+            run.suspend_state = {**run.suspend_state, "sealed": "gAAAAA-not-ours"}
+            await db.commit()
+        await rig.flip(request.id, status="approved")
+
+        assert await rig.service.resume_run(outcome.run_id) is None
+
+        run = await rig.run(outcome.run_id)
+        assert (run.status, run.error) == ("failed", rs.RUN_NOT_RESUMABLE_ERROR)
+
+    async def test_sealing_does_not_run_on_the_event_loop(self, rig: Rig) -> None:
+        import threading
+
+        threads: list[str] = []
+        seal = rs.seal_state
+
+        def sealing(state: dict[str, Any]) -> dict[str, Any]:
+            threads.append(threading.current_thread().name)
+            return seal(state)
+
+        with patch.object(rs, "seal_state", sealing):
+            assert (await rig.start()).status == "waiting"
+        assert threads and threading.current_thread().name not in threads

@@ -39,6 +39,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+import fim_one.core.security.encryption as encryption
 from fim_one.core.assembly.confirmation import ConfirmationService
 from fim_one.core.assembly.errors import AssemblyRefusal
 from fim_one.core.assembly.principal import AuthMethod, resolve_principal
@@ -139,8 +140,12 @@ from fim_one.core.workflow import run_service as rs
 from fim_one.db.models.workflow import Workflow
 from fim_one.web.services.assembly_ports import register_assembly_ports
 
-db_file, workflow_id, user_id = sys.argv[1:4]
+db_file, workflow_id, user_id, credential_key = sys.argv[1:5]
 register_assembly_ports()  # what the web layer does at start-up
+# Every process of one deployment has the same credential key; the stored
+# state of a waiting run is encrypted with it.
+import fim_one.core.security.encryption as encryption
+encryption._CREDENTIAL_KEY_RAW = credential_key
 
 
 async def main():
@@ -410,7 +415,7 @@ class TestADecisionContinuesTheRun:
         ]
         run = await rig.run(outcome.run_id)
         assert (run.status, run.completed_at, run.outputs) == ("waiting", None, None)
-        assert run.suspend_state["variables"]["start_1.q"] == "ship it?"
+        assert rs.unseal_state(run.suspend_state)["variables"]["start_1.q"] == "ship it?"
         assert run.node_results["human_1"]["status"] == "waiting"
         assert run.node_results["start_1"]["status"] == "completed"
         assert rig.service.active_run_ids() == []
@@ -527,6 +532,7 @@ class TestRestart:
             str(tmp_path / "suspend.db"),
             rig.wf.id,
             rig.owner.id,
+            encryption._CREDENTIAL_KEY_RAW,
             env={**os.environ, "WORKFLOW_HUMAN_INTERVENTION_ENABLED": "true"},
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
