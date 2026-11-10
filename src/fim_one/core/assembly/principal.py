@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from .errors import ACCOUNT_DISABLED, AssemblyRefusal
 
@@ -114,27 +114,33 @@ async def resolve_principal(
     user_id: str,
     auth: AuthMethod,
     scopes: frozenset[str] | None = None,
+    user: Any | None = None,
 ) -> Principal:
     """Load the acting user and return their :class:`Principal`.
 
     Raises :class:`AssemblyRefusal` ``account_disabled`` (403) when the
     account does not exist or is switched off. Decoding a token, its type
     and its revocation stay in the web auth layer; this starts from a user
-    id an entry point has already authenticated.
+    id an entry point has already authenticated. *user* is that user's row
+    when the entry point has already loaded it, which saves reading it again.
     """
     from sqlalchemy import select
 
     from fim_one.db.models.user import User
 
-    row = (
-        await db.execute(select(User.is_active, User.is_admin).where(User.id == user_id))
-    ).one_or_none()
-    if row is None or not row[0]:
+    if user is not None and getattr(user, "id", None) == user_id:
+        state: tuple[Any, Any] | None = (user.is_active, user.is_admin)
+    else:
+        row = (
+            await db.execute(select(User.is_active, User.is_admin).where(User.id == user_id))
+        ).one_or_none()
+        state = (row[0], row[1]) if row is not None else None
+    if state is None or not state[0]:
         raise AssemblyRefusal(ACCOUNT_DISABLED, 403, "Account disabled")
     return Principal(
         user_id=user_id,
         org_ids=frozenset(await user_org_ids(db, user_id)),
-        is_admin=bool(row[1]),
+        is_admin=bool(state[1]),
         auth=auth,
         scopes=scopes,
     )

@@ -52,7 +52,7 @@ import time
 import uuid
 from collections.abc import AsyncGenerator, Sequence
 from contextlib import suppress
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -70,10 +70,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fim_one.core.agent import ReActAgent
 from fim_one.core.agent.react import FINISH_SIGNAL_ENABLED
 from fim_one.core.assembly.principal import (
-    Binding,
+    AuthMethod,
     CallContext,
     Entry,
+    Principal,
     provisional_principal,
+    resolve_principal,
 )
 from fim_one.core.assembly.quota import check_quota, quota_reset_at, quota_status
 from fim_one.core.assembly.toolset import (
@@ -117,6 +119,7 @@ from fim_one.core.utils import (
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_user
 from fim_one.web.exceptions import AppError
+from fim_one.web.services import agent_runtime
 from fim_one.db.models import User
 
 from ..deps import (
@@ -881,11 +884,17 @@ async def _classify_deliverables(
 
 async def _resolve_user(
     token: str | None,
-) -> tuple[str | None, str | None, str | None, str | None]:
+) -> tuple[Principal | None, str | None, str | None, str | None]:
     """Validate a JWT/API-key token and return
-    ``(user_id, system_instructions, preferred_language, timezone)``.
+    ``(principal, system_instructions, preferred_language, timezone)``.
 
-    Returns ``(None, None, None, None)`` when *token* is not provided.
+    The principal is who the turn acts as: the account, its organizations,
+    how it authenticated and, for an API key, the key's scopes. Decoding
+    the token, its type and its revocation are checked here; the principal
+    itself is built by the assembly layer.
+
+    Returns ``(None, None, None, None)`` when *token* is not provided, the
+    account is switched off, or the token was revoked.
     Raises HTTPException(401) on invalid/expired tokens.
     """
     if not token:
@@ -903,7 +912,13 @@ async def _resolve_user(
             # Every caller of this helper is a chat stream endpoint.
             enforce_scope(scopes, "chat")
             return (
-                user.id,
+                await resolve_principal(
+                    session,
+                    user_id=user.id,
+                    auth=AuthMethod.API_KEY,
+                    scopes=frozenset(scopes) if scopes is not None else None,
+                    user=user,
+                ),
                 user.system_instructions,
                 user.preferred_language,
                 getattr(user, "timezone", None),
@@ -939,6 +954,7 @@ async def _resolve_user(
     system_instructions: str | None = None
     preferred_language: str | None = None
     user_timezone: str | None = None
+    principal: Principal | None = None
     try:
         from fim_one.db import create_session
         from fim_one.db.models import User
@@ -968,12 +984,19 @@ async def _resolve_user(
             system_instructions = user.system_instructions
             preferred_language = user.preferred_language
             user_timezone = getattr(user, "timezone", None)
+            principal = await resolve_principal(
+                session, user_id=user_id, auth=AuthMethod.SESSION, user=user
+            )
     except HTTPException:
         raise
     except Exception:
         logger.warning("Failed to load user record", exc_info=True)
 
-    return user_id, system_instructions, preferred_language, user_timezone
+    # The record could not be read (the token itself was valid): the turn
+    # goes on as that user, with nothing known beyond the id.
+    if principal is None:
+        principal = provisional_principal(user_id)
+    return principal, system_instructions, preferred_language, user_timezone
 
 
 async def _validate_conversation_ownership(
@@ -1063,24 +1086,11 @@ def _use_context(
     judged by the agent owner's view (the binding is a delegation); with no
     agent, or an agent config that names no owner, by the caller's own.
     """
-    binding: Binding | None = None
-    owner_id = agent_cfg.get("owner_user_id") if agent_cfg else None
-    # Which agent the call is made through is a fact of its own: an agent
-    # with no owner still has an id, and call records carry it.
-    agent_id = str(agent_cfg.get("agent_id") or agent_cfg.get("id") or "") if agent_cfg else ""
-    if agent_cfg and owner_id:
-        binding = Binding(
-            kind="agent",
-            id=agent_id,
-            owner_id=owner_id,
-            org_id=agent_cfg.get("org_id"),
-        )
-    return CallContext(
-        principal=provisional_principal(user_id or ""),
-        binding=binding,
-        entry=entry or ("chat" if agent_cfg else "chat_noagent"),
+    return agent_runtime.call_context(
+        provisional_principal(user_id or ""),
+        agent_cfg,
         conversation_id=conversation_id,
-        agent_id=agent_id or None,
+        entry=entry,
     )
 
 
@@ -1090,12 +1100,15 @@ async def _resolve_agent_config(
     user_id: str | None = None,
     *,
     refuse_unavailable: bool = False,
+    ctx: CallContext | None = None,
 ) -> dict[str, Any] | None:
     """Load agent configuration from DB.
 
     Resolution priority: explicit ``agent_id`` > conversation's bound agent.
     When *user_id* is provided, the agent must be usable by that user: one
-    they own or are subscribed to, and switched on.
+    they own or are subscribed to, and switched on. *ctx*, when given, is
+    the context the agent is entered under and replaces the plain "this
+    user, directly" one built from *user_id*.
 
     An agent that is not usable is, with ``refuse_unavailable``, a refusal
     (the chat endpoints): ``agent_unavailable`` (409) when the conversation
@@ -1129,7 +1142,7 @@ async def _resolve_agent_config(
         if user_id:
             _agent_decision = await authorize_use(
                 session,
-                _use_context(user_id, None, entry="chat"),
+                ctx or _use_context(user_id, None, entry="chat"),
                 ResourceKind.AGENT,
                 [resolved_id],
             )
@@ -1183,7 +1196,7 @@ async def _resolve_agent_config(
 
 
 async def _admit_turn(
-    user_id: str, conversation_id: str | None, agent_id: str | None
+    principal: Principal, conversation_id: str | None, agent_id: str | None
 ) -> dict[str, Any] | None:
     """The checks a chat turn passes before it streams; returns the agent config.
 
@@ -1193,10 +1206,14 @@ async def _admit_turn(
     due. The quota check and the agent resolution then run together.
     """
     if conversation_id:
-        await _validate_conversation_ownership(conversation_id, user_id)
+        await _validate_conversation_ownership(conversation_id, principal.user_id)
     _, agent_cfg = await asyncio.gather(
-        check_quota(provisional_principal(user_id)),
-        _resolve_agent_config(agent_id, conversation_id, user_id=user_id, refuse_unavailable=True),
+        check_quota(principal),
+        agent_runtime.resolve_agent(
+            CallContext(principal=principal, binding=None, entry="chat"),
+            agent_id,
+            conversation_id=conversation_id,
+        ),
     )
     return agent_cfg
 
@@ -1546,14 +1563,18 @@ async def _resolve_tools(
     user_id: str | None = None,
     *,
     entry: Entry | None = None,
+    ctx: CallContext | None = None,
 ) -> ToolRegistry:
     """Build tool registry, optionally scoped to a per-conversation sandbox.
 
     *entry* names where the tools will be used when that is not a chat turn
-    (a ``call_agent`` delegate); it is what their call records carry.
+    (a ``call_agent`` delegate); it is what their call records carry. *ctx*,
+    when the caller already holds the run's call context, is used as it is.
     """
     # The context connector and MCP tools are built and recorded under.
-    _tool_ctx = _use_context(user_id, agent_cfg, conversation_id=conversation_id, entry=entry)
+    _tool_ctx = ctx or _use_context(
+        user_id, agent_cfg, conversation_id=conversation_id, entry=entry
+    )
     sandbox_root = _conversation_sandbox_root(conversation_id)
     sandbox_config = agent_cfg.get("sandbox_config") if agent_cfg else None
     # Per-conversation uploads dir so generated images are isolated and
@@ -2833,13 +2854,14 @@ async def react_endpoint(
 
     # -- Pre-stream resolution (before StreamingResponse) -------------------
     (
-        current_user_id,
+        principal,
         user_system_instructions,
         preferred_language,
         user_timezone,
     ) = await _resolve_user(token)
-    if current_user_id is None:
+    if principal is None:
         raise AppError("authentication_required", status_code=401)
+    current_user_id: str = principal.user_id
 
     # Bind the user id to the rate-limiter contextvar so per-user token
     # buckets can partition state without threading user_id through every
@@ -2852,15 +2874,18 @@ async def react_endpoint(
     if not user_timezone:
         user_timezone = request.headers.get("X-Timezone") or None
 
-    agent_cfg = await _admit_turn(current_user_id, conversation_id, agent_id)
+    agent_cfg = await _admit_turn(principal, conversation_id, agent_id)
+    # The context this turn's resources are used and recorded under.
+    turn_ctx = agent_runtime.call_context(
+        principal, agent_cfg, conversation_id=conversation_id
+    )
 
     from fim_one.db import create_session as _create_session
 
     try:
         async with _create_session() as _llm_db:
-            llm, fast_llm, _context_budget, model_supports_vision = await asyncio.gather(
-                _resolve_llm(agent_cfg, _llm_db),
-                _resolve_fast_llm(agent_cfg, _llm_db),
+            (llm, fast_llm), _context_budget, model_supports_vision = await asyncio.gather(
+                agent_runtime.resolve_models(agent_cfg, _llm_db),
                 get_effective_context_budget(_llm_db),
                 _resolve_model_supports_vision(agent_cfg, _llm_db),
             )
@@ -2889,7 +2914,7 @@ async def react_endpoint(
     from fim_one.core.planner.domain import classify_domain
 
     tools, _react_domain_hint = await asyncio.gather(
-        _resolve_tools(agent_cfg, conversation_id, user_id=current_user_id),
+        agent_runtime.resolve_toolset(turn_ctx, agent_cfg),
         classify_domain(q, fast_llm),
     )
 
@@ -3056,7 +3081,7 @@ async def react_endpoint(
         yield _emit(sse_events, "step", {"type": "thinking", "status": "start", "iteration": 1})
 
         # -- MCP connection (must happen inside generator for anyio cancel scope) --
-        user_mcp_client = await _connect_pending_mcp_servers(tools, agent_cfg)
+        user_mcp_client = await agent_runtime.connect_mcp(tools, agent_cfg)
 
         # -- Optional persistence setup ------------------------------------
         db_session = None
@@ -3442,14 +3467,8 @@ async def react_endpoint(
             # so hooks can open/commit their own transactions (ApprovalGateHook
             # polls the ``confirmation_requests`` table from a background
             # task while the request is still streaming).
-            from fim_one.db import create_session as _create_hook_session
-            from fim_one.web.hooks_bootstrap import build_hook_registry_for_agent
-
-            _agent_shim_ns = SimpleNamespace(
-                model_config_json=(agent_cfg or {}).get("model_config_json")
-            )
-            _hook_registry = await build_hook_registry_for_agent(
-                _agent_shim_ns, _create_hook_session, conversation_id=conversation_id
+            _hook_registry = await agent_runtime.build_hooks(
+                agent_cfg, conversation_id=conversation_id
             )
 
             agent = ReActAgent(
@@ -4124,13 +4143,14 @@ async def dag_endpoint(
 
     # -- Pre-stream resolution ----------------------------------------------
     (
-        current_user_id,
+        principal,
         user_system_instructions,
         preferred_language,
         user_timezone,
     ) = await _resolve_user(token)
-    if current_user_id is None:
+    if principal is None:
         raise AppError("authentication_required", status_code=401)
+    current_user_id: str = principal.user_id
 
     # Bind the user id to the rate-limiter contextvar (see ReAct handler
     # above for the rationale).
@@ -4140,21 +4160,23 @@ async def dag_endpoint(
     if not user_timezone:
         user_timezone = request.headers.get("X-Timezone") or None
 
-    agent_cfg = await _admit_turn(current_user_id, conversation_id, agent_id)
+    agent_cfg = await _admit_turn(principal, conversation_id, agent_id)
+    # The context this turn's resources are used and recorded under.
+    turn_ctx = agent_runtime.call_context(
+        principal, agent_cfg, conversation_id=conversation_id
+    )
 
     from fim_one.db import create_session as _create_session
 
     try:
         async with _create_session() as _llm_db:
             (
-                llm,
-                fast_llm,
+                (llm, fast_llm),
                 _fast_context_budget,
                 _context_budget,
                 dag_model_supports_vision,
             ) = await asyncio.gather(
-                _resolve_llm(agent_cfg, _llm_db),
-                _resolve_fast_llm(agent_cfg, _llm_db),
+                agent_runtime.resolve_models(agent_cfg, _llm_db),
                 get_effective_fast_context_budget(_llm_db),
                 get_effective_context_budget(_llm_db),
                 _resolve_model_supports_vision(agent_cfg, _llm_db),
@@ -4182,7 +4204,7 @@ async def dag_endpoint(
     if fast_llm and fast_llm is not llm:
         llm = FallbackLLM(primary=llm, fallback=fast_llm)
 
-    tools = await _resolve_tools(agent_cfg, conversation_id, user_id=current_user_id)
+    tools = await agent_runtime.resolve_toolset(turn_ctx, agent_cfg)
     agent_instructions = agent_cfg["instructions"] if agent_cfg else None
     lang_directive = get_language_directive(preferred_language)
 
@@ -4251,7 +4273,7 @@ async def dag_endpoint(
         sse_events: list[dict[str, Any]] = []
 
         # -- MCP connection (must happen inside generator for anyio cancel scope) --
-        dag_user_mcp_client = await _connect_pending_mcp_servers(tools, agent_cfg)
+        dag_user_mcp_client = await agent_runtime.connect_mcp(tools, agent_cfg)
 
         # -- Optional persistence setup ------------------------------------
         db_session = None
@@ -4626,16 +4648,8 @@ async def dag_endpoint(
                         tool.set_usage_tracker(fast_usage_tracker)
 
                 # --- Hook System bootstrap for DAG ---
-                from fim_one.db import create_session as _create_hook_session_dag
-                from fim_one.web.hooks_bootstrap import (
-                    build_hook_registry_for_agent,
-                )
-
-                _agent_shim_ns_dag = SimpleNamespace(
-                    model_config_json=(agent_cfg or {}).get("model_config_json")
-                )
-                _hook_registry_dag = await build_hook_registry_for_agent(
-                    _agent_shim_ns_dag, _create_hook_session_dag, conversation_id=conversation_id
+                _hook_registry_dag = await agent_runtime.build_hooks(
+                    agent_cfg, conversation_id=conversation_id
                 )
 
                 agent = ReActAgent(
@@ -5416,8 +5430,8 @@ async def auto_endpoint(
     token = body.token
 
     # -- Pre-stream: resolve auth to get fast_llm for classification --------
-    current_user_id, _, _, _ = await _resolve_user(token)
-    if current_user_id is None:
+    principal, _, _, _ = await _resolve_user(token)
+    if principal is None:
         raise AppError("authentication_required", status_code=401)
 
     # Determine execution mode
@@ -5426,11 +5440,10 @@ async def auto_endpoint(
 
     async with _create_session() as _llm_db:
         fast_llm = await _resolve_fast_llm(
-            await _resolve_agent_config(
+            await agent_runtime.resolve_agent(
+                CallContext(principal=principal, binding=None, entry="chat"),
                 body.agent_id,
-                body.conversation_id,
-                user_id=current_user_id,
-                refuse_unavailable=True,
+                conversation_id=body.conversation_id,
             ),
             _llm_db,
         )

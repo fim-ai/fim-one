@@ -222,8 +222,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
     # in create_app(); checked here so a process that would refuse every
     # turn does not come up at all.
     from fim_one.core.assembly.quota import get_quota_backend
+    from fim_one.core.assembly.runtime import get_agent_runtime_factory
 
     get_quota_backend()
+    get_agent_runtime_factory()
 
     # Bridge the core ``emit_inline_confirmation`` hook to the chat SSE
     # stream.  Must run before any agent turn — any tool flagged

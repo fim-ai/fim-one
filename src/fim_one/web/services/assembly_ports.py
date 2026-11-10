@@ -13,6 +13,9 @@ __all__ = ["register_assembly_ports"]
 def register_assembly_ports() -> None:
     """Register the web layer's implementations of the assembly ports. Idempotent."""
     from fim_one.core.assembly.quota import set_quota_backend
+    from fim_one.core.assembly.runtime import set_agent_runtime_factory
+    from fim_one.web.services.agent_runtime import WebAgentRuntimeFactory
     from fim_one.web.services.quota_backend import WebQuotaBackend
 
     set_quota_backend(WebQuotaBackend())
+    set_agent_runtime_factory(WebAgentRuntimeFactory())
