@@ -911,14 +911,22 @@ async def _filled(store: VariableStore, written: Any, schema: dict[str, Any] | N
         if "{{" not in written:
             return written
         kinds = _declared_types(schema)
-        if "string" in kinds:
-            # Text is one of the types the tool takes: it stays text.
-            return await store.interpolate(written)
-        kind = next((k for k in kinds if k != "null"), None)
+        kind = None if "string" in kinds else next((k for k in kinds if k != "null"), None)
         if kind in ("object", "array"):
             structure = await _filled_json(store, written, schema, kind)
             if structure is not _UNFIT:
                 return structure
+            return await store.interpolate(written)
+        # The result is text. If the template itself is a JSON object or
+        # list (a request body typed into a text parameter, an argument the
+        # tool does not describe), whoever receives it will parse it: it is
+        # filled in after parsing and written out again, so that a value
+        # cannot add keys there either.
+        structure = await _filled_json(store, written, None, None)
+        if structure is not _UNFIT:
+            return json.dumps(structure, ensure_ascii=False)
+        if "string" in kinds:
+            # Text is one of the types the tool takes: it stays text.
             return await store.interpolate(written)
         return _fit_text(await store.interpolate(written), kind)
     if isinstance(written, dict):
@@ -950,7 +958,7 @@ _UNFIT = object()
 
 
 async def _filled_json(
-    store: VariableStore, written: str, schema: dict[str, Any] | None, kind: str
+    store: VariableStore, written: str, schema: dict[str, Any] | None, kind: str | None
 ) -> Any:
     """A template for an object or a list, filled in after it is parsed.
 
@@ -959,9 +967,13 @@ async def _filled_json(
     outside a JSON string is first replaced by a marker string, the text is
     parsed, and the values are then put in place of their markers; a
     reference inside a string is filled in as part of that string. Returns
-    ``_UNFIT`` when the template is not JSON of the declared *kind*.
+    ``_UNFIT`` when the template is not JSON of the declared *kind*
+    (``None``: an object or a list written out in the template itself; a
+    template that is one reference is then left to plain filling-in).
     """
-    wanted: type = dict if kind == "object" else list
+    wanted: tuple[type, ...] = (
+        (dict,) if kind == "object" else (list,) if kind == "array" else (dict, list)
+    )
     marker = secrets.token_hex(8)
     names: list[str] = []
     text: list[str] = []
@@ -996,6 +1008,8 @@ async def _filled_json(
         return None
 
     if (whole := marked(parsed)) is not None:
+        if kind is None:
+            return _UNFIT
         # The template is one reference: the variable's value, or the JSON
         # it is the text of.
         value = values[whole]

@@ -8,6 +8,7 @@ rejected by servers that validate their input.
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from pathlib import Path
 from types import SimpleNamespace
@@ -196,6 +197,48 @@ class TestAValueCannotAddToTheStructureAroundIt:
             "filter": {"q": "{{s.missing}}"}
         }
         assert await _fill({"filter": "{{s.missing}}"}, {}) == {"filter": "{{s.missing}}"}
+
+
+class TestJsonWrittenIntoATextParameter:
+    """With no object or list schema the result is text; the receiver may parse it."""
+
+    INJECTION = 'x", "admin": true, "y": "'
+    UNDESCRIBED: dict[str, Any] = {
+        "type": "object",
+        "properties": {"body": {"type": "string"}, "any": {}, "either": {"anyOf": [{}]}},
+    }
+
+    @pytest.mark.parametrize("schema", [None, UNDESCRIBED])
+    @pytest.mark.parametrize("key", ["body", "any", "either", "undeclared"])
+    async def test_a_value_cannot_add_keys_to_json_text(self, schema: Any, key: str) -> None:
+        filled = await _fill(
+            {key: '{"a": "{{s.v}}", "n": {{s.n}}}'}, {"s.v": self.INJECTION, "s.n": 5}, schema
+        )
+        assert isinstance(filled[key], str)
+        assert json.loads(filled[key]) == {"a": self.INJECTION, "n": 5}
+
+    async def test_a_list_and_nested_structures(self) -> None:
+        filled = await _fill(
+            {"body": '[{"q": "{{s.v}}"}, {{s.o}}, "{{s.v}} and {{s.n}}"]'},
+            {"s.v": 'a"b', "s.o": {"k": [1]}, "s.n": 2},
+            None,
+        )
+        assert json.loads(filled["body"]) == [{"q": 'a"b'}, {"k": [1]}, 'a"b and 2']
+
+    async def test_text_that_is_not_a_json_object_or_list_is_filled_in_as_before(self) -> None:
+        values = {"s.v": 'say "hi"', "s.n": 5}
+        assert await _fill({"body": "Hello {{s.v}}, {{s.n}} times"}, values, None) == {
+            "body": 'Hello say "hi", 5 times'
+        }
+        # One reference, a quoted reference, broken JSON: plain filling-in.
+        assert await _fill({"body": "{{s.v}}"}, values, None) == {"body": 'say "hi"'}
+        assert await _fill({"body": '"{{s.v}}"'}, values, None) == {"body": '"say "hi""'}
+        assert await _fill({"body": '{"a": {{s.v}}'}, values, None) == {
+            "body": '{"a": say "hi"'
+        }
+
+    async def test_a_variable_that_holds_json_text_is_passed_as_it_is(self) -> None:
+        assert await _fill({"body": "{{s.j}}"}, {"s.j": '{"a": 1}'}, None) == {"body": '{"a": 1}'}
 
 
 class TestReferencesAreFilledInAtAnyDepth:
