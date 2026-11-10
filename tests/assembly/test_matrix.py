@@ -47,69 +47,19 @@ async def _actual_deviations(
 
 @pytest.mark.timeout(120)
 @pytest.mark.parametrize("entry", m.ENTRIES)
-async def test_deviations_are_exactly_the_registered_ones(
+async def test_every_entry_point_follows_the_rule(
     entry: str, factory: async_sessionmaker[AsyncSession]
 ) -> None:
-    """actual deviations == registered deviations, cell for cell.
-
-    Fails when an entry point drifts from the rule in a new way, and when a
-    deviation is fixed without removing its registration from
-    ``KNOWN_DEVIATIONS``.
-    """
+    """What the entry point does equals the rule, cell for cell."""
     actual, probed = await _actual_deviations(entry, factory)
-    registered = {k: v for k, v in m.registered_deviations().items() if k[0] == entry}
 
     assert probed == len(m.all_cells(entry)), "every applicable cell was probed"
 
-    problems: list[str] = []
-    for key in sorted(set(actual) | set(registered), key=lambda k: k[1]):
-        _, cell = key
-        rule = m.expected(entry, cell)
-        if key not in registered:
-            problems.append(f"UNREGISTERED  {cell}: {m.describe(rule, actual[key])}")
-        elif key not in actual:
-            problems.append(
-                f"FIXED, still registered  {cell}: follows the rule now; registered as "
-                f"{m.describe(rule, registered[key])}"
-            )
-        elif actual[key] != registered[key]:
-            problems.append(
-                f"DIFFERENT  {cell}: does [{m.describe(rule, actual[key])}], "
-                f"registered as [{m.describe(rule, registered[key])}]"
-            )
-    assert not problems, f"{entry}: {len(problems)} cell(s)\n  " + "\n  ".join(problems)
-
-
-@pytest.mark.parametrize("deviation", m.KNOWN_DEVIATIONS, ids=lambda d: d.name)
-def test_every_registered_deviation_changes_something(deviation: m.Deviation) -> None:
-    """A registration that no longer changes any cell is dead and must go."""
-    remaining = tuple(d for d in m.KNOWN_DEVIATIONS if d is not deviation)
-
-    def without(entry: str, cell: m.Cell) -> m.Outcome:
-        outcome = m.expected(entry, cell)
-        for other in remaining:
-            if entry in other.entries and cell.resource in other.resources:
-                outcome = other.today(entry, cell, outcome) or outcome
-        return outcome
-
-    live = [
-        (entry, cell)
-        for entry in deviation.entries
-        for cell in m.all_cells(entry)
-        if cell.resource in deviation.resources and m.as_built(entry, cell) != without(entry, cell)
+    problems = [
+        f"{cell}: {m.describe(m.expected(entry, cell), outcome)}"
+        for (_, cell), outcome in sorted(actual.items(), key=lambda item: item[0][1])
     ]
-    assert live, f"{deviation.name} changes no cell"
-
-
-def test_the_registry_is_well_formed() -> None:
-    names = [d.name for d in m.KNOWN_DEVIATIONS]
-    assert len(names) == len(set(names))
-    for d in m.KNOWN_DEVIATIONS:
-        assert set(d.entries) <= set(m.ENTRIES)
-        assert set(d.resources) <= set(m.RESOURCES)
-        for entry in d.entries:
-            assert set(d.resources) & set(m.APPLICABLE[entry]), (d.name, entry)
-        assert d.what and d.ref and d.removed_in
+    assert not problems, f"{entry}: {len(problems)} cell(s) differ\n  " + "\n  ".join(problems)
 
 
 # ---------------------------------------------------------------------------

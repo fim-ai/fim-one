@@ -6,14 +6,13 @@ the ``run_workflow`` tool, schedules, trigger keys) is driven for real
 against a seeded database, and what it does is normalised to an
 :class:`Outcome`. :func:`expected` is the rule the assembly layer is being
 built to enforce (``dev/C1-assembly-layer.md`` §2.4 to §2.7), computed the same
-way for every entry point. Where an entry point does something else today,
-the difference is registered in :data:`KNOWN_DEVIATIONS`.
+way for every entry point.
 
-``tests/assembly/test_matrix.py`` asserts *actual deviations == registered
-deviations*: fixing one without removing its registration fails, and so
-does introducing a new one. C1 phases 2 to 4 and T10 P4 and P5 removed
-them all; :data:`KNOWN_DEVIATIONS` is empty and stays as the place to
-register one, should an entry point ever have to differ for a while.
+``tests/assembly/test_matrix.py`` asserts that every entry point does what
+the rule says, cell for cell. While the layer was being built, entry points
+that still differed were registered as known deviations; the last one (the
+workflow Connector step could not wait for a human) went with T10 P5, and
+the registry with it.
 
 A **cell** is ``(role, resource, allow_fallback, is_active, has_personal)``:
 
@@ -1289,49 +1288,6 @@ async def probe(
     }
 
 
-# ---------------------------------------------------------------------------
-# Known deviations: where an entry point does not follow the rule today
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class Deviation:
-    """One way an entry point differs from the rule today.
-
-    ``today`` takes a cell and the outcome so far (the rule's, then earlier
-    deviations applied in list order) and returns what the entry point
-    actually does, or ``None`` where this deviation changes nothing.
-    """
-
-    name: str
-    entries: tuple[str, ...]
-    resources: tuple[str, ...]
-    what: str  # what the entry point does instead of the rule
-    ref: str  # where the design records it
-    removed_in: str  # the phase that removes it
-    today: Callable[[str, Cell, Outcome], Outcome | None]
-
-
-def _replace(outcome: Outcome, **changes: Any) -> Outcome:
-    return Outcome(**{**{f: getattr(outcome, f) for f in FIELDS}, **changes})
-
-
-# Applied in this order: a later entry sees the outcome the earlier ones left.
-# Empty since T10 P5 (the workflow Connector step now waits for a human).
-KNOWN_DEVIATIONS: tuple[Deviation, ...] = ()
-
-
-def as_built(entry: str, cell: Cell) -> Outcome:
-    """What *entry* does with *cell* today: the rule plus the known deviations."""
-    outcome = expected(entry, cell)
-    for deviation in KNOWN_DEVIATIONS:
-        if entry in deviation.entries and cell.resource in deviation.resources:
-            changed = deviation.today(entry, cell, outcome)
-            if changed is not None:
-                outcome = changed
-    return outcome
-
-
 def all_cells(entry: str) -> list[Cell]:
     return [
         cell
@@ -1339,17 +1295,6 @@ def all_cells(entry: str) -> list[Cell]:
         for resource in RESOURCES
         if applicable(entry, cell := key.cell(resource))
     ]
-
-
-def registered_deviations() -> dict[tuple[str, Cell], Outcome]:
-    """Every (entry, cell) where today's registered behaviour is not the rule."""
-    registered: dict[tuple[str, Cell], Outcome] = {}
-    for entry in ENTRIES:
-        for cell in all_cells(entry):
-            today = as_built(entry, cell)
-            if today != expected(entry, cell):
-                registered[(entry, cell)] = today
-    return registered
 
 
 def describe(expected_outcome: Outcome, actual: Outcome) -> str:
