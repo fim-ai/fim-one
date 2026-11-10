@@ -13,8 +13,9 @@ database's own lexer splits it:
 ``"..."``       a name             a string            a name
 ```...```       (not SQL)          a name              (not SQL)
 ``$tag$...``    a string           (not a quote)       (not a quote)
-``-- x``        a comment          a comment only      a comment
-                                   before whitespace
+``-- x``        a comment, to      a comment only      a comment
+                ``\n`` or ``\r``     before whitespace,
+                                   to ``\n``
 ``# x``         an operator        a comment           (not SQL)
 ``/* /* */``    nests              does not nest       does not nest
 ``/*! x */``    a comment          **runs x as SQL**   a comment
@@ -37,7 +38,10 @@ __all__ = ["Lexeme", "SqlDialect", "ascii_lower", "is_name_char", "is_odd", "rea
 
 SqlDialect = Literal["postgresql", "mysql", "generic"]
 
-_DOLLAR_TAG = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*)?\$")
+# PostgreSQL's dollar-quote tag: like a name without "$", non-ASCII included.
+_DOLLAR_TAG = re.compile(
+    r"\$((?:[A-Za-z_]|[^\x00-\x7f])(?:[A-Za-z0-9_]|[^\x00-\x7f])*)?\$"
+)
 # The servers' lexers work on bytes and know ASCII only: a letter is A-Z or
 # a-z, a digit 0-9, white space is space, tab, newline, carriage return,
 # form feed and vertical tab, and every byte of a non-ASCII character is
@@ -89,10 +93,14 @@ class Lexeme:
     ``executable``: a MySQL ``/*! ... */`` or MariaDB ``/*M! ... */``
     comment, whose inside the server runs as SQL. ``odd``: a character
     outside quotes that :func:`is_odd` names (also inside a comment, which
-    is otherwise left out).
+    is otherwise left out). ``unicode_escaped``: PostgreSQL's ``U&"..."``
+    or ``U&'...'``, whose text is spelled with ``\XXXX`` escapes (a name
+    written that way is not the name this reading sees).
     """
 
-    kind: Literal["word", "name", "string", "number", "punct", "executable", "odd"]
+    kind: Literal[
+        "word", "name", "string", "number", "punct", "executable", "odd", "unicode_escaped"
+    ]
     text: str
     # How many parentheses are open around it.
     depth: int = 0
@@ -177,6 +185,13 @@ def read_sql(
             else:
                 escapes = False
             end = _end_of_quoted(sql, i, escapes)
+            if (
+                dialect == "postgresql"
+                and ch in "'\""
+                and sql[max(0, i - 2) : i] in ("U&", "u&")
+                and not (i > 2 and is_name_char(sql[i - 3]))
+            ):
+                out.append(Lexeme("unicode_escaped", sql[i - 2 : end], depth))
             if is_name:
                 closed = end - 1 if end > i + 1 and sql[end - 1] == ch else end
                 out.append(Lexeme("name", sql[i + 1 : closed].replace(ch * 2, ch), depth))
@@ -197,8 +212,12 @@ def read_sql(
             )
         ):
             flush(i)
-            newline = sql.find("\n", i)
-            end = n if newline == -1 else newline
+            # MySQL's comment runs to the newline; PostgreSQL's ends at a
+            # carriage return as well.
+            ends = [sql.find("\n", i)]
+            if dialect == "postgresql":
+                ends.append(sql.find("\r", i))
+            end = min((at for at in ends if at != -1), default=n)
             odd_in(i, end)
             i = code_start = end
         elif two == "/*":

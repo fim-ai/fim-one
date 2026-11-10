@@ -139,6 +139,61 @@ class TestPostgreSQL:
             assert plan["row_count"] >= 1, sql
         await _pg_unchanged(live_pg)
 
+    async def test_what_the_check_now_reads_as_postgresql_does_is_refused(
+        self, live_pg: LiveDatabase
+    ) -> None:
+        orders = live_pg.orders
+        for sql in (
+            # A "--" comment ends at a carriage return.
+            "SELECT 1 --x\r, pg_read_file('/etc/hostname')",
+            f"SELECT * FROM {orders} --x\r FOR SHARE",
+            # "$$" after a non-ASCII character is part of the name.
+            "SELECT 1 AS \U0001f600$$ , pg_read_file('/etc/hostname') AS x\U0001f600$$",
+            f"SELECT 1 AS \U0001f600$$ INTO {orders}_new FROM {orders} -- \U0001f600$$",
+            # A non-ASCII dollar-quote tag.
+            "SELECT $\u00e9$ ' $\u00e9$, pg_read_file('/etc/hostname') -- '",
+            # A name spelled with escapes.
+            "SELECT U&\"pg\\005Fread\\005Ffile\"('/etc/hostname')",
+            "SELECT query_to_xml('select pg_read_file(''/etc/hostname'')', true, false, '')",
+            "SELECT pg_stat_file('/etc/hostname')",
+            "SELECT pg_current_logfile()",
+        ):
+            text = await _tool(live_pg, sql)
+            assert text.startswith("[SQL Safety Error]"), (sql, text)
+        await _pg_unchanged(live_pg)
+
+    async def test_a_setting_for_the_transaction_only_is_allowed_and_does_not_last(
+        self, live_pg: LiveDatabase
+    ) -> None:
+        text = await _tool(live_pg, "SELECT set_config('search_path', 'pg_catalog', true)")
+        assert json.loads(text)["rows"] == [["pg_catalog"]]
+        after = json.loads(await _tool(live_pg, "SELECT current_setting('search_path')"))
+        assert after["rows"] != [["pg_catalog"]]
+        assert (
+            await _tool(live_pg, "SELECT set_config('search_path', 'pg_catalog', false)")
+        ).startswith("[SQL Safety Error]")
+
+    async def test_the_timeout_cannot_be_lifted_from_inside_the_query(
+        self, live_pg: LiveDatabase
+    ) -> None:
+        import time
+
+        tool = DatabaseToolAdapter.create_tools(
+            connector_name="live",
+            connector_id=live_pg.connector_id,
+            db_config={**live_pg.config, "read_only": True, "query_timeout": 1},
+            schema_tables=[],
+            on_call_complete=None,
+        )[2]
+        started = time.monotonic()
+        text = await tool.run(
+            sql="SELECT set_config('statement_timeout', '0', true), count(*) "
+            "FROM generate_series(1, 100000000000)"
+        )
+        assert text.startswith("[Timeout]"), text
+        assert time.monotonic() - started < 10
+        assert json.loads(await tool.run(sql="SELECT 1"))["rows"] == [[1]]
+
     async def test_a_connector_that_allows_writes_still_writes(self, live_pg: LiveDatabase) -> None:
         text = await _tool(
             live_pg,

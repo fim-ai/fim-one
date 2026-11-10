@@ -132,6 +132,12 @@ READS: tuple[str, ...] = (
     "SELECT share, mode, lock_in FROM t WHERE for_share = 1",
     # PostgreSQL's named argument notation.
     "SELECT make_interval(days := 2)",
+    # For the transaction only, which a read-only connector rolls back.
+    "SELECT set_config('search_path', 'rv', true)",
+    "SELECT set_config('search_path', 'rv', TRUE), current_setting('search_path')",
+    "SELECT set_config, dblink, pg_read_file FROM t",
+    "SELECT 'x' AS pg_read_file, (1) AS set_config",
+    "SELECT coalesce(set_config.dblink, 0) FROM set_config",
     "SELECT COUNT(*) create FROM t",
     "SELECT 1 FROM t WHERE id = (SELECT 1) UNION SELECT 2 /*! */",
     # Non-ASCII names, and odd characters inside quotes, are ordinary.
@@ -297,8 +303,26 @@ WRITES: tuple[str, ...] = (
     "SELECT pg_stat_reset()",
     "SELECT pg_stat_reset_shared('bgwriter')",
     "SELECT pg_create_restore_point('x')",
-    "SELECT set_config('statement_timeout', '0', true), g FROM generate_series(1, 9) g",
     "EXPLAIN ANALYZE SELECT pg_read_file('/etc/passwd')",
+    "SELECT * FROM pg_read_file('/etc/hostname')",
+    "SELECT query_to_xml('select pg_read_file(''/etc/hostname'')', true, false, '')",
+    "SELECT (xpath('//text()', query_to_xml('select dblink_exec(''x'', ''y'')', true, false, '')))[1]",
+    "SELECT query_to_xml_and_xmlschema('select 1', true, false, '')",
+    "SELECT table_to_xml('t', true, false, '')",
+    "SELECT cursor_to_xml('c', 1, true, false, '')",
+    "SELECT database_to_xml(true, false, '')",
+    "SELECT schema_to_xmlschema('public', true, false, '')",
+    "SELECT * FROM ts_stat('select pg_read_file(''/etc/hostname'')::tsvector')",
+    "SELECT pg_stat_file('/etc/hostname')",
+    "SELECT pg_current_logfile()",
+    "SELECT pg_create_physical_replication_slot('s')",
+    "SELECT pg_create_logical_replication_slot('s', 'pgoutput')",
+    "SELECT pg_drop_replication_slot('s')",
+    "SELECT pg_replication_origin_create('o')",
+    "SELECT set_config('search_path', 'rv', false)",
+    "SELECT set_config('statement_timeout', '0', NOT false)",
+    "SELECT set_config('statement_timeout', '0', 'true')",
+    "SELECT set_config('a', 'b')",
     "WITH f AS (SELECT pg_ls_dir('/') AS name) SELECT * FROM f",
 )
 
@@ -307,6 +331,21 @@ ONLY_ON: dict[SqlDialect, tuple[str, ...]] = {
     "postgresql": (
         'SELECT "pg_sleep"(10)',
         'SELECT "pg_read_file"(\'/etc/passwd\')',
+        # A name spelled with escapes is not the name the check sees.
+        "SELECT U&\"pg\\005Fread\\005Ffile\"('/etc/hostname')",
+        "SELECT U&\"d\\0062link_exec\"('dbname=x', 'INSERT INTO t(id) VALUES (79)')",
+        "SELECT U&'d\\0061ta'",
+        # A "--" comment ends at a carriage return there.
+        "SELECT 1 --x\r, pg_read_file('/etc/hostname')",
+        "SELECT 1 --x\r FOR SHARE OF o FROM t o",
+        "SELECT * FROM t --x\r FOR SHARE",
+        # A non-ASCII character is part of a name, "$" after it too: no
+        # dollar-quoted string starts here ...
+        "SELECT 1 AS \U0001f600$$ , pg_read_file('/etc/hostname') AS x\U0001f600$$",
+        "SELECT 1 AS \U0001f600$$ INTO newt FROM t -- \U0001f600$$",
+        "WITH d AS \U0001f600$$ (SELECT 1) SELECT 1 --$$\n (DELETE FROM t RETURNING id) SELECT * FROM d",
+        # ... and a tag may be non-ASCII: this one is a string.
+        "SELECT $\u00e9$ ' $\u00e9$, pg_read_file('/etc/hostname') -- '",
         # "$$" opens a string only in PostgreSQL; elsewhere this is a
         # harmless query, here the statement is unreadable past it.
     ),
@@ -471,6 +510,24 @@ class TestReading:
         # DM8: nobody here knows where its "--" comment ends.
         assert odd("SELECT 1 -- a\r, b", "generic") == ["\r"]
         assert odd("SELECT 1 -- a\r\n, b", "generic") == []
+
+    def test_postgresql_ends_a_dash_comment_at_a_carriage_return(self) -> None:
+        assert self._words("SELECT 1 --x\r y", "postgresql") == ["SELECT", "Y"]
+        assert self._words("SELECT 1 -- x\r y", "mysql") == ["SELECT"]
+        assert self._words("SELECT 1 --x\r\n y", "postgresql") == ["SELECT", "Y"]
+
+    def test_postgresql_dollar_tags_and_names_take_non_ascii(self) -> None:
+        kinds = [lex.kind for lex in read_sql("SELECT $\u00e9$ ' $\u00e9$, b", dialect="postgresql")]
+        assert kinds == ["word", "string", "punct", "word"]
+        # "$$" right after a name character belongs to the name.
+        assert self._words("SELECT 1 AS \U0001f600$$ , b AS x\U0001f600$$", "postgresql") == [
+            "SELECT",
+            "AS",
+            "\U0001f600$$",
+            "B",
+            "AS",
+            "X\U0001f600$$",
+        ]
 
     def test_an_executable_comment_is_seen_only_where_it_is_one(self) -> None:
         sql = "SELECT 1 /*!50000 , 2 */"

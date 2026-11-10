@@ -75,10 +75,18 @@ _READ_ONLY_FUNCTIONS = frozenset(
         "lo_import", "lo_export", "pg_terminate_backend", "pg_cancel_backend",
         "pg_reload_conf", "pg_switch_wal", "pg_rotate_logfile",
         "pg_create_restore_point", "pg_logical_emit_message", "set_config",
+        "pg_stat_file", "pg_current_logfile", "ts_stat",
+        "pg_drop_replication_slot", "pg_replication_slot_advance",
     }
 )  # fmt: skip
-_READ_ONLY_FUNCTION_PREFIXES = ("dblink", "pg_read_", "pg_ls_", "pg_stat_reset")
-
+_READ_ONLY_FUNCTION_PREFIXES = (
+    "dblink", "pg_read_", "pg_ls_", "pg_stat_reset",
+    # They run the query text they are given, in a way of their own.
+    "query_to_xml", "table_to_xml", "cursor_to_xml", "database_to_xml", "schema_to_xml",
+    "pg_create_physical_replication_slot", "pg_create_logical_replication_slot",
+    "pg_copy_physical_replication_slot", "pg_copy_logical_replication_slot",
+    "pg_logical_slot_", "pg_replication_origin_",
+)  # fmt: skip
 
 def validate_sql(sql: str, *, allow_write: bool = False, dialect: str | None = None) -> str:
     """Validate and clean a SQL statement for safe execution.
@@ -192,17 +200,41 @@ def _first_word(lexemes: list[Lexeme]) -> str:
     return ""
 
 
-def _function_calls(lexemes: list[Lexeme]) -> list[str]:
-    """The names called as functions, lower-cased: a name right before ``(``.
+def _function_calls_at(lexemes: list[Lexeme]) -> list[tuple[int, str]]:
+    """The names called as functions, lower-cased, each with its position.
 
-    ``pg_catalog.pg_read_file(...)`` and ``"pg_read_file"(...)`` are calls
-    of ``pg_read_file``; a column or a string with that text is not.
+    A name right before ``(``. ``pg_catalog.pg_read_file(...)`` and
+    ``"pg_read_file"(...)`` are calls of ``pg_read_file``; a column or a
+    string with that text is not.
     """
     return [
-        ascii_lower(lex.text)
-        for lex, following in pairwise(lexemes)
+        (index, ascii_lower(lex.text))
+        for index, (lex, following) in enumerate(pairwise(lexemes))
         if lex.kind in ("word", "name") and following.is_punct("(")
     ]
+
+
+def _function_calls(lexemes: list[Lexeme]) -> list[str]:
+    return [name for _, name in _function_calls_at(lexemes)]
+
+
+def _third_argument_is_true(lexemes: list[Lexeme], name_at: int) -> bool:
+    """Whether the call at *name_at* is ``f(a, b, true)``: the keyword, written out."""
+    opening = name_at + 1
+    close = _closing(lexemes, opening)
+    inner = lexemes[opening].depth + 1
+    arguments: list[list[Lexeme]] = [[]]
+    for lex in lexemes[opening + 1 : close]:
+        if lex.is_punct(",") and lex.depth == inner:
+            arguments.append([])
+        else:
+            arguments[-1].append(lex)
+    return (
+        close < len(lexemes)
+        and len(arguments) == 3
+        and len(arguments[2]) == 1
+        and arguments[2][0].upper == "TRUE"
+    )
 
 
 def _has_words(lexemes: list[Lexeme], *words: str) -> bool:
@@ -317,7 +349,17 @@ def _refuse_writes_inside_a_read(lexemes: list[Lexeme], dialect: SqlDialect) -> 
                 "a read-only connection does not do."
             )
 
-    for name in _function_calls(lexemes):
+    if any(lex.kind == "unicode_escaped" for lex in lexemes):
+        raise SqlSafetyError(
+            "U&\"...\" and U&'...' spell their text with \\XXXX escapes, so a name "
+            "written that way cannot be checked. They are not allowed on a read-only "
+            "connection; write the name or the text out."
+        )
+
+    for index, name in _function_calls_at(lexemes):
+        if name == "set_config" and _third_argument_is_true(lexemes, index):
+            # For this transaction only, which is rolled back.
+            continue
         if name in _READ_ONLY_FUNCTIONS or name.startswith(_READ_ONLY_FUNCTION_PREFIXES):
             raise SqlSafetyError(
                 f"{name}() is not allowed on a read-only connection: it acts outside "

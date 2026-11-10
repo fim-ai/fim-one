@@ -23,6 +23,9 @@ from fim_one.core.tool.connector.database.base import (
 
 logger = logging.getLogger(__name__)
 
+# How long after the server's own statement timeout the client gives up.
+_CLIENT_TIMEOUT_GRACE_S = 2
+
 
 class PostgreSQLDriver(DatabaseDriver):
     """PostgreSQL driver backed by asyncpg connection pool."""
@@ -181,10 +184,14 @@ class PostgreSQLDriver(DatabaseDriver):
                     transaction = conn.transaction(readonly=read_only)
                     await transaction.start()
                     try:
-                        async for record in stmt.cursor(*args):
-                            records.append(record)
-                            if len(records) > max_rows:
-                                break
+                        # The server's statement_timeout can be lifted from
+                        # inside the query (set_config(..., true)); this
+                        # one cannot.
+                        async with asyncio.timeout(timeout_s + _CLIENT_TIMEOUT_GRACE_S):
+                            async for record in stmt.cursor(*args):
+                                records.append(record)
+                                if len(records) > max_rows:
+                                    break
                     except BaseException:
                         try:
                             await transaction.rollback()
@@ -220,6 +227,9 @@ class PostgreSQLDriver(DatabaseDriver):
                     await conn.execute("RESET statement_timeout")
         except asyncio.TimeoutError:
             elapsed = (time.monotonic() - start) * 1000
+            raise TimeoutError(f"Query timed out after {timeout_s}s") from None
+        except asyncpg.QueryCanceledError:
+            # "canceling statement due to statement timeout".
             raise TimeoutError(f"Query timed out after {timeout_s}s") from None
         except asyncpg.PostgresError as exc:
             raise RuntimeError(f"PostgreSQL error: {exc}") from exc
