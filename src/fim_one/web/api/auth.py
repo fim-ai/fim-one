@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 import os
@@ -1027,8 +1028,20 @@ async def update_profile(
             )
             if username_result.scalar_one_or_none() is not None:
                 raise AppError("username_taken", status_code=409)
+            previous_username = user.username
             user.username = new_username
             user.username_changed_at = datetime.now(UTC).replace(tzinfo=None)
+            # The username is what later records call this person: the
+            # change is recorded, under the old name, with both.
+            await audit.record(
+                actions.AUTH_USERNAME_CHANGE,
+                actor=replace(audit.actor_of(user), label=previous_username or user.email),
+                target_type="user",
+                target_id=user.id,
+                target_label=new_username,
+                changes=diff_changes({"username": previous_username}, {"username": new_username}),
+                db=db,
+            )
     await db.commit()
 
     # Reload with oauth_bindings for response serialization

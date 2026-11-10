@@ -122,7 +122,7 @@ class TestDecidingInThePortal:
             expect=403,
         )
 
-        assert await world.events() == []
+        assert await world.events("confirmation.approve") == []
         assert (await world.get(ConfirmationRequest, "cnf-1")).status == "pending"
 
     async def test_a_second_decision_is_refused_and_there_is_one_record(
@@ -393,3 +393,68 @@ class TestAnApprovalPlaygroundCard:
             "failed",
             "test card expired; via=timeout",
         )
+
+
+class TestSomeoneWhoMayNotDecide:
+    """A forbidden decision and a card click from someone with no usable
+    account were refused and left nothing."""
+
+    async def test_a_forbidden_decision_in_the_portal_is_recorded_once(self, world: World) -> None:
+        alice = await world.user("alice")
+        mallory = await world.user("mallory")
+        acme = await world.org("Acme", alice)
+        await world.add(_request(alice.id, org_id=acme.id))
+
+        for _ in range(3):
+            await world.call(
+                "POST",
+                "/api/confirmations/cnf-1/respond",
+                by=mallory,
+                json={"decision": "approve"},
+                expect=403,
+            )
+
+        row = await world.one(
+            "confirmation.decision_denied",
+            actor=mallory,
+            org=acme,
+            target=("confirmation", "cnf-1"),
+            outcome="denied",
+        )
+        assert row.detail == "kind=confirmation; via=portal"
+        world.assert_absent(row, ARGUMENT)
+
+    async def test_a_card_click_from_an_account_that_is_not_linked(self, world: World) -> None:
+        from fim_one.web.api.channels import _decide_from_click
+
+        alice = await world.user("alice")
+        acme = await world.org("Acme", alice)
+        channel = Channel(
+            id="chan-1", name="approvals", type="feishu", org_id=acme.id, config={},
+            created_by=alice.id,
+        )
+        await world.add(channel)
+        await world.add(_request(alice.id, org_id=acme.id, channel_id="chan-1", mode="channel"))
+
+        async with world.factory() as db:
+            await _decide_from_click(
+                db,
+                channel=channel,
+                confirmation_id="cnf-1",
+                decision="approve",
+                open_id="ou_stranger_open_id",
+            )
+
+        (row,) = await world.events("confirmation.decision_denied")
+        assert (row.actor_kind, row.actor_id, row.org_id, row.outcome) == (
+            "external",
+            None,
+            acme.id,
+            "denied",
+        )
+        assert (row.target_id, row.detail) == (
+            "cnf-1",
+            "card click; account is not linked; via=channel",
+        )
+        world.assert_absent(row, "ou_stranger_open_id")
+        assert (await world.get(ConfirmationRequest, "cnf-1")).status == "pending"

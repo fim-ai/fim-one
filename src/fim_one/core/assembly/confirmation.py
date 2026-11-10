@@ -56,6 +56,7 @@ from fim_one.core.agent.hooks import HookContext, HookResult
 from fim_one.core.audit import actions
 from fim_one.core.audit import writer as audit
 from fim_one.core.audit.events import Actor, EventContext
+from fim_one.core.audit.refusals import record_refusal
 from fim_one.core.channels import ApprovalCarrier, ApprovalRequestSummary, build_channel
 from fim_one.core.channels.resolve import resolve_org_channel
 from fim_one.core.hooks.base import PreToolUseHook
@@ -478,6 +479,22 @@ class ConfirmationService:
         if row.status != "pending":
             raise _already_decided(row.status)
         if not await self.may_decide(db, row, actor):
+            # Someone tried to decide a request that is not theirs to
+            # decide. One record per person and request in ten minutes.
+            await record_refusal(
+                actions.CONFIRMATION_DECISION_DENIED,
+                source=f"{actor.user_id}|{row.id}",
+                actor=audit.actor_from_principal(
+                    actor, label=await _label_of_user(db, actor.user_id)
+                ),
+                org_id=row.org_id,
+                target_type="confirmation",
+                target_id=row.id,
+                detail=(
+                    f"kind={row.kind}; "
+                    f"via={'channel' if via_channel_id is not None else 'portal'}"
+                ),
+            )
             raise AssemblyRefusal(
                 CONFIRMATION_FORBIDDEN,
                 403,

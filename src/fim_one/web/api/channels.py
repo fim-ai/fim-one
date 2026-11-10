@@ -915,8 +915,10 @@ async def _decide_from_click(
             db, provider="feishu", subject=open_id
         )
     except AssemblyRefusal:
+        await _record_denied_click(channel, confirmation_id, "linked account is disabled")
         return _denied("Your linked FIM One account is disabled.")
     if actor is None:
+        await _record_denied_click(channel, confirmation_id, "account is not linked")
         return _denied(
             "Your Feishu account is not linked to FIM One — link it "
             "(or decide in the portal) to respond to approvals."
@@ -964,6 +966,27 @@ async def _decide_from_click(
         confirmation_id=confirmation_id,
         tool_name=str(raw_tool) if raw_tool else None,
         decided_by=open_id,
+    )
+
+
+async def _record_denied_click(channel: Channel, confirmation_id: str, why: str) -> None:
+    """A click on an approval card by someone who has no usable account here.
+
+    Known only to the outside system: the record names the channel and the
+    request, not the person's id there. One per channel and request in ten
+    minutes.
+    """
+    from fim_one.core.audit.events import Actor
+    from fim_one.core.audit.refusals import record_refusal
+
+    await record_refusal(
+        actions.CONFIRMATION_DECISION_DENIED,
+        source=f"{channel.id}|{confirmation_id}",
+        actor=Actor(user_id=None, label=None, kind="external", auth="channel"),
+        org_id=channel.org_id,
+        target_type="confirmation",
+        target_id=confirmation_id,
+        detail=f"card click; {why}; via=channel",
     )
 
 

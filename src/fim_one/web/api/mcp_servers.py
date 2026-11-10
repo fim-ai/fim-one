@@ -726,12 +726,15 @@ async def fork_mcp_server(
         allow_fallback=source.allow_fallback,
     )
     db.add(forked)
-    await record_resource(
+    await db.flush()
+    await record_resource_change(
         db,
         current_user,
         actions.MCP_SERVER_CREATE,
         "mcp_server",
         forked,
+        dict.fromkeys(MCP_SERVER_AUDITED_FIELDS),
+        secret_fields=MCP_SERVER_SECRET_FIELDS,
         detail=f"fork of {source.id}",
     )
     await db.commit()

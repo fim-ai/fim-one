@@ -334,3 +334,26 @@ class TestDeletingTheAccount:
         row = await world.one("account.self_delete", actor=dave, target=("user", dave.id))
         assert (row.auth_method, row.actor_kind) == ("session", "user")
         assert await world.get(User, dave.id) is None
+
+
+class TestTheUsername:
+    async def test_a_change_is_recorded_under_the_old_name_with_both(self, world: World) -> None:
+        """The username is what later records call the user by; a change of
+        it left nothing, so a record's actor could not be traced across it."""
+        bob = await world.user("bob")
+
+        await world.call("PATCH", "/api/auth/profile", by=bob, json={"username": "robert"})
+
+        (row,) = await world.events("auth.username_change")
+        assert (row.actor_id, row.actor_label, row.target_label) == (bob.id, "bob", "robert")
+        assert row.changes == {"username": {"from": "bob", "to": "robert"}}
+        assert row.ip_address is not None
+
+    async def test_other_profile_fields_leave_no_record(self, world: World) -> None:
+        bob = await world.user("bob")
+
+        await world.call(
+            "PATCH", "/api/auth/profile", by=bob, json={"display_name": "Bob", "username": "bob"}
+        )
+
+        assert await world.events() == []

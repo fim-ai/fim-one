@@ -152,6 +152,8 @@ AUTH_BACKUP_CODES_REGENERATE = "auth.backup_codes_regenerate"
 AUTH_EMAIL_CHANGE = "auth.email_change"
 AUTH_OAUTH_BIND = "auth.oauth_bind"
 AUTH_OAUTH_UNBIND = "auth.oauth_unbind"
+# The name later records call the user by; recorded with the old and the new one.
+AUTH_USERNAME_CHANGE = "auth.username_change"
 # The user signed every session of theirs out.
 AUTH_SESSIONS_REVOKE = "auth.sessions_revoke"
 # A user's own API keys are recorded under the administrators' names for
@@ -194,6 +196,8 @@ WORKFLOW_TRIGGER_KEY_GENERATE = "workflow.trigger_key_generate"
 WORKFLOW_TRIGGER_KEY_REVOKE = "workflow.trigger_key_revoke"
 WORKFLOW_SCHEDULE_UPDATE = "workflow.schedule_update"
 WORKFLOW_SCHEDULE_DELETE = "workflow.schedule_delete"
+# A test payload was sent to the workflow's completion webhook.
+WORKFLOW_WEBHOOK_TEST = "workflow.webhook_test"
 
 # -- Resources: agents, connectors, MCP servers, knowledge bases, skills, workflows --
 # ``create`` covers every way a resource comes to exist (new, fork, from a
@@ -289,6 +293,10 @@ CONFIRMATION_APPROVE = "confirmation.approve"
 CONFIRMATION_REJECT = "confirmation.reject"
 # Nobody decided in time. The actor is the system.
 CONFIRMATION_EXPIRE = "confirmation.expire"
+# Someone who may not decide a request tried to (a forbidden decision in the
+# portal, a card click from an unlinked or disabled account). Through the
+# refusal throttle: one per person and request in ten minutes.
+CONFIRMATION_DECISION_DENIED = "confirmation.decision_denied"
 
 # -- Refusals anyone can provoke -------------------------------------------------
 # Written through ``core/audit/refusals.py``: at most one per source address

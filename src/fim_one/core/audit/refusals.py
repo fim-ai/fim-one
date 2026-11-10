@@ -219,6 +219,7 @@ async def record_refusal(
     target_type: str | None = None,
     target_id: str | None = None,
     actor: Actor | None = None,
+    org_id: str | None = None,
 ) -> bool:
     """Record that something from *source* was refused, at most once per window.
 
@@ -233,6 +234,7 @@ async def record_refusal(
     await audit.record(
         action,
         actor=actor or Actor(user_id=None, label=None, kind="anonymous"),
+        org_id=org_id,
         target_type=target_type,
         target_id=target_id,
         outcome="denied",

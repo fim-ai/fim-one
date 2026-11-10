@@ -2029,6 +2029,26 @@ async def test_webhook(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     """Send a test payload to the workflow's configured webhook URL."""
+    wf = await _get_owned_workflow(workflow_id, current_user.id, db)
+    recorded = {"id": wf.id, "name": wf.name, "org_id": wf.org_id}
+    response = await _send_test_webhook(workflow_id, current_user, db)
+    # A message left the platform for an address the author chose. Which
+    # workflow and whether it was accepted; not the address (it carries the
+    # token) and not the answer. Written on its own, after the send.
+    await audit.record(
+        actions.WORKFLOW_WEBHOOK_TEST,
+        actor=audit.actor_of(current_user),
+        org_id=recorded["org_id"],
+        target_type="workflow",
+        target_id=recorded["id"],
+        target_label=recorded["name"],
+        outcome="success" if (response.data or {}).get("success") else "failed",
+    )
+    return response
+
+
+async def _send_test_webhook(workflow_id: str, current_user: User, db: AsyncSession) -> ApiResponse:
+    """The test delivery itself: what it answers is the endpoint's response."""
     import httpx
 
     wf = await _get_owned_workflow(workflow_id, current_user.id, db)

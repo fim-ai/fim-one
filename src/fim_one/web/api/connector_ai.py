@@ -34,7 +34,9 @@ from fim_one.web.schemas.connector import (
     OpenAPIImportRequest,
 )
 from fim_one.web.api.connectors import (
+    ACTION_AUDITED_FIELDS,
     CONNECTOR_AUDITED_FIELDS,
+    connector_created_changes,
     _action_to_response,
     _connector_to_response,
     _get_owned_connector,
@@ -336,6 +338,7 @@ async def ai_create_connector(
             actions.CONNECTOR_CREATE,
             "connector",
             connector,
+            changes=await connector_created_changes(db, connector),
             detail=f"from an OpenAPI document, by the AI builder; {len(action_dicts)} action(s)",
         )
         await db.commit()
@@ -388,6 +391,7 @@ async def ai_create_connector(
             actions.CONNECTOR_CREATE,
             "connector",
             connector,
+            changes=await connector_created_changes(db, connector),
             detail=f"drafted by the AI builder; {created_count} action(s)",
         )
         await db.commit()
@@ -627,11 +631,24 @@ async def ai_refine_action(
                     "parameters_schema", "request_body_template",
                     "response_extract", "requires_confirmation",
                 }
+                action_before = snapshot(update_action, ACTION_AUDITED_FIELDS)
                 for field, value in data.items():
                     if field in updatable:
                         if field == "method":
                             value = str(value).upper()
                         setattr(update_action, field, value)
+                # What an action calls and whether a human is asked first,
+                # before and after, as a manual edit of the action records it.
+                await record_resource_change(
+                    db,
+                    current_user,
+                    actions.CONNECTOR_ACTION_UPDATE,
+                    "connector_action",
+                    update_action,
+                    action_before,
+                    org_id=connector.org_id,
+                    detail=f"connector={connector_id}; by the AI builder",
+                )
 
                 await db.flush()
                 # Re-query to get updated values

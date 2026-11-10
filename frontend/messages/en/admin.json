@@ -666,7 +666,10 @@
       "confirmation__reject": "Reject Request",
       "confirmation__expire": "Approval Request Expired",
       "channel__test_approval": "Channel Test Approval Card",
-      "auth__login_unknown_account": "Failed Sign-Ins for Unknown Accounts (Summary)"
+      "auth__login_unknown_account": "Failed Sign-Ins for Unknown Accounts (Summary)",
+      "auth__username_change": "Change Username",
+      "workflow__webhook_test": "Test Workflow Webhook",
+      "confirmation__decision_denied": "Approval Decision Refused"
     },
     "detailDialogTitle": "Audit Detail",
     "filterDateFrom": "From",

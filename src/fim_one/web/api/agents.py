@@ -370,6 +370,19 @@ def _completion_channel_id(model_config_json: Any) -> str | None:
     return channel_id if isinstance(channel_id, str) and channel_id else None
 
 
+def _audited_state(agent: Agent) -> dict[str, Any]:
+    """What an audit record compares of an agent.
+
+    Its audited fields, and the channel its completion notifications go
+    to: that one is kept inside the model config, and decides where what
+    the agent produced is sent.
+    """
+    return {
+        **snapshot(agent, AGENT_AUDITED_FIELDS),
+        "completion_channel_id": _completion_channel_id(agent.model_config_json),
+    }
+
+
 @router.post("", response_model=ApiResponse)
 async def create_agent(
     body: AgentCreate,
@@ -500,7 +513,7 @@ async def update_agent(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     agent = await _get_owned_agent(agent_id, current_user.id, db)
-    before = snapshot(agent, AGENT_AUDITED_FIELDS)
+    before = _audited_state(agent)
 
     update_data = body.model_dump(exclude_unset=True)
     # Checked when it changes: the settings form sends the whole model config
@@ -551,7 +564,7 @@ async def update_agent(
         reverted = False
 
     await record_resource_change(
-        db, current_user, actions.AGENT_UPDATE, "agent", agent, before
+        db, current_user, actions.AGENT_UPDATE, "agent", agent, before, after=_audited_state(agent)
     )
     await db.commit()
     result = await db.execute(select(Agent).where(Agent.id == agent.id))

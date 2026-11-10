@@ -113,6 +113,8 @@ def mutating_routes(app: Any) -> Iterator[tuple[Route, Any]]:
 
 
 AUDITED: dict[Route, tuple[str, ...]] = {
+    ("POST", "/api/workflows/{workflow_id}/test-webhook"): ("workflow.webhook_test",),
+    ("PATCH", "/api/auth/profile"): ("auth.username_change",),
     ("POST", "/api/channels/{channel_id}/test-approval"): ("channel.test_approval",),
     ("POST", "/api/admin/actions/force-logout-all"): ("auth.force_logout_all",),
     ("POST", "/api/admin/agents/batch-delete"): ("agent.admin_batch_delete",),
@@ -359,7 +361,6 @@ EXEMPT: dict[Route, str] = {
     # content
     ("DELETE", "/api/auth/avatar"): CONTENT,
     ("POST", "/api/auth/avatar"): CONTENT,
-    ("PATCH", "/api/auth/profile"): CONTENT,
     ("POST", "/api/confirmations/{confirmation_id}/answer"): CONTENT,
     ("POST", "/api/conversations"): CONTENT,
     ("DELETE", "/api/conversations/batch"): CONTENT,
@@ -408,7 +409,6 @@ EXEMPT: dict[Route, str] = {
     ("POST", "/api/knowledge-bases/{kb_id}/retrieve"): PROBE,
     ("POST", "/api/mcp-servers/{server_id}/test"): PROBE,
     ("POST", "/api/workflows/validate"): PROBE,
-    ("POST", "/api/workflows/{workflow_id}/test-webhook"): PROBE,
     ("POST", "/api/workflows/{workflow_id}/validate"): PROBE,
     # code_delivery
     ("POST", "/api/auth/change-email/request"): CODE_DELIVERY,
@@ -513,6 +513,12 @@ KNOWN_NON_ROUTE_GAPS: dict[str, Gap] = {
 # Records written outside any route: action -> the test that shows it
 # (``tests/<file>.py::<Class>::<test>``).
 NON_ROUTE_ACTIONS: dict[str, str] = {
+    # Written by the confirmation service (a forbidden decision) and by the
+    # channel callback (a card click from an unlinked or disabled account).
+    "confirmation.decision_denied": (
+        "tests/test_audit_confirmations.py::TestSomeoneWhoMayNotDecide::"
+        "test_a_forbidden_decision_in_the_portal_is_recorded_once"
+    ),
     # The summary of failed sign-ins for unknown accounts that were only counted.
     "auth.login_unknown_account": (
         "tests/test_audit_sign_in.py::TestAnAccountThatDoesNotExist::"

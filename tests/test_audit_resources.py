@@ -152,6 +152,9 @@ class TestOtherWaysOfCreating:
 
         _, fork = await world.events(f"{kind}.create")
         assert (fork.target_id, fork.detail) == (forked["id"], f"fork of {source_id}")
+        if kind in ("connector", "mcp_server"):
+            address = "base_url" if kind == "connector" else "url"
+            assert fork.changes is not None and fork.changes[address]["to"]
         assert (fork.actor_id, fork.ip_address is not None) == (alice.id, True)
 
     @pytest.mark.parametrize(
@@ -234,6 +237,10 @@ class TestOtherWaysOfCreating:
             "connector.create", actor=alice, target=("connector", created["connector"]["id"])
         )
         assert row.detail == "imported; 1 action(s)"
+        # Where it calls and how it signs in, as for a connector made by hand.
+        assert row.changes is not None
+        assert row.changes["base_url"] == {"from": None, "to": "https://billing.example.test"}
+        assert row.changes["auth_type"] == {"from": None, "to": "none"}
 
     async def test_a_connector_from_an_openapi_document(self, world: World, alice: Any) -> None:
         spec = {
@@ -336,6 +343,52 @@ class TestAgentSafetySettings:
         await world.call("PUT", f"/api/agents/{agent_id}", by=alice, json=body)
 
         assert len(await world.events("agent.update")) == 1
+
+
+class TestAgentCompletionChannel:
+    async def test_where_completion_notifications_go_is_recorded(
+        self, world: World, alice: Any
+    ) -> None:
+        """The channel is kept inside the model config, which no record
+        compared: an agent's results could be pointed elsewhere unseen."""
+        from fim_one.db.models.channel import Channel
+
+        acme = await world.org("Acme", alice)
+        await world.add(
+            Channel(id="11111111-2222-4333-8444-555555555555", name="ops", type="slack_webhook",
+                    org_id=acme.id, config={}, created_by=alice.id)
+        )
+        agent_id = await _create(world, "agent", alice)
+        config = {
+            "temperature": 0.2,
+            "notifications": {
+                "on_complete": {"enabled": True, "channel_id": "11111111-2222-4333-8444-555555555555"}
+            },
+        }
+
+        with patch("fim_one.web.api.agents._validate_binding_ownership", AsyncMock()):
+            await world.call(
+                "PUT", f"/api/agents/{agent_id}", by=alice, json={"model_config_json": config}
+            )
+            await world.call(
+                "PUT",
+                f"/api/agents/{agent_id}",
+                by=alice,
+                json={"model_config_json": {**config, "temperature": 0.9}},
+            )
+
+        # The second save changed only the temperature: content.
+        await world.one(
+            "agent.update",
+            actor=alice,
+            target=("agent", agent_id),
+            changes={
+                "completion_channel_id": {
+                    "from": None,
+                    "to": "11111111-2222-4333-8444-555555555555",
+                }
+            },
+        )
 
 
 class TestConnectorSafetySettings:
@@ -491,6 +544,52 @@ class TestConnectorActions:
         assert deleted.detail == f"connector={connector_id}; DELETE /customers/{{id}}"
         assert await world.get(ConnectorAction, action["id"]) is None
 
+    async def test_the_ai_builder_switching_off_confirmation_is_recorded_per_action(
+        self, world: World, alice: Any
+    ) -> None:
+        """A refine by the AI builder was one summary line: that an action
+        no longer asks a human first was not in it."""
+        connector_id = await _create(world, "connector", alice)
+        action = _data(
+            await world.call(
+                "POST",
+                f"/api/connectors/{connector_id}/actions",
+                by=alice,
+                json={"name": "delete customer", "method": "DELETE", "path": "/c/{id}",
+                      "requires_confirmation": True},
+            )
+        )
+        operations = [
+            {"op": "update", "action_id": action["id"],
+             "data": {"requires_confirmation": False, "description": "Removes one."}},
+            {"op": "update_connector", "data": {"base_url": "https://crm2.example.test"}},
+        ]
+
+        with patch(
+            "fim_one.web.api.connector_ai.structured_llm_call",
+            AsyncMock(return_value=SimpleNamespace(value=operations)),
+        ):
+            await world.call(
+                "POST",
+                f"/api/connectors/{connector_id}/ai/refine-action",
+                by=alice,
+                json={"instruction": "stop asking"},
+            )
+
+        row = await world.one(
+            "connector.action_update",
+            actor=alice,
+            target=("connector_action", action["id"]),
+            changes={"requires_confirmation": {"from": True, "to": False}},
+        )
+        assert row.detail == f"connector={connector_id}; by the AI builder"
+        moved = await world.one(
+            "connector.update", actor=alice, target=("connector", connector_id)
+        )
+        assert moved.changes == {
+            "base_url": {"from": "https://crm.example.test", "to": "https://crm2.example.test"}
+        }
+
     async def test_an_edit_of_an_actions_description_leaves_no_record(
         self, world: World, alice: Any
     ) -> None:
@@ -572,6 +671,33 @@ class TestWorkflowSettings:
             changes={"webhook_url": {"changed": True}},
         )
         world.assert_absent(row, address, "s3cr3tHookT0k3nV4lu3", "203.0.113.10")
+
+
+    async def test_a_test_delivery_to_the_webhook_is_recorded_without_the_address(
+        self, world: World, alice: Any
+    ) -> None:
+        import httpx
+
+        workflow_id = await _create(world, "workflow", alice)
+        address = "https://203.0.113.10/hooks/T0AUDIT/s3cr3tHookT0k3nV4lu3"
+        async with world.factory() as db:
+            row = await db.get(Workflow, workflow_id)
+            row.webhook_url = address
+            await db.commit()
+
+        answers = [httpx.Response(204), httpx.Response(500)]
+        with (
+            patch("fim_one.web.api.workflows._validate_webhook_url"),
+            patch("httpx.AsyncClient.post", AsyncMock(side_effect=answers)),
+        ):
+            for _ in answers:
+                await world.call("POST", f"/api/workflows/{workflow_id}/test-webhook", by=alice)
+
+        sent, refused = await world.events("workflow.webhook_test")
+        assert (sent.outcome, refused.outcome) == ("success", "failed")
+        for event in (sent, refused):
+            assert (event.actor_id, event.target_id) == (alice.id, workflow_id)
+            world.assert_absent(event, address, "s3cr3tHookT0k3nV4lu3", "203.0.113.10")
 
 
 class TestDatabaseFences:

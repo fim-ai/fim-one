@@ -122,6 +122,7 @@ async def record_resource_change(
     also_changed: Collection[str] = (),
     detail: str | None = None,
     org_id: str | None = None,
+    after: Mapping[str, Any] | None = None,
 ) -> bool:
     """Record what changed on *resource* among the fields *before* holds.
 
@@ -129,12 +130,12 @@ async def record_resource_change(
     content (its name, its instructions) is not a security event, a change
     of who or what it may reach is. *also_changed* names secrets that were
     replaced and are not fields of the row (a stored credential); each is
-    recorded as changed and nothing more. Returns whether a record was
-    written.
+    recorded as changed and nothing more. *after* is the state to compare
+    with when it is not simply the fields of the row (a value kept inside a
+    JSON column). Returns whether a record was written.
     """
-    changes = (
-        diff_changes(before, snapshot(resource, list(before)), secret_fields=secret_fields) or {}
-    )
+    now = after if after is not None else snapshot(resource, list(before))
+    changes = diff_changes(before, now, secret_fields=secret_fields) or {}
     changes.update({name: dict(CHANGED) for name in also_changed})
     if not changes:
         return False

@@ -221,12 +221,18 @@ CONNECTOR_AUDITED_FIELDS = ("is_active", "allow_fallback", "type", "base_url", "
 ACTION_AUDITED_FIELDS = ("requires_confirmation", "method", "path")
 
 
-def _connector_created(
-    connector: Connector, *, default_credential: bool
+async def connector_created_changes(
+    db: AsyncSession, connector: Connector
 ) -> dict[str, dict[str, Any]] | None:
-    """The ``changes`` of a new connector: its audited fields from nothing."""
+    """The ``changes`` of a new connector, however it came to exist.
+
+    Its audited fields from nothing (where it calls, how it signs in,
+    whether others may borrow the owner's credential), and whether a default
+    credential was stored with it; the credential itself is not recorded.
+    """
+    await db.flush()
     changes = diff_changes(None, snapshot(connector, CONNECTOR_AUDITED_FIELDS)) or {}
-    if default_credential:
+    if await _has_default_credential(connector.id, db):
         changes["default_credential"] = dict(CHANGED)
     return changes or None
 
@@ -324,7 +330,7 @@ async def create_connector(
         actions.CONNECTOR_CREATE,
         "connector",
         connector,
-        changes=_connector_created(connector, default_credential=bool(cred_blob)),
+        changes=await connector_created_changes(db, connector),
     )
     await db.commit()
 
@@ -655,6 +661,7 @@ async def fork_connector(
         actions.CONNECTOR_CREATE,
         "connector",
         forked,
+        changes=await connector_created_changes(db, forked),
         detail=f"fork of {source.id}",
     )
     await db.commit()
@@ -1058,6 +1065,7 @@ async def import_openapi(
         actions.CONNECTOR_CREATE,
         "connector",
         connector,
+        changes=await connector_created_changes(db, connector),
         detail=f"from an OpenAPI document; {len(action_dicts)} action(s)",
     )
     await db.commit()
@@ -1230,6 +1238,7 @@ async def import_connector(
         actions.CONNECTOR_CREATE,
         "connector",
         connector,
+        changes=await connector_created_changes(db, connector),
         detail=f"imported; {len(body.actions)} action(s)",
     )
     await db.commit()
@@ -1445,6 +1454,7 @@ async def create_connector_from_config(
         actions.CONNECTOR_CREATE,
         "connector",
         connector,
+        changes=await connector_created_changes(db, connector),
         detail=f"from a config document; {len(actions_)} action(s)",
     )
     await db.commit()
