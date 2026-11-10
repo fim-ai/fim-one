@@ -380,7 +380,8 @@ ONLY_ON: dict[SqlDialect, tuple[str, ...]] = {
         # A name spelled with escapes is not the name the check sees.
         "SELECT U&\"pg\\005Fread\\005Ffile\"('/etc/hostname')",
         "SELECT U&\"d\\0062link_exec\"('dbname=x', 'INSERT INTO t(id) VALUES (79)')",
-        "SELECT U&'d\\0061ta'",
+        "SELECT U&'d!0061ta' UESCAPE '!'",
+        'SELECT u&"id" FROM t',
         # A "--" comment ends at a carriage return there.
         "SELECT 1 --x\r, pg_read_file('/etc/hostname')",
         "SELECT 1 --x\r FOR SHARE OF o FROM t o",
@@ -507,6 +508,9 @@ def test_the_row_number_idiom_is_refused_with_what_to_write_instead() -> None:
 # third review of this check. All of them pass on their dialect.
 DIALECT_READS: dict[SqlDialect, tuple[str, ...]] = {
     "postgresql": (
+        # A U&'...' string is a string; only U&"..." spells a name.
+        "SELECT E'tab\\there', 'it''s', $$dollar 'quoted'$$, $q$with ; semi$q$, U&'d\\0061ta', B'101', X'1F'",
+        "SELECT U&'d\\0061ta', U&'\\0441\\043B\\043E\\043D'",
         'SELECT customer, SUM(amount) OVER (PARTITION BY customer ORDER BY created ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running FROM rv.orders',
         "WITH monthly AS (SELECT date_trunc('month', created) AS m, SUM(amount) AS total FROM rv.orders GROUP BY 1), ranked AS (SELECT *, RANK() OVER (ORDER BY total DESC) r FROM monthly) SELECT * FROM ranked WHERE r <= 3;",
         'SELECT * FROM rv.orders o WHERE EXISTS (SELECT 1 FROM rv.orders x WHERE x.id = o.id AND x.amount > (SELECT AVG(amount) FROM rv.orders))',
@@ -646,7 +650,6 @@ DIALECT_READS: dict[SqlDialect, tuple[str, ...]] = {
 # From the same lists: refused by design, on the dialect they are written for.
 DIALECT_REFUSED: dict[SqlDialect, tuple[str, ...]] = {
     "postgresql": (
-        "SELECT E'tab\\there', 'it''s', $$dollar 'quoted'$$, $q$with ; semi$q$, U&'d\\0061ta', B'101', X'1F'",
         'SELECT * FROM rv.orders FOR UPDATE',
         'SELECT * FROM rv.orders FOR UPDATE SKIP LOCKED',
         'USE rv',

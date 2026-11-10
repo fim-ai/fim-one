@@ -357,11 +357,16 @@ def _refuse_writes_inside_a_read(lexemes: list[Lexeme], dialect: SqlDialect) -> 
                 "a read-only connection does not do."
             )
 
-    if any(lex.kind == "unicode_escaped" for lex in lexemes):
+    if any(lex.kind == "unicode_escaped" for lex in lexemes) or (
+        dialect == "postgresql" and any(lex.upper == "UESCAPE" for lex in lexemes)
+    ):
+        # U&'...' strings are fine: a string is not looked into. With
+        # UESCAPE the escape character is the author's choice, and that
+        # form is left refused rather than decoded.
         raise SqlSafetyError(
-            "U&\"...\" and U&'...' spell their text with \\XXXX escapes, so a name "
-            "written that way cannot be checked. They are not allowed on a read-only "
-            "connection; write the name or the text out."
+            "U&\"...\" spells a name with \\XXXX escapes, so the name cannot be "
+            "checked; it (and the UESCAPE clause) is not allowed on a read-only "
+            "connection. Write the name out."
         )
 
     for index, name in _function_calls_at(lexemes):

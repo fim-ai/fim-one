@@ -93,9 +93,10 @@ class Lexeme:
     ``executable``: a MySQL ``/*! ... */`` or MariaDB ``/*M! ... */``
     comment, whose inside the server runs as SQL. ``odd``: a character
     outside quotes that :func:`is_odd` names (also inside a comment, which
-    is otherwise left out; see ``odd_in``). ``unicode_escaped``: PostgreSQL's
-    ``U&"..."`` or ``U&'...'``, whose text is spelled with ``\\XXXX`` escapes
-    (a name written that way is not the name this reading sees).
+    is otherwise left out; see ``odd_in``). ``unicode_escaped``:
+    PostgreSQL's ``U&"..."``, a name spelled with ``\XXXX`` escapes, which
+    is not the name this reading sees. (``U&'...'`` is a string like any
+    other here: where it ends does not depend on its escapes.)
     """
 
     kind: Literal[
@@ -200,7 +201,7 @@ def read_sql(
             end = _end_of_quoted(sql, i, escapes)
             if (
                 dialect == "postgresql"
-                and ch in "'\""
+                and ch == '"'
                 and sql[max(0, i - 2) : i] in ("U&", "u&")
                 and not (i > 2 and is_name_char(sql[i - 3]))
             ):
