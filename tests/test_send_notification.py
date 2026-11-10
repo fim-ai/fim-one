@@ -390,7 +390,7 @@ class TestBinding:
             await engine.dispose()
 
     @pytest.mark.asyncio
-    async def test_a_workflow_step_with_no_agent_is_bound_to_the_runs_acting_user(
+    async def test_a_workflow_step_with_no_agent_has_no_notification_tool(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from fim_one.core.assembly.principal import CallContext, provisional_principal
@@ -417,9 +417,9 @@ class TestBinding:
             principal=provisional_principal("runner-7"), binding=None, entry="workflow_node"
         )
         runtime = await agent_runtime.bare_runtime(ctx)
-        tool = runtime.tools.get("send_notification")
-        assert isinstance(tool, SendNotificationTool)
-        assert tool._user_id == "runner-7"
+        # A run nobody may be watching does not message people: the step
+        # selects an agent that has the tool instead.
+        assert "send_notification" not in runtime.tools
 
 
 # ---------------------------------------------------------------------------

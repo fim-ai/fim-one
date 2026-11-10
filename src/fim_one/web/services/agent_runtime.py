@@ -243,8 +243,8 @@ async def bare_runtime(ctx: CallContext) -> AgentRuntime:
     resources nor a sandbox: no connectors, MCP servers, knowledge bases or
     delegation (the step selected no agent to bind them to), and none of
     :data:`BARE_RUNTIME_EXCLUDED` (the sandboxed tools, image generation,
-    the knowledge-base tools, and the mail and notification tools). Tools an administrator disabled are left
-    out, as everywhere else.
+    the knowledge-base tools, and the mail and notification tools). Tools an
+    administrator disabled are left out, as everywhere else.
     """
     from fim_one.db import create_session
     from fim_one.web.deps import get_effective_fast_llm, get_tools
@@ -254,9 +254,6 @@ async def bare_runtime(ctx: CallContext) -> AgentRuntime:
     tools = get_tools().exclude_by_name(
         *BARE_RUNTIME_EXCLUDED, *await _disabled_builtin_tools()
     )
-    # No agent, so no organization of an agent's: the notification tool
-    # sends to the channels of the run's acting user.
-    tools = bind_send_notification(tools, ctx.principal.user_id)
     return AgentRuntime(
         ctx=ctx,
         agent=None,
