@@ -961,6 +961,12 @@ async def _inbox_rows(db: AsyncSession, user: User) -> list[ConfirmationRequest]
     return rows
 
 
+def _shown_arguments(payload: dict[str, Any]) -> dict[str, Any] | None:
+    from fim_one.core.workflow.nodes import open_call
+
+    return open_call(payload)[1]
+
+
 def _step_label(run: WorkflowRun | None, node_id: str | None) -> str | None:
     """The name the author gave the step, from the blueprint the run started with."""
     snapshot = run.blueprint_snapshot if run is not None else None
@@ -1044,7 +1050,9 @@ async def approval_inbox(
                 ),
                 # What a flagged connector action is about to be called with.
                 action=str(payload.get("tool_name")) if row.kind == "confirmation" else None,
-                arguments=payload.get("tool_args") if row.kind == "confirmation" else None,
+                # Decrypted for the person who may decide, with env var
+                # values masked.
+                arguments=_shown_arguments(payload) if row.kind == "confirmation" else None,
                 created_at=_iso(row.created_at) or "",
                 expires_at=_iso(row.expires_at),
             )

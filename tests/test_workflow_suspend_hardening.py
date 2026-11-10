@@ -8,6 +8,7 @@ person, and the behaviour that closes it. Driven like
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -18,6 +19,7 @@ import pytest
 from sqlalchemy import select, update
 
 from fim_one.core.workflow import run_service as rs
+from fim_one.core.workflow.nodes import open_call
 from fim_one.core.workflow.rate_limiter import WorkflowRateLimiter
 from fim_one.core.workflow.run_recovery import WorkflowRunSupervisor, install_resume_on_decision
 from fim_one.db.models.channel import ConfirmationRequest
@@ -405,15 +407,18 @@ class TestWhatWasApprovedIsWhatRuns:
             outcome = await rig.start()
             assert outcome.status == "waiting"
             request = await rig.request_of(outcome.run_id)
-            shown = request.payload["tool_args"]
-            assert shown == {"target": "staging-db"}
+            sent, shown = open_call(request.payload)
+            # The approver sees that an env var goes in, not its value.
+            assert shown == {"target": "{{env.TARGET}}"}
+            assert sent == {"target": "staging-db"}
+            assert "staging-db" not in json.dumps(request.payload)
 
             env["TARGET"] = "PROD-db"  # the author edits the env vars meanwhile
             await rig.decide(request.id, "approve")
             run = await rig.ended(outcome.run_id)
 
         assert run.status == "completed"
-        assert flagged.calls == [shown]
+        assert flagged.calls == [{"target": "staging-db"}]
 
     async def test_a_variable_another_branch_wrote_meanwhile_does_not_change_the_call(
         self, rig: Rig, flagged: _Adapter, hooked: Any
@@ -448,7 +453,7 @@ class TestWhatWasApprovedIsWhatRuns:
         outcome = await rig.start()
         assert outcome.status == "waiting"
         requests = {r.kind: r for r in await _requests(rig, outcome.run_id)}
-        shown = requests["confirmation"].payload["tool_args"]
+        shown, _ = open_call(requests["confirmation"].payload)
 
         # The approval step is decided first and writes the variable the
         # connector's parameter refers to; the run waits again on the other.
@@ -546,7 +551,27 @@ class TestWhatWasApprovedIsWhatRuns:
         request = await rig.request_of(outcome.run_id)
         async with rig.factory() as db:
             (item,) = (await wf_api.approval_inbox(current_user=rig.owner, db=db)).data["items"]
-        assert item["arguments"] == request.payload["tool_args"] == {"target": "ledger-9"}
+        assert item["arguments"] == open_call(request.payload)[1] == {"target": "ledger-9"}
+
+    async def test_an_env_value_inside_a_longer_argument_is_masked_too(self) -> None:
+        from fim_one.core.workflow.nodes import seal_call
+
+        sealed = seal_call(
+            {"url": "https://api.example.test/?key=s3cr3t&n=1", "n": 5, "nested": ["s3cr3t", True]},
+            {"API_KEY": "s3cr3t", "EMPTY": ""},
+        )
+        sent, shown = open_call({"sealed": sealed})
+        assert sent == {
+            "url": "https://api.example.test/?key=s3cr3t&n=1",
+            "n": 5,
+            "nested": ["s3cr3t", True],
+        }
+        assert shown == {
+            "url": "https://api.example.test/?key={{env.API_KEY}}&n=1",
+            "n": 5,
+            "nested": ["{{env.API_KEY}}", True],
+        }
+        assert "s3cr3t" not in sealed and open_call({"sealed": "not-ours"}) == (None, None)
 
 
 # ---------------------------------------------------------------------------
