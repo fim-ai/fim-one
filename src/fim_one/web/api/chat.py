@@ -51,7 +51,7 @@ import logging
 import os
 import time
 import uuid
-from collections.abc import AsyncGenerator, Sequence
+from collections.abc import AsyncGenerator, Coroutine, Sequence
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
@@ -113,6 +113,7 @@ from fim_one.core.planner import (
 )
 from fim_one.core.planner.checkpoint import DAGCheckpoint
 from fim_one.core.tool import ToolRegistry
+from fim_one.core.usage.meter import OpenMeter, UsageScope, metered, open_meter, scope_from_context
 from fim_one.core.utils import (
     extract_json_value,
     get_language_directive,
@@ -1235,6 +1236,58 @@ class _AdmittedTurn:
     preferred_language: str | None
     timezone: str | None
     agent_cfg: dict[str, Any] | None
+    # The turn's usage meter, opened before the routing model was asked.
+    meter: OpenMeter
+
+
+def _turn_scope(ctx: CallContext, conversation_id: str | None, entry: str) -> UsageScope:
+    """Whose usage a chat turn is: the caller's, recorded on the conversation.
+
+    A turn without a conversation (an API call that passes none) is
+    recorded all the same, as a use of the endpoint.
+    """
+    return scope_from_context(
+        ctx,
+        source_type="conversation" if conversation_id else "endpoint",
+        source_id=conversation_id,
+        entry=entry,
+    )
+
+
+async def _in_background_scope(turn_meter: OpenMeter, work: Coroutine[Any, Any, None]) -> None:
+    """Run a turn's after-work (the title) in a metering scope of its own.
+
+    It outlives the response, so it is recorded apart from the turn, as
+    ``background`` usage of the same user and conversation.
+    """
+    scope = turn_meter.scope
+    if scope is None:
+        await work
+        return
+    async with metered(dataclasses.replace(scope, entry="background")):
+        await work
+
+
+async def _metered_body(
+    body: AsyncGenerator[str, None], turn_meter: OpenMeter
+) -> AsyncGenerator[str, None]:
+    """A turn's event stream; what the turn consumed is recorded when it ends.
+
+    However it ends: finished, failed, or abandoned by a client that went
+    away. The stream's own clean-up runs first (it cancels the agent, whose
+    interrupted model call then reports), the ledger write after.
+    """
+    # Here as well as in the handler: the response is not necessarily
+    # produced in the context the handler ran in.
+    turn_meter.enter()
+    try:
+        async for chunk in body:
+            yield chunk
+    finally:
+        try:
+            await body.aclose()
+        finally:
+            await turn_meter.close()
 
 
 async def _resolve_llm(
@@ -2839,6 +2892,23 @@ async def _react_turn(
     admitted: _AdmittedTurn | None,
 ) -> StreamingResponse:
     """A ReAct turn. *admitted* is set when Auto mode already admitted it."""
+    # Open from the first line: models are called before the response
+    # starts (the domain is classified), and a turn refused or failed
+    # before it streams has still consumed what it consumed.
+    turn_meter = admitted.meter if admitted is not None else open_meter()
+    try:
+        return await _react_turn_metered(request, body, admitted, turn_meter)
+    except BaseException:
+        await turn_meter.close()
+        raise
+
+
+async def _react_turn_metered(
+    request: Request,
+    body: ChatStreamRequest,
+    admitted: _AdmittedTurn | None,
+    turn_meter: OpenMeter,
+) -> StreamingResponse:
     q = body.q
     conversation_id = body.conversation_id
     agent_id = body.agent_id
@@ -2898,6 +2968,9 @@ async def _react_turn(
     turn_ctx = agent_runtime.call_context(
         principal, agent_cfg, conversation_id=conversation_id
     )
+    if turn_meter.scope is None:
+        # Not routed here by Auto mode, which names the turn its own.
+        turn_meter.bind(_turn_scope(turn_ctx, conversation_id, "chat"))
 
     from fim_one.db import create_session as _create_session
 
@@ -3875,6 +3948,10 @@ async def _react_turn(
                         exc_info=True,
                     )
 
+            # What the turn consumed is on its way to the ledger by the time
+            # the client hears "done" (written in the background).
+            turn_meter.flush_soon()
+
             # -- Yield done IMMEDIATELY (no suggestions/title yet) ------
             yield _sse(
                 "done",
@@ -4081,7 +4158,7 @@ async def _react_turn(
                     if _bg_db:
                         await _bg_db.close()
 
-            spawn_background(_react_post_processing())
+            spawn_background(_in_background_scope(turn_meter, _react_post_processing()))
         except (
             InputGuardrailTripwireTriggered,
             OutputGuardrailTripwireTriggered,
@@ -4125,7 +4202,7 @@ async def _react_turn(
                 await db_session.close()
 
     return StreamingResponse(
-        generate(),
+        _metered_body(generate(), turn_meter),
         media_type="text/event-stream",
         headers={
             "X-Accel-Buffering": "no",
@@ -4162,6 +4239,21 @@ async def _dag_turn(
     admitted: _AdmittedTurn | None,
 ) -> StreamingResponse:
     """A plan (DAG) turn. *admitted* is set when Auto mode already admitted it."""
+    # See _react_turn: the meter is open before the first model call.
+    turn_meter = admitted.meter if admitted is not None else open_meter()
+    try:
+        return await _dag_turn_metered(request, body, admitted, turn_meter)
+    except BaseException:
+        await turn_meter.close()
+        raise
+
+
+async def _dag_turn_metered(
+    request: Request,
+    body: ChatStreamRequest,
+    admitted: _AdmittedTurn | None,
+    turn_meter: OpenMeter,
+) -> StreamingResponse:
     q = body.q
     conversation_id = body.conversation_id
     agent_id = body.agent_id
@@ -4206,6 +4298,9 @@ async def _dag_turn(
     turn_ctx = agent_runtime.call_context(
         principal, agent_cfg, conversation_id=conversation_id
     )
+    if turn_meter.scope is None:
+        # Not routed here by Auto mode, which names the turn its own.
+        turn_meter.bind(_turn_scope(turn_ctx, conversation_id, "dag"))
 
     from fim_one.db import create_session as _create_session
 
@@ -5181,6 +5276,9 @@ async def _dag_turn(
             if conversation_id:
                 _dag_checkpoint.clear(conversation_id)
 
+            # See the ReAct handler: the turn's usage goes to the ledger now.
+            turn_meter.flush_soon()
+
             # -- Yield done IMMEDIATELY (no suggestions/title yet) ------
             yield _sse(
                 "done",
@@ -5375,7 +5473,7 @@ async def _dag_turn(
                     if _bg_db:
                         await _bg_db.close()
 
-            spawn_background(_dag_post_processing())
+            spawn_background(_in_background_scope(turn_meter, _dag_post_processing()))
         except (
             InputGuardrailTripwireTriggered,
             OutputGuardrailTripwireTriggered,
@@ -5440,7 +5538,7 @@ async def _dag_turn(
                 await db_session.close()
 
     return StreamingResponse(
-        generate(),
+        _metered_body(generate(), turn_meter),
         media_type="text/event-stream",
         headers={
             "X-Accel-Buffering": "no",
@@ -5486,13 +5584,41 @@ async def auto_endpoint(
     # caller's, plan and quota allow the turn, the agent is usable. The
     # routed endpoint is handed the result and does not admit again.
     agent_cfg = await _admit_turn(principal, body.conversation_id, body.agent_id)
-    admitted = _AdmittedTurn(
-        principal=principal,
-        system_instructions=system_instructions,
-        preferred_language=preferred_language,
-        timezone=user_timezone,
-        agent_cfg=agent_cfg,
+    # The turn's usage meter, open before the routing model is asked: that
+    # call is the turn's too. The endpoint it is routed to carries it on.
+    turn_meter = open_meter(
+        _turn_scope(
+            agent_runtime.call_context(
+                principal, agent_cfg, conversation_id=body.conversation_id
+            ),
+            body.conversation_id,
+            "auto",
+        )
     )
+    try:
+        return await _auto_turn(
+            request,
+            body,
+            _AdmittedTurn(
+                principal=principal,
+                system_instructions=system_instructions,
+                preferred_language=preferred_language,
+                timezone=user_timezone,
+                agent_cfg=agent_cfg,
+                meter=turn_meter,
+            ),
+        )
+    except BaseException:
+        await turn_meter.close()
+        raise
+
+
+async def _auto_turn(
+    request: Request, body: ChatStreamRequest, admitted: _AdmittedTurn
+) -> StreamingResponse:
+    """Ask the routing model, then hand the admitted turn to the endpoint it names."""
+    q = body.q
+    agent_cfg = admitted.agent_cfg
 
     # Determine execution mode
     from fim_one.core.planner.router import classify_execution_mode
@@ -5531,8 +5657,17 @@ async def auto_endpoint(
         # Emit routing decision first
         yield _sse("routing", {"mode": mode, "reasoning": reasoning})
         # Then delegate to the inner endpoint's generator
-        async for chunk in inner_response.body_iterator:
-            yield str(chunk) if not isinstance(chunk, str) else chunk
+        inner = inner_response.body_iterator
+        try:
+            async for chunk in inner:
+                yield str(chunk) if not isinstance(chunk, str) else chunk
+        finally:
+            # A client that goes away closes this generator; the turn's own
+            # is closed with it, here and now, so that it stops the agent
+            # and records what the turn consumed.
+            close_inner = getattr(inner, "aclose", None)
+            if close_inner is not None:
+                await close_inner()
 
     return StreamingResponse(
         auto_generate(),

@@ -30,7 +30,7 @@ from fim_one.core.audit.resources import note_fence, record_fences
 from fim_one.db import create_session, get_session
 from fim_one.web.audit_events import record_resource
 from fim_one.web.auth import get_current_user
-from fim_one.web.services.quota_enforcer import get_quota_checked_user
+from fim_one.web.services.quota_enforcer import get_metered_user
 from fim_one.web.exceptions import AppError
 from fim_one.db.models.connector import Connector
 from fim_one.db.models.database_schema import DatabaseSchema, SchemaColumn
@@ -931,7 +931,7 @@ class _DbChatRequest(BaseModel):
 async def db_ai_chat(
     connector_id: str,
     req: _DbChatRequest,
-    current_user: User = Depends(get_quota_checked_user),  # noqa: B008
+    current_user: User = Depends(get_metered_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> dict[str, Any]:
     """Natural language interface for DB schema management (annotate, visibility toggle)."""
@@ -1144,7 +1144,7 @@ async def db_ai_chat(
 async def ai_annotate(
     connector_id: str,
     body: AiAnnotateRequest,
-    current_user: User = Depends(get_quota_checked_user),
+    current_user: User = Depends(get_metered_user),
     db: AsyncSession = Depends(get_session),
 ) -> ApiResponse:
     """LLM-powered annotation.

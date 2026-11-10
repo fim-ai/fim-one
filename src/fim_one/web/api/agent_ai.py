@@ -17,7 +17,7 @@ from fim_one.core.audit import actions
 from fim_one.db import get_session
 from fim_one.web.audit_events import record_resource, record_resource_change, snapshot
 from fim_one.web.auth import get_current_user
-from fim_one.web.services.quota_enforcer import get_quota_checked_user
+from fim_one.web.services.quota_enforcer import get_metered_user
 from fim_one.core.model.structured import structured_llm_call
 from fim_one.web.deps import get_effective_fast_llm, get_effective_llm
 from fim_one.db.models import Agent
@@ -220,7 +220,7 @@ def _build_messages(
 @router.post("/ai/create", response_model=ApiResponse)
 async def ai_create_agent(
     body: AICreateAgentRequest,
-    current_user: User = Depends(get_quota_checked_user),  # noqa: B008
+    current_user: User = Depends(get_metered_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     """Create a new agent using AI from natural language instruction."""
@@ -294,7 +294,7 @@ async def ai_create_agent(
 async def ai_refine_agent(
     agent_id: str,
     body: AIRefineAgentRequest,
-    current_user: User = Depends(get_quota_checked_user),  # noqa: B008
+    current_user: User = Depends(get_metered_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     """Refine an existing agent using AI instruction."""

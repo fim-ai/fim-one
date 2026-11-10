@@ -10,6 +10,7 @@ more means one was recorded twice.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -28,6 +29,7 @@ UNIT = PROMPT + COMPLETION
 # to the agent loop, as "achieved" to the plan analyzer, as a route to the
 # router and as a verdict to a grader.
 EVERY_ANSWER: dict[str, Any] = {
+    # The planner, the agent loop, the plan analyzer, the router.
     "steps": [{"id": "step_1", "task": "say pong", "dependencies": []}],
     "type": "final_answer",
     "reasoning": "finished",
@@ -35,10 +37,23 @@ EVERY_ANSWER: dict[str, Any] = {
     "achieved": True,
     "confidence": 1.0,
     "mode": "react",
+    "domain": "general",
+    # A grader, a title, follow-up suggestions.
     "verdict": "pass",
     "title": "Pong",
     "suggestions": ["again?"],
-    "domain": "general",
+    # The AI-assisted builders and the KB and DB chats.
+    "name": "Pong",
+    "description": "Says pong.",
+    "instructions": "Say pong.",
+    "icon": "🤖",
+    "base_url": "https://pong.example.test",
+    "auth_type": "none",
+    "actions": [],
+    "tables": [],
+    "intent": "general",
+    "reply": "pong",
+    "message": "pong",
 }
 
 
@@ -61,38 +76,86 @@ class Provider:
     fail_from: int = 0
     # A streamed answer is cut into this many content chunks.
     pieces: int = 4
+    # Seconds a call takes before it answers, and a stream between chunks.
+    delay: float = 0.0
+    chunk_delay: float = 0.0
+    # Tool calls the model is to make: (tool name, arguments), each once.
+    tool_calls: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
 
     @property
     def billed(self) -> int:
         return self.calls * UNIT
 
-    async def acompletion(self, **kwargs: Any) -> Any:
+    def use_tool(self, name: str, arguments: dict[str, Any]) -> None:
+        """Have the model call tool *name* once, the next time it is offered it."""
+        self.tool_calls.append((name, arguments))
+
+    def _next_tool_call(self, offered: Any) -> SimpleNamespace | None:
+        names = {
+            (tool.get("function") or {}).get("name") for tool in offered or () if isinstance(tool, dict)
+        }
+        for index, (name, arguments) in enumerate(self.tool_calls):
+            if name in names:
+                del self.tool_calls[index]
+                return SimpleNamespace(
+                    id=f"call_{self.calls}",
+                    type="function",
+                    function=SimpleNamespace(name=name, arguments=json.dumps(arguments)),
+                )
+        return None
+
+    def _bill(self, kwargs: dict[str, Any]) -> None:
         if self.fail_from and self.calls + 1 >= self.fail_from:
             raise RuntimeError("the provider is down")
         self.calls += 1
         self.models.append(str(kwargs.get("model")))
+
+    async def acompletion(self, **kwargs: Any) -> Any:
+        self._bill(kwargs)
+        if self.delay:
+            await asyncio.sleep(self.delay)
         if kwargs.get("stream"):
-            return self._stream()
+            return self._stream(kwargs)
+        return self._answer(kwargs)
+
+    def completion(self, **kwargs: Any) -> Any:
+        """The synchronous call the OpenAI-shaped shim makes."""
+        self._bill(kwargs)
+        return self._answer(kwargs)
+
+    def _answer(self, kwargs: dict[str, Any]) -> Any:
+        tool_call = self._next_tool_call(kwargs.get("tools"))
         message = SimpleNamespace(
-            role="assistant", content=self.text, tool_calls=None, reasoning_content=None
+            role="assistant",
+            content=None if tool_call else self.text,
+            tool_calls=[tool_call] if tool_call else None,
+            reasoning_content=None,
         )
+        finish = "tool_calls" if tool_call else "stop"
         return SimpleNamespace(
-            choices=[SimpleNamespace(message=message, finish_reason="stop")], usage=_usage()
+            choices=[SimpleNamespace(message=message, finish_reason=finish)], usage=_usage()
         )
 
-    async def _stream(self) -> AsyncIterator[Any]:
-        size = max(len(self.text) // self.pieces, 1)
-        for start in range(0, len(self.text), size):
-            delta = SimpleNamespace(
-                content=self.text[start : start + size], reasoning_content=None, tool_calls=None
+    async def _stream(self, kwargs: dict[str, Any]) -> AsyncIterator[Any]:
+        def chunk(finish: str | None = None, **delta: Any) -> SimpleNamespace:
+            fields = {"content": None, "reasoning_content": None, "tool_calls": None, **delta}
+            return SimpleNamespace(
+                choices=[SimpleNamespace(delta=SimpleNamespace(**fields), finish_reason=finish)],
+                usage=None,
             )
-            yield SimpleNamespace(
-                choices=[SimpleNamespace(delta=delta, finish_reason=None)], usage=None
-            )
-        done = SimpleNamespace(content=None, reasoning_content=None, tool_calls=None)
-        yield SimpleNamespace(
-            choices=[SimpleNamespace(delta=done, finish_reason="stop")], usage=None
-        )
+
+        tool_call = self._next_tool_call(kwargs.get("tools"))
+        if tool_call is not None:
+            tool_call.index = 0
+            yield chunk(tool_calls=[tool_call])
+            yield chunk("tool_calls")
+        else:
+            size = max(len(self.text) // self.pieces, 1)
+            for start in range(0, len(self.text), size):
+                yield chunk(content=self.text[start : start + size])
+                if self.chunk_delay:
+                    await asyncio.sleep(self.chunk_delay)
+            yield chunk("stop")
         if not self.silent_streams:
             yield SimpleNamespace(choices=[], usage=_usage())
 
@@ -105,10 +168,7 @@ def provider(monkeypatch: pytest.MonkeyPatch) -> Provider:
     async def _refuse(**_kwargs: Any) -> Any:
         raise AssertionError("a test reached for the Responses API")
 
-    def _refuse_sync(**_kwargs: Any) -> Any:
-        raise AssertionError("a test reached for a synchronous completion")
-
     monkeypatch.setattr("litellm.acompletion", fake.acompletion)
     monkeypatch.setattr("litellm.aresponses", _refuse)
-    monkeypatch.setattr("litellm.completion", _refuse_sync)
+    monkeypatch.setattr("litellm.completion", fake.completion)
     return fake

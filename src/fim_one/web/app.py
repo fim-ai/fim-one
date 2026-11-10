@@ -329,6 +329,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
     except asyncio.CancelledError:
         pass
     await close_shared_http_client()
+    # Usage metered and not yet written (turns and runs cut short by the
+    # shutdown, background writes in flight) goes to the ledger first.
+    from fim_one.core.usage.meter import flush_all as flush_usage
+
+    await flush_usage()
     await shutdown_db()
 
 

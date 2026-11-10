@@ -21,7 +21,7 @@ from fim_one.db import get_session
 from fim_one.core.utils import spawn_background
 from fim_one.web.audit_events import record_resource, record_resource_change, snapshot
 from fim_one.web.auth import get_current_user
-from fim_one.web.services.quota_enforcer import get_quota_checked_user
+from fim_one.web.services.quota_enforcer import get_metered_user
 from fim_one.web.exceptions import AppError
 from fim_one.web.deps import get_embedding, get_kb_manager
 from fim_one.db.models import KBDocument, KnowledgeBase, User
@@ -392,6 +392,40 @@ async def _ingest_document(
     the loaders gracefully fall back to text-only extraction — zero
     regression vs. the pre-OCR behavior.
     """
+    from fim_one.core.usage.meter import UsageScope, metered
+
+    # The loaders may ask a vision model to read images and scanned pages:
+    # that is recorded against whoever added the document.
+    async with metered(
+        UsageScope(
+            user_id=user_id,
+            org_id=None,
+            source_type="endpoint",
+            source_id=kb_id,
+            entry="kb_ingest",
+        )
+    ):
+        await _ingest_document_metered(
+            doc_id=doc_id,
+            kb_id=kb_id,
+            user_id=user_id,
+            file_path=file_path,
+            chunk_strategy=chunk_strategy,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+        )
+
+
+async def _ingest_document_metered(
+    *,
+    doc_id: str,
+    kb_id: str,
+    user_id: str,
+    file_path: Path,
+    chunk_strategy: str,
+    chunk_size: int,
+    chunk_overlap: int,
+) -> None:
     from fim_one.db import create_session
 
     # Resolve vision LLM for OCR injection — best-effort. A failure
@@ -1075,7 +1109,7 @@ class _KBAIChatRequest(BaseModel):
 async def kb_ai_chat(
     kb_id: str,
     req: _KBAIChatRequest,
-    current_user: User = Depends(get_quota_checked_user),  # noqa: B008
+    current_user: User = Depends(get_metered_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> dict[str, Any]:
     """Natural language interface for KB management (retrieve, annotate, config)."""

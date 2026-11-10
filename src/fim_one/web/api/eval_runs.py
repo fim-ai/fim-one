@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.core.agent import ReActAgent
 from fim_one.core.model.structured import structured_llm_call
+from fim_one.core.usage.meter import UsageScope, metered
 from fim_one.core.utils import spawn_background
 from fim_one.core.model.types import ChatMessage
 from fim_one.db import create_session, get_session
@@ -168,8 +169,24 @@ async def _execute_eval_run(
     cases: list[dict[str, Any]],
     llm: Any,
     grader_llm: Any,
+    usage_scope: UsageScope,
 ) -> None:
-    """Background task: run all cases, grade them, and update the EvalRun row."""
+    """Background task: run all cases, grade them, and update the EvalRun row.
+
+    The agent's and the grader's model calls are recorded in the usage
+    ledger against whoever started the run, however the run ends.
+    """
+    async with metered(usage_scope):
+        await _run_cases(run_id, agent_instructions, cases, llm, grader_llm)
+
+
+async def _run_cases(
+    run_id: str,
+    agent_instructions: str | None,
+    cases: list[dict[str, Any]],
+    llm: Any,
+    grader_llm: Any,
+) -> None:
     async with create_session() as db:
         # Mark as running
         run_result = await db.execute(select(EvalRun).where(EvalRun.id == run_id))
@@ -316,7 +333,21 @@ async def create_run(
     # Fire background task — capture agent instructions and LLM instances by value
     agent_instructions = agent.instructions
     spawn_background(
-        _execute_eval_run(run.id, agent_instructions, cases, llm, grader_llm)
+        _execute_eval_run(
+            run.id,
+            agent_instructions,
+            cases,
+            llm,
+            grader_llm,
+            UsageScope(
+                user_id=current_user.id,
+                org_id=agent.org_id,
+                source_type="eval_run",
+                source_id=run.id,
+                entry="eval",
+                agent_id=agent.id,
+            ),
+        )
     )
 
     return ApiResponse(data=run_response)
