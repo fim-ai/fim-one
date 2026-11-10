@@ -49,6 +49,19 @@ interface AuditEntry {
   target_label: string | null
   detail: string | null
   created_at: string
+  // Empty on entries written before these were recorded.
+  actor_kind?: string | null
+  org_id?: string | null
+  outcome?: string
+  changes?: Record<string, { from?: unknown; to?: unknown; changed?: boolean }> | null
+  ip_address?: string | null
+}
+
+/** One changed field as text: "member → admin", or "changed" for a secret. */
+function formatChange(change: { from?: unknown; to?: unknown; changed?: boolean }, changedLabel: string): string {
+  if (change.changed) return changedLabel
+  const show = (value: unknown) => (value === null || value === undefined ? "\u2014" : typeof value === "string" ? value : JSON.stringify(value))
+  return `${show(change.from)} \u2192 ${show(change.to)}`
 }
 
 interface AuditPage {
@@ -704,6 +717,43 @@ export function AdminAudit() {
               <span className="whitespace-pre-wrap break-words">
                 {selected.detail || "\u2014"}
               </span>
+
+              {selected.changes && Object.keys(selected.changes).length > 0 && (
+                <>
+                  <span className="text-muted-foreground">{t("changesColumn")}</span>
+                  <span className="space-y-1">
+                    {Object.entries(selected.changes).map(([field, change]) => (
+                      <span key={field} className="block break-words">
+                        <span className="font-mono text-xs text-muted-foreground">{field}</span>{" "}
+                        {formatChange(change, t("changedValue"))}
+                      </span>
+                    ))}
+                  </span>
+                </>
+              )}
+
+              {selected.outcome && selected.outcome !== "success" && (
+                <>
+                  <span className="text-muted-foreground">{t("outcomeColumn")}</span>
+                  <span className="font-medium">
+                    {selected.outcome === "denied" ? t("outcomeDenied") : selected.outcome === "failed" ? t("outcomeFailed") : selected.outcome}
+                  </span>
+                </>
+              )}
+
+              {selected.org_id && (
+                <>
+                  <span className="text-muted-foreground">{t("colOrg")}</span>
+                  <span className="font-mono text-xs text-muted-foreground break-all">{selected.org_id}</span>
+                </>
+              )}
+
+              {selected.ip_address && (
+                <>
+                  <span className="text-muted-foreground">{t("ipColumn")}</span>
+                  <span className="font-mono text-xs">{selected.ip_address}</span>
+                </>
+              )}
             </div>
           )}
         </DialogContent>

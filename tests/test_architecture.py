@@ -634,6 +634,24 @@ class TestAuditRowsHaveOneWriter:
             + "\n  ".join(offenders)
         )
 
+    def test_audit_rows_are_never_changed_or_deleted(self) -> None:
+        """Append-only: no code path edits or removes an audit record. The
+        one exception is user deletion, which removes the user's own sign-in
+        rows and clears their id from audit rows, as it always has."""
+        files = [py for py in sorted(SRC.rglob("*.py")) if "migrations" not in py.parts]
+        needles = [
+            f"{verb}({model})"
+            for verb in ("update", "delete")
+            for model in ("AuditLog", "LoginHistory", "ReviewLog")
+        ]
+        offenders = [
+            hit
+            for needle in needles
+            for hit in _occurrences(needle, files)
+            if hit.split(":", 1)[0] != "web/services/user_deletion.py"
+        ]
+        assert not offenders, "audit records are append-only:\n  " + "\n  ".join(offenders)
+
     def test_write_audit_is_defined_once(self) -> None:
         files = [py for py in sorted(SRC.rglob("*.py")) if "migrations" not in py.parts]
         definitions = [hit.split(":", 1)[0] for hit in _occurrences("def write_audit(", files)]
