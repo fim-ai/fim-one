@@ -1,42 +1,69 @@
 """SQL safety validation for database connector queries.
 
-Validates and sanitises SQL statements before execution to prevent
-dangerous operations. Only SELECT queries (and WITH...SELECT CTEs)
-are allowed unless ``allow_write=True`` is explicitly passed.
+Validates SQL statements before execution. Only reads (SELECT, WITH ...
+SELECT, TABLE, VALUES, EXPLAIN, SHOW, DESCRIBE) are allowed unless
+``allow_write=True`` is explicitly passed.
 
-This check reads keywords; it is the first line, not the fence. A read-only
-connector also runs every query in a read-only transaction where the driver
-has one (see ``DatabaseDriver.execute_query``), so a write the check does
-not recognise is refused by the database itself.
+Every rule is applied to the statement as its database reads it
+(:mod:`.reading`): comments are gone, the inside of a string is not looked
+at, and a keyword counts only where the database would see one. Nothing is
+decided on the raw text.
+
+This check is the first line, not the fence. A read-only connector also
+runs every query in a read-only transaction where the driver has one (see
+``DatabaseDriver.execute_query``), so a write this check does not recognise
+is refused by the database itself. Where a driver has none (DM8) the check
+is stricter. Neither stops a database account that is allowed to read
+files or reach other servers from doing so through a function this module
+has not heard of: the real fence is a least-privilege database account.
 """
 
 from __future__ import annotations
 
-import re
+from itertools import pairwise
 
-from .binding import SqlDialect, sql_tokens
+from .reading import Lexeme, SqlDialect, read_sql
 
 
 class SqlSafetyError(Exception):
     """Raised when a SQL statement fails safety validation."""
 
 
-# Patterns that are always blocked regardless of allow_write
-_DANGEROUS_PATTERNS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"\bINTO\s+OUTFILE\b", re.IGNORECASE), "INTO OUTFILE is not allowed"),
-    (re.compile(r"\bLOAD_FILE\s*\(", re.IGNORECASE), "LOAD_FILE() is not allowed"),
-    (re.compile(r"\bBENCHMARK\s*\(", re.IGNORECASE), "BENCHMARK() is not allowed"),
-    (re.compile(r"\bSLEEP\s*\(", re.IGNORECASE), "SLEEP() is not allowed"),
-    (re.compile(r"\bpg_sleep\s*\(", re.IGNORECASE), "pg_sleep() is not allowed"),
-    (re.compile(r"\bxp_cmdshell\b", re.IGNORECASE), "xp_cmdshell is not allowed"),
-    (re.compile(r"\bEXEC\s*\(", re.IGNORECASE), "EXEC() is not allowed"),
-    (re.compile(r"\bEXECUTE\s*\(", re.IGNORECASE), "EXECUTE() is not allowed"),
-    (re.compile(r"\bINTO\s+DUMPFILE\b", re.IGNORECASE), "INTO DUMPFILE is not allowed"),
-    (re.compile(r"\bLOAD\s+DATA\b", re.IGNORECASE), "LOAD DATA is not allowed"),
-]
+_DIALECTS: tuple[SqlDialect, ...] = ("postgresql", "mysql", "generic")
 
-# SQL statement types that are only allowed for reads
-_WRITE_KEYWORDS = {"INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE", "TRUNCATE", "REPLACE", "MERGE", "GRANT", "REVOKE"}
+# What a read may start with.
+_READS = frozenset({"SELECT", "WITH", "TABLE", "VALUES"})
+_READ_STARTS = _READS | {"EXPLAIN", "SHOW", "DESCRIBE", "DESC"}
+_EXPLAINS = frozenset({"EXPLAIN", "DESCRIBE", "DESC"})
+_EXPLAIN_RUNS = frozenset({"ANALYZE", "ANALYSE"})
+_EXPLAIN_OPTIONS = frozenset({"VERBOSE", "EXTENDED", "PARTITIONS"})
+
+# Statements that change rows. In PostgreSQL they can also stand inside a
+# WITH clause; they are looked for where a statement can start.
+_ROW_CHANGES = frozenset({"INSERT", "UPDATE", "DELETE", "MERGE", "REPLACE"})
+
+# What a statement that is not a read starts with.
+_STATEMENTS = _ROW_CHANGES | {
+    "ALTER", "ANALYZE", "BEGIN", "CALL", "CLUSTER", "COMMENT", "COMMIT", "COPY", "CREATE",
+    "DEALLOCATE", "DECLARE", "DISCARD", "DO", "DROP", "EXEC", "EXECUTE", "FLUSH", "GRANT",
+    "HANDLER", "IMPORT", "INSTALL", "KILL", "LISTEN", "LOAD", "LOCK", "NOTIFY", "OPTIMIZE",
+    "PREPARE", "PURGE", "REFRESH", "REINDEX", "RELEASE", "RENAME", "REPAIR", "RESET",
+    "REVOKE", "ROLLBACK", "SAVEPOINT", "SECURITY", "SET", "SHUTDOWN", "START", "STOP",
+    "TRUNCATE", "UNINSTALL", "UNLISTEN", "UNLOCK", "UPSERT", "USE", "VACUUM",
+}  # fmt: skip
+
+# Functions never allowed, whatever the connector's mode: they stall the
+# connection, read server files or run commands.
+_NEVER_FUNCTIONS = {
+    "sleep": "SLEEP() is not allowed",
+    "benchmark": "BENCHMARK() is not allowed",
+    "load_file": "LOAD_FILE() is not allowed",
+    "pg_sleep": "pg_sleep() is not allowed",
+    "pg_sleep_for": "pg_sleep_for() is not allowed",
+    "pg_sleep_until": "pg_sleep_until() is not allowed",
+    "exec": "EXEC() is not allowed",
+    "execute": "EXECUTE() is not allowed",
+}
 
 
 def validate_sql(sql: str, *, allow_write: bool = False, dialect: str | None = None) -> str:
@@ -47,13 +74,12 @@ def validate_sql(sql: str, *, allow_write: bool = False, dialect: str | None = N
     sql:
         The raw SQL string to validate.
     allow_write:
-        If ``False`` (default), only SELECT and WITH...SELECT are allowed.
+        If ``False`` (default), only reads are allowed.
     dialect:
         Whose rules for comments and quoting the SQL is read by:
         ``"postgresql"``, ``"mysql"`` or ``"generic"`` (a driver's
         ``sql_dialect``). ``None`` when the database is not known: the SQL
-        is then read by every one of them, and a write found in any reading
-        is refused.
+        is then read by every one of them, and refused if any reading is.
 
     Returns
     -------
@@ -68,206 +94,277 @@ def validate_sql(sql: str, *, allow_write: bool = False, dialect: str | None = N
     if not sql or not sql.strip():
         raise SqlSafetyError("Empty SQL statement")
 
-    cleaned = sql.strip()
-
-    # Strip trailing semicolons
-    cleaned = cleaned.rstrip(";").strip()
-
+    cleaned = sql.strip().rstrip(";").strip()
     if not cleaned:
         raise SqlSafetyError("Empty SQL statement after cleaning")
 
-    # Block multi-statement queries (multiple ; separated statements)
-    # Simple heuristic: check for semicolons that are not inside string literals
-    if _has_multiple_statements(cleaned):
-        raise SqlSafetyError("Multi-statement queries are not allowed")
-
-    # Check dangerous patterns (always blocked)
-    for pattern, message in _DANGEROUS_PATTERNS:
-        if pattern.search(cleaned):
-            raise SqlSafetyError(message)
-
-    # Check statement type if writes are not allowed
-    if not allow_write:
-        # Extract the first keyword to determine statement type
-        # Handle WITH ... SELECT (CTEs)
-        first_keyword = _get_first_keyword(cleaned)
-        if first_keyword == "WITH":
-            # CTE — verify it ultimately does a SELECT, not INSERT/UPDATE/DELETE
-            for code in _readings(cleaned, dialect):
-                if not _cte_is_select(code):
-                    raise SqlSafetyError(
-                        "WITH (CTE) queries must end with SELECT, not a write operation"
-                    )
-                _refuse_writes_inside_a_read(code)
-        elif first_keyword == "SELECT":
-            for code in _readings(cleaned, dialect):
-                _refuse_writes_inside_a_read(code)
-        elif first_keyword == "EXPLAIN":
-            # EXPLAIN only plans a statement; EXPLAIN ANALYZE runs it.
-            for code in _readings(cleaned, dialect):
-                _refuse_explain_that_writes(code)
-        elif first_keyword == "SHOW":
-            pass  # SHOW is read-only (MySQL)
-        elif first_keyword == "DESCRIBE" or first_keyword == "DESC":
-            pass  # DESCRIBE is read-only
-        else:
-            raise SqlSafetyError(
-                f"Only SELECT queries are allowed (got {first_keyword}). "
-                "Write operations require explicit permission."
-            )
-
+    known = tuple(name for name in _DIALECTS if name == dialect)
+    for name in known or _DIALECTS:
+        _check(read_sql(cleaned, dialect=name), name, allow_write)
+        # DM8 has no read-only transaction behind this check, so a second
+        # reading may add refusals there: its strings with MySQL's
+        # backslash rule, in case the server is set to it.
+        if name == "generic" and not allow_write and "\\" in cleaned:
+            _check(read_sql(cleaned, dialect=name, backslash_escapes=True), name, allow_write)
     return cleaned
 
 
-def _get_first_keyword(sql: str) -> str:
-    """Extract the first SQL keyword from a statement."""
-    # Skip comments
-    stripped = sql.lstrip()
-    # Skip -- comments
-    while stripped.startswith("--"):
-        newline = stripped.find("\n")
-        if newline == -1:
-            return ""
-        stripped = stripped[newline + 1:].lstrip()
-    # Skip /* */ comments
-    while stripped.startswith("/*"):
-        end = stripped.find("*/")
-        if end == -1:
-            return ""
-        stripped = stripped[end + 2:].lstrip()
+def _check(lexemes: list[Lexeme], dialect: SqlDialect, allow_write: bool) -> None:
+    lexemes = _one_statement(lexemes)
+    _refuse_never_allowed(lexemes)
+    if allow_write:
+        return
 
-    # Extract first word
-    match = re.match(r"[A-Za-z_]+", stripped)
-    return match.group(0).upper() if match else ""
-
-
-# A statement that changes rows, wherever it stands: a data-modifying CTE
-# (``WITH d AS (DELETE ... RETURNING ...) SELECT ...``), the statement after
-# a CTE, the statement EXPLAIN ANALYZE runs. INSERT(), REPLACE() are MySQL
-# string functions, hence the look-ahead. ``FOR UPDATE`` locks rows and is
-# refused with the rest.
-_ROW_CHANGING = re.compile(
-    r"\b(?:(?:INSERT|REPLACE)\b(?!\s*\()|(?:UPDATE|DELETE|MERGE)\b)", re.IGNORECASE
-)
-# ``SELECT ... INTO new_table`` creates a table (PostgreSQL, DM8);
-# ``INTO OUTFILE`` writes a file, ``INTO @var`` a session variable (MySQL).
-_INTO = re.compile(r"\bINTO\b", re.IGNORECASE)
-_EXPLAIN_RUNS = re.compile(r"\bANALY[ZS]E\b", re.IGNORECASE)
-# The words between EXPLAIN and the statement it explains.
-_EXPLAIN_OPTION_LIST = re.compile(r"\s*\([^()]*\)")
-_EXPLAIN_OPTION = re.compile(
-    r"\s*(?:(?:ANALY[ZS]E|VERBOSE|EXTENDED|PARTITIONS)\b|FORMAT\s*=?\s*[A-Za-z]+\b)",
-    re.IGNORECASE,
-)
-_READS = ("SELECT", "WITH", "TABLE", "VALUES")
-
-
-_DIALECTS: tuple[SqlDialect, ...] = ("postgresql", "mysql", "generic")
-
-
-def _readings(sql: str, dialect: str | None) -> list[str]:
-    """The statement's own words, once for each way *sql* can be read.
-
-    Each reading is *sql* without its comments and with every quoted string
-    or name replaced by ``''``: a keyword inside a string or a comment is
-    not mistaken for one, and a comment cannot hide one.
-
-    Databases do not agree on where a string or a comment ends: ``#`` starts
-    a comment in MySQL only, ``$$`` a string in PostgreSQL only, and a
-    backslash before a quote escapes it or not depending on the database
-    and its settings. Text that one reading takes for a string, another
-    takes for SQL. So the check is made on every reading that can apply:
-    both backslash rules, and every dialect when *dialect* is not known.
-    """
-    dialects = tuple(name for name in _DIALECTS if name == dialect) or _DIALECTS
-    backslash_rules = (True, False) if "\\" in sql else (True,)
-    readings: list[str] = []
-    for name in dialects:
-        for escapes in backslash_rules:
-            out: list[str] = []
-            for token in sql_tokens(sql, dialect=name, backslash_escapes=escapes):
-                if token.kind == "comment":
-                    # MySQL runs the inside of ``/*! ... */`` as SQL.
-                    out.append(f" {token.text[3:-2]} " if token.text.startswith("/*!") else " ")
-                elif token.kind in ("quoted", "variable"):
-                    out.append(" '' ")
-                else:
-                    out.append(token.text)
-            code = "".join(out)
-            if code not in readings:
-                readings.append(code)
-    return readings
-
-
-def _refuse_writes_inside_a_read(code: str) -> None:
-    """Refuse a SELECT or WITH statement (one reading of it) that changes data on the way."""
-    if match := _ROW_CHANGING.search(code):
+    if any(lex.kind == "executable" for lex in lexemes):
         raise SqlSafetyError(
-            f"Only SELECT queries are allowed: {match.group(0).upper()} inside the "
-            "query changes or locks rows. Write operations require explicit permission."
+            "A /*! ... */ comment is run as SQL by MySQL and MariaDB, so it is not "
+            "allowed on a read-only connection. Remove the comment."
         )
-    if _INTO.search(code):
+
+    first = _first_word(lexemes)
+    if first not in _READ_STARTS:
+        raise SqlSafetyError(
+            f"Only SELECT queries are allowed (got {first}). "
+            "Write operations require explicit permission."
+        )
+    if first == "SHOW":
+        return
+    if first in _EXPLAINS:
+        explained = _explained_if_run(lexemes)
+        if explained is None:
+            # Planned, not run.
+            return
+        keyword = _first_word(explained)
+        if keyword not in _READS:
+            raise SqlSafetyError(
+                "EXPLAIN ANALYZE runs the statement it explains, so on a read-only "
+                f"connection it is allowed for SELECT queries only (got {keyword or 'nothing'})."
+            )
+        lexemes = explained
+    _refuse_writes_inside_a_read(lexemes, dialect)
+
+
+def _one_statement(lexemes: list[Lexeme]) -> list[Lexeme]:
+    """*lexemes* without trailing semicolons; a second statement is refused."""
+    end = len(lexemes)
+    while end and lexemes[end - 1].is_punct(";"):
+        end -= 1
+    if any(lex.is_punct(";") for lex in lexemes[:end]):
+        raise SqlSafetyError("Multi-statement queries are not allowed")
+    if not end:
+        raise SqlSafetyError("Empty SQL statement after cleaning")
+    return lexemes[:end]
+
+
+def _first_word(lexemes: list[Lexeme]) -> str:
+    """The statement's first keyword; ``(SELECT 1) UNION ...`` starts with SELECT."""
+    for lex in lexemes:
+        if lex.is_punct("("):
+            continue
+        return lex.upper
+    return ""
+
+
+def _function_calls(lexemes: list[Lexeme]) -> list[str]:
+    """The names called as functions, lower-cased: a name right before ``(``.
+
+    ``pg_catalog.pg_read_file(...)`` and ``"pg_read_file"(...)`` are calls
+    of ``pg_read_file``; a column or a string with that text is not.
+    """
+    return [
+        lex.text.lower()
+        for lex, following in pairwise(lexemes)
+        if lex.kind in ("word", "name") and following.is_punct("(")
+    ]
+
+
+def _has_words(lexemes: list[Lexeme], *words: str) -> bool:
+    """Whether *words* stand next to each other somewhere in the statement."""
+    size = len(words)
+    return any(
+        tuple(lex.upper for lex in lexemes[i : i + size]) == words
+        for i in range(len(lexemes) - size + 1)
+    )
+
+
+def _refuse_never_allowed(lexemes: list[Lexeme]) -> None:
+    for name in _function_calls(lexemes):
+        if name in _NEVER_FUNCTIONS:
+            raise SqlSafetyError(_NEVER_FUNCTIONS[name])
+    for words, message in (
+        (("INTO", "OUTFILE"), "INTO OUTFILE is not allowed"),
+        (("INTO", "DUMPFILE"), "INTO DUMPFILE is not allowed"),
+        (("LOAD", "DATA"), "LOAD DATA is not allowed"),
+        (("LOAD", "XML"), "LOAD XML is not allowed"),
+        (("XP_CMDSHELL",), "xp_cmdshell is not allowed"),
+    ):
+        if _has_words(lexemes, *words):
+            raise SqlSafetyError(message)
+
+
+def _explained_if_run(lexemes: list[Lexeme]) -> list[Lexeme] | None:
+    """The statement an EXPLAIN / DESCRIBE runs, or ``None`` when it only plans it.
+
+    ``EXPLAIN ANALYZE ...``, ``EXPLAIN (ANALYZE, ...) ...`` (PostgreSQL) and
+    ``DESCRIBE ANALYZE ...`` (MySQL) run the statement.
+    """
+    i = 1
+    runs = False
+    if i < len(lexemes) and lexemes[i].is_punct("("):
+        # PostgreSQL's option list, unless it is a parenthesised statement.
+        close = _closing(lexemes, i)
+        inside = lexemes[i + 1 : close]
+        if not (inside and inside[0].upper in _READS | _ROW_CHANGES):
+            for position, lex in enumerate(inside):
+                if lex.upper in _EXPLAIN_RUNS:
+                    setting = inside[position + 1 : position + 2]
+                    off = bool(setting) and setting[0].text.upper() in ("FALSE", "OFF", "0")
+                    runs = runs or not off
+            i = close + 1
+    while i < len(lexemes):
+        word = lexemes[i].upper
+        if word in _EXPLAIN_RUNS:
+            runs = True
+            i += 1
+        elif word in _EXPLAIN_OPTIONS:
+            i += 1
+        elif word == "FORMAT":
+            i += 3 if i + 1 < len(lexemes) and lexemes[i + 1].is_punct("=") else 2
+        else:
+            break
+    return lexemes[i:] if runs else None
+
+
+def _closing(lexemes: list[Lexeme], opening: int) -> int:
+    """Index of the ``)`` that closes the ``(`` at *opening* (the end if none does)."""
+    depth = lexemes[opening].depth
+    for i in range(opening + 1, len(lexemes)):
+        if lexemes[i].is_punct(")") and lexemes[i].depth == depth:
+            return i
+    return len(lexemes)
+
+
+def _refuse_writes_inside_a_read(lexemes: list[Lexeme], dialect: SqlDialect) -> None:
+    """Refuse a read that changes, locks or exports something on the way."""
+    if _first_word(lexemes) == "WITH":
+        main = _statement_after_with(lexemes)
+        if main is None:
+            # Not a WITH clause this module can follow: any statement
+            # keyword right after a closing parenthesis is taken for the
+            # statement the clause leads to.
+            unread = any(
+                lex.is_punct(")")
+                and following.upper in _STATEMENTS
+                and after.kind in ("word", "name")
+                for lex, following, after in zip(lexemes, lexemes[1:], lexemes[2:], strict=False)
+            )
+        else:
+            unread = main not in _READS
+        if unread:
+            raise SqlSafetyError("WITH (CTE) queries must end with SELECT, not a write operation")
+
+    # A statement inside parentheses: the body of a CTE in PostgreSQL.
+    for i, lex in enumerate(lexemes):
+        if lex.is_punct("(") and (word := _row_change_at(lexemes, i + 1)):
+            raise SqlSafetyError(
+                f"Only SELECT queries are allowed: {word} inside the query changes "
+                "rows. Write operations require explicit permission."
+            )
+
+    if any(lex.upper == "INTO" for lex in lexemes):
         raise SqlSafetyError(
             "Only SELECT queries are allowed: SELECT ... INTO writes the result to "
             "a table, a file or a variable. Write operations require explicit permission."
         )
 
+    for words in (
+        ("FOR", "UPDATE"),
+        ("FOR", "NO", "KEY", "UPDATE"),
+    ):
+        if _has_words(lexemes, *words):
+            raise SqlSafetyError(
+                f"Only SELECT queries are allowed: {' '.join(words)} locks rows, which "
+                "a read-only connection does not do."
+            )
 
-def _refuse_explain_that_writes(code: str) -> None:
-    """Refuse EXPLAIN ANALYZE of anything but a plain read.
+    if dialect == "generic":
+        # No read-only transaction stands behind this driver: a row-changing
+        # keyword anywhere is refused, also where it could be a name.
+        for lex, following in zip(lexemes, [*lexemes[1:], None], strict=False):
+            if lex.upper in _ROW_CHANGES - {"REPLACE"} and not (
+                following and following.is_punct("(")
+            ):
+                raise SqlSafetyError(
+                    f"Only SELECT queries are allowed: {lex.upper} inside the query "
+                    "changes rows. Write operations require explicit permission."
+                )
 
-    Without ANALYZE the explained statement is planned, not run. With it,
-    the statement runs: it must be a read, and one that changes nothing.
+
+def _row_change_at(lexemes: list[Lexeme], i: int) -> str | None:
+    """The row-changing statement that starts at *i*, if one does.
+
+    ``DELETE FROM``, ``INSERT INTO``, ``MERGE INTO``, ``REPLACE INTO`` and
+    ``UPDATE ... SET``. A column or alias with one of these names
+    (``(update)``, ``(delete IS NULL)``) is not followed that way.
     """
-    if not _EXPLAIN_RUNS.search(code):
-        return
-    rest = code.lstrip()[len("EXPLAIN") :]
-    # PostgreSQL: ``EXPLAIN (ANALYZE, BUFFERS) SELECT ...``.
-    if match := _EXPLAIN_OPTION_LIST.match(rest):
-        rest = rest[match.end() :]
-    while match := _EXPLAIN_OPTION.match(rest):
-        rest = rest[match.end() :]
-    explained = re.match(r"[\s(]*([A-Za-z_]+)", rest)
-    keyword = explained.group(1).upper() if explained else ""
-    if keyword not in _READS:
-        raise SqlSafetyError(
-            "EXPLAIN ANALYZE runs the statement it explains, so on a read-only "
-            f"connection it is allowed for SELECT queries only (got {keyword or 'nothing'})."
-        )
-    _refuse_writes_inside_a_read(rest)
+    if i + 1 >= len(lexemes):
+        return None
+    word = lexemes[i].upper
+    following = lexemes[i + 1].upper
+    if (word, following) in {
+        ("DELETE", "FROM"),
+        ("INSERT", "INTO"),
+        ("MERGE", "INTO"),
+        ("REPLACE", "INTO"),
+    }:
+        return word
+    if word == "UPDATE" and lexemes[i + 1].kind in ("word", "name"):
+        depth = lexemes[i].depth
+        for lex in lexemes[i + 1 : i + 12]:
+            if lex.depth < depth:
+                break
+            if lex.upper == "SET" and lex.depth == depth:
+                return word
+    return None
 
 
-def _cte_is_select(sql: str) -> bool:
-    """Check whether a WITH (CTE) query ends with SELECT rather than a write op."""
-    # Find the last top-level statement keyword after the CTE definitions
-    # Look for the final SELECT/INSERT/UPDATE/DELETE after the last closing paren
-    # of the CTE block. A simplified approach: find the last occurrence of
-    # write keywords and SELECT, and ensure SELECT comes last.
-    for kw in _WRITE_KEYWORDS:
-        # Check if any write keyword appears after the last ) that closes CTEs
-        pattern = re.compile(r"\)\s*" + kw + r"\b", re.IGNORECASE)
-        if pattern.search(sql):
-            return False
-    return True
+def _statement_after_with(lexemes: list[Lexeme]) -> str | None:
+    """The first keyword of the statement that follows a WITH clause.
 
-
-def _has_multiple_statements(sql: str) -> bool:
-    """Detect multiple SQL statements separated by semicolons.
-
-    Ignores semicolons inside single-quoted string literals.
+    ``WITH [RECURSIVE] name [(columns)] AS [[NOT] MATERIALIZED] (body) [, ...]``
+    and then the statement. ``None`` when the clause is not written that way
+    (PostgreSQL's SEARCH and CYCLE clauses, a dialect's own extension): the
+    statement is then judged by the other rules alone.
     """
-    in_string = False
-    escape_next = False
-    for char in sql:
-        if escape_next:
-            escape_next = False
+    i = 0
+    while i < len(lexemes) and lexemes[i].is_punct("("):
+        i += 1
+    base = lexemes[i].depth if i < len(lexemes) else 0
+    i += 1
+    if i < len(lexemes) and lexemes[i].upper == "RECURSIVE":
+        i += 1
+    while i < len(lexemes):
+        if lexemes[i].kind not in ("word", "name"):
+            return None
+        i += 1
+        if i < len(lexemes) and lexemes[i].is_punct("("):
+            i = _closing(lexemes, i) + 1
+        if i >= len(lexemes) or lexemes[i].upper != "AS":
+            return None
+        i += 1
+        if i < len(lexemes) and lexemes[i].upper == "NOT":
+            i += 1
+        if i < len(lexemes) and lexemes[i].upper == "MATERIALIZED":
+            i += 1
+        if i >= len(lexemes) or not lexemes[i].is_punct("("):
+            return None
+        i = _closing(lexemes, i) + 1
+        if i < len(lexemes) and lexemes[i].is_punct(",") and lexemes[i].depth == base:
+            i += 1
             continue
-        if char == "\\":
-            escape_next = True
-            continue
-        if char == "'":
-            in_string = not in_string
-            continue
-        if char == ";" and not in_string:
-            return True
-    return False
+        break
+    while i < len(lexemes) and lexemes[i].is_punct("("):
+        i += 1
+    if i >= len(lexemes):
+        return ""
+    return lexemes[i].upper if lexemes[i].kind == "word" else None

@@ -148,10 +148,15 @@ class MySQLDriver(DatabaseDriver):
         ANALYZE`` and after a CTE as well. A server too old for the
         statement fails the query rather than running it unguarded.
 
-        It does not stop DDL: MySQL commits the open transaction before a
-        ``CREATE``, ``DROP`` or ``ALTER`` and then runs it. Those can only
-        be a statement's first word, which the keyword check
-        (``safety.validate_sql``) refuses on a read-only connector.
+        It does not stop DDL or administration: MySQL commits the open
+        transaction before a ``CREATE``, ``DROP``, ``ALTER``, ``RENAME``,
+        ``TRUNCATE``, ``GRANT`` or ``CREATE USER`` and then runs it, and
+        ``SET`` is allowed inside one. Those have to be the statement's
+        first word, and MySQL also takes them from inside a ``/*! ... */``
+        comment at the start of a statement; ``safety.validate_sql`` refuses
+        both on a read-only connector (any ``/*!`` comment, and any first
+        word that is not a read, judged with comments removed). Nothing in
+        the server stands behind that check for these statements.
 
         *parameters* fill the ``%s`` placeholders. aiomysql has no
         server-side parameters: it writes each value into the statement as

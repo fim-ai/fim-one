@@ -22,6 +22,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from .reading import SqlDialect
+
 __all__ = [
     "PlaceholderStyle",
     "SqlBindingError",
@@ -39,7 +41,6 @@ __all__ = [
 PlaceholderStyle = Literal["numeric", "format", "qmark"]
 # What the scanner needs to know about the SQL it reads: MySQL has ``#``
 # comments, PostgreSQL has dollar-quoted strings.
-SqlDialect = Literal["postgresql", "mysql", "generic"]
 
 # The same reference syntax the workflow variable store fills in.
 _VARIABLE = re.compile(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\}\}")
@@ -100,16 +101,14 @@ def bound_value(value: Any) -> Any:
         return str(value)
 
 
-def sql_tokens(
-    sql: str, *, dialect: SqlDialect, strict: bool = False, backslash_escapes: bool = True
-) -> list[_Token]:
+def sql_tokens(sql: str, *, dialect: SqlDialect, strict: bool = False) -> list[_Token]:
     """*sql* as code, quoted text and comments (and, in code, variable references).
 
-    With *strict*, text whose reading differs between databases raises
-    :class:`SqlBindingError`. Without it, *backslash_escapes* says which
-    reading to take of a backslash before a quote: an escaped quote (MySQL)
-    or an ordinary character before the closing quote (standard SQL); a
-    caller that must not miss anything looks at both.
+    This is the scanner for templates: it is deliberately cautious, not
+    exact. With *strict*, text whose reading differs between databases
+    raises :class:`SqlBindingError`; without it the scanner takes the
+    reading that keeps more text inside the string or comment. The safety
+    check reads SQL with :mod:`.reading`, which follows each database.
     """
     tokens: list[_Token] = []
     code_start = 0
@@ -125,7 +124,7 @@ def sql_tokens(
         two = sql[i : i + 2]
         if ch in "'\"`":
             flush(i)
-            end = _end_of_quoted(sql, i, strict=strict, backslash_escapes=backslash_escapes)
+            end = _end_of_quoted(sql, i, strict=strict)
             tokens.append(_Token("quoted", sql[i:end]))
             i = code_start = end
         elif two == "--" or (ch == "#" and dialect == "mysql"):
@@ -173,14 +172,14 @@ def sql_tokens(
     return tokens
 
 
-def _end_of_quoted(sql: str, start: int, *, strict: bool, backslash_escapes: bool = True) -> int:
+def _end_of_quoted(sql: str, start: int, *, strict: bool) -> int:
     """Index just past the quoted text that opens at *start*."""
     quote = sql[start]
     i = start + 1
     n = len(sql)
     while i < n:
         ch = sql[i]
-        if ch == "\\" and (strict or backslash_escapes):
+        if ch == "\\":
             run = 1
             while i + run < n and sql[i + run] == "\\":
                 run += 1
