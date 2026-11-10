@@ -9,8 +9,10 @@ offloaded to a thread via ``asyncio.to_thread``.
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
 import os
+import re
 import smtplib
 import ssl
 from email.mime.multipart import MIMEMultipart
@@ -27,6 +29,20 @@ logger = logging.getLogger(__name__)
 EMAIL_RECIPIENTS_REQUIRED = "channel_email_recipients_required"
 EMAIL_RECIPIENTS_INVALID = "channel_email_recipients_invalid"
 EMAIL_NOT_PERMITTED = "channel_email_not_permitted"
+
+
+_BOLD_RE = re.compile(r"\*\*([^*\n]+)\*\*")
+
+
+def _notice_html(markdown: str) -> str:
+    """A notice body (see ``completion_notice``) as the HTML an email carries.
+
+    The body quotes the user's message and the agent's answer, so it is
+    escaped first: none of it is markup. Only the ``**bold**`` markers
+    and line breaks are then rendered.
+    """
+    escaped = html.escape(markdown, quote=True)
+    return _BOLD_RE.sub(r"<b>\1</b>", escaped).replace("\n", "<br>\n")
 
 
 def smtp_configured() -> bool:
@@ -126,7 +142,7 @@ class EmailChannel(BaseChannel):
 
     async def send_completion(self, summary: CompletionSummary) -> ChannelSendResult:
         title, body = completion_notice(summary)
-        return await self.send_notice(title, body.replace("\n", "<br>\n"))
+        return await self.send_notice(title, _notice_html(body))
 
     # -- Inbound: none --
 

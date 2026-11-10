@@ -414,6 +414,51 @@ class TestCompletion:
         assert "https://fim.example/?c=conv-12345678" in content
 
 
+class TestEmailCompletion:
+    """The completion mail is HTML; what the user and the agent wrote is text in it."""
+
+    @pytest.mark.asyncio
+    async def test_user_text_is_escaped_and_labels_are_bold(self) -> None:
+        summary = CompletionSummary(
+            agent_name="Summariser",
+            duration_seconds=2,
+            tools_used=["web_search"],
+            user_message='<img src=x onerror=alert(1)> & <a href="https://evil.example">click</a>',
+            final_answer="</b><script>alert(2)</script> **done** in 2 < 3 steps",
+            conversation_id="conv-12345678",
+            conversation_url="https://fim.example/?c=conv-12345678&x=1",
+        )
+        channel = EmailChannel({"to": "user@example.com"})
+        with patch.dict(os.environ, {**_SMTP, "EMAIL_TOOL_ENABLED": "true"}):
+            with patch("fim_one.core.channels.email.smtplib.SMTP_SSL") as mock_smtp:
+                server = MagicMock()
+                mock_smtp.return_value.__enter__ = MagicMock(return_value=server)
+                mock_smtp.return_value.__exit__ = MagicMock(return_value=False)
+                result = await channel.send_completion(summary)
+        assert result.ok is True
+
+        import email as email_lib
+
+        message = email_lib.message_from_string(server.sendmail.call_args.args[2])
+        (part,) = [p for p in message.walk() if p.get_content_type() == "text/html"]
+        payload = part.get_payload(decode=True)
+        assert isinstance(payload, bytes)
+        body = payload.decode("utf-8")
+
+        # Nothing the user or the agent wrote arrives as a tag.
+        for tag in ("<img", "<a ", "<script", "</script", "</b><script"):
+            assert tag not in body, tag
+        assert "&lt;img src=x onerror=alert(1)&gt; &amp; &lt;a href=" in body
+        assert "&lt;/b&gt;&lt;script&gt;alert(2)&lt;/script&gt;" in body
+        assert "2 &lt; 3 steps" in body
+        # The labels, and bold the agent wrote, are rendered; lines are kept.
+        assert "<b>Duration</b>: 2.0s<br>" in body
+        assert "<b>User message</b><br>" in body
+        assert "<b>done</b>" in body
+        assert "**" not in body
+        assert "https://fim.example/?c=conv-12345678&amp;x=1" in body
+
+
 class TestNoInbound:
     """Outbound-only channels accept no callback."""
 
