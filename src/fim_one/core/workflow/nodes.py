@@ -10,15 +10,20 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import re
+import secrets
 import time
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from .types import ExecutionContext, NodeResult, NodeStatus, NodeType, WorkflowNodeDef
-from .variable_store import VariableStore
+from .variable_store import VARIABLE_REFERENCE, VariableStore
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
     from fim_one.core.assembly.principal import CallContext
+    from fim_one.core.tool.base import BaseTool
     from fim_one.core.tool.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -856,6 +861,461 @@ def _step_call_context(node: WorkflowNodeDef, context: ExecutionContext) -> Call
     )
 
 
+async def _interpolated_parameters(
+    store: VariableStore, template: dict[str, Any], schema: Any = None
+) -> dict[str, Any]:
+    """The step's parameters with ``{{variable}}`` references filled in.
+
+    Every text in *template* is a template, at any depth: the values of an
+    object and the items of a list are filled in like the top-level ones.
+    A filled-in value is data and is never read as a template again.
+
+    Filling a reference in yields text. With *schema* (a tool's JSON schema
+    for its arguments) a text that was a template is then given the type
+    the schema declares at its place, when the text is of that type:
+
+    - ``integer``, ``number``, ``boolean``: read from the text;
+    - ``object``, ``array``: the template is read as JSON first and the
+      references are filled into the parsed structure, so a value can
+      become a string, a number or a whole sub-tree in it, and cannot add
+      keys or items next to itself. A template that is one reference takes
+      the variable's value when it is of the declared type (or JSON text
+      of it).
+
+    Anything else is passed as text, for the tool to judge. A value written
+    without a reference is never touched.
+    """
+    filled = await _filled(store, template, schema if isinstance(schema, dict) else None)
+    return filled if isinstance(filled, dict) else {}
+
+
+def _declared_types(schema: dict[str, Any] | None) -> list[str]:
+    declared = schema.get("type") if schema else None
+    if isinstance(declared, str):
+        return [declared]
+    if isinstance(declared, list):
+        return [kind for kind in declared if isinstance(kind, str)]
+    return []
+
+
+def _schema_of(schema: dict[str, Any] | None, part: str, key: str | None = None) -> Any:
+    """The schema of one property (``properties``) or of the items (``items``)."""
+    inner = schema.get(part) if schema else None
+    if key is not None:
+        inner = inner.get(key) if isinstance(inner, dict) else None
+    return inner if isinstance(inner, dict) else None
+
+
+async def _filled(store: VariableStore, written: Any, schema: dict[str, Any] | None) -> Any:
+    if isinstance(written, str):
+        if "{{" not in written:
+            return written
+        kinds = _declared_types(schema)
+        kind = None if "string" in kinds else next((k for k in kinds if k != "null"), None)
+        if kind in ("object", "array"):
+            structure = await _filled_json(store, written, schema, kind)
+            if structure is not _UNFIT:
+                return structure
+            return await store.interpolate(written)
+        # The result is text. If the template itself is a JSON object or
+        # list (a request body typed into a text parameter, an argument the
+        # tool does not describe), whoever receives it will parse it: each
+        # reference is replaced, where it stands, by JSON of its value, so
+        # that a value cannot add keys there either.
+        text = await _filled_json_text(store, written)
+        if text is not None:
+            return text
+        if "string" in kinds:
+            # Text is one of the types the tool takes: it stays text.
+            return await store.interpolate(written)
+        return _fit_text(await store.interpolate(written), kind)
+    if isinstance(written, dict):
+        return {
+            key: await _filled(store, value, _schema_of(schema, "properties", key))
+            for key, value in written.items()
+        }
+    if isinstance(written, list):
+        items = _schema_of(schema, "items")
+        return [await _filled(store, value, items) for value in written]
+    return written
+
+
+def _fit_text(text: str, kind: str | None) -> Any:
+    """Filled-in *text* as a number or a boolean when *kind* asks and it is one."""
+    stripped = text.strip()
+    if kind == "integer":
+        whole = _integer_from_text(stripped)
+        return text if whole is None else whole
+    if kind == "number":
+        number = _number_from_text(stripped)
+        return text if number is None else number
+    if kind == "boolean" and stripped.lower() in ("true", "false"):
+        return stripped.lower() == "true"
+    return text
+
+
+_UNFIT = object()
+
+
+def _not_json(constant: str) -> Any:
+    raise ValueError(f"{constant} is not JSON")
+
+
+def _finite(number: str) -> float:
+    value = float(number)
+    if not math.isfinite(value):
+        # 1e999 reads as infinity, which no JSON number is.
+        raise ValueError(f"{number} is out of range")
+    return value
+
+
+def _json_value(text: str) -> Any:
+    """The value *text* is the JSON of, or ``_UNFIT``.
+
+    ``NaN`` and ``Infinity`` are not JSON, and neither is a number too
+    large to be one once read (``1e999``): such text stays text.
+    """
+    try:
+        return json.loads(text, parse_constant=_not_json, parse_float=_finite)
+    except (ValueError, RecursionError):
+        return _UNFIT
+
+
+def _bare_value(value: Any, name: str, schema: dict[str, Any] | None) -> Any:
+    """What a reference outside a JSON string (``{"n": {{v}}}``) puts in its place.
+
+    A value that is not text is itself. Text is what the template's author
+    would have got by filling it in and parsing the result, as far as that
+    is one value: at a place declared as text it stays text; at one
+    declared as a number or a boolean it is read strictly as that; at any
+    other place (undeclared, an object, a list) it is read as JSON, so the
+    text ``5`` is 5, ``true`` is true, ``null`` is null and
+    ``{"k": [1, 2]}`` is that object, and text that is not JSON (or is not
+    the declared object or list) stays a string. Whatever it becomes, it
+    is one value at this place and cannot add keys or items next to it.
+    A quoted reference (``"{{v}}"``) is not handled here: it is always a
+    string.
+    """
+    if value is _UNFIT:
+        # A variable nothing has set stays visible, as in a text.
+        return f"{{{{{name}}}}}"
+    if not isinstance(value, str):
+        return value
+    kinds = _declared_types(schema)
+    if "string" in kinds:
+        return value
+    kind = next((k for k in kinds if k != "null"), None)
+    if kind in ("integer", "number", "boolean"):
+        return _fit_text(value, kind)
+    read = _json_value(value)
+    if read is _UNFIT:
+        return value
+    if kind == "object":
+        return read if isinstance(read, dict) else value
+    if kind == "array":
+        return read if isinstance(read, list) else value
+    return read
+
+
+def _masked_json_template(written: str) -> tuple[str, str, list[tuple[int, int, str, bool]]]:
+    """*written* with each reference outside a JSON string replaced by a marker string.
+
+    Returns the masked text, the marker's prefix (marker ``i`` is the
+    string ``"<prefix>:<i>"``, numbered over the references outside
+    strings) and every reference as ``(start, end, name, in_string)``.
+    """
+    marker = secrets.token_hex(8)
+    references: list[tuple[int, int, str, bool]] = []
+    text: list[str] = []
+    bare = 0
+    in_string = False
+    i = 0
+    while i < len(written):
+        ch = written[i]
+        if ch == "{" and (ref := VARIABLE_REFERENCE.match(written, i)):
+            references.append((i, ref.end(), ref.group(1), in_string))
+            if in_string:
+                text.append(ref.group(0))
+            else:
+                text.append(json.dumps(f"{marker}:{bare}"))
+                bare += 1
+            i = ref.end()
+            continue
+        if in_string:
+            if ch == "\\":
+                if ref := VARIABLE_REFERENCE.match(written, i + 1):
+                    # ``"\{{v}}"``: a backslash and then the value. Left as
+                    # written it would escape the value's first character
+                    # ("\n...") and the rest of the value would be read as
+                    # JSON. It is taken for a backslash character.
+                    references.append((i, ref.end(), ref.group(1), True))
+                    text.append("\\\\" + ref.group(0))
+                    i = ref.end()
+                    continue
+                text.append(written[i : i + 2])
+                i += 2
+                continue
+            in_string = ch != '"'
+        elif ch == '"':
+            in_string = True
+        text.append(ch)
+        i += 1
+    return "".join(text), marker, references
+
+
+_JSON_WHITE_SPACE = " \t\n\r"
+
+
+async def _filled_json_text(store: VariableStore, written: str) -> str | None:
+    """JSON written into a text parameter, with its references filled in where they stand.
+
+    ``None`` when *written*, its references masked, is not a JSON object
+    or list. Otherwise the author's text, byte for byte (its numbers, key
+    order, duplicate keys, escapes and white space), with each reference
+    replaced by JSON: outside a string, one JSON value (see
+    :func:`_bare_value`; text that is JSON is put in as written); inside a
+    string, the value's text escaped for a JSON string. Nothing a value
+    holds can end a string or add a key, and ``NaN`` and ``Infinity`` are
+    never written.
+    """
+    masked, _marker, references = _masked_json_template(written)
+    if not isinstance(_json_value(masked), (dict, list)):
+        return None
+    out: list[str] = []
+    at = 0
+    for start, end, name, in_string in references:
+        out.append(written[at:start])
+        at = end
+        value = await store.resolve(name, _UNFIT)
+        if in_string:
+            # A backslash right before the reference (see the scanner).
+            reference = written[start:end]
+            if reference.startswith("\\"):
+                out.append("\\\\")
+                reference = reference[1:]
+            if value is None or value is _UNFIT:
+                # As in any text: a reference with no value stays visible.
+                out.append(reference)
+                continue
+            text = value if isinstance(value, str) else _json_text(value)
+            out.append(json.dumps(text, ensure_ascii=False)[1:-1])
+        elif isinstance(value, str) and _json_value(value) is not _UNFIT:
+            out.append(value.strip(_JSON_WHITE_SPACE))
+        else:
+            out.append(_json_text(_bare_value(value, name, None)))
+    out.append(written[at:])
+    return "".join(out)
+
+
+def _json_text(value: Any) -> str:
+    """*value* as JSON; what JSON cannot say (``NaN``, an odd object) as a string."""
+    try:
+        return json.dumps(value, ensure_ascii=False, allow_nan=False)
+    except (TypeError, ValueError):
+        return json.dumps(str(value), ensure_ascii=False)
+
+
+async def _filled_json(
+    store: VariableStore, written: str, schema: dict[str, Any] | None, kind: str
+) -> Any:
+    """A template for an object or a list, filled in after it is parsed.
+
+    Filling the references into the JSON text and parsing the result would
+    let a value close a string and add keys of its own. Here each reference
+    outside a JSON string is first replaced by a marker string, the text is
+    parsed, and the values are then put in place of their markers; a
+    reference inside a string is filled in as part of that string. Returns
+    ``_UNFIT`` when the template is not JSON of the declared *kind*.
+    """
+    wanted: tuple[type, ...] = (dict,) if kind == "object" else (list,)
+    masked, marker, references = _masked_json_template(written)
+    names = [name for _, _, name, in_string in references if not in_string]
+    parsed = _json_value(masked)
+    if parsed is _UNFIT:
+        return _UNFIT
+    values = [await store.resolve(name, _UNFIT) for name in names]
+
+    def marked(node: Any) -> int | None:
+        if isinstance(node, str) and node.startswith(f"{marker}:"):
+            return int(node[len(marker) + 1 :])
+        return None
+
+    if (whole := marked(parsed)) is not None:
+        # The template is one reference: the variable's value, or the JSON
+        # it is the text of.
+        value = values[whole]
+        if isinstance(value, str):
+            value = _json_value(value)
+        return value if isinstance(value, wanted) else _UNFIT
+
+    async def placed(node: Any, node_schema: dict[str, Any] | None) -> Any:
+        if (index := marked(node)) is not None:
+            return _bare_value(values[index], names[index], node_schema)
+        if isinstance(node, str):
+            return await _filled(store, node, node_schema)
+        if isinstance(node, dict):
+            return {
+                key: await placed(value, _schema_of(node_schema, "properties", key))
+                for key, value in node.items()
+            }
+        if isinstance(node, list):
+            items = _schema_of(node_schema, "items")
+            return [await placed(value, items) for value in node]
+        return node
+
+    if not isinstance(parsed, wanted):
+        return _UNFIT
+    return await placed(parsed, schema)
+
+
+# A JSON number, with an optional leading "+": ASCII digits only, no "_"
+# separators, no "nan" or "inf" (all of which int() and float() accept).
+_NUMBER_TEXT = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?", re.ASCII)
+# Beyond this many digits a "whole number" is not something a tool counts with.
+_MAX_INTEGER_DIGITS = 40
+
+
+def _number_from_text(text: str) -> float | None:
+    """*text* as a finite float when it is written as a plain number."""
+    if not _NUMBER_TEXT.fullmatch(text):
+        return None
+    number = float(text)
+    return number if math.isfinite(number) else None
+
+
+def _integer_from_text(text: str) -> int | None:
+    """*text* as an int when it is a whole number: ``"3"``, ``"3.0"``, ``"3e2"``."""
+    if not _NUMBER_TEXT.fullmatch(text):
+        return None
+    import decimal
+
+    try:
+        value = decimal.Decimal(text)
+    except decimal.InvalidOperation:
+        return None
+    if value.adjusted() >= _MAX_INTEGER_DIGITS or value != value.to_integral_value():
+        return None
+    return int(value)
+
+
+class _StepFailed(Exception):
+    """A step cannot go on; ``detail`` is the text of its failure."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+        self.detail = detail
+
+
+async def _action_tool(
+    db: AsyncSession, call_context: CallContext, connector: Any, action_id: str
+) -> BaseTool:
+    """The tool that runs one action of *connector* for this step.
+
+    The runner's credential, the refusal when they have none, and the call
+    record all come from core/assembly: the same rule and the same record as
+    a call made from chat.
+    """
+    from fim_one.core.assembly.errors import AssemblyRefusal
+    from fim_one.core.assembly.toolset import connector_tools
+
+    if connector.type == "database":
+        return await _database_operation_tool(db, call_context, connector, action_id)
+
+    action = next((a for a in connector.actions or [] if a.id == action_id), None)
+    if not action:
+        raise _StepFailed(f"Action '{action_id}' not found")
+
+    # Fail closed on confirmation-required actions (audit P0#3b).
+    # A workflow has no per-call interactive confirmation channel,
+    # so an action flagged requires_confirmation must not run
+    # unattended (the previous behavior silently bypassed the gate).
+    # The workflow-native way to gate a sensitive step is to place a
+    # Human Intervention node before it.
+    if action.requires_confirmation:
+        raise _StepFailed(
+            f"Action '{action.name}' requires confirmation and "
+            "cannot run unattended in a workflow. Add a Human "
+            "Intervention node before this step to gate it, or "
+            "use an action that does not require confirmation."
+        )
+
+    try:
+        (adapter,) = await connector_tools(
+            db,
+            call_context,
+            [connector],
+            mode="legacy",
+            strict=True,
+            action_ids=[action_id],
+        )
+    except AssemblyRefusal as refused:
+        raise _StepFailed(refused.detail) from None
+    return adapter
+
+
+async def _database_operation_tool(
+    db: AsyncSession, call_context: CallContext, connector: Any, operation: str
+) -> BaseTool:
+    """The tool that runs one operation of a database connector for this step.
+
+    A database connector has no actions of its own: the step's ``action_id``
+    names one of the operations a chat with the connector gets
+    (``list_tables``, ``describe_table``, ``query``), and the tool is the
+    one chat would be given, built in core/assembly: the owner's connection,
+    the connector's read-only switch, row limit and timeout, the columns
+    marked as personal data masked, and the call recorded.
+    """
+    from fim_one.core.assembly.errors import AssemblyRefusal
+    from fim_one.core.assembly.toolset import (
+        DATABASE_OPERATIONS,
+        ToolsetError,
+        database_tools,
+    )
+
+    if operation not in DATABASE_OPERATIONS:
+        raise _StepFailed(
+            f"Database connector '{connector.name}' has no operation '{operation}'. "
+            f"Choose one of: {', '.join(DATABASE_OPERATIONS)}"
+        )
+    try:
+        (tool,) = await database_tools(
+            db, call_context, [connector], mode="legacy", strict=True, operations=[operation]
+        )
+    except (AssemblyRefusal, ToolsetError) as refused:
+        raise _StepFailed(refused.detail) from None
+    return tool
+
+
+_NO_VALUE = object()
+
+
+async def _run_bound_query(tool: BaseTool, sql: str, store: VariableStore) -> Any:
+    """Run a database query step whose SQL has ``{{variable}}`` references.
+
+    The references are bound as parameters by the query tool
+    (``run_with_variables``), with each variable in its own type. A variable
+    nothing has set fails the step, as does a tool that cannot bind.
+    """
+    bind = getattr(tool, "run_with_variables", None)
+    if bind is None:
+        raise _StepFailed("This database tool cannot run SQL with {{variable}} references")
+
+    async def value_of(name: str) -> Any:
+        value = await store.resolve(name, _NO_VALUE)
+        if value is _NO_VALUE:
+            raise _StepFailed(
+                f"The SQL refers to {{{{{name}}}}}, which has no value in this run"
+            )
+        return value
+
+    return await bind(sql, value_of)
+
+
+# How a database tool reports a query it did not run or that failed. The
+# model reads these in chat; a step has no reader, so it fails.
+_DATABASE_TOOL_ERRORS = ("[SQL Safety Error]", "[Timeout]", "[Error]")
+
+
 class KnowledgeRetrievalExecutor:
     """Query the RAG pipeline for relevant knowledge."""
 
@@ -970,7 +1430,14 @@ class KnowledgeRetrievalExecutor:
 
 
 class ConnectorExecutor:
-    """Load a connector + action and execute it."""
+    """Run one action of an API connector, or one operation of a database connector.
+
+    Node data: ``connector_id``, ``action_id`` and ``parameters``. For an
+    API connector ``action_id`` is the id of one of its actions and
+    ``parameters`` are the action's. For a database connector ``action_id``
+    is ``list_tables``, ``describe_table`` (``parameters.table_name``) or
+    ``query`` (``parameters.sql``).
+    """
 
     @staticmethod
     def output_schema() -> list[dict[str, str]]:
@@ -1002,29 +1469,21 @@ class ConnectorExecutor:
                     duration_ms=_ms_since(t0),
                 )
 
-            # Interpolate parameters
-            params: dict[str, Any] = {}
-            for key, val in params_template.items():
-                if isinstance(val, str) and "{{" in val:
-                    params[key] = await store.interpolate(val)
-                else:
-                    params[key] = val
+            params = await _interpolated_parameters(store, params_template)
 
-            # Load connector and action from DB
             async with create_session() as db:
                 from sqlalchemy.orm import selectinload
 
                 # The workflow is the binding: the connector is usable while
                 # the workflow's author can see it (own or subscribed) and it
                 # is switched on, whoever runs the workflow. The credential
-                # below is the runner's.
-                from fim_one.core.assembly.errors import AssemblyRefusal
-                from fim_one.core.assembly.toolset import connector_tools
+                # is the runner's.
                 from fim_one.core.assembly.visibility import (
                     ResourceKind,
                     authorize_use,
                 )
                 from fim_one.db.models.connector import Connector
+                from fim_one.db.models.database_schema import DatabaseSchema
 
                 call_context = _step_call_context(node, context)
                 _decision = await authorize_use(
@@ -1032,12 +1491,15 @@ class ConnectorExecutor:
                     call_context,
                     ResourceKind.CONNECTOR,
                     [connector_id],
-                    options=(selectinload(Connector.actions),),
+                    options=(
+                        selectinload(Connector.actions),
+                        selectinload(Connector.database_schemas).selectinload(
+                            DatabaseSchema.columns
+                        ),
+                    ),
                 )
-                # A database connector is its owner's alone (``owner_only``).
-                # The owner's own run still fails below: a Connector step has
-                # no way to query a database (registered in
-                # tests/assembly/matrix.py; T10 P4).
+                # A database connector is its owner's alone (``owner_only``):
+                # anyone else running the workflow is refused here.
                 _usable = _decision.usable
                 if not _usable:
                     return NodeResult(
@@ -1046,59 +1508,47 @@ class ConnectorExecutor:
                         error=_decision.refused[connector_id].detail,
                         duration_ms=_ms_since(t0),
                     )
-                connector = _usable[0]
-
-                action = next(
-                    (a for a in connector.actions or [] if a.id == action_id), None
-                )
-                if not action:
-                    return NodeResult(
-                        node_id=node.id,
-                        status=NodeStatus.FAILED,
-                        error=f"Action '{action_id}' not found",
-                        duration_ms=_ms_since(t0),
-                    )
-
-                # Fail closed on confirmation-required actions (audit P0#3b).
-                # A workflow has no per-call interactive confirmation channel,
-                # so an action flagged requires_confirmation must not run
-                # unattended (the previous behavior silently bypassed the gate).
-                # The workflow-native way to gate a sensitive step is to place a
-                # Human Intervention node before it.
-                if action.requires_confirmation:
-                    return NodeResult(
-                        node_id=node.id,
-                        status=NodeStatus.FAILED,
-                        error=(
-                            f"Action '{action.name}' requires confirmation and "
-                            "cannot run unattended in a workflow. Add a Human "
-                            "Intervention node before this step to gate it, or "
-                            "use an action that does not require confirmation."
-                        ),
-                        duration_ms=_ms_since(t0),
-                    )
-
-                # The runner's credential, the refusal when they have none,
-                # and the call record all come from core/assembly: the same
-                # rule and the same record as a call made from chat.
                 try:
-                    (adapter,) = await connector_tools(
-                        db,
-                        call_context,
-                        [connector],
-                        mode="legacy",
-                        strict=True,
-                        action_ids=[action_id],
-                    )
-                except AssemblyRefusal as refused:
+                    adapter = await _action_tool(db, call_context, _usable[0], action_id)
+                except _StepFailed as failed_step:
                     return NodeResult(
                         node_id=node.id,
                         status=NodeStatus.FAILED,
-                        error=refused.detail,
+                        error=failed_step.detail,
                         duration_ms=_ms_since(t0),
                     )
 
-            output = await adapter.run(**params)
+            sql_template = params_template.get("sql")
+            if (
+                adapter.category == "database"
+                and action_id == "query"
+                and isinstance(sql_template, str)
+                and "{{" in sql_template
+            ):
+                # The values are not written into the SQL text: each
+                # reference is bound as a parameter by the query tool.
+                try:
+                    output = await _run_bound_query(adapter, sql_template, store)
+                except _StepFailed as failed_step:
+                    return NodeResult(
+                        node_id=node.id,
+                        status=NodeStatus.FAILED,
+                        error=failed_step.detail,
+                        duration_ms=_ms_since(t0),
+                    )
+            else:
+                output = await adapter.run(**params)
+            if (
+                adapter.category == "database"
+                and isinstance(output, str)
+                and output.startswith(_DATABASE_TOOL_ERRORS)
+            ):
+                return NodeResult(
+                    node_id=node.id,
+                    status=NodeStatus.FAILED,
+                    error=output,
+                    duration_ms=_ms_since(t0),
+                )
             await _store_output(node, store, output)
 
             return NodeResult(
@@ -1381,14 +1831,6 @@ class MCPExecutor:
                     duration_ms=_ms_since(t0),
                 )
 
-            # Interpolate parameters
-            params: dict[str, Any] = {}
-            for key, val in params_template.items():
-                if isinstance(val, str) and "{{" in val:
-                    params[key] = await store.interpolate(val)
-                else:
-                    params[key] = val
-
             # Load MCP server config from DB
             from fim_one.db import create_session
 
@@ -1451,6 +1893,11 @@ class MCPExecutor:
                     ),
                     duration_ms=_ms_since(t0),
                 )
+
+            # The arguments, filled in and in the types the tool declares.
+            params = await _interpolated_parameters(
+                store, params_template, getattr(target_tool, "parameters_schema", None)
+            )
 
             # Execute the tool
             logger.info(

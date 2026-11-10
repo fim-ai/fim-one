@@ -76,7 +76,7 @@ API and database connectors are records in the database. A connector that is cre
 
 | Concern | What FIM One does |
 |---|---|
-| Read-only SQL | Database connectors reject anything but `SELECT` unless the owner switches `read_only` off |
+| Read-only SQL | Database connectors reject anything but `SELECT` unless the owner switches `read_only` off. The SQL is checked first, and on PostgreSQL, KingbaseES, HighGo and MySQL the query then runs in a read-only transaction, so the database itself refuses a write (MySQL's does not cover `CREATE`/`DROP`/`ALTER`, which the check refuses; DM8 has the check only). The check also refuses functions that act outside the query (`dblink*`, `pg_read_*`, `pg_ls_*`, `lo_import`/`lo_export`, `pg_terminate_backend`, `pg_reload_conf`, `pg_sleep*` and the like). It is a list of known names, not a sandbox: the real fence is the database account. Give the connector an account that can only `SELECT` the tables it should see, with no superuser, file or replication rights |
 | Call log | Every connector, database and MCP call is recorded: time, user, where it came from (chat, a delegated agent, a workflow step), the connector or MCP server, the action or tool, status, duration, and whose credential it used |
 | Per-user credentials | Each user stores their own credential; the owner's is used only when the owner allows fallback (see [Sharing and credentials](/architecture/sharing-and-credentials)) |
 | Confirmation gate | Actions marked `requires_confirmation` (or every tool call, when the agent is set to confirm all) pause for human approval, in chat (`awaiting_confirmation` SSE event) or in a Feishu approval card |
@@ -108,6 +108,13 @@ account.
 The owner's own query playground is not masked. Masking governs what
 reaches an agent and the conversation transcript, not what the person who
 configured the connection can inspect.
+
+### Values bound into a workflow step's SQL
+
+A `{{variable}}` in the SQL of a workflow database step is sent to the database as a value, never as SQL text. How it is compared is then up to the database:
+
+- **PostgreSQL, KingbaseES, HighGo, DM8**: a parameter of the type the query expects. Text that is not a number fails the step where a number is expected.
+- **MySQL, MariaDB**: every value is sent as text. Compared with a text column it is compared as text. Compared with a numeric column, MySQL converts the text by its own lenient rule: `'5abc'` counts as 5 and text with no leading digits as 0, with a warning and no error, so `WHERE id = {{v}}` with `abc` matches the row whose id is 0. `CAST({{v}} AS SIGNED)` follows the same rule and does not help. If an input must be a number, check it before the query, in a Condition step ahead of the database step; the Start step records the inputs it is given and does not check their type.
 
 ## Deployment Model
 

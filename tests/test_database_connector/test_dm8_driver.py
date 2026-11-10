@@ -272,3 +272,49 @@ class TestDM8ExecuteQuery:
 
         with pytest.raises(RuntimeError, match=r"DM8 error"):
             await driver.execute_query("SELECT * FROM missing", max_rows=10)
+
+
+class TestOneStatementAtATime:
+    """The connection is one; a statement whose task went away is still on it."""
+
+    @pytest.mark.asyncio
+    async def test_a_cancelled_query_still_holds_the_connection_until_its_thread_is_done(
+        self,
+        patch_dmpython: types.ModuleType,
+        driver_config: dict[str, Any],
+        fake_cursor: MagicMock,
+    ) -> None:
+        import asyncio
+        import threading
+
+        from fim_one.core.tool.connector.database.drivers.dm8 import DM8Driver
+
+        first_running = threading.Event()
+        let_first_finish = threading.Event()
+        order: list[str] = []
+
+        def _execute(sql: str, _params: Any) -> None:
+            order.append(f"start {sql}")
+            if sql == "SELECT 1":
+                first_running.set()
+                let_first_finish.wait(5)
+            order.append(f"end {sql}")
+
+        fake_cursor.execute = _execute
+        fake_cursor.description = [("X",)]
+        fake_cursor.fetchmany.return_value = [(1,)]
+        driver = DM8Driver(driver_config)
+        await driver.connect()
+
+        first = asyncio.create_task(driver.execute_query("SELECT 1"))
+        await asyncio.to_thread(first_running.wait, 5)
+        first.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await first
+        second = asyncio.create_task(driver.execute_query("SELECT 2"))
+        await asyncio.sleep(0.2)
+        # The first statement's thread is still on the connection.
+        assert order == ["start SELECT 1"]
+        let_first_finish.set()
+        await second
+        assert order == ["start SELECT 1", "end SELECT 1", "start SELECT 2", "end SELECT 2"]

@@ -27,7 +27,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 import time
+from collections.abc import Sequence
 from typing import Any
 
 from fim_one.core.tool.connector.database.base import (
@@ -70,10 +72,17 @@ class DM8Driver(DatabaseDriver):
     LRU pool, so no second pooling layer is needed.
     """
 
+    placeholder_style = "qmark"
+
     def __init__(self, config: dict[str, Any]) -> None:
         super().__init__(config)
         self._conn: Any | None = None
-        self._lock = asyncio.Lock()
+        # One statement at a time on the one connection. Held by the worker
+        # thread that runs the statement, not by the task that waits for
+        # it: a task that is cancelled or times out goes away while its
+        # thread is still on the connection, and the next statement must
+        # wait for that thread, not for the task.
+        self._lock = threading.Lock()
 
     # ---- connection lifecycle -------------------------------------------------
 
@@ -190,9 +199,22 @@ class DM8Driver(DatabaseDriver):
     # ---- query execution ------------------------------------------------------
 
     async def execute_query(
-        self, sql: str, *, timeout_s: int = 30, max_rows: int = 1000
+        self,
+        sql: str,
+        *,
+        timeout_s: int = 30,
+        max_rows: int = 1000,
+        parameters: Sequence[Any] | None = None,
+        read_only: bool = True,
     ) -> QueryResult:
         """Execute ``sql`` and return a :class:`QueryResult`.
+
+        *read_only* is not enforced here: the connection runs in
+        auto-commit mode and this driver opens no read-only transaction, so
+        a read-only connector relies on the keyword check
+        (``safety.validate_sql``) alone.
+
+        *parameters* are bound to the ``?`` placeholders by ``dmPython``.
 
         DM8 does not provide a trivial per-statement timeout through
         ``dmPython``; the ``timeout_s`` argument is enforced via
@@ -202,7 +224,7 @@ class DM8Driver(DatabaseDriver):
 
         async def _run() -> QueryResult:
             rows_raw, columns = await self._execute_sync(
-                sql, (), fetch="rows+cols", max_rows=max_rows + 1
+                sql, tuple(parameters or ()), fetch="rows+cols", max_rows=max_rows + 1
             )
             truncated = len(rows_raw) > max_rows
             if truncated:
@@ -242,7 +264,7 @@ class DM8Driver(DatabaseDriver):
         assert self._conn is not None
         conn = self._conn
 
-        def _run() -> Any:
+        def _statement() -> Any:
             cursor = conn.cursor()
             try:
                 cursor.execute(sql, params)
@@ -265,8 +287,11 @@ class DM8Driver(DatabaseDriver):
                 except Exception:  # pragma: no cover - defensive
                     logger.debug("Error closing DM8 cursor", exc_info=True)
 
-        async with self._lock:
-            return await asyncio.to_thread(_run)
+        def _run() -> Any:
+            with self._lock:
+                return _statement()
+
+        return await asyncio.to_thread(_run)
 
 
 def _serialize_rows(rows: list[list[Any]]) -> list[list[Any]]:

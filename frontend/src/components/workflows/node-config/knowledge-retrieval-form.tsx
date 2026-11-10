@@ -1,26 +1,41 @@
 "use client"
 
+import { useMemo } from "react"
 import { useTranslations } from "next-intl"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { InsertVariableBar, OutputVariableField, SectionHeader } from "./fields"
+import { useAuth } from "@/contexts/auth-context"
+import { kbApi } from "@/lib/api"
+import { InsertVariableBar, OutputVariableField, ResourceSelect, SectionHeader } from "./fields"
+import { resourceOptions } from "./resource-options"
+import { useResourceList } from "./use-resource-list"
 import type { NodeFormProps } from "./types"
 
 export function KnowledgeRetrievalForm({ data, setField, otherNodes }: NodeFormProps<"knowledgeRetrieval">) {
   const t = useTranslations("workflows")
+  const { user } = useAuth()
+  // The step reads one knowledge base; the field is a list in the schema.
+  const kbId = (data.kb_ids ?? [])[0] ?? ""
+  // A knowledge base cannot be shared: a step reads only its author's own.
+  const knowledgeBases = useResourceList(kbApi.list)
+  const kbChoices = useMemo(
+    () =>
+      resourceOptions(
+        knowledgeBases.filter((kb) => kb.user_id === user?.id || kb.id === kbId),
+        kbId,
+      ),
+    [knowledgeBases, kbId, user?.id],
+  )
   return (
     <div className="space-y-3">
-      <div className="space-y-1.5">
-        <label className="text-xs font-medium">{t("configSelectKB")}</label>
-        <Input
-          className="h-7 text-xs"
-          placeholder="KB ID"
-          value={(data.kb_ids ?? [])[0] ?? ""}
-          onChange={(e) =>
-            setField("kb_ids", e.target.value ? [e.target.value] : [])
-          }
-        />
-      </div>
+      <ResourceSelect
+        label={t("configSelectKB")}
+        emptyLabel={t("configKBPlaceholder")}
+        value={kbId}
+        options={kbChoices}
+        onChange={(v) => setField("kb_ids", v ? [v] : [])}
+        testId="kb-select"
+      />
 
       <SectionHeader label={t("configSectionPrompt")} />
       <div className="space-y-1.5">

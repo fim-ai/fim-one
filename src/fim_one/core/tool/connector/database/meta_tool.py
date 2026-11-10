@@ -279,7 +279,11 @@ class DatabaseMetaTool(BaseTool):
 
         try:
             # Validate SQL using existing safety module
-            cleaned_sql = validate_sql(sql, allow_write=not stub.read_only)
+            from .drivers import sql_dialect_of
+
+            cleaned_sql = validate_sql(
+                sql, allow_write=not stub.read_only, dialect=sql_dialect_of(stub.db_config)
+            )
 
             # Execute via connection pool
             pool = ConnectionPoolManager.get_instance()
@@ -288,6 +292,7 @@ class DatabaseMetaTool(BaseTool):
                 cleaned_sql,
                 timeout_s=stub.query_timeout,
                 max_rows=stub.max_rows,
+                read_only=stub.read_only,
             )
 
             rows, redacted = redact_rows(

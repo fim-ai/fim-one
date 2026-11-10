@@ -700,6 +700,38 @@ class TestRunLifecycle:
         assert run.status == "completed"
 
     @pytest.mark.asyncio
+    async def test_a_failed_run_keeps_the_text_for_its_record_and_a_code_for_callers(
+        self, world: World
+    ) -> None:
+        class _FailingEngine:
+            def __init__(self, **_kwargs: Any) -> None:
+                pass
+
+            async def execute_streaming(
+                self, _parsed: Any, _inputs: Any, context: Any = None
+            ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
+                yield "node_failed", {"node_id": "db_1", "error": "[Error] relation missing"}
+                yield (
+                    "run_failed",
+                    {
+                        "status": "failed",
+                        "error": "Nodes failed: ['db_1']",
+                        "error_code": "workflow_step_failed",
+                    },
+                )
+
+        svc = _service(_FailingEngine)
+        started = await svc.start_run(
+            world.wf, caller_id=None, inputs={}, mode=rs.RunMode.TRIGGER
+        )
+        outcome = await asyncio.wait_for(started.wait(), timeout=5)
+        assert outcome.error_code == "workflow_step_failed"
+        # The owner's run record has the step and what it said.
+        (run,) = await _runs(world)
+        assert run.error == "Nodes failed: ['db_1']"
+        assert run.node_results["db_1"]["error"] == "[Error] relation missing"
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize("mode", [rs.RunMode.BATCH, rs.RunMode.TOOL, rs.RunMode.TRIGGER])
     async def test_any_mode_can_be_cancelled(self, world: World, mode: rs.RunMode) -> None:
         svc = _service(_SlowEngine)
@@ -709,6 +741,7 @@ class TestRunLifecycle:
         assert svc.cancel_run(started.run_id) is True
         outcome = await asyncio.wait_for(started.wait(), timeout=5)
         assert outcome.status == "cancelled"
+        assert outcome.error_code == "workflow_run_cancelled"
         assert svc.cancel_run(started.run_id) is False  # no longer registered
         (run,) = await _runs(world)
         assert run.status == "cancelled"

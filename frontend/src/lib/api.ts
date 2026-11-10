@@ -1205,6 +1205,20 @@ export const workflowApi = {
       { method: "DELETE" },
     ).then((r) => r.data),
 
+  /** The tools of an MCP server a step can call, with their argument schemas. */
+  listStepMcpTools: (serverId: string) =>
+    apiFetch<
+      ApiResponse<{
+        tools: Array<{
+          name: string
+          description: string
+          input_schema: Record<string, unknown> | null
+        }>
+      }>
+    >(`/api/workflows/step-options/mcp-servers/${encodeURIComponent(serverId)}/tools`).then(
+      (r) => r.data.tools,
+    ),
+
   testNode: (workflowId: string, body: NodeTestRequest) =>
     apiFetch<ApiResponse<NodeTestResponse>>(
       `/api/workflows/${workflowId}/test-node`,

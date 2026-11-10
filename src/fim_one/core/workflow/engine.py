@@ -530,6 +530,7 @@ class WorkflowEngine:
                                 {
                                     "status": "failed",
                                     "error": f"Workflow execution timed out after {self._workflow_timeout_ms}ms",
+                                    "error_code": "workflow_run_timed_out",
                                     "duration_ms": elapsed_ms,
                                 },
                             )
@@ -716,6 +717,7 @@ class WorkflowEngine:
                         {
                             "status": "failed",
                             "error": f"Nodes failed: {failed_nodes}",
+                            "error_code": "workflow_step_failed",
                             "duration_ms": elapsed_ms,
                             "total_tokens": self._usage_tracker.get_summary().total_tokens,
                         },
@@ -731,6 +733,7 @@ class WorkflowEngine:
                                 "No End node was reached; nodes failed: "
                                 f"{handled_failures}"
                             ),
+                            "error_code": "workflow_step_failed",
                             "duration_ms": elapsed_ms,
                             "total_tokens": self._usage_tracker.get_summary().total_tokens,
                         },
@@ -753,6 +756,7 @@ class WorkflowEngine:
                     {
                         "status": "cancelled",
                         "error": "Execution cancelled",
+                        "error_code": "workflow_run_cancelled",
                         "duration_ms": elapsed_ms,
                         "total_tokens": self._usage_tracker.get_summary().total_tokens,
                     },
@@ -765,6 +769,7 @@ class WorkflowEngine:
                     {
                         "status": "failed",
                         "error": str(exc),
+                        "error_code": "workflow_run_failed",
                         "duration_ms": elapsed_ms,
                         "total_tokens": self._usage_tracker.get_summary().total_tokens,
                     },

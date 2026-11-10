@@ -35,6 +35,7 @@ from fim_one.db.models.user import User
 from fim_one.db.models.workflow import Workflow
 from fim_one.web.api import workflows as wf_api
 from fim_one.web.schemas.common import ApiResponse
+from fim_one.web.schemas.workflow import WorkflowTriggerRequest
 from fim_one.web.services import workflow_trigger_keys as keys
 from fim_one.web.services.feature_flags import require_workflows_enabled
 
@@ -277,6 +278,81 @@ class TestParseBearer:
     )
     def test_parse(self, header: str | None, expected: str | None) -> None:
         assert keys.parse_bearer(header) == expected
+
+
+# ---------------------------------------------------------------------------
+# What the key holder is told about a failed run
+# ---------------------------------------------------------------------------
+
+
+class TestAFailedRunIsReportedWithoutItsDetails:
+    """The caller holds a key, not an account: no step names, no failure text."""
+
+    async def _trigger(self, outcome: Any) -> dict[str, Any]:
+        from fim_one.core.workflow import run_service
+
+        class _Service:
+            async def run_to_completion(self, *_args: Any, **_kwargs: Any) -> Any:
+                return outcome
+
+        wf = Workflow(id="wf-1", user_id="owner", name="hooked", blueprint={})
+        body = WorkflowTriggerRequest(inputs={})
+        with patch.object(run_service, "get_run_service", lambda: _Service()):
+            resp = await wf_api._execute_trigger(wf, body)
+        return dict(resp.data)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("error", "code"),
+        [
+            ("Nodes failed: ['query_customers']", "workflow_step_failed"),
+            (
+                "RuntimeError: PostgreSQL error: invalid input syntax for type integer: "
+                '"hunter2"',
+                "workflow_run_failed",
+            ),
+            ("Workflow execution timed out after 600000ms", "workflow_run_timed_out"),
+        ],
+    )
+    async def test_the_error_is_a_fixed_sentence_and_a_code(self, error: str, code: str) -> None:
+        from fim_one.core.workflow.run_service import RunOutcome
+
+        data = await self._trigger(
+            RunOutcome(run_id="r1", status="failed", error=error, error_code=code)
+        )
+        assert data["status"] == "failed"
+        assert data["error_code"] == code
+        assert data["error"] == wf_api._TRIGGER_FAILURE_MESSAGES[code]
+        assert "query_customers" not in data["error"]
+        assert "hunter2" not in data["error"]
+        assert data["run_id"] == "r1"
+
+    @pytest.mark.asyncio
+    async def test_a_failure_with_no_code_is_reported_as_a_failed_run(self) -> None:
+        from fim_one.core.workflow.run_service import RunOutcome
+
+        data = await self._trigger(
+            RunOutcome(run_id="r1", status="failed", error="KeyError: 'internal'")
+        )
+        assert (data["error_code"], "internal" in data["error"]) == ("workflow_run_failed", False)
+
+    @pytest.mark.asyncio
+    async def test_a_completed_run_has_no_error(self) -> None:
+        from fim_one.core.workflow.run_service import RunOutcome
+
+        data = await self._trigger(RunOutcome(run_id="r1", outputs={"answer": 42}))
+        assert data["outputs"] == {"answer": 42}
+        assert (data["error"], data["error_code"]) == (None, None)
+
+    def test_every_code_has_a_message_for_the_interface(self) -> None:
+        import json
+        from pathlib import Path
+
+        messages = json.loads(
+            (Path(__file__).resolve().parents[1] / "frontend/messages/en/errors.json").read_text()
+        )
+        for code, sentence in wf_api._TRIGGER_FAILURE_MESSAGES.items():
+            assert messages[code] == sentence
 
 
 # ---------------------------------------------------------------------------

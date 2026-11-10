@@ -16,8 +16,12 @@ export interface Seed {
   connectorName: string
   actionId: string
   actionName: string
+  dbConnectorId: string
+  dbConnectorName: string
   mcpServerId: string
+  mcpServerName: string
   kbId: string
+  kbName: string
 }
 
 export const KB_FACT = "the sky over the stub is green"
@@ -73,15 +77,39 @@ export async function seed(request: APIRequestContext): Promise<Seed> {
     },
   )
 
+  // A database connector with nowhere to connect to: listing its tables
+  // answers from the schema it has stored (none), without a connection.
+  const dbConnectorName = "Stub Warehouse"
+  const dbConnector = await api<{ data: { id: string } }>(
+    request,
+    "POST",
+    "/api/connectors",
+    token,
+    {
+      name: dbConnectorName,
+      type: "database",
+      db_config: {
+        driver: "postgresql",
+        host: "127.0.0.1",
+        port: 1,
+        database: "stub",
+        username: "stub",
+        password: "stub",
+      },
+    },
+  )
+
+  const mcpServerName = "Stub MCP"
   const mcp = await api<{ data: { id: string } }>(request, "POST", "/api/mcp-servers", token, {
-    name: "Stub MCP",
+    name: mcpServerName,
     transport: "stdio",
     command: "node",
     args: [MCP_STUB_PATH],
   })
 
+  const kbName = "Stub KB"
   const kb = await api<{ data: { id: string } }>(request, "POST", "/api/knowledge-bases", token, {
-    name: "Stub KB",
+    name: kbName,
     retrieval_mode: "dense",
   })
   await api(request, "POST", `/api/knowledge-bases/${kb.data.id}/documents/create`, token, {
@@ -109,8 +137,12 @@ export async function seed(request: APIRequestContext): Promise<Seed> {
     connectorName,
     actionId: action.data.id,
     actionName,
+    dbConnectorId: dbConnector.data.id,
+    dbConnectorName,
     mcpServerId: mcp.data.id,
+    mcpServerName,
     kbId: kb.data.id,
+    kbName,
   }
 }
 
@@ -176,6 +208,47 @@ export async function createLinearWorkflow(
         ],
         viewport: { x: 0, y: 0, zoom: 1 },
         ...(variables ? { variables } : {}),
+      },
+    },
+  )
+  return created.data.id
+}
+
+/** Create a saved Start -> Connector -> End workflow whose connector is not chosen yet. */
+export async function createConnectorWorkflow(
+  request: APIRequestContext,
+  session: Session,
+  name: string,
+): Promise<string> {
+  const created = await api<{ data: { id: string } }>(
+    request,
+    "POST",
+    "/api/workflows",
+    session.accessToken,
+    {
+      name,
+      blueprint: {
+        schema_version: 2,
+        nodes: [
+          { id: "start_1", type: "start", position: { x: 100, y: 200 }, data: { variables: [] } },
+          {
+            id: "connector_1",
+            type: "connector",
+            position: { x: 420, y: 200 },
+            data: { connector_id: "", action_id: "", parameters: {}, output_variable: "result" },
+          },
+          {
+            id: "end_1",
+            type: "end",
+            position: { x: 740, y: 200 },
+            data: { output_mapping: { out: "{{connector_1.result}}" } },
+          },
+        ],
+        edges: [
+          { id: "e1", source: "start_1", target: "connector_1", sourceHandle: "source", targetHandle: "target" },
+          { id: "e2", source: "connector_1", target: "end_1", sourceHandle: "source", targetHandle: "target" },
+        ],
+        viewport: { x: 0, y: 0, zoom: 1 },
       },
     },
   )

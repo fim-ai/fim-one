@@ -132,6 +132,11 @@ class KnowledgeRetrievalNodeData(NodeDataBase):
 
 
 class ConnectorNodeData(NodeDataBase):
+    """``action_id`` is the id of one of an API connector's actions. For a
+    database connector it names the operation: ``list_tables``,
+    ``describe_table`` (``parameters.table_name``) or ``query``
+    (``parameters.sql``)."""
+
     connector_id: str = ""
     action_id: str = ""
     parameters: dict[str, Any] = Field(default_factory=dict)

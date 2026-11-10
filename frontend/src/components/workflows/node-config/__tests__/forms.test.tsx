@@ -15,8 +15,25 @@ import { formForNodeType, NODE_FORMS } from "../registry"
  * while its switch is off, so it is exercised here.
  */
 
-vi.mock("@/lib/api", () => ({
-  connectorApi: { list: vi.fn(() => Promise.resolve({ items: [] })) },
+const api = vi.hoisted(() => ({
+  connectors: [] as Array<Record<string, unknown>>,
+}))
+
+vi.mock("@/lib/api", () => {
+  const none = () => Promise.resolve({ items: [], pages: 1 })
+  return {
+    connectorApi: {
+      list: vi.fn(() => Promise.resolve({ items: api.connectors, pages: 1 })),
+    },
+    agentApi: { list: vi.fn(none) },
+    kbApi: { list: vi.fn(none) },
+    mcpServerApi: { list: vi.fn(none) },
+    workflowApi: { listStepMcpTools: vi.fn(() => Promise.resolve([])) },
+  }
+})
+
+vi.mock("@/contexts/auth-context", () => ({
+  useAuth: () => ({ user: { id: "u1" } }),
 }))
 
 beforeAll(() => {
@@ -29,7 +46,10 @@ beforeAll(() => {
   vi.stubGlobal("ResizeObserver", ResizeObserverStub)
 })
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  api.connectors = []
+})
 
 function renderWithMessages(ui: ReactElement) {
   return render(
@@ -135,29 +155,8 @@ describe("node settings forms", () => {
     expect(String(conditions[0].id)).toMatch(/^cond_\d+$/)
   })
 
-  it("Knowledge Retrieval: the id field writes a one-element kb_ids list", () => {
-    const { setField } = renderForm("knowledgeRetrieval")
-    fireEvent.change(screen.getByPlaceholderText("KB ID"), { target: { value: "kb-1" } })
-    expect(setField).toHaveBeenLastCalledWith("kb_ids", ["kb-1"])
-    cleanup()
-    const filled = renderForm("knowledgeRetrieval", {
-      ...defaultNodeData("knowledgeRetrieval"),
-      kb_ids: ["kb-1"],
-    })
-    fireEvent.change(screen.getByPlaceholderText("KB ID"), { target: { value: "" } })
-    expect(filled.setField).toHaveBeenLastCalledWith("kb_ids", [])
-  })
-
-  it("Agent and MCP write their reference fields", () => {
-    const agent = renderForm("agent")
-    fireEvent.change(screen.getByPlaceholderText("Agent ID"), { target: { value: "agent-1" } })
-    expect(agent.setField).toHaveBeenLastCalledWith("agent_id", "agent-1")
-    cleanup()
+  it("MCP: the tool name field writes tool_name", () => {
     const mcp = renderForm("mcp")
-    fireEvent.change(screen.getByPlaceholderText(workflows.configServerIdPlaceholder), {
-      target: { value: "srv-1" },
-    })
-    expect(mcp.setField).toHaveBeenLastCalledWith("server_id", "srv-1")
     fireEvent.change(screen.getByPlaceholderText(workflows.configToolNamePlaceholder), {
       target: { value: "echo" },
     })
@@ -176,6 +175,47 @@ describe("node settings forms", () => {
     expect(setField).toHaveBeenLastCalledWith("assignee", "ada@example.com")
     fireEvent.change(screen.getByDisplayValue("24"), { target: { value: "48" } })
     expect(setField).toHaveBeenLastCalledWith("timeout_hours", 48)
+  })
+
+  // A Connector step pointed at a database connector had nothing to fill in
+  // but an action it does not have. It now offers the connector's operations.
+  const warehouse = { id: "c-db", name: "Warehouse", type: "database", is_active: true, user_id: "u1", actions: [] }
+
+  it("Connector: a database connector offers an operation and a SQL field for a query", async () => {
+    api.connectors = [warehouse]
+    const { setField } = renderForm("connector", {
+      ...defaultNodeData("connector"),
+      connector_id: "c-db",
+      action_id: "query",
+      parameters: { sql: "SELECT 1" },
+    })
+    expect(await screen.findByText(workflows.configSelectOperation)).toBeTruthy()
+    expect(screen.queryByText(workflows.configSelectAction)).toBeNull()
+    expect(screen.queryByRole("button", { name: workflows.configAddParam })).toBeNull()
+    const sql = screen.getByDisplayValue("SELECT 1")
+    fireEvent.change(sql, { target: { value: "SELECT id FROM orders" } })
+    expect(setField).toHaveBeenLastCalledWith("parameters", { sql: "SELECT id FROM orders" })
+  })
+
+  it("Connector: describing a table asks for the table name only", async () => {
+    api.connectors = [warehouse]
+    const { setField } = renderForm("connector", {
+      ...defaultNodeData("connector"),
+      connector_id: "c-db",
+      action_id: "describe_table",
+      parameters: { table_name: "" },
+    })
+    const table = await screen.findByPlaceholderText(workflows.configTableNamePlaceholder)
+    fireEvent.change(table, { target: { value: "orders" } })
+    expect(setField).toHaveBeenLastCalledWith("parameters", { table_name: "orders" })
+    expect(screen.queryByText(workflows.configSql)).toBeNull()
+  })
+
+  it("Connector: an API connector keeps its action and parameter fields", async () => {
+    api.connectors = [{ id: "c-crm", name: "CRM", type: "api", is_active: true, user_id: "u1", actions: [] }]
+    renderForm("connector", { ...defaultNodeData("connector"), connector_id: "c-crm" })
+    expect(await screen.findByText(workflows.configSelectAction)).toBeTruthy()
+    expect(screen.queryByText(workflows.configSelectOperation)).toBeNull()
   })
 
   it("Connector: adding a parameter keeps the existing ones", () => {

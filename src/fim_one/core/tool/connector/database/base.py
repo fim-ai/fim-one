@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar, Literal
 
 
 @dataclass
@@ -48,6 +49,18 @@ class DatabaseDriver(ABC):
     connection management, schema introspection, and query execution.
     """
 
+    # How a value is bound for this driver: a placeholder (``$1`` or ``?``)
+    # with the value sent beside the SQL, or ``literal`` (the value written
+    # into the SQL as a hex literal; see ``binding.mysql_literal``).
+    # ``None``: the driver cannot bind, and SQL with ``{{variable}}``
+    # references is refused for it.
+    placeholder_style: ClassVar[Literal["numeric", "qmark", "literal"] | None] = None
+    # Whether ``execute_query(read_only=True)`` runs the query in a
+    # read-only transaction that the database itself enforces.
+    enforces_read_only: ClassVar[bool] = False
+    # Which comment and quoting rules the database reads SQL by.
+    sql_dialect: ClassVar[Literal["postgresql", "mysql", "generic"]] = "generic"
+
     def __init__(self, config: dict[str, Any]) -> None:
         self._config = config
 
@@ -75,6 +88,23 @@ class DatabaseDriver(ABC):
 
     @abstractmethod
     async def execute_query(
-        self, sql: str, *, timeout_s: int = 30, max_rows: int = 1000
+        self,
+        sql: str,
+        *,
+        timeout_s: int = 30,
+        max_rows: int = 1000,
+        parameters: Sequence[Any] | None = None,
+        read_only: bool = True,
     ) -> QueryResult:
-        """Execute a read query and return results."""
+        """Execute a query and return results.
+
+        With *read_only* (the default) the query runs in a read-only
+        transaction when :attr:`enforces_read_only` is true: the database
+        refuses to change rows, whatever the SQL looks like. Each driver's
+        docstring says what its transaction does not cover. A driver
+        without one relies on the keyword check made before this call.
+
+        *parameters* are the values of the placeholders in *sql*, written in
+        the driver's :attr:`placeholder_style`. They are sent to the database
+        as values, never as SQL text.
+        """

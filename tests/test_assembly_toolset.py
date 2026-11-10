@@ -16,6 +16,7 @@ import fim_one.db.models  # noqa: F401
 from fim_one.core.assembly.errors import AssemblyRefusal
 from fim_one.core.assembly.principal import CallContext, provisional_principal
 from fim_one.core.assembly.toolset import (
+    DATABASE_OPERATIONS,
     ToolsetError,
     connector_tools,
     database_tools,
@@ -274,6 +275,36 @@ def _mcp_server(name: str, *, transport: str, allow_fallback: bool) -> SimpleNam
         allow_fallback=allow_fallback,
         user_id=OWNER,
     )
+
+    async def test_legacy_can_be_limited_to_the_operations_asked_for(
+        self, session: AsyncSession
+    ) -> None:
+        """A workflow step runs one operation and builds one tool."""
+        for operation in DATABASE_OPERATIONS:
+            (tool,) = await database_tools(
+                session, _ctx(OWNER), [_database("warehouse")], mode="legacy", operations=[operation]
+            )
+            assert tool.name == f"warehouse__{operation}"
+
+    async def test_strict_raises_the_refusal_instead_of_leaving_the_database_out(
+        self, session: AsyncSession
+    ) -> None:
+        with pytest.raises(AssemblyRefusal) as refused:
+            await database_tools(
+                session, _ctx(OTHER), [_database("warehouse")], mode="legacy", strict=True
+            )
+        assert refused.value.error_code == "owner_only"
+
+    async def test_strict_says_when_no_connection_is_saved(self, session: AsyncSession) -> None:
+        with pytest.raises(ToolsetError, match="has no connection configured"):
+            await database_tools(
+                session, _ctx(OWNER), [_database("draft", configured=False)], mode="legacy", strict=True
+            )
+        # Someone who may not use it is refused, not told how it is configured.
+        with pytest.raises(AssemblyRefusal):
+            await database_tools(
+                session, _ctx(OTHER), [_database("draft", configured=False)], mode="legacy", strict=True
+            )
 
 
 class _FakeMCPClient:

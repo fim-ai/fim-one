@@ -463,19 +463,35 @@ class TestAgentsAreAssembledByTheRuntime:
 
 
 class TestWorkflowStepsHoldNoRuleOfTheirOwn:
-    """T10 section 2: a workflow step asks ``core.assembly``; it does not decide.
+    """T10 section 2 and the P4 gate: ``core/workflow`` asks ``core.assembly``.
 
-    Visibility, the fallback switch and credentials are not read under
-    ``core/workflow`` (``TestCredentialsAndCallRecordsLiveInTheAssemblyLayer``
-    covers the last two, with the workflow's own env vars as the one
-    exception), and no step imports the web layer for an agent's runtime.
+    Nothing under ``core/workflow`` decides who may see a resource or reads
+    the fallback switch: no visibility query, no subscription lookup, no
+    share-state clause, no ``allow_fallback``, no owner-only predicate for
+    raw SQL. That covers the steps and the import check, which
+    used to read the subscription table itself. Credentials and call
+    records are gated by ``TestCredentialsAndCallRecordsLiveInTheAssemblyLayer``
+    (with the workflow's own env vars as the one exception), and no step
+    imports the web layer for an agent's runtime.
     """
 
-    def test_no_visibility_query_in_core_workflow(self) -> None:
+    def test_no_visibility_rule_in_core_workflow(self) -> None:
         files = sorted((CORE / "workflow").rglob("*.py"))
         offenders = [
             hit
-            for needle in ("resolve_visibility", "build_visibility_filter")
+            for needle in (
+                "resolve_visibility",
+                "build_visibility_filter",
+                "visibility_clause",
+                "visible_clause_for",
+                "use_clause_for",
+                "ResourceSubscription",
+                "allow_fallback",
+                # whether a subscribed resource is still shared
+                "is_shared_clause",
+                # who may run raw SQL on a database connector (its owner)
+                "db_raw_sql_tool_allowed",
+            )
             for hit in _occurrences(needle, files)
         ]
         assert not offenders, (

@@ -8,6 +8,8 @@ import type { NodeDataByType, WorkflowNodeV2Type } from "@/types/workflow-bluepr
  * stops this directory from compiling until the form follows.
  */
 export interface NodeFormProps<K extends WorkflowNodeV2Type> {
+  /** The step's id, for a form that keeps something per step across mounts. */
+  nodeId?: string
   data: NodeDataByType[K]
   /** Set one field of the node's data. */
   setField: <F extends keyof NodeDataByType[K]>(field: F, value: NodeDataByType[K][F]) => void

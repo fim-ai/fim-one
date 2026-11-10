@@ -409,6 +409,7 @@ class TestErrorStrategyRunStatus:
         name, data = _final(await _run(raw))
         assert name == "run_failed"
         assert "No End node was reached" in data["error"]
+        assert data["error_code"] == "workflow_step_failed"
 
     @pytest.mark.asyncio
     async def test_stop_workflow_still_fails_run(self) -> None:
@@ -419,6 +420,7 @@ class TestErrorStrategyRunStatus:
         name, data = _final(await _run(raw))
         assert name == "run_failed"
         assert data["error"] == "Nodes failed: ['bad']"
+        assert data["error_code"] == "workflow_step_failed"
 
 
 # ---------------------------------------------------------------------------
@@ -558,7 +560,11 @@ class TestTriggerRateLimitSlot:
         ):
             await wf_api._execute_trigger(wf, WorkflowTriggerRequest(inputs={}))
 
-        assert exc.value.error_code.startswith("invalid_blueprint")
+        # A key holder gets the code and a fixed sentence: the reason (which
+        # names steps) is for the owner, in the editor.
+        assert exc.value.error_code == "invalid_blueprint"
+        assert exc.value.detail == wf_api._TRIGGER_INVALID_BLUEPRINT
+        assert "BOGUS" not in exc.value.detail and "'x'" not in exc.value.detail
         assert not limiter._active_runs.get("owner-1")
 
 
