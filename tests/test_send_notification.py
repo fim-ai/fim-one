@@ -411,6 +411,87 @@ class TestInstanceChannels:
         assert mail.startswith("[Error] send_notification no longer takes an email address")
 
 
+class TestLegacyProviderArgument:
+    """Calls written for the old interface: ``provider`` plus a free-text ``channel``."""
+
+    @pytest.mark.asyncio
+    async def test_email_with_an_address_gets_the_hint(
+        self, session_factory: async_sessionmaker[AsyncSession], seed: dict[str, str]
+    ) -> None:
+        """The address is not a channel name; say what replaced it."""
+        tool = _tool(session_factory, seed["alice"])
+        for channel in ("someone@a.test", "", "a@a.test, b@a.test"):
+            result = await tool.run(provider="email", channel=channel, title="t", body="b")
+            assert result.startswith(
+                "[Error] send_notification no longer takes an email address"
+            ), (channel, result)
+            assert "No channel named" not in result
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("provider", ["slack", "Slack", " SLACK "])
+    async def test_webhook_provider_with_free_text_still_reaches_the_instance_webhook(
+        self,
+        provider: str,
+        session_factory: async_sessionmaker[AsyncSession],
+        seed: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``channel`` was ignored for webhook providers; "#general" picked nothing."""
+        monkeypatch.setenv("SLACK_WEBHOOK_URL", SLACK_ENV)
+        patcher, calls = _webhook_send()
+        with patcher:
+            result = await _tool(session_factory, seed["alice"]).run(
+                provider=provider, channel="#general", title="t", body="b"
+            )
+        assert result == "Notification sent to channel 'instance:slack'."
+        assert [url for url, _ in calls] == [SLACK_ENV]
+
+    @pytest.mark.asyncio
+    async def test_a_channel_that_exists_wins_over_the_provider(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        seed: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A call that names one of the caller's channels means that channel."""
+        monkeypatch.setenv("SLACK_WEBHOOK_URL", SLACK_ENV)
+        tool = _tool(session_factory, seed["alice"])
+        patcher, calls = _webhook_send()
+        with patcher:
+            by_name = await tool.run(provider="slack", channel="Ops", title="t", body="b")
+            by_id = await tool.run(provider="email", channel=seed["ops"], title="t", body="b")
+        assert by_name == by_id == "Notification sent to channel 'Ops'."
+        assert [url for url, _ in calls] == [SLACK_A, SLACK_A]
+
+    @pytest.mark.asyncio
+    async def test_a_provider_that_is_not_configured_is_reported(
+        self, session_factory: async_sessionmaker[AsyncSession], seed: dict[str, str]
+    ) -> None:
+        patcher, calls = _webhook_send()
+        with patcher:
+            result = await _tool(session_factory, seed["alice"]).run(
+                provider="wecom", channel="#general", title="t", body="b"
+            )
+        assert result.startswith("[Error] No channel named 'instance:wecom'")
+        assert calls == []
+
+    @pytest.mark.asyncio
+    async def test_another_organizations_channel_is_not_reached_through_the_provider(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        seed: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("SLACK_WEBHOOK_URL", SLACK_ENV)
+        patcher, calls = _webhook_send()
+        with patcher:
+            await _tool(session_factory, seed["alice"]).run(
+                provider="slack", channel="Board", title="t", body="b"
+            )
+        # Org B's "Board" is not Alice's: the call falls back to the instance webhook.
+        assert [url for url, _ in calls] == [SLACK_ENV]
+
+
 class TestBinding:
     """A run's tool acts for the run's acting user."""
 

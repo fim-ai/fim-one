@@ -147,24 +147,37 @@ class SendNotificationTool(BaseTool):
             lines.append(f"... and {len(targets) - _MAX_LISTED} more")
         return "Available channels:\n" + "\n".join(lines)
 
+    @staticmethod
+    def _matching(targets: list[_Target], wanted: str) -> list[_Target]:
+        """The targets *wanted* names: by id (or ``instance:`` key), else by name."""
+        by_key = [t for t in targets if t.key == wanted]
+        return by_key or [t for t in targets if t.name.casefold() == wanted.casefold()]
+
     async def run(self, **kwargs: Any) -> str:
         # A title is one line on every channel type, and a mail subject must be.
         title = single_line(str(kwargs.get("title") or ""))
         body = str(kwargs.get("body") or "").strip()
         wanted = str(kwargs.get("channel") or "").strip()
         # The interface before channels were per organization named a
-        # provider; its webhooks are the instance-wide channels now.
+        # ``provider``; its ``channel`` was the recipient address for email
+        # and free text the webhook providers ignored.
         legacy_provider = str(kwargs.get("provider") or "").strip().lower()
-        if not wanted and legacy_provider in ("slack", "lark", "wecom"):
-            wanted = f"{INSTANCE_PREFIX}{legacy_provider}"
-        elif not wanted and legacy_provider == "email":
+
+        targets = await self._targets()
+        matches = self._matching(targets, wanted) if wanted else []
+        if not matches and legacy_provider == "email":
+            # Whatever ``channel`` holds, it is not a channel: an address.
             return (
                 "[Error] send_notification no longer takes an email address. "
                 "Send to an email channel of your organization by its name, "
                 "or use the email_send tool for an ad-hoc recipient."
             )
+        if not matches and legacy_provider in ("slack", "lark", "wecom"):
+            # Its webhooks are the instance-wide channels now; a ``channel``
+            # such as "#general" was never used to pick the destination.
+            wanted = f"{INSTANCE_PREFIX}{legacy_provider}"
+            matches = self._matching(targets, wanted)
 
-        targets = await self._targets()
         if not wanted:
             return self._listing(targets)
         if not title:
@@ -172,9 +185,6 @@ class SendNotificationTool(BaseTool):
         if not body:
             return "[Error] 'body' is required."
 
-        matches = [t for t in targets if t.key == wanted]
-        if not matches:
-            matches = [t for t in targets if t.name.casefold() == wanted.casefold()]
         if not matches:
             return f"[Error] No channel named '{wanted[:_MAX_NAME_CHARS]}'. {self._listing(targets)}"
         if len(matches) > 1:
