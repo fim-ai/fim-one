@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, Any
 
 from .actions import is_registered
 from .context import current_request_auth, current_request_meta
-from .events import Actor, Outcome, RequestMeta
+from .events import Actor, EventContext, Outcome, RequestMeta
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -151,7 +151,7 @@ async def record(
     outcome: Outcome = "success",
     changes: Mapping[str, Mapping[str, Any]] | None = None,
     detail: str | None = None,
-    context: CallContext | None = None,
+    context: CallContext | EventContext | None = None,
     request: RequestMeta | None = None,
     db: AsyncSession | None = None,
 ) -> None:

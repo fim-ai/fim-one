@@ -275,6 +275,18 @@ MARKET_IMPORT_TEMPLATES = "market.import_templates"
 NOTIFICATIONS_INSTANCE_TEST = "notifications.instance_test"
 NOTIFICATIONS_INSTANCE_SEND = "notifications.instance_send"
 
+# -- Decisions on approval requests ------------------------------------------------
+# A tool call that asked a human first, or a workflow approval step. Written
+# by ``core/assembly/confirmation.py`` in the transaction of the decision,
+# from every surface (portal, approval inbox, a channel's card). The event
+# says who, which kind of request, the tool or step, and where it was
+# decided; never the arguments of the call. It stays when the request row
+# is deleted with its channel, organization or run.
+CONFIRMATION_APPROVE = "confirmation.approve"
+CONFIRMATION_REJECT = "confirmation.reject"
+# Nobody decided in time. The actor is the system.
+CONFIRMATION_EXPIRE = "confirmation.expire"
+
 # -- Refusals anyone can provoke -------------------------------------------------
 # Written through ``core/audit/refusals.py``: at most one per source address
 # and ten minutes, the next one saying how many were left out.

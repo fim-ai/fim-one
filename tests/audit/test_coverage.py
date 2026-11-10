@@ -84,11 +84,29 @@ class TestWhatTheTablesSay:
         } | set(c.NON_ROUTE_ACTIONS)
         assert actions.ACTIONS - listed == set()
 
-    def test_a_gap_is_not_yet_a_registered_action_of_its_route(self) -> None:
-        """Once a route records, it moves to AUDITED."""
-        assert not set(c.KNOWN_GAPS) & set(c.AUDITED)
-        for gap in (*c.KNOWN_GAPS.values(), *c.KNOWN_NON_ROUTE_GAPS.values()):
-            assert gap.owner and gap.action
+    def test_every_remaining_gap_is_left_to_named_work_outside_this_branch(self) -> None:
+        """The coverage work is done: what is still unrecorded is deferred
+        on purpose, to work that is named with its reason."""
+        for where, gap in (*c.KNOWN_GAPS.items(), *c.KNOWN_NON_ROUTE_GAPS.items()):
+            assert gap.action, where
+            assert gap.owner in c.DEFERRED_OWNERS, (
+                f"{where}: a gap owned by {gap.owner!r}. Record the action, or defer it "
+                "to work listed in DEFERRED_OWNERS with a reason."
+            )
+        for owner, reason in c.DEFERRED_OWNERS.items():
+            assert reason.strip(), owner
+        for route, gap in c.KNOWN_GAPS.items():
+            assert gap.reason.strip(), f"{route}: a deferred route says why"
+
+    def test_the_deferred_routes_are_the_workflow_run_routes(self) -> None:
+        assert {path for _, path in c.KNOWN_GAPS} == {
+            "/api/workflows/trigger",
+            "/api/workflows/trigger/{api_key}",
+            "/api/workflows/{workflow_id}/run",
+            "/api/workflows/{workflow_id}/batch-run",
+            "/api/workflows/{workflow_id}/test-node",
+            "/api/workflows/{workflow_id}/runs/{run_id}/cancel",
+        }
 
 
 def _constant_names(action: str) -> Iterator[str]:

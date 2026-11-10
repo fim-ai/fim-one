@@ -53,6 +53,9 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
 
 from fim_one.core.agent.hooks import HookContext, HookResult
+from fim_one.core.audit import actions
+from fim_one.core.audit import writer as audit
+from fim_one.core.audit.events import Actor, EventContext
 from fim_one.core.channels import ApprovalCarrier, ApprovalRequestSummary, build_channel
 from fim_one.core.channels.resolve import resolve_org_channel
 from fim_one.core.hooks.base import PreToolUseHook
@@ -82,6 +85,7 @@ __all__ = [
     "confirmation_required",
     "create_approval_gate_hook",
     "record_decision",
+    "record_expired",
     "validate_assignee",
 ]
 
@@ -359,20 +363,25 @@ class ConfirmationService:
             ).scalar_one_or_none()
 
     async def _mark_expired(self, confirmation_id: str) -> None:
-        from sqlalchemy import update
+        from sqlalchemy import CursorResult, update
 
         from fim_one.db.models.channel import ConfirmationRequest
 
         try:
             async with self._session_factory() as session:
-                await session.execute(
-                    update(ConfirmationRequest)
-                    .where(
-                        ConfirmationRequest.id == confirmation_id,
-                        ConfirmationRequest.status == "pending",
-                    )
-                    .values(status="expired", responded_at=datetime.now(UTC))
+                closed = cast(
+                    CursorResult[Any],
+                    await session.execute(
+                        update(ConfirmationRequest)
+                        .where(
+                            ConfirmationRequest.id == confirmation_id,
+                            ConfirmationRequest.status == "pending",
+                        )
+                        .values(status="expired", responded_at=datetime.now(UTC))
+                    ),
                 )
+                if (closed.rowcount or 0) == 1:
+                    await record_expired(session, [confirmation_id])
                 await session.commit()
         except Exception:  # pragma: no cover - defensive
             logger.exception("Failed to mark confirmation %s expired", confirmation_id)
@@ -475,6 +484,17 @@ class ConfirmationService:
                 "You are not authorised to respond to this confirmation.",
             )
 
+        async def _audit() -> None:
+            await _record_closure(
+                db,
+                row,
+                actions.CONFIRMATION_APPROVE if decision == "approve" else actions.CONFIRMATION_REJECT,
+                actor=audit.actor_from_principal(
+                    actor, label=await _label_of_user(db, actor.user_id)
+                ),
+                via="channel" if via_channel_id is not None else "portal",
+            )
+
         final_status, newly_applied, _payload = await record_decision(
             db,
             confirmation_id=confirmation_id,
@@ -482,6 +502,7 @@ class ConfirmationService:
             decided_by=actor.user_id,
             external_actor=external_actor,
             note=note,
+            before_commit=_audit,
         )
         if final_status is None:
             raise AssemblyRefusal(CONFIRMATION_NOT_FOUND, 404, "Confirmation request not found.")
@@ -677,6 +698,86 @@ async def close_requests_of_runs(db: Any, run_ids: Any) -> int:
     return int(result.rowcount or 0)
 
 
+# ---------------------------------------------------------------------------
+# The audit record of how a request ended
+# ---------------------------------------------------------------------------
+
+
+async def _label_of_user(db: Any, user_id: str | None) -> str | None:
+    """The username or email of *user_id*, for the record of what they decided."""
+    if not user_id:
+        return None
+    from sqlalchemy import select
+
+    from fim_one.db.models.user import User
+
+    found = (
+        await db.execute(select(User.username, User.email).where(User.id == user_id))
+    ).one_or_none()
+    return (found[0] or found[1]) if found is not None else None
+
+
+async def _record_closure(db: Any, row: Any, action: str, *, actor: Actor, via: str) -> None:
+    """Add the audit event for *row* ending as *action* to *db*; the caller commits.
+
+    The event outlives the request row, which goes with its channel or its
+    organization. It says who decided, which kind of request it was, the
+    tool or the workflow step it was about, and where the decision was
+    made; the arguments of the call stay on the request, for the approver.
+    A question the agent asked its user is answered, not decided: none is
+    recorded for it.
+    """
+    if row.kind == "user_question":
+        return
+    payload = row.payload if isinstance(row.payload, dict) else {}
+    about = payload.get("tool_name") if row.kind == "confirmation" else row.node_id
+    await audit.record(
+        action,
+        actor=actor,
+        org_id=row.org_id,
+        target_type="confirmation",
+        target_id=row.id,
+        target_label=str(about) if about else None,
+        detail=f"kind={row.kind}; via={via}",
+        context=EventContext(
+            conversation_id=row.conversation_id,
+            workflow_run_id=row.workflow_run_id,
+            agent_id=row.agent_id,
+        ),
+        db=db,
+    )
+
+
+async def record_expired(db: Any, confirmation_ids: Any) -> None:
+    """Add the audit events for requests nobody decided in time; the caller commits.
+
+    Call it for the ids a conditional ``UPDATE ... WHERE status='pending'``
+    has just closed, in the same transaction.
+    """
+    ids = [str(confirmation_id) for confirmation_id in confirmation_ids]
+    if not ids:
+        return
+    from sqlalchemy import select
+
+    from fim_one.db.models.channel import ConfirmationRequest
+
+    rows = (
+        await db.execute(
+            select(ConfirmationRequest)
+            .where(ConfirmationRequest.id.in_(ids))
+            .execution_options(populate_existing=True)
+        )
+    ).scalars()
+    for row in rows:
+        await _record_closure(
+            db,
+            row,
+            actions.CONFIRMATION_EXPIRE,
+            actor=audit.system_actor("confirmation expiry"),
+            via="timeout",
+        )
+
+
 async def _notify_decided(row: Any) -> None:
     for callback in list(_decided_callbacks):
         try:
@@ -706,6 +807,7 @@ async def record_decision(
     decided_by: str | None = None,
     external_actor: str | None = None,
     note: str | None = None,
+    before_commit: Callable[[], Awaitable[None]] | None = None,
 ) -> tuple[str | None, bool, dict[str, Any] | None]:
     """Flip a pending row to ``approved`` / ``rejected`` and say whether this call did it.
 
@@ -715,6 +817,10 @@ async def record_decision(
     one update changes the row, the rest see a rowcount of zero. The
     condition includes the deadline: a row still pending past its
     ``expires_at`` is not decided but marked ``expired``.
+
+    *before_commit* runs when this call decided the row, before the commit
+    that makes the decision durable: the audit record of a decision is
+    written there, so the two are stored together or not at all.
 
     Returns ``(final_status, newly_applied, payload)``: ``(None, False,
     None)`` when there is no such row.
@@ -757,19 +863,27 @@ async def record_decision(
         ),
     )
     newly_applied = (result.rowcount or 0) == 1
-    if not newly_applied:
+    if newly_applied:
+        if before_commit is not None:
+            await before_commit()
+    else:
         # Still pending past its deadline: the sweep has not reached it
         # yet. It is closed here, so the caller reads "expired".
-        await db.execute(
-            update(ConfirmationRequest)
-            .where(
-                ConfirmationRequest.id == confirmation_id,
-                ConfirmationRequest.status == "pending",
-                ConfirmationRequest.expires_at <= now,
-            )
-            .values(status="expired", responded_at=now)
-            .execution_options(synchronize_session=False)
+        late = cast(
+            CursorResult[Any],
+            await db.execute(
+                update(ConfirmationRequest)
+                .where(
+                    ConfirmationRequest.id == confirmation_id,
+                    ConfirmationRequest.status == "pending",
+                    ConfirmationRequest.expires_at <= now,
+                )
+                .values(status="expired", responded_at=now)
+                .execution_options(synchronize_session=False)
+            ),
         )
+        if (late.rowcount or 0) == 1:
+            await record_expired(db, [confirmation_id])
     await db.commit()
 
     row = (

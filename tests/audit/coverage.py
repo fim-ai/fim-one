@@ -71,11 +71,20 @@ class Gap(NamedTuple):
     owner: str
     # What it will record.
     action: str
+    # Why it is left to that work.
+    reason: str = ""
 
 
-# Work outside this branch that a gap may be left to. Nothing else may own
-# a gap once the coverage work is done.
-DEFERRED_OWNERS = frozenset({"T10 P7"})
+# Work outside this branch that a gap may be left to, with the reason.
+# Nothing else may own a gap.
+DEFERRED_OWNERS: dict[str, str] = {
+    "T10 P7": (
+        "workflow run events (a run started, refused, cancelled or closed) are "
+        "recorded in the run service, where every way of starting a run passes: one "
+        "record per run whatever the entry, with the run id. A record in each route "
+        "would miss the schedule and the agent tool and would have to be removed again."
+    ),
+}
 
 
 def all_routes(app: Any) -> Iterator[tuple[Route, Any]]:
@@ -341,6 +350,8 @@ AUDITED: dict[Route, tuple[str, ...]] = {
     ("PATCH", "/api/admin/users/{user_id}"): ("user.update",),
     ("POST", "/api/notifications/send"): ("notifications.instance_send",),
     ("POST", "/api/notifications/test"): ("notifications.instance_test",),
+    ("POST", "/api/channels/{channel_id}/callback"): ("confirmation.approve", "confirmation.reject"),
+    ("POST", "/api/confirmations/{confirmation_id}/respond"): ("confirmation.approve", "confirmation.reject"),
 }
 
 EXEMPT: dict[Route, str] = {
@@ -416,16 +427,42 @@ EXEMPT: dict[Route, str] = {
 }
 
 KNOWN_GAPS: dict[Route, Gap] = {
-    # 11 confirmation decisions
-    ("POST", "/api/channels/{channel_id}/callback"): Gap("11 confirmation decisions", "confirmation.approve|confirmation.reject"),
-    ("POST", "/api/confirmations/{confirmation_id}/respond"): Gap("11 confirmation decisions", "confirmation.approve|confirmation.reject"),
-    # T10 P7
-    ("POST", "/api/workflows/trigger"): Gap("T10 P7", "workflow.run_started / workflow.run_refused"),
-    ("POST", "/api/workflows/trigger/{api_key}"): Gap("T10 P7", "workflow.run_started / workflow.run_refused"),
-    ("POST", "/api/workflows/{workflow_id}/batch-run"): Gap("T10 P7", "workflow.run_started / workflow.run_refused"),
-    ("POST", "/api/workflows/{workflow_id}/run"): Gap("T10 P7", "workflow.run_started / workflow.run_refused"),
-    ("POST", "/api/workflows/{workflow_id}/runs/{run_id}/cancel"): Gap("T10 P7", "workflow.run_cancelled"),
-    ("POST", "/api/workflows/{workflow_id}/test-node"): Gap("T10 P7", "workflow.run_started / workflow.run_refused"),
+    # T10 P7: workflow run events. What the request changes is a run, and
+    # the run row records it today (who, which entry, the outcome) for as
+    # long as run retention keeps it.
+    ("POST", "/api/workflows/{workflow_id}/run"): Gap(
+        "T10 P7",
+        "workflow.run_started / workflow.run_refused",
+        "starts a run by hand; recorded once in the run service with every other entry",
+    ),
+    ("POST", "/api/workflows/{workflow_id}/batch-run"): Gap(
+        "T10 P7",
+        "workflow.run_started / workflow.run_refused",
+        "starts one run per item; each is a run event of the run service",
+    ),
+    ("POST", "/api/workflows/trigger"): Gap(
+        "T10 P7",
+        "workflow.run_started / workflow.run_refused",
+        "starts a run for a trigger key; the run event carries the key's prefix "
+        "(an unknown key is already recorded: workflow.trigger_key_invalid)",
+    ),
+    ("POST", "/api/workflows/trigger/{api_key}"): Gap(
+        "T10 P7",
+        "workflow.run_started / workflow.run_refused",
+        "the deprecated spelling of the trigger route; same run event",
+    ),
+    ("POST", "/api/workflows/{workflow_id}/test-node"): Gap(
+        "T10 P7",
+        "workflow.run_started / workflow.run_refused",
+        "runs one step for real (its connector or MCP call is in the call log); "
+        "a run event like any other start",
+    ),
+    ("POST", "/api/workflows/{workflow_id}/runs/{run_id}/cancel"): Gap(
+        "T10 P7",
+        "workflow.run_cancelled",
+        "ends a run; recorded with the other ways a run ends (failed, timed out, "
+        "closed as stale)",
+    ),
 }
 
 
@@ -452,15 +489,35 @@ AUDITED_READS: dict[Route, tuple[str, ...]] = {
 
 # Read routes and other entry points that should leave a record and do not yet.
 KNOWN_NON_ROUTE_GAPS: dict[str, Gap] = {
-    "a request nobody decided in time": Gap("11 confirmation decisions", "confirmation.expire"),
-    "a scheduled run starting, a waiting run refused on resume, a stale run closed": Gap(
-        "T10 P7", "workflow.run_started / workflow.run_refused / workflow.run_closed"
+    # Workflow run events: who started which run through which entry, and
+    # the runs the platform refused or closed on its own. T10 P7 records
+    # them in the run service, where every entry (the Run button, a batch,
+    # a trigger key, a schedule, an agent's tool) passes.
+    "a scheduled run starting; a run started by an agent's run_workflow tool": Gap(
+        "T10 P7", "workflow.run_started"
+    ),
+    "a run refused at admission, or a waiting run refused when it is continued": Gap(
+        "T10 P7", "workflow.run_refused"
+    ),
+    "a run closed because its server process stopped (stale heartbeat)": Gap(
+        "T10 P7", "workflow.run_closed"
+    ),
+    "a trigger call with a valid key whose workflow owner is switched off": Gap(
+        "T10 P7", "workflow.run_refused"
+    ),
+    "a request closed because its run was deleted, cancelled or failed": Gap(
+        "T10 P7", "workflow.run_cancelled / workflow.run_closed"
     ),
 }
 
 # Records written outside any route: action -> the test that shows it
 # (``tests/<file>.py::<Class>::<test>``).
 NON_ROUTE_ACTIONS: dict[str, str] = {
+    # The expiry sweep, a wait that runs out, and a click that comes too late.
+    "confirmation.expire": (
+        "tests/test_audit_confirmations.py::TestNobodyDecidedInTime::"
+        "test_the_sweep_records_each_request_it_closes"
+    ),
     # The IP rule gate is a middleware; it refuses before any route.
     "security.ip_blocked": (
         "tests/test_audit_refusals.py::TestABlockedAddress::"
@@ -482,4 +539,10 @@ NON_ROUTE_ACTIONS: dict[str, str] = {
 
 # Where a route's record is written when not in the module of its endpoint
 # (a shared service): route -> the modules that hold the call.
-RECORDED_IN: dict[Route, tuple[str, ...]] = {}
+RECORDED_IN: dict[Route, tuple[str, ...]] = {
+    # Every surface decides through the one service, which writes the record.
+    ("POST", "/api/confirmations/{confirmation_id}/respond"): (
+        "fim_one.core.assembly.confirmation",
+    ),
+    ("POST", "/api/channels/{channel_id}/callback"): ("fim_one.core.assembly.confirmation",),
+}

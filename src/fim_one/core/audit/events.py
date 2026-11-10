@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
-__all__ = ["Actor", "ActorKind", "AuditEvent", "Outcome", "RequestMeta"]
+__all__ = ["Actor", "ActorKind", "AuditEvent", "EventContext", "Outcome", "RequestMeta"]
 
 # ``denied``: refused by a rule (a blocked address, an unknown key);
 # ``failed``: attempted and did not go through.
@@ -45,6 +45,18 @@ class RequestMeta:
     ip: str | None
     user_agent: str | None
     request_id: str | None
+
+
+@dataclass(frozen=True)
+class EventContext:
+    """What an event happened in, for a caller that holds no ``CallContext``.
+
+    The writer reads the same three ids from either.
+    """
+
+    conversation_id: str | None = None
+    workflow_run_id: str | None = None
+    agent_id: str | None = None
 
 
 @dataclass(frozen=True)

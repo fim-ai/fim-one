@@ -655,7 +655,10 @@
       "org__admin_delete": "Delete Organization (Admin)",
       "market__import_templates": "Import Market Templates",
       "notifications__instance_test": "Test Instance Webhook",
-      "notifications__instance_send": "Send via Instance Webhook"
+      "notifications__instance_send": "Send via Instance Webhook",
+      "confirmation__approve": "Approve Request",
+      "confirmation__reject": "Reject Request",
+      "confirmation__expire": "Approval Request Expired"
     },
     "detailDialogTitle": "Audit Detail",
     "filterDateFrom": "From",
