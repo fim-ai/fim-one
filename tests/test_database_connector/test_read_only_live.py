@@ -185,11 +185,13 @@ class TestPostgreSQL:
             schema_tables=[],
             on_call_complete=None,
         )[2]
-        started = time.monotonic()
-        text = await tool.run(
+        lifted = await tool.run(
             sql="SELECT set_config('statement_timeout', '0', true), count(*) "
             "FROM generate_series(1, 100000000000)"
         )
+        assert lifted.startswith("[SQL Safety Error]"), lifted
+        started = time.monotonic()
+        text = await tool.run(sql="SELECT count(*) FROM generate_series(1, 100000000000)")
         assert text.startswith("[Timeout]"), text
         assert time.monotonic() - started < 10
         assert json.loads(await tool.run(sql="SELECT 1"))["rows"] == [[1]]

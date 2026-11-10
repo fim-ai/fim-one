@@ -81,6 +81,10 @@ _READ_ONLY_FUNCTIONS = frozenset(
         "get_lock", "release_lock", "release_all_locks", "is_free_lock", "is_used_lock",
     }
 )  # fmt: skip
+# What ``set_config(name, value, true)`` may set on a read-only connection.
+_LOCAL_SETTINGS_OF_A_READ = frozenset(
+    {"search_path", "datestyle", "timezone", "intervalstyle", "extra_float_digits"}
+)
 _READ_ONLY_FUNCTION_PREFIXES = (
     "dblink", "pg_read_", "pg_ls_", "pg_stat_reset",
     # They run the query text they are given, in a way of their own.
@@ -226,8 +230,17 @@ def _function_calls(lexemes: list[Lexeme]) -> list[str]:
     return [name for _, name in _function_calls_at(lexemes)]
 
 
-def _third_argument_is_true(lexemes: list[Lexeme], name_at: int) -> bool:
-    """Whether the call at *name_at* is ``f(a, b, true)``: the keyword, written out."""
+def _is_local_setting_of_a_read(lexemes: list[Lexeme], name_at: int) -> bool:
+    """Whether the call at *name_at* is ``set_config('<setting>', value, true)`` for a read.
+
+    Three conditions, all on what is written: the third argument is the
+    keyword TRUE (local to the transaction, which a read-only connector
+    rolls back); the first is a plain string literal; and that literal
+    names one of the few settings that only change how a read is answered.
+    ``statement_timeout``, ``lock_timeout``, ``role``,
+    ``session_authorization``, ``row_security`` and the ``transaction_*``
+    settings change what the query may do, and stay refused.
+    """
     opening = name_at + 1
     close = _closing(lexemes, opening)
     inner = lexemes[opening].depth + 1
@@ -237,12 +250,17 @@ def _third_argument_is_true(lexemes: list[Lexeme], name_at: int) -> bool:
             arguments.append([])
         else:
             arguments[-1].append(lex)
-    return (
-        close < len(lexemes)
-        and len(arguments) == 3
-        and len(arguments[2]) == 1
-        and arguments[2][0].upper == "TRUE"
-    )
+    if close >= len(lexemes) or len(arguments) != 3:
+        return False
+    setting, _, is_local = arguments
+    if len(is_local) != 1 or is_local[0].upper != "TRUE":
+        return False
+    if len(setting) != 1 or setting[0].kind != "string":
+        return False
+    text = setting[0].text
+    if len(text) < 2 or text[0] != "'" or text[-1] != "'":
+        return False
+    return ascii_lower(text[1:-1]) in _LOCAL_SETTINGS_OF_A_READ
 
 
 def _has_words(lexemes: list[Lexeme], *words: str) -> bool:
@@ -370,8 +388,7 @@ def _refuse_writes_inside_a_read(lexemes: list[Lexeme], dialect: SqlDialect) -> 
         )
 
     for index, name in _function_calls_at(lexemes):
-        if name == "set_config" and _third_argument_is_true(lexemes, index):
-            # For this transaction only, which is rolled back.
+        if name == "set_config" and _is_local_setting_of_a_read(lexemes, index):
             continue
         if name in _READ_ONLY_FUNCTIONS or name.startswith(_READ_ONLY_FUNCTION_PREFIXES):
             raise SqlSafetyError(
