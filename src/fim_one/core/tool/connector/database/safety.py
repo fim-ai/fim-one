@@ -77,6 +77,10 @@ _READ_ONLY_FUNCTIONS = frozenset(
         "pg_create_restore_point", "pg_logical_emit_message", "set_config",
         "pg_stat_file", "pg_current_logfile", "ts_stat",
         "pg_drop_replication_slot", "pg_replication_slot_advance",
+        "pg_backup_start", "pg_backup_stop", "pg_start_backup", "pg_stop_backup",
+        "pg_export_snapshot", "pg_import_system_collations", "pg_promote",
+        "pg_wal_replay_pause", "pg_wal_replay_resume",
+        "pg_log_backend_memory_contexts", "pg_notify",
         # Session-level locks: they outlive the query.
         "get_lock", "release_lock", "release_all_locks", "is_free_lock", "is_used_lock",
     }
