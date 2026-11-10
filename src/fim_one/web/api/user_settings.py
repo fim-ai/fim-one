@@ -264,6 +264,7 @@ async def list_my_sessions(
             success=row.success,
             failure_reason=row.failure_reason,
             method=row.method,
+            outcome=audit.login_outcome(row.success, row.failure_reason),
             created_at=row.created_at.isoformat() if row.created_at else "",
         )
         for row in rows

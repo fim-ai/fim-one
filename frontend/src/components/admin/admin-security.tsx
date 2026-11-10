@@ -57,6 +57,7 @@ interface LoginHistoryEntry {
   ip_address: string | null
   user_agent: string | null
   success: boolean
+  outcome?: string
   failure_reason: string | null
   created_at: string
 }
@@ -343,7 +344,11 @@ export function AdminSecurity() {
                         {entry.ip_address || "\u2014"}
                       </td>
                       <td className="px-4 py-2.5">
-                        {entry.success ? (
+                        {entry.outcome === "pending_second_factor" ? (
+                          <Badge variant="outline" className="border-amber-500/40 text-amber-600 dark:text-amber-400">
+                            {t("statusPendingSecondFactor")}
+                          </Badge>
+                        ) : entry.success ? (
                           <Badge
                             variant="outline"
                             className="border-green-500/40 text-green-600 dark:text-green-400"

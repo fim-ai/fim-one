@@ -1272,6 +1272,7 @@ interface SessionItem {
   ip_address: string
   created_at: string
   success: boolean
+  outcome?: string
 }
 
 function parseUserAgent(ua: string): string {
@@ -1373,7 +1374,11 @@ function SessionsSection() {
                     {formatDateTime(s.created_at)}
                   </td>
                   <td className="px-4 py-3">
-                    {s.success ? (
+                    {s.outcome === "pending_second_factor" ? (
+                      <Badge variant="outline" className="border-amber-500/30 bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400">
+                        {t("sessionsPendingSecondFactor")}
+                      </Badge>
+                    ) : s.success ? (
                       <Badge variant="outline" className="border-green-500/30 bg-green-50 text-green-700 dark:bg-green-950/20 dark:text-green-400">
                         {t("sessionsSuccess")}
                       </Badge>

@@ -817,6 +817,7 @@
     "colUserAgent": "User Agent",
     "statusSuccess": "Success",
     "statusFailed": "Failed",
+    "statusPendingSecondFactor": "Awaiting second factor",
     "ipRulesTitle": "IP Rules",
     "ipRulesSubtitle": "Whitelist or blacklist IP addresses.",
     "addRule": "Add Rule",

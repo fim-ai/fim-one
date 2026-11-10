@@ -134,7 +134,7 @@ class TestOAuthSignIn:
         )
 
         first, second = await world.logins()
-        assert _row(first) == (octo.id, octo.email, "oauth:github", True, "2fa_pending")
+        assert _row(first) == (octo.id, octo.email, "oauth:github", False, "2fa_pending")
         assert _row(second) == (octo.id, octo.email, "oauth:github", True, None)
 
 
@@ -196,7 +196,7 @@ class TestPasswordAndCodeSignIn:
 
         rows = await world.logins()
         assert [_row(r) for r in rows] == [
-            (alice.id, alice.email, "password", True, "2fa_pending"),
+            (alice.id, alice.email, "password", False, "2fa_pending"),
             (alice.id, alice.email, "password", False, "2fa_code_invalid"),
         ]
 
@@ -331,3 +331,70 @@ class TestAnAccountThatDoesNotExist:
             )
 
         assert len(await world.logins()) == 15
+
+
+class TestAFirstStepThatStillOwesTheSecondFactor:
+    """It was stored as a successful sign-in: "my sessions" and the sign-in
+    history showed a password-only attempt as signed in, and the success
+    count included it."""
+
+    async def test_it_is_neither_a_sign_in_nor_a_failure(self, world: World) -> None:
+        secret = pyotp.random_base32()
+        root = await world.user("root", admin=True)
+        alice = await world.user("alice", password=PASSWORD, totp_enabled=True, totp_secret=secret)
+
+        first = await world.call(
+            "POST", "/api/auth/login", json={"email": alice.email, "password": PASSWORD}
+        )
+
+        (row,) = await world.logins()
+        assert (row.success, row.failure_reason) == (False, "2fa_pending")
+        own = (await world.call("GET", "/api/me/sessions", by=alice)).json()["items"]
+        assert [(i["success"], i["outcome"]) for i in own] == [(False, "pending_second_factor")]
+        stats = (await world.call("GET", "/api/admin/login-history/stats", by=root)).json()
+        assert (stats["total_attempts"], stats["successful"], stats["failed"]) == (1, 0, 0)
+        assert stats["recent_failures"] == 0
+        for wanted, found in (("true", 0), ("false", 0)):
+            listed = await world.call("GET", f"/api/admin/login-history?success={wanted}", by=root)
+            assert len(listed.json()["items"]) == found
+        everything = (await world.call("GET", "/api/admin/login-history", by=root)).json()
+        assert [i["outcome"] for i in everything["items"]] == ["pending_second_factor"]
+
+        # Completing the second step is the sign-in.
+        await world.call(
+            "POST",
+            "/api/auth/login/verify-2fa",
+            json={"temp_token": first.json()["temp_token"], "code": pyotp.TOTP(secret).now()},
+        )
+        stats = (await world.call("GET", "/api/admin/login-history/stats", by=root)).json()
+        assert (stats["total_attempts"], stats["successful"], stats["failed"]) == (2, 1, 0)
+
+    async def test_wrong_codes_are_still_counted_by_the_limiter(self, world: World) -> None:
+        secret = pyotp.random_base32()
+        alice = await world.user("alice", password=PASSWORD, totp_enabled=True, totp_secret=secret)
+        first = await world.call(
+            "POST", "/api/auth/login", json={"email": alice.email, "password": PASSWORD}
+        )
+        body = {"temp_token": first.json()["temp_token"], "code": "000000"}
+
+        statuses = [
+            (await world.call("POST", "/api/auth/login/verify-2fa", json=body, expect=(401, 429)))
+            .status_code
+            for _ in range(12)
+        ]
+
+        assert statuses[0] == 401 and statuses[-1] == 429
+
+    async def test_a_row_written_before_reads_as_pending_too(self, world: World) -> None:
+        from fim_one.db.models import LoginHistory
+
+        root = await world.user("root", admin=True)
+        async with world.factory() as db:
+            db.add(LoginHistory(user_id=root.id, success=True, failure_reason="2fa_pending"))
+            await db.commit()
+
+        stats = (await world.call("GET", "/api/admin/login-history/stats", by=root)).json()
+        listed = (await world.call("GET", "/api/admin/login-history", by=root)).json()
+
+        assert (stats["successful"], stats["failed"]) == (0, 0)
+        assert [i["outcome"] for i in listed["items"]] == ["pending_second_factor"]

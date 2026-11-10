@@ -438,7 +438,7 @@ async def login(
     # 2FA check: if TOTP is enabled, return a temp token instead of full auth
     if user.totp_enabled:
         temp_token = _create_2fa_temp_token(user.id, method="password")
-        await _record_login(db, request, user, method="password", success=True, failure_reason="2fa_pending")
+        await _record_login(db, request, user, method="password", success=False, failure_reason=audit.PENDING_SECOND_FACTOR)
         return JSONResponse(content={"requires_2fa": True, "temp_token": temp_token})
 
     access = create_access_token(user.id, user.email)
@@ -568,7 +568,7 @@ async def login_with_code(
     if user.totp_enabled:
         await db.commit()
         temp_token = _create_2fa_temp_token(user.id, method="email_code")
-        await _record_login(db, request, user, method="email_code", success=True, failure_reason="2fa_pending")
+        await _record_login(db, request, user, method="email_code", success=False, failure_reason=audit.PENDING_SECOND_FACTOR)
         return JSONResponse(content={"requires_2fa": True, "temp_token": temp_token})
 
     # Issue tokens (same pattern as /login)

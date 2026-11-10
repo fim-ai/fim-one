@@ -66,6 +66,8 @@ class SessionInfo(BaseModel):
     success: bool
     failure_reason: str | None = None
     method: str | None = None
+    # ``success``, ``pending_second_factor`` or ``failed``.
+    outcome: str = "success"
     created_at: str
 
 

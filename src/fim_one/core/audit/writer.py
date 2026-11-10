@@ -46,6 +46,8 @@ __all__ = [
     "record_review",
     "system_actor",
     "typed_identifier",
+    "PENDING_SECOND_FACTOR",
+    "login_outcome",
 ]
 
 logger = logging.getLogger(__name__)
@@ -218,6 +220,22 @@ async def record(
 # ---------------------------------------------------------------------------
 # login_history
 # ---------------------------------------------------------------------------
+
+
+# The first step of a sign-in passed and the second factor is still owed.
+# Stored as ``success=False`` with this reason: nobody is signed in yet.
+PENDING_SECOND_FACTOR = "2fa_pending"
+
+
+def login_outcome(success: bool, failure_reason: str | None) -> str:
+    """``success``, ``pending_second_factor`` or ``failed`` for a sign-in row.
+
+    A row written before the pending step had an outcome of its own says
+    ``success=True`` with the pending reason; it reads as pending too.
+    """
+    if failure_reason == PENDING_SECOND_FACTOR:
+        return "pending_second_factor"
+    return "success" if success else "failed"
 
 
 _EMAIL_SHAPE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")

@@ -323,20 +323,20 @@ async def _handle_bind(
 
 
 async def _record_sign_in(
-    db: AsyncSession, user: User, method: str, *, failure_reason: str | None = None
+    db: AsyncSession, user: User, method: str, *, pending_second_factor: bool = False
 ) -> None:
-    """Add a successful sign-in of *user* to the session; the caller commits.
+    """Add a sign-in of *user* to the session; the caller commits.
 
     A provider sign-in that still owes the second factor is recorded as the
-    password sign-in is: successful, with ``2fa_pending`` as the reason.
+    password sign-in is: not yet a success, with ``2fa_pending`` as the reason.
     """
     await audit.record_login(
         user_id=user.id,
         username=user.username,
         email=user.email,
-        success=True,
+        success=not pending_second_factor,
         method=method,
-        failure_reason=failure_reason,
+        failure_reason=audit.PENDING_SECOND_FACTOR if pending_second_factor else None,
         db=db,
     )
 
@@ -518,7 +518,7 @@ async def _handle_login(
     if user.totp_enabled:
         from fim_one.web.api.auth import _create_2fa_temp_token
 
-        await _record_sign_in(db, user, method, failure_reason="2fa_pending")
+        await _record_sign_in(db, user, method, pending_second_factor=True)
         await db.commit()
         return RedirectResponse(
             url=(

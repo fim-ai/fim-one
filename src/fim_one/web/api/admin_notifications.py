@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.audit.writer import PENDING_SECOND_FACTOR
 from fim_one.db import get_session
 from fim_one.db.models import (
     AuditLog,
@@ -228,6 +229,11 @@ async def list_system_events(
         )
         .where(
             LoginHistory.success == False,  # noqa: E712
+            # A first step waiting for its second factor is not a failure.
+            or_(
+                LoginHistory.failure_reason.is_(None),
+                LoginHistory.failure_reason != PENDING_SECOND_FACTOR,
+            ),
             LoginHistory.created_at >= cutoff,
         )
         .group_by(LoginHistory.ip_address)

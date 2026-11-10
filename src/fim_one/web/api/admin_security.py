@@ -7,10 +7,11 @@ import math
 from datetime import UTC, date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query, Request
-from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import and_, func, select
+from pydantic import BaseModel, Field, computed_field, field_validator
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.audit.writer import PENDING_SECOND_FACTOR, login_outcome
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_admin
 from fim_one.web.exceptions import AppError
@@ -24,6 +25,17 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 # ---------------------------------------------------------------------------
 # Schemas
 # ---------------------------------------------------------------------------
+
+
+# A first step that still owes the second factor is neither a sign-in nor a
+# failure. Rows written before it had an outcome of its own carry
+# ``success=True`` with the pending reason; they are left out of both too.
+_NOT_PENDING = or_(
+    LoginHistory.failure_reason.is_(None),
+    LoginHistory.failure_reason != PENDING_SECOND_FACTOR,
+)
+_SIGNED_IN = and_(LoginHistory.success == True, _NOT_PENDING)  # noqa: E712
+_FAILED = and_(LoginHistory.success == False, _NOT_PENDING)  # noqa: E712
 
 
 class LoginHistoryItem(BaseModel):
@@ -41,6 +53,12 @@ class LoginHistoryItem(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def outcome(self) -> str:
+        """``success``, ``pending_second_factor`` or ``failed``."""
+        return login_outcome(self.success, self.failure_reason)
 
 
 class LoginHistoryPaginatedResponse(BaseModel):
@@ -127,8 +145,10 @@ async def list_login_history(
     conditions = []
     if user_id is not None:
         conditions.append(LoginHistory.user_id == user_id)
-    if success is not None:
-        conditions.append(LoginHistory.success == success)
+    if success is True:
+        conditions.append(_SIGNED_IN)
+    elif success is False:
+        conditions.append(_FAILED)
     if date_from is not None:
         conditions.append(
             LoginHistory.created_at >= datetime(date_from.year, date_from.month, date_from.day, tzinfo=timezone.utc)
@@ -178,10 +198,11 @@ async def login_stats(
     total_q = select(func.count()).select_from(LoginHistory)
     total_attempts = (await db.execute(total_q)).scalar_one()
 
-    success_q = select(func.count()).select_from(LoginHistory).where(LoginHistory.success == True)  # noqa: E712
+    success_q = select(func.count()).select_from(LoginHistory).where(_SIGNED_IN)
     successful = (await db.execute(success_q)).scalar_one()
 
-    failed = total_attempts - successful
+    failed_q = select(func.count()).select_from(LoginHistory).where(_FAILED)
+    failed = (await db.execute(failed_q)).scalar_one()
 
     unique_ips_q = select(func.count(func.distinct(LoginHistory.ip_address))).select_from(LoginHistory)
     unique_ips = (await db.execute(unique_ips_q)).scalar_one()
@@ -194,7 +215,7 @@ async def login_stats(
     recent_q = (
         select(func.count())
         .select_from(LoginHistory)
-        .where(and_(LoginHistory.success == False, LoginHistory.created_at >= cutoff))  # noqa: E712
+        .where(and_(_FAILED, LoginHistory.created_at >= cutoff))
     )
     recent_failures = (await db.execute(recent_q)).scalar_one()
 
