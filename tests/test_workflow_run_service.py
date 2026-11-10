@@ -76,8 +76,7 @@ APPROVAL_BLUEPRINT = _blueprint(
         "data": {
             "type": "HUMAN_INTERVENTION",
             "title": "Sign off",
-            "timeout_hours": 0.0003,  # ~1 s: the approval expires, the run ends
-            "poll_interval_seconds": 0.05,
+            "timeout_hours": 1,
         },
     }
 )
@@ -336,7 +335,8 @@ async def test_tokens_billed_to_the_principal(entry: str, world: World) -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("entry", ENTRIES)
 async def test_approval_step(entry: str, world: World, real_engine: None) -> None:
-    """Approval steps create a pending approval everywhere a run can wait.
+    """Approval steps create a pending approval everywhere a run can wait,
+    and the run stops there as ``waiting`` until it is decided.
 
     The agent tool cannot wait and refuses; a single-node test auto-approves
     (it has no run to attach an approval to).
@@ -370,7 +370,7 @@ async def test_approval_step(entry: str, world: World, real_engine: None) -> Non
     else:
         assert result.refused is None
         assert len(approvals) == 1
-        assert approvals[0].status == "expired"
+        assert approvals[0].status == "pending"
         (run,) = await _runs(world)
         assert run.id == approvals[0].workflow_run_id
         assert run.user_id == _expected_principal(entry, world)
@@ -379,7 +379,13 @@ async def test_approval_step(entry: str, world: World, real_engine: None) -> Non
             "initiator",
             run.user_id,
         )
-        assert run.status == "failed"
+        assert run.status == "waiting"
+        assert run.completed_at is None
+        assert run.suspend_state["waiting"]["human_1"]["confirmation_id"] == approvals[0].id
+        # Nothing of the run is left in the process, and it holds no slot.
+        service = rs.get_run_service()
+        assert service.active_run_ids() == []
+        assert not service.rate_limiter._active_runs.get(run.user_id)
 
 
 @pytest.mark.asyncio
@@ -747,8 +753,20 @@ class TestRunLifecycle:
         assert run.status == "cancelled"
 
     @pytest.mark.asyncio
-    async def test_closing_the_stream_cancels_the_run(self, world: World) -> None:
-        svc = _service(_SlowEngine)
+    async def test_closing_the_stream_does_not_stop_the_run(self, world: World) -> None:
+        """T10 W7: a closed tab or a dropped connection is not a cancel."""
+        release = asyncio.Event()
+
+        class _Held(_SlowEngine):
+            async def execute_streaming(
+                self, _parsed: Any, _inputs: Any, context: Any = None
+            ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
+                yield "node_completed", {"node_id": "llm_1", "status": "completed"}
+                await release.wait()
+                assert not self._cancel.is_set()
+                yield "run_completed", {"status": "completed", "outputs": {"ok": 1}}
+
+        svc = _service(_Held)
         request = MagicMock()
         request.is_disconnected = AsyncMock(return_value=False)
         with patch.object(rs, "_default_service", svc):
@@ -766,10 +784,13 @@ class TestRunLifecycle:
         assert "run_started" in str(first)
         await stream.aclose()  # type: ignore[union-attr]  # client went away
 
-        for _ in range(50):
-            if not svc._active_runs:
-                break
-            await asyncio.sleep(0.02)
-        assert svc._active_runs == {}
+        await asyncio.sleep(0.1)
         (run,) = await _runs(world)
-        assert run.status == "cancelled"
+        assert run.status == "running"  # still going, with nobody reading
+        assert list(svc._active_runs) == [run.id]
+
+        release.set()
+        await _until(lambda: not svc._active_runs)
+        (run,) = await _runs(world)
+        assert run.status == "completed"
+        assert run.outputs == {"ok": 1}

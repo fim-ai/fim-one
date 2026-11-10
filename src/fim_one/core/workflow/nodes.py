@@ -1566,11 +1566,14 @@ class ConnectorExecutor:
                 duration_ms=_ms_since(t0),
             )
 class HumanInterventionExecutor:
-    """Pause workflow execution and wait for a human's approval.
+    """Stop the run until a human has approved.
 
     Asks :class:`~fim_one.core.assembly.confirmation.ConfirmationService`
-    for a ``kind="workflow_approval"`` request and polls it until it is
-    decided or its time is up. An assigned approval belongs to its
+    for a ``kind="workflow_approval"`` request and returns ``WAITING``
+    with the request's id: nothing polls. The engine suspends the run, and
+    when the request is decided or its time is up the run service
+    continues the run, which runs this step again to read the outcome
+    (:func:`_awaited_decision`). An assigned approval belongs to its
     assignee, who must be an active user in the run's organization; an
     unassigned one belongs to the user the run is attributed to.
 
@@ -1581,12 +1584,10 @@ class HumanInterventionExecutor:
             "description": "Please review the generated content",
             "assignee": "{{manager_id}}",       # optional: user id, username or email; interpolated
             "timeout_hours": 24,                 # default 24
-            "poll_interval_seconds": 5,          # default 5
             "output_variable": "approval_result"
         }
     """
 
-    DEFAULT_POLL_INTERVAL: float = 5.0
     DEFAULT_TIMEOUT_HOURS: float = 24.0
 
     @staticmethod
@@ -1627,9 +1628,12 @@ class HumanInterventionExecutor:
         timeout_hours = float(
             node.data.get("timeout_hours", self.DEFAULT_TIMEOUT_HOURS)
         )
-        poll_interval = float(
-            node.data.get("poll_interval_seconds", self.DEFAULT_POLL_INTERVAL)
-        )
+
+        # Run again after the run was suspended: read the outcome of the
+        # request made the first time.
+        asked = context.suspensions.get(node.id)
+        if asked is not None and context.db_session_factory is not None:
+            return await self._outcome(node, store, context, asked, timeout_hours, t0)
 
         # Interpolate templates
         title = await store.interpolate(title_template) if title_template else "Approval required"
@@ -1734,9 +1738,32 @@ class HumanInterventionExecutor:
             approval_id,
             timeout_hours,
         )
+        return NodeResult(
+            node_id=node.id,
+            status=NodeStatus.WAITING,
+            suspension=_suspension_of(request),
+            duration_ms=_ms_since(t0),
+        )
 
-        outcome = await service.wait(approval_id, poll_seconds=poll_interval)
-        record = await service.get(approval_id)
+    async def _outcome(
+        self,
+        node: WorkflowNodeDef,
+        store: VariableStore,
+        context: ExecutionContext,
+        asked: dict[str, Any],
+        timeout_hours: float,
+        t0: float,
+    ) -> NodeResult:
+        """The step's result once its approval request is no longer open."""
+        outcome, record = await _awaited_decision(context, asked)
+        approval_id = str(asked.get("confirmation_id") or "")
+        if outcome == "pending":
+            return NodeResult(
+                node_id=node.id,
+                status=NodeStatus.WAITING,
+                suspension=asked,
+                duration_ms=_ms_since(t0),
+            )
         if record is None:
             return NodeResult(
                 node_id=node.id,
@@ -1779,6 +1806,52 @@ class HumanInterventionExecutor:
             error=f"Approval timed out after {timeout_hours}h",
             duration_ms=_ms_since(t0),
         )
+
+
+def _suspension_of(request: Any) -> dict[str, Any]:
+    """What a step that asked for a decision is waiting on (kept with the run)."""
+    expires_at = getattr(request, "expires_at", None)
+    return {
+        "confirmation_id": str(request.id),
+        "kind": str(request.kind),
+        "expires_at": expires_at.isoformat() if expires_at is not None else None,
+    }
+
+
+async def _awaited_decision(context: ExecutionContext, asked: dict[str, Any]) -> tuple[str, Any]:
+    """How the request a step is waiting on stands: ``(outcome, row)``.
+
+    ``pending`` while it can still be decided; ``approve`` / ``reject``
+    once decided; ``expired`` when its time is up (a request still open
+    past its deadline is closed here), when the run's ending closed it, or
+    when it is gone (``row`` is then ``None``).
+    """
+    from datetime import UTC, datetime
+
+    from fim_one.core.assembly.confirmation import ConfirmationService
+
+    assert context.db_session_factory is not None
+    service = ConfirmationService(context.db_session_factory)
+    confirmation_id = str(asked.get("confirmation_id") or "")
+    record = await service.get(confirmation_id) if confirmation_id else None
+    if record is None:
+        return "expired", None
+    if record.status in ("approved", "approve"):
+        return "approve", record
+    if record.status in ("rejected", "reject"):
+        return "reject", record
+    if record.status != "pending":
+        return "expired", record
+    deadline = record.expires_at
+    if deadline is not None:
+        if deadline.tzinfo is None:
+            deadline = deadline.replace(tzinfo=UTC)
+        if datetime.now(UTC) >= deadline:
+            # ``wait`` with no time between polls: it sees the deadline has
+            # passed, closes the request and says so.
+            outcome = await service.wait(confirmation_id, poll_seconds=0)
+            return outcome, await service.get(confirmation_id)
+    return "pending", record
 
 
 class MCPExecutor:

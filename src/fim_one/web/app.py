@@ -247,6 +247,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
     )
     cleanup_task = asyncio.create_task(cleaner.run_loop())
 
+    # Workflow runs: continue a suspended run when its request is decided,
+    # stamp the runs this process executes, and recover what a dead process
+    # or a missed decision left behind (sweep at startup and periodically).
+    from fim_one.core.workflow.run_recovery import (
+        WorkflowRunSupervisor,
+        install_resume_on_decision,
+    )
+
+    remove_resume_hook = install_resume_on_decision()
+    run_supervisor_task = asyncio.create_task(WorkflowRunSupervisor.from_env().run_loop())
+
     # Start periodic expiry sweep for stale confirmation requests.
     confirmation_expirer = ConfirmationRequestExpirer(
         max_age_minutes=int(
@@ -283,6 +294,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
     confirmation_expirer_task.cancel()
     try:
         await confirmation_expirer_task
+    except asyncio.CancelledError:
+        pass
+
+    remove_resume_hook()
+    run_supervisor_task.cancel()
+    try:
+        await run_supervisor_task
     except asyncio.CancelledError:
         pass
 

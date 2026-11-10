@@ -18,6 +18,18 @@ It then creates the ``WorkflowRun`` record, drives the engine, accumulates
 node results and token usage, persists the result, releases the rate-limit
 slot and delivers the webhook.
 
+A run that reaches a step waiting for a human's decision is **suspended**:
+the engine's state is stored on the run record, the run's status becomes
+``waiting`` and nothing of it stays in memory. :meth:`WorkflowRunService.resume_run`
+continues it from the record, in whichever server process is told the
+decision was made (``core/workflow/run_recovery.py`` wires that up and
+sweeps for what was missed). Continuing is claimed with one conditional
+update of the record, so however many processes try, one does.
+
+While a run executes, the process doing so stamps the record with its
+:data:`WORKER_ID` and a heartbeat; that is how a run left behind by a dead
+process is told from a live one.
+
 Decisions recorded in ``dev/T10-workflow-refactor.md`` §9 (2026-11-04).
 """
 
@@ -25,7 +37,10 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import json
 import logging
+import os
+import socket
 import time
 import uuid
 import weakref
@@ -33,7 +48,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from fim_one.core.assembly.errors import AssemblyRefusal
 from fim_one.core.assembly.principal import (
@@ -58,6 +73,25 @@ from .types import ExecutionContext, NodeResult, NodeStatus, NodeType, WorkflowN
 logger = logging.getLogger(__name__)
 
 DEFAULT_RUN_TIMEOUT_SECONDS = 600
+
+# This server process, as written on the runs it executes.
+WORKER_ID = f"{socket.gethostname()[:32]}-{os.getpid()}-{uuid.uuid4().hex[:8]}"
+
+# Statuses of a run that has not ended: it holds a trigger key's
+# single-flight, cannot be deleted and is kept by the retention cleanup.
+UNFINISHED_STATUSES = ("pending", "running", "waiting")
+
+# How often, at most, a running run's step results are written to its
+# record so that someone who opens it sees progress (seconds).
+PROGRESS_SAVE_INTERVAL = 1.0
+
+RUN_INTERRUPTED_ERROR = (
+    "The server stopped while this run was in progress, so it could not finish. "
+    "Start the run again."
+)
+RUN_NOT_RESUMABLE_ERROR = (
+    "The run was waiting for a decision but what it needs to continue could not be read."
+)
 
 
 class RunMode(StrEnum):
@@ -95,6 +129,12 @@ _ENTRY: dict[RunMode, Entry] = {
     RunMode.TRIGGER: "trigger",
     RunMode.SCHEDULE: "schedule",
     RunMode.TOOL: "run_workflow",
+}
+# How the identity of a run was established, by entry point; needed again
+# when a suspended run is continued.
+_AUTH: dict[RunMode, AuthMethod] = {
+    RunMode.TRIGGER: AuthMethod.TRIGGER_KEY,
+    RunMode.SCHEDULE: AuthMethod.SCHEDULE,
 }
 
 
@@ -182,7 +222,16 @@ class RunGate(Protocol):
 # Runs
 # ---------------------------------------------------------------------------
 
-_NODE_EVENTS = frozenset({"node_started", "node_completed", "node_failed", "node_skipped"})
+_NODE_EVENTS = frozenset(
+    {
+        "node_started",
+        "node_resumed",
+        "node_completed",
+        "node_failed",
+        "node_skipped",
+        "node_waiting",
+    }
+)
 
 
 @dataclass
@@ -201,6 +250,9 @@ class RunOutcome:
     error_code: str | None = None
     duration_ms: int = 0
     total_tokens: int = 0
+    # With status ``waiting``: the steps waiting for a decision, as
+    # ``{node_id, confirmation_id, kind, expires_at}``.
+    waiting: list[dict[str, Any]] = field(default_factory=list)
 
 
 class StartedRun:
@@ -208,6 +260,10 @@ class StartedRun:
 
     The engine runs in a background task, so the run finishes, persists and
     releases its slot whether or not anyone is reading :meth:`events`.
+
+    The run may end ``waiting`` instead: suspended at a step that needs a
+    human's decision. This object is then done; the continuation is a new
+    one (:meth:`WorkflowRunService.resume_run`).
     """
 
     _END: tuple[str, dict[str, Any]] = ("__end__", {})
@@ -226,6 +282,9 @@ class StartedRun:
         engine: Any,
         cancel_event: asyncio.Event,
         holds_slot: bool,
+        resume_state: dict[str, Any] | None = None,
+        prior_node_results: dict[str, Any] | None = None,
+        prior_duration_ms: int = 0,
     ) -> None:
         self.run_id = run_id
         self.workflow = workflow
@@ -234,6 +293,15 @@ class StartedRun:
         self.mode = mode
         self.cancel_event = cancel_event
         self.outcome = RunOutcome(run_id=run_id)
+        # Continuing a suspended run: the engine's stored state, and what
+        # the run had recorded before it waited.
+        self._resume_state = resume_state
+        self._prior_duration_ms = prior_duration_ms
+        if resume_state is not None:
+            self.outcome.node_results = dict(prior_node_results or {})
+            self.outcome.total_tokens = int(resume_state.get("total_tokens") or 0)
+        self._suspend_state: dict[str, Any] | None = None
+        self._progress_saved_at = 0.0
         self._service = service
         self._parsed = parsed
         self._inputs = inputs
@@ -289,12 +357,45 @@ class StartedRun:
         start = time.time()
         out = self.outcome
         try:
-            async for name, data in self._engine.execute_streaming(
-                self._parsed, self._inputs, context=self._context
-            ):
+            if self._resume_state is not None:
+                stream = self._engine.execute_streaming(
+                    self._parsed,
+                    self._inputs,
+                    context=self._context,
+                    resume_state=self._resume_state,
+                )
+            else:
+                # Called as before P5, so engines that know nothing of
+                # resuming (test doubles) still fit.
+                stream = self._engine.execute_streaming(
+                    self._parsed, self._inputs, context=self._context
+                )
+            async for name, data in stream:
                 if name in _NODE_EVENTS:
                     nid = data.get("node_id", "")
                     out.node_results[nid] = {**(out.node_results.get(nid) or {}), **data}
+                    if name == "node_resumed":
+                        out.node_results[nid]["status"] = "running"
+                    await self._save_progress()
+                elif name == "run_suspended":
+                    out.status = "waiting"
+                    out.error = None
+                    out.error_code = None
+                    out.total_tokens = int(data.get("total_tokens", 0) or 0)
+                    out.waiting = list(data.get("waiting") or [])
+                    # Through JSON here, so what is stored is what a later
+                    # read gives back; values JSON has no form for become text.
+                    self._suspend_state = json.loads(
+                        json.dumps(data.get("state") or {}, default=str)
+                    )
+                    # Readers of the stream learn that the run waits and on
+                    # what, not the run's variables.
+                    name, data = "run_waiting", {
+                        "run_id": self.run_id,
+                        "status": "waiting",
+                        "waiting": out.waiting,
+                        "ts": data.get("ts"),
+                    }
                 elif name == "run_completed":
                     out.outputs = data.get("outputs", {}) or {}
                     out.status = data.get("status", "completed")
@@ -325,30 +426,60 @@ class StartedRun:
                 ("run_failed", {"run_id": self.run_id, "status": "failed", "error": out.error})
             )
         finally:
-            out.duration_ms = int((time.time() - start) * 1000)
+            out.duration_ms = self._prior_duration_ms + int((time.time() - start) * 1000)
+            suspended = out.status == "waiting" and self._suspend_state is not None
             # Each step runs even if an earlier one raises; the end marker
             # always goes out last so no reader of events() blocks forever.
             try:
                 try:
                     if self._holds_slot:
+                        # A waiting run holds no concurrent-run slot.
                         await self._service.rate_limiter.record_run_end(
                             self.principal.user_id, self.run_id
                         )
                 finally:
                     try:
-                        await self._service._persist(out, started_at=start)
+                        await self._service._persist(
+                            out,
+                            # A continued run keeps the start time it has.
+                            started_at=start if self._resume_state is None else None,
+                            suspend_state=self._suspend_state if suspended else None,
+                        )
                     finally:
                         self._service._active_runs.pop(self.run_id, None)
-                        # The files the run's Agent steps wrote go with the run.
-                        await release_sandbox(self._context.sandbox_id)
-                        try:
-                            self._service._fire_webhook(
-                                self.workflow, out, self.mode, self.call_context
-                            )
-                        except Exception:
-                            logger.exception("Webhook dispatch failed for %s", self.run_id)
+                        if suspended:
+                            # The run is not over: its files stay, no webhook
+                            # yet. A decision made while other branches were
+                            # still running found the run busy; pick it up.
+                            try:
+                                await self._service._resume_if_decided(
+                                    self.run_id, self._suspend_state or {}
+                                )
+                            except Exception:
+                                logger.exception(
+                                    "Could not check the decisions of run %s", self.run_id
+                                )
+                        else:
+                            # The files the run's Agent steps wrote go with the run.
+                            await release_sandbox(self._context.sandbox_id)
+                            try:
+                                self._service._fire_webhook(
+                                    self.workflow, out, self.mode, self.call_context
+                                )
+                            except Exception:
+                                logger.exception("Webhook dispatch failed for %s", self.run_id)
             finally:
                 self._queue.put_nowait(self._END)
+
+    async def _save_progress(self) -> None:
+        """Write the step results so far to the run record, at most once a
+        :data:`PROGRESS_SAVE_INTERVAL`: whoever opens the run meanwhile
+        (another tab, the run history) sees where it is."""
+        now = time.monotonic()
+        if now - self._progress_saved_at < PROGRESS_SAVE_INTERVAL:
+            return
+        self._progress_saved_at = now
+        await self._service._save_progress(self.run_id, self.outcome.node_results)
 
 
 class WorkflowRunService:
@@ -380,6 +511,78 @@ class WorkflowRunService:
             return False
         started.cancel()
         return True
+
+    def active_run_ids(self) -> list[str]:
+        """Runs executing in this process right now."""
+        return list(self._active_runs)
+
+    async def cancel_stored_run(self, run_id: str) -> bool:
+        """Cancel a run that is not executing in this process, on its record.
+
+        A run waiting for a decision is closed here and now: its open
+        requests are closed with it and its files removed. A run another
+        server process is executing is marked cancelled; that process sees
+        the mark at its next heartbeat and stops. False when the run had
+        already ended (or does not exist).
+        """
+        ended = await self._end_stored_run(
+            run_id, ("pending", "running", "waiting"), "cancelled", "Execution cancelled"
+        )
+        return ended is not None
+
+    async def _end_stored_run(
+        self,
+        run_id: str,
+        from_statuses: tuple[str, ...],
+        status: str,
+        error: str,
+        *,
+        stale_before: datetime | None = None,
+    ) -> str | None:
+        """Close a run on its record alone; the status it had, or ``None``.
+
+        One conditional update, so of several callers (two workers sweeping,
+        a cancel beside a decision) one closes the run. With *stale_before*
+        only a run whose heartbeat is older than that is closed. The run's
+        open confirmation requests are closed in the same transaction; a
+        run that was not executing anywhere also loses its sandbox.
+        """
+        from sqlalchemy import CursorResult, func, select, update
+
+        from fim_one.core.assembly.confirmation import close_requests_of_runs
+        from fim_one.db import create_session
+        from fim_one.db.models import WorkflowRun
+
+        now = datetime.now(UTC)
+        async with create_session() as db:
+            previous = (
+                await db.execute(select(WorkflowRun.status).where(WorkflowRun.id == run_id))
+            ).scalar_one_or_none()
+            if previous is None or previous not in from_statuses:
+                return None
+            conditions = [WorkflowRun.id == run_id, WorkflowRun.status == previous]
+            if stale_before is not None:
+                conditions.append(
+                    func.coalesce(
+                        WorkflowRun.heartbeat_at, WorkflowRun.started_at, WorkflowRun.created_at
+                    )
+                    < stale_before
+                )
+            result = await db.execute(
+                update(WorkflowRun)
+                .where(*conditions)
+                .values(status=status, error=error, completed_at=now, suspend_state=None)
+                .execution_options(synchronize_session=False)
+            )
+            if (cast(CursorResult[Any], result).rowcount or 0) != 1:
+                await db.rollback()
+                return None
+            await close_requests_of_runs(db, [run_id])
+            await db.commit()
+        if previous == "waiting" or stale_before is not None:
+            # Nothing is executing it: nobody else will remove its files.
+            await release_sandbox(workflow_run_sandbox_id(run_id))
+        return str(previous)
 
     # -- checks ---------------------------------------------------------------
 
@@ -557,6 +760,9 @@ class WorkflowRunService:
                 cancel_event=cancel_event,
                 call_context=dataclasses.replace(ctx, workflow_run_id=run_id),
                 sandbox_id=workflow_run_sandbox_id(run_id),
+                # An agent calling the workflow as a tool waits for its
+                # result and has nobody to ask.
+                can_suspend=mode not in NO_APPROVAL_MODES,
             )
             engine = self._make_engine(
                 max_concurrency=5,
@@ -597,9 +803,142 @@ class WorkflowRunService:
             raise
 
     async def run_to_completion(self, workflow: Any, **kwargs: Any) -> RunOutcome:
-        """:meth:`start_run`, then wait for the outcome."""
+        """:meth:`start_run`, then wait for the outcome.
+
+        The outcome's status is ``waiting`` when the run stopped at a step
+        that needs a human's decision; it is continued once that is made.
+        """
         started = await self.start_run(workflow, **kwargs)
         return await started.wait()
+
+    # -- continuing a suspended run -------------------------------------------
+
+    async def resume_run(self, run_id: str) -> StartedRun | None:
+        """Continue a run that is waiting for a decision; ``None`` if not ours to continue.
+
+        Safe to call from anywhere, any number of times: the run is
+        claimed by one conditional update of its record (``waiting`` to
+        ``running``), so of all callers, in this process or others, one
+        continues it and the rest get ``None``. The steps that were
+        waiting are run again and read their requests: one decided or
+        expired ends its wait, one still open makes the run wait again.
+
+        The run goes on as it was admitted: the same principal, the
+        blueprint it started with, no second pass through the gate and no
+        concurrent-run slot.
+        """
+        from sqlalchemy import CursorResult, select, update
+
+        from fim_one.db import create_session
+        from fim_one.db.models import Workflow, WorkflowRun
+
+        async with create_session() as db:
+            result = await db.execute(
+                update(WorkflowRun)
+                .where(WorkflowRun.id == run_id, WorkflowRun.status == "waiting")
+                .values(status="running", worker_id=WORKER_ID, heartbeat_at=datetime.now(UTC))
+                .execution_options(synchronize_session=False)
+            )
+            await db.commit()
+            if (cast(CursorResult[Any], result).rowcount or 0) != 1:
+                return None
+            run = (
+                await db.execute(select(WorkflowRun).where(WorkflowRun.id == run_id))
+            ).scalar_one()
+            workflow = (
+                await db.execute(select(Workflow).where(Workflow.id == run.workflow_id))
+            ).scalar_one_or_none()
+            if workflow is not None:
+                db.expunge(workflow)
+            db.expunge(run)
+
+        try:
+            if workflow is None:
+                raise ValueError("the workflow no longer exists")
+            started = self._continue(run, workflow)
+        except Exception:
+            logger.exception("Workflow run %s could not be continued", run_id)
+            await self._end_stored_run(run_id, ("running",), "failed", RUN_NOT_RESUMABLE_ERROR)
+            return None
+        self._active_runs[run_id] = started
+        started.start()
+        return started
+
+    def _continue(self, run: Any, workflow: Any) -> StartedRun:
+        """The :class:`StartedRun` that goes on from *run*'s stored state."""
+        from fim_one.db import create_session
+
+        from .engine import SUSPEND_STATE_VERSION
+        from .parser import parse_blueprint
+
+        state = run.suspend_state
+        if not isinstance(state, dict) or state.get("version") != SUSPEND_STATE_VERSION:
+            raise ValueError("no usable suspend state")
+        mode = RunMode(run.mode) if run.mode else RunMode.INTERACTIVE
+        ctx = CallContext(
+            principal=provisional_principal(run.user_id, auth=_AUTH.get(mode, AuthMethod.SESSION)),
+            binding=workflow_binding(workflow),
+            entry=_ENTRY.get(mode, "workflow_node"),
+        )
+        parsed = parse_blueprint(run.blueprint_snapshot)
+        cancel_event = asyncio.Event()
+        env_vars = author_env_vars(workflow, ctx)
+        context = ExecutionContext(
+            run_id=run.id,
+            user_id=run.user_id,
+            workflow_id=workflow.id,
+            env_vars=env_vars,
+            db_session_factory=create_session,
+            cancel_event=cancel_event,
+            call_context=dataclasses.replace(ctx, workflow_run_id=run.id),
+            sandbox_id=workflow_run_sandbox_id(run.id),
+            can_suspend=True,
+        )
+        engine = self._make_engine(
+            max_concurrency=5,
+            cancel_event=cancel_event,
+            env_vars=env_vars,
+            run_id=run.id,
+            user_id=run.user_id,
+            workflow_id=workflow.id,
+            workflow_timeout_ms=run_timeout_ms(workflow),
+        )
+        return StartedRun(
+            self,
+            run_id=run.id,
+            workflow=workflow,
+            call_context=ctx,
+            mode=mode,
+            parsed=parsed,
+            inputs=run.inputs or {},
+            context=context,
+            engine=engine,
+            cancel_event=cancel_event,
+            holds_slot=False,
+            resume_state=state,
+            prior_node_results=run.node_results if isinstance(run.node_results, dict) else None,
+            prior_duration_ms=int(run.duration_ms or 0),
+        )
+
+    def schedule_resume(self, run_id: str) -> None:
+        """Continue *run_id* in a background task of this process.
+
+        The one seam between "a decision was made" and "the run goes on";
+        a task queue would take its place here.
+        """
+        from fim_one.core.utils import spawn_background
+
+        spawn_background(self._resume_logged(run_id))
+
+    async def _resume_logged(self, run_id: str) -> None:
+        try:
+            await self.resume_run(run_id)
+        except Exception:
+            logger.exception("Continuing workflow run %s failed", run_id)
+
+    async def _resume_if_decided(self, run_id: str, state: dict[str, Any]) -> None:
+        if await requests_settled(state):
+            self.schedule_resume(run_id)
 
     async def test_node(
         self,
@@ -712,9 +1051,10 @@ class WorkflowRunService:
         from fim_one.db import create_session
         from fim_one.db.models import WorkflowRun
 
+        # A run waiting for a decision is still in flight.
         query = select(func.count()).where(
             WorkflowRun.workflow_id == workflow_id,
-            WorkflowRun.status.in_(["pending", "running"]),
+            WorkflowRun.status.in_(UNFINISHED_STATUSES),
         )
         if db is not None:
             running = (await db.execute(query)).scalar_one()
@@ -754,6 +1094,8 @@ class WorkflowRunService:
             "status": "running",
             "mode": mode.value,
             "started_at": datetime.now(UTC),
+            "worker_id": WORKER_ID,
+            "heartbeat_at": datetime.now(UTC),
         }
 
     async def _acquire_slot(self, user_id: str, run_id: str, mode: RunMode) -> None:
@@ -846,9 +1188,27 @@ class WorkflowRunService:
         except Exception:
             logger.exception("Failed to record refused %s run of %s", mode, workflow.id)
 
-    async def _persist(self, out: RunOutcome, *, started_at: float) -> None:
+    async def _persist(
+        self,
+        out: RunOutcome,
+        *,
+        started_at: float | None,
+        suspend_state: dict[str, Any] | None = None,
+    ) -> None:
+        """Write how the run stands to its record.
+
+        With *suspend_state* the run is waiting: the state is stored and
+        the run is not completed. Otherwise the run has ended, and the
+        requests it still had open are closed with it: nobody is asked to
+        decide for a run that is over.
+
+        Only a record still ``running`` is written. One that is not was
+        closed by someone else meanwhile (cancelled from another process,
+        or declared dead by the recovery sweep) and stays as they left it.
+        """
         from sqlalchemy import select
 
+        from fim_one.core.assembly.confirmation import close_requests_of_runs
         from fim_one.db import create_session
         from fim_one.db.models import WorkflowRun
 
@@ -857,18 +1217,51 @@ class WorkflowRunService:
                 run = (
                     await db.execute(select(WorkflowRun).where(WorkflowRun.id == out.run_id))
                 ).scalar_one_or_none()
-                if run is not None:
-                    run.status = out.status
-                    run.outputs = out.outputs or None
-                    run.node_results = out.node_results or None
-                    run.started_at = datetime.fromtimestamp(started_at, tz=UTC)
-                    run.completed_at = datetime.now(UTC)
-                    run.duration_ms = out.duration_ms
-                    run.error = out.error
-                    run.total_tokens = out.total_tokens
+                if run is None:
+                    return
+                if run.status != "running":
+                    logger.warning(
+                        "Workflow run %s is already %s; its result (%s) is not recorded",
+                        out.run_id,
+                        run.status,
+                        out.status,
+                    )
+                    await close_requests_of_runs(db, [out.run_id])
                     await db.commit()
+                    return
+                run.status = out.status
+                run.outputs = out.outputs or None
+                run.node_results = out.node_results or None
+                if started_at is not None:
+                    run.started_at = datetime.fromtimestamp(started_at, tz=UTC)
+                run.duration_ms = out.duration_ms
+                run.error = out.error
+                run.total_tokens = out.total_tokens
+                run.suspend_state = suspend_state
+                if suspend_state is None:
+                    run.completed_at = datetime.now(UTC)
+                    await close_requests_of_runs(db, [out.run_id])
+                await db.commit()
         except Exception:
             logger.exception("Failed to persist workflow run %s", out.run_id)
+
+    async def _save_progress(self, run_id: str, node_results: dict[str, Any]) -> None:
+        from sqlalchemy import update
+
+        from fim_one.db import create_session
+        from fim_one.db.models import WorkflowRun
+
+        try:
+            async with create_session() as db:
+                await db.execute(
+                    update(WorkflowRun)
+                    .where(WorkflowRun.id == run_id, WorkflowRun.status == "running")
+                    .values(node_results=dict(node_results), heartbeat_at=datetime.now(UTC))
+                    .execution_options(synchronize_session=False)
+                )
+                await db.commit()
+        except Exception:
+            logger.exception("Failed to save the progress of workflow run %s", run_id)
 
     def _fire_webhook(
         self, workflow: Any, out: RunOutcome, mode: RunMode, ctx: CallContext
@@ -901,6 +1294,52 @@ class WorkflowRunService:
         from fim_one.core.utils import spawn_background
 
         spawn_background(deliver_webhook(url, payload))
+
+
+async def requests_settled(state: dict[str, Any]) -> bool:
+    """Whether a waiting run has something to go on with.
+
+    True when any request its steps wait on (*state* is the run's
+    ``suspend_state``) is decided, closed, past its deadline or gone: the
+    step waiting on it can then finish, one way or the other. False while
+    every one of them is still open, and for a state that names none.
+    """
+    from sqlalchemy import select
+
+    from fim_one.db import create_session
+    from fim_one.db.models.channel import ConfirmationRequest
+
+    waiting = state.get("waiting") if isinstance(state, dict) else None
+    ids = [
+        str(record.get("confirmation_id"))
+        for record in (waiting or {}).values()
+        if isinstance(record, dict) and record.get("confirmation_id")
+    ]
+    if not ids:
+        # A waiting step that names no request can only fail; let it.
+        return bool(waiting)
+    async with create_session() as db:
+        rows = (
+            await db.execute(
+                select(
+                    ConfirmationRequest.id,
+                    ConfirmationRequest.status,
+                    ConfirmationRequest.expires_at,
+                ).where(ConfirmationRequest.id.in_(ids))
+            )
+        ).all()
+    if len(rows) < len(set(ids)):
+        return True
+    now = datetime.now(UTC)
+    for _id, status, expires_at in rows:
+        if status != "pending":
+            return True
+        if expires_at is not None:
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=UTC)
+            if expires_at <= now:
+                return True
+    return False
 
 
 async def deliver_webhook(webhook_url: str, payload: dict[str, Any]) -> None:

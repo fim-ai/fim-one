@@ -49,7 +49,7 @@ def _make_node(data: dict[str, Any] | None = None) -> WorkflowNodeDef:
 
 @pytest.fixture()
 async def factory(tmp_path: Path) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
-    """A real database: the executor asks the confirmation service, which polls it."""
+    """A real database: the executor asks the confirmation service and reads the outcome."""
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'hi.db'}")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -104,6 +104,29 @@ def _make_context(
     )
 
 
+class _Step:
+    """One approval step of a run: asked once, then run again for the outcome.
+
+    The executor does not wait. Its first call makes the request and
+    returns WAITING with what it waits on; the engine keeps that and hands
+    it back (``ExecutionContext.suspensions``) when it runs the step again.
+    """
+
+    def __init__(self, node: WorkflowNodeDef, store: VariableStore, ctx: ExecutionContext) -> None:
+        self.executor = HumanInterventionExecutor()
+        self.node, self.store, self.ctx = node, store, ctx
+
+    async def ask(self) -> Any:
+        result = await self.executor.execute(self.node, self.store, self.ctx)
+        assert result.status == NodeStatus.WAITING, result
+        assert result.suspension is not None and result.suspension["kind"] == "workflow_approval"
+        self.ctx.suspensions[self.node.id] = result.suspension
+        return result
+
+    async def again(self) -> Any:
+        return await self.executor.execute(self.node, self.store, self.ctx)
+
+
 async def _pending_approval(
     factory: async_sessionmaker[AsyncSession], *, attempts: int = 100
 ) -> ConfirmationRequest:
@@ -147,12 +170,11 @@ async def _decide(
 @pytest.mark.asyncio
 async def test_missing_db_session_factory_auto_approves() -> None:
     """Executor should auto-approve when db_session_factory is not provided."""
-    executor = HumanInterventionExecutor()
     node = _make_node()
     store = VariableStore()
     ctx = _make_context(None)
 
-    result = await executor.execute(node, store, ctx)
+    result = await HumanInterventionExecutor().execute(node, store, ctx)
 
     assert result.status == NodeStatus.COMPLETED
     assert result.output["auto_approved"] is True
@@ -168,8 +190,7 @@ async def test_missing_db_session_factory_auto_approves() -> None:
 async def test_approval_record_created(
     factory: async_sessionmaker[AsyncSession], world: dict[str, str]
 ) -> None:
-    """The executor records a workflow approval for the run and waits on it."""
-    executor = HumanInterventionExecutor()
+    """The executor records a workflow approval for the run and returns WAITING."""
     node = _make_node({
         "title": "Review content",
         "description": "Check output quality",
@@ -178,9 +199,12 @@ async def test_approval_record_created(
     })
     store = VariableStore()
     ctx = _make_context(factory, world["runner"])
-    task = asyncio.create_task(executor.execute(node, store, ctx))
+    step = _Step(node, store, ctx)
+    asked = await step.ask()
 
     created = await _pending_approval(factory)
+    assert asked.suspension["confirmation_id"] == created.id
+    assert asked.suspension["expires_at"] is not None
     assert created.title == "Review content"
     assert created.description == "Check output quality"
     assert created.status == "pending"
@@ -193,7 +217,7 @@ async def test_approval_record_created(
     assert created.payload == {"timeout_hours": 1.0, "assignee": None}
 
     await _decide(factory, created.id, status="approved", by="reviewer-1", note="LGTM")
-    result = await task
+    result = await step.again()
 
     assert result.status == NodeStatus.COMPLETED
     assert result.output["status"] == "approved"
@@ -212,8 +236,7 @@ async def test_approval_record_created(
 async def test_polling_detects_approval(
     factory: async_sessionmaker[AsyncSession], world: dict[str, str]
 ) -> None:
-    """Executor should poll until it finds an approved status."""
-    executor = HumanInterventionExecutor()
+    """Run again after the decision, the step completes with it."""
     node = _make_node({
         "title": "Quick approval",
         "timeout_hours": 1,
@@ -222,13 +245,15 @@ async def test_polling_detects_approval(
     })
     store = VariableStore()
     ctx = _make_context(factory, world["runner"])
-    task = asyncio.create_task(executor.execute(node, store, ctx))
+    step = _Step(node, store, ctx)
+    asked = await step.ask()
 
     created = await _pending_approval(factory)
-    await asyncio.sleep(0.15)  # a few polls while still pending
-    assert not task.done()
+    # Run again while nobody has decided: still waiting, on the same request.
+    still = await step.again()
+    assert still.status == NodeStatus.WAITING and still.suspension == asked.suspension
     await _decide(factory, created.id, status="approved", by="mgr-1", note="Approved!")
-    result = await task
+    result = await step.again()
 
     assert result.status == NodeStatus.COMPLETED
     assert result.output["decision_by"] == "mgr-1"
@@ -245,15 +270,15 @@ async def test_polling_detects_rejection(
     factory: async_sessionmaker[AsyncSession], world: dict[str, str]
 ) -> None:
     """Executor should fail the node when approval is rejected."""
-    executor = HumanInterventionExecutor()
     node = _make_node({"title": "Reject me", "timeout_hours": 1, "poll_interval_seconds": 0.05})
     store = VariableStore()
     ctx = _make_context(factory, world["runner"])
-    task = asyncio.create_task(executor.execute(node, store, ctx))
+    step = _Step(node, store, ctx)
+    asked = await step.ask()
 
     created = await _pending_approval(factory)
     await _decide(factory, created.id, status="rejected", by="reviewer", note="Not good enough")
-    result = await task
+    result = await step.again()
 
     assert result.status == NodeStatus.FAILED
     assert "Approval rejected: Not good enough" in (result.error or "")
@@ -269,14 +294,16 @@ async def test_timeout_expires_approval(
     factory: async_sessionmaker[AsyncSession], world: dict[str, str]
 ) -> None:
     """Executor should mark approval as expired when timeout is reached."""
-    executor = HumanInterventionExecutor()
     node = _make_node({
         "title": "Will timeout",
         "timeout_hours": 0.00001,  # ~0.04 s
         "poll_interval_seconds": 0.02,
     })
     store = VariableStore()
-    result = await executor.execute(node, store, _make_context(factory, world["runner"]))
+    step = _Step(node, store, _make_context(factory, world["runner"]))
+    await step.ask()
+    await asyncio.sleep(0.1)  # past the request's deadline
+    result = await step.again()
 
     assert result.status == NodeStatus.FAILED
     assert "timed out" in (result.error or "").lower()
@@ -296,13 +323,13 @@ async def test_deleted_approval_record(
     factory: async_sessionmaker[AsyncSession], world: dict[str, str]
 ) -> None:
     """If the approval record vanishes, executor should fail gracefully."""
-    executor = HumanInterventionExecutor()
     node = _make_node(
         {"title": "Vanishing approval", "timeout_hours": 1, "poll_interval_seconds": 0.05}
     )
     store = VariableStore()
     ctx = _make_context(factory, world["runner"])
-    task = asyncio.create_task(executor.execute(node, store, ctx))
+    step = _Step(node, store, ctx)
+    asked = await step.ask()
 
     created = await _pending_approval(factory)
     async with factory() as db:
@@ -310,7 +337,7 @@ async def test_deleted_approval_record(
         assert row is not None
         await db.delete(row)
         await db.commit()
-    result = await task
+    result = await step.again()
 
     assert result.status == NodeStatus.FAILED
     assert "not found" in (result.error or "").lower()
@@ -326,7 +353,6 @@ async def test_variable_interpolation(
     factory: async_sessionmaker[AsyncSession], world: dict[str, str]
 ) -> None:
     """Node data templates should be interpolated from the variable store."""
-    executor = HumanInterventionExecutor()
     node = _make_node({
         "title": "Review by {{manager_name}}",
         "description": "Check {{content_type}} content",
@@ -339,7 +365,8 @@ async def test_variable_interpolation(
     await store.set("content_type", "marketing")
     await store.set("manager_id", world["colleague"])
     ctx = _make_context(factory, world["runner"])
-    task = asyncio.create_task(executor.execute(node, store, ctx))
+    step = _Step(node, store, ctx)
+    asked = await step.ask()
 
     record = await _pending_approval(factory)
     assert record.title == "Review by Alice"
@@ -348,7 +375,7 @@ async def test_variable_interpolation(
     assert (record.eligible_scope, record.eligible_user_id) == ("assignee", world["colleague"])
     assert record.payload["assignee"] == world["colleague"]
     await _decide(factory, record.id, status="approved", by="boss")
-    result = await task
+    result = await step.again()
     assert result.status == NodeStatus.COMPLETED
 
 
@@ -357,7 +384,6 @@ async def test_an_assignee_filled_in_as_a_username_is_recorded_as_the_user(
     factory: async_sessionmaker[AsyncSession], world: dict[str, str]
 ) -> None:
     """A run that fills the assignee in with a username stores the user id as decider."""
-    executor = HumanInterventionExecutor()
     node = _make_node({
         "title": "Sign-off",
         "assignee": "{{who}}",
@@ -366,14 +392,15 @@ async def test_an_assignee_filled_in_as_a_username_is_recorded_as_the_user(
     })
     store = VariableStore()
     await store.set("who", "colleague")
-    task = asyncio.create_task(executor.execute(node, store, _make_context(factory, world["runner"])))
+    step = _Step(node, store, _make_context(factory, world["runner"]))
+    await step.ask()
 
     record = await _pending_approval(factory)
     assert (record.eligible_scope, record.eligible_user_id) == ("assignee", world["colleague"])
     # What the run filled in is kept as written.
     assert record.payload["assignee"] == "colleague"
     await _decide(factory, record.id, status="approved", by=world["colleague"])
-    assert (await task).status == NodeStatus.COMPLETED
+    assert (await step.again()).status == NodeStatus.COMPLETED
 
 
 # ---------------------------------------------------------------------------
@@ -386,12 +413,13 @@ async def test_assignee_outside_the_organization_fails_the_node(
     factory: async_sessionmaker[AsyncSession], world: dict[str, str]
 ) -> None:
     """The interpolated assignee is checked against the run's organization."""
-    executor = HumanInterventionExecutor()
     node = _make_node({"title": "Sign-off", "assignee": "{{who}}", "timeout_hours": 1})
     store = VariableStore()
     await store.set("who", world["outsider"])
 
-    result = await executor.execute(node, store, _make_context(factory, world["runner"]))
+    result = await HumanInterventionExecutor().execute(
+        node, store, _make_context(factory, world["runner"])
+    )
 
     assert result.status == NodeStatus.FAILED
     assert "not a member of the workflow's organization" in (result.error or "")

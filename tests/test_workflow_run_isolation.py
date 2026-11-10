@@ -360,10 +360,20 @@ class TestRunMutations:
         run = world.runs["member"]
         run.status = "running"
         await session.commit()
-        resp = await wf_api.cancel_workflow_run(
-            world.wf.id, run.id, current_user=world.member, db=session
-        )
+
+        @asynccontextmanager
+        async def _cs() -> AsyncIterator[AsyncSession]:
+            async with AsyncSession(session.bind, expire_on_commit=False) as s:
+                yield s
+
+        # Not executing in this process: cancelled on its record.
+        with patch("fim_one.db.create_session", _cs):
+            resp = await wf_api.cancel_workflow_run(
+                world.wf.id, run.id, current_user=world.member, db=session
+            )
         assert resp.data["cancelled"] is True
+        await session.refresh(run)
+        assert run.status == "cancelled"
 
     @pytest.mark.asyncio
     async def test_subscriber_cannot_cancel_others_run(

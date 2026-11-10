@@ -104,10 +104,24 @@ class NodeRunResult(BaseModel):
     duration_ms: int | None = None
 
 
+class RunWaitingItem(BaseModel):
+    """A request a waiting run is waiting on."""
+
+    node_id: str
+    confirmation_id: str
+    # ``workflow_approval`` (a Human Intervention step) or ``confirmation``
+    # (a connector action that requires confirmation).
+    kind: str
+    expires_at: str | None = None
+
+
 class WorkflowRunResponse(BaseModel):
     id: str
     workflow_id: str
     user_id: str
+    # pending / running / waiting / completed / failed / cancelled.
+    # ``waiting``: stopped at a step that needs a person's decision
+    # (``waiting_for``); it goes on once that is made.
     status: str
     inputs: dict[str, Any] | None
     outputs: dict[str, Any] | None
@@ -116,6 +130,7 @@ class WorkflowRunResponse(BaseModel):
     completed_at: str | None
     duration_ms: int | None
     error: str | None
+    waiting_for: list[RunWaitingItem] | None = None
     created_at: str
     updated_at: str | None
 

@@ -70,6 +70,7 @@ from fim_one.web.schemas.workflow import (
     WorkflowUpdate,
     WorkflowValidateResponse,
     WorkflowVersionResponse,
+    RunWaitingItem,
     WorkflowApprovalResponse,
     ApprovalDecisionRequest,
     _compute_next_run,
@@ -249,9 +250,27 @@ def _run_to_response(run: WorkflowRun) -> WorkflowRunResponse:
         completed_at=run.completed_at.isoformat() if run.completed_at else None,
         duration_ms=run.duration_ms,
         error=run.error,
+        waiting_for=_waiting_for(run),
         created_at=run.created_at.isoformat() if run.created_at else "",
         updated_at=run.updated_at.isoformat() if run.updated_at else None,
     )
+
+
+def _waiting_for(run: WorkflowRun) -> list[RunWaitingItem] | None:
+    """The requests a waiting run is waiting on, from its stored state."""
+    state = run.suspend_state
+    if run.status != "waiting" or not isinstance(state, dict):
+        return None
+    return [
+        RunWaitingItem(
+            node_id=node_id,
+            confirmation_id=str(record.get("confirmation_id") or ""),
+            kind=str(record.get("kind") or ""),
+            expires_at=record.get("expires_at"),
+        )
+        for node_id, record in sorted((state.get("waiting") or {}).items())
+        if isinstance(record, dict)
+    ]
 
 
 def _version_to_response(v: WorkflowVersion) -> WorkflowVersionResponse:
@@ -830,7 +849,9 @@ async def _execute_trigger(
     # and in which way, not which step failed or what it said (a database's
     # error text, an exception's message). That stays in the run record.
     error_code = None
-    if outcome.status != "completed":
+    # ``waiting``: the run stopped at a step that needs a person's decision
+    # and goes on once it is made; the caller is told so, not that it failed.
+    if outcome.status not in ("completed", "waiting"):
         error_code = outcome.error_code or "workflow_run_failed"
         if error_code not in _TRIGGER_FAILURE_MESSAGES:
             error_code = "workflow_run_failed"
@@ -1655,21 +1676,19 @@ async def run_workflow(
     async def generate() -> AsyncGenerator[str, None]:
         # The run executes in the run service's background task, which
         # persists it and releases its slot; this stream only relays events.
-        # Until runs are decoupled from the browser (T10 P5), a client that
-        # goes away cancels its run, however the disconnect is noticed.
-        try:
-            yield _sse("run_started", {"run_id": run_id, "status": "running"})
-            async for sse_event, sse_data in started.events(keepalive=15.0):
-                if await request.is_disconnected():
-                    return
-                if sse_event == "keepalive":
-                    # Keepalive comment to prevent proxy/browser timeout
-                    yield ": keepalive\n\n"
-                    continue
-                yield _sse(sse_event, sse_data)
-        finally:
-            if not started.done:
-                started.cancel()
+        # A client that goes away (closed tab, dropped connection) stops
+        # the relay and nothing else: the run goes on, and its record
+        # (GET .../runs/{run_id}) says where it is. Stopping a run is the
+        # cancel endpoint's job.
+        yield _sse("run_started", {"run_id": run_id, "status": "running"})
+        async for sse_event, sse_data in started.events(keepalive=15.0):
+            if await request.is_disconnected():
+                return
+            if sse_event == "keepalive":
+                # Keepalive comment to prevent proxy/browser timeout
+                yield ": keepalive\n\n"
+                continue
+            yield _sse(sse_event, sse_data)
         yield _sse("end", {})
 
     return StreamingResponse(
@@ -2364,7 +2383,7 @@ async def get_workflow_stats(
 
     # Status breakdown
     status_counts: dict[str, int] = {}
-    for status_val in ("completed", "failed", "cancelled", "running", "pending"):
+    for status_val in ("completed", "failed", "cancelled", "running", "pending", "waiting"):
         count_result = await db.execute(
             select(func.count()).where(
                 *scope,
@@ -2789,12 +2808,14 @@ async def cancel_workflow_run(
 
     from fim_one.core.workflow.run_service import get_run_service
 
-    if get_run_service().cancel_run(run_id):
+    service = get_run_service()
+    if service.cancel_run(run_id):
         return ApiResponse(data={"cancelled": True, "run_id": run_id})
 
-    if run.status in ("pending", "running"):
-        run.status = "cancelled"
-        await db.commit()
+    # Not executing in this process: waiting for a decision (closed here,
+    # with its open requests), or running in another server process (which
+    # stops it when it sees the record).
+    await service.cancel_stored_run(run_id)
 
     return ApiResponse(data={"cancelled": True, "run_id": run_id})
 
@@ -2865,7 +2886,7 @@ async def delete_workflow_run(
     if run is None:
         raise AppError("workflow_run_not_found", status_code=404)
 
-    if run.status in ("pending", "running"):
+    if run.status in ("pending", "running", "waiting"):
         raise AppError("cannot_delete_active_run", status_code=409)
 
     await close_requests_of_runs(db, [run.id])

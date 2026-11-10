@@ -2,7 +2,7 @@
 
 Periodically deletes old WorkflowRun records based on configurable
 retention policies (max age and max runs per workflow). Skips runs
-that are still in-progress (status ``pending`` or ``running``).
+that are still in-progress (status ``pending``, ``running`` or ``waiting``).
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from fim_one.db.models.workflow import Workflow, WorkflowRun
 logger = logging.getLogger(__name__)
 
 # Statuses considered "active" — never cleaned up even if old.
-_ACTIVE_STATUSES = ("pending", "running")
+_ACTIVE_STATUSES = ("pending", "running", "waiting")
 
 
 class WorkflowRunCleaner:

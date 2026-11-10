@@ -386,49 +386,48 @@ class TestScheduledRunGates:
     async def test_approval_node_waits_for_a_decision(self, sched_db) -> None:  # type: ignore[no-untyped-def]
         """W1: a scheduled run creates a pending approval and waits for it.
 
-        The approval wait does not count toward the 1-second run limit (W5),
-        so the run is still waiting after the limit has passed.
+        The run is suspended, not held in the process: the scheduler's task
+        ends, and time spent waiting does not count toward the 1-second run
+        limit (W5). Once the approval is decided the run is continued.
         """
         from sqlalchemy import select
 
+        from fim_one.core.workflow.run_service import get_run_service
         from fim_one.db.models.channel import ConfirmationRequest
         from fim_one.db.models.workflow import WorkflowRun
 
         factory, wf = sched_db
-        task = asyncio.create_task(_run_scheduled(wf))
+        await asyncio.wait_for(_run_scheduled(wf), timeout=10)
 
-        approval = None
-        for _ in range(100):
-            await asyncio.sleep(0.05)
-            async with factory() as s:
-                approval = (await s.execute(select(ConfirmationRequest))).scalar_one_or_none()
-            if approval is not None:
-                break
+        async with factory() as s:
+            approval = (await s.execute(select(ConfirmationRequest))).scalar_one_or_none()
+            run = (await s.execute(select(WorkflowRun))).scalar_one()
         assert approval is not None, "no approval was created"
         assert approval.status == "pending"
         assert approval.kind == "workflow_approval"
         assert approval.title == "Approve the scheduled step"
         # A scheduled run is the author's: the author decides.
         assert (approval.eligible_scope, approval.eligible_user_id) == ("initiator", wf.user_id)
-
-        await asyncio.sleep(1.3)  # past max_run_duration_seconds
-        async with factory() as s:
-            run = (await s.execute(select(WorkflowRun))).scalar_one()
-        assert run.status == "running"
+        assert run.status == "waiting"
         assert run.mode == "schedule"
         assert run.user_id == wf.user_id
+        assert run.suspend_state["waiting"]["human_1"]["confirmation_id"] == approval.id
 
+        await asyncio.sleep(1.3)  # past max_run_duration_seconds
         async with factory() as s:
             row = await s.get(ConfirmationRequest, approval.id)
             assert row is not None
             row.status = "rejected"
             row.decision_note = "not tonight"
             await s.commit()
-        await asyncio.wait_for(task, timeout=10)
+        continued = await get_run_service().resume_run(run.id)
+        assert continued is not None
+        await asyncio.wait_for(continued.wait(), timeout=10)
 
         async with factory() as s:
             run = (await s.execute(select(WorkflowRun))).scalar_one()
         assert run.status == "failed"
+        assert run.suspend_state is None
         human = (run.node_results or {}).get("human_1", {})
         assert "Approval rejected: not tonight" in (human.get("error") or "")
 
