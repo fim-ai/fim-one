@@ -16,6 +16,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.core.audit import writer as audit
+from fim_one.core.audit.context import current_request_meta
 from fim_one.core.audit.events import Outcome
 from fim_one.core.audit.redact import CHANGED, diff_changes
 
@@ -188,5 +189,8 @@ async def record_plan_change(
         target_label=label_of(user),
         changes=diff_changes({"plan_id": plan_from}, {"plan_id": plan_to}),
         detail=detail,
+        # The payment processor's call does come from an address; the
+        # period-end sweep runs outside any request and has none.
+        request=current_request_meta(),
         db=db,
     )

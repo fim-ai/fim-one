@@ -162,7 +162,8 @@ async def record(
     own and a failure is logged, never raised.
 
     Where the request came from is read from the request being served
-    (:mod:`.context`); *request* overrides it. *context* supplies the
+    (:mod:`.context`); *request* overrides it. An event whose actor is the
+    system carries none unless *request* is given. *context* supplies the
     conversation, workflow run and agent the event happened in. *changes*
     comes from :func:`fim_one.core.audit.redact.diff_changes`, which keeps
     secrets out of it; a URL quoted in *detail* loses its user-info, query
@@ -171,7 +172,12 @@ async def record(
     from fim_one.db.models.audit_log import AuditLog
 
     _check_registered(action)
-    meta = request if request is not None else current_request_meta()
+    meta = request
+    if meta is None and actor.kind != "system":
+        # The platform acting on its own did not come from an address. A
+        # sweep or a task started while a request was being served would
+        # otherwise carry that request's address and id.
+        meta = current_request_meta()
     row = AuditLog(
         actor_id=actor.user_id,
         # NOT NULL in the database; the system and an anonymous caller

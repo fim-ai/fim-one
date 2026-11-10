@@ -134,3 +134,42 @@ class TestTheAdministratorsList:
         (line,) = [r for r in csv.DictReader(io.StringIO(export.text)) if r["action"] == "user.disable"]
         assert (line["admin"], line["actor_kind"], line["outcome"]) == ("root", "admin", "success")
         assert line["ip_address"] == CLIENT_IP
+
+
+class TestTheSystemHasNoAddress:
+    async def test_a_task_started_during_a_request_does_not_carry_its_address(
+        self, world: World
+    ) -> None:
+        """A context variable is copied into a task created while a request
+        is served; a system event written by that task later is not the
+        request's doing."""
+        import asyncio
+
+        from fim_one.core.audit.context import request_meta
+        from fim_one.core.audit.events import RequestMeta
+
+        token = request_meta.set(
+            RequestMeta(ip="198.51.100.77", user_agent="browser", request_id="req-1")
+        )
+        try:
+            task = asyncio.create_task(
+                audit.record("confirmation.expire", actor=audit.system_actor("confirmation expiry"))
+            )
+        finally:
+            request_meta.reset(token)
+        await task
+
+        row = await world.one("confirmation.expire", actor=None, ip=None)
+        assert (row.actor_kind, row.user_agent, row.request_id) == ("system", None, None)
+
+    async def test_a_system_event_keeps_an_address_it_is_given(self, world: World) -> None:
+        from fim_one.core.audit.events import RequestMeta
+
+        await audit.record(
+            "billing.plan_change",
+            actor=audit.system_actor("stripe webhook"),
+            request=RequestMeta(ip="192.0.2.5", user_agent=None, request_id=None),
+        )
+
+        (row,) = await world.events("billing.plan_change")
+        assert (row.actor_kind, row.ip_address) == ("system", "192.0.2.5")
