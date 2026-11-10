@@ -3890,6 +3890,7 @@ async def _react_turn(
                     id=(agent_cfg or {}).get("agent_id"),
                     name=(agent_cfg or {}).get("name") or "Agent",
                     org_id=(agent_cfg or {}).get("org_id"),
+                    user_id=(agent_cfg or {}).get("owner_user_id"),
                     model_config_json=(agent_cfg or {}).get("model_config_json"),
                 )
                 spawn_background(
@@ -5193,6 +5194,7 @@ async def _dag_turn(
                     id=(agent_cfg or {}).get("agent_id"),
                     name=(agent_cfg or {}).get("name") or "Agent",
                     org_id=(agent_cfg or {}).get("org_id"),
+                    user_id=(agent_cfg or {}).get("owner_user_id"),
                     model_config_json=(agent_cfg or {}).get("model_config_json"),
                 )
                 spawn_background(

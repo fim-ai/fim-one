@@ -82,6 +82,7 @@
   "connector_ownership_denied": "You do not own connector \"{name}\".",
   "kb_ownership_denied": "You do not own knowledge base \"{name}\".",
   "approval_channel_denied": "The approval channel must belong to an organization you are a member of.",
+  "completion_channel_denied": "The completion notification channel must belong to an organization you are a member of.",
 
   "llm_empty_response": "LLM returned empty response.",
   "llm_invalid_json": "LLM returned invalid JSON.",

@@ -121,6 +121,7 @@ async def _validate_binding_ownership(
     kb_ids: list[str] | None = None,
     mcp_server_ids: list[str] | None = None,
     approval_channel_id: str | None = None,
+    completion_channel_id: str | None = None,
 ) -> None:
     """Verify the user can *access* every referenced connector / KB / MCP server.
 
@@ -159,21 +160,33 @@ async def _validate_binding_ownership(
         MCPServer, ResourceKind.MCP_SERVER, mcp_server_ids, "mcp_server_ownership_denied"
     )
 
-    # An approval channel posts tool arguments into its chat, so it may only
-    # come from an organization the user belongs to.  At run time it must also
-    # belong to the agent's own organization (``ApprovalGateHook``).
-    if approval_channel_id:
+    # An approval channel posts tool arguments into its chat, and a completion
+    # channel the user's message and the answer, so either may only come from
+    # an organization the user belongs to.  At run time it must also belong to
+    # the agent's own organization (``resolve_org_channel``).
+    for channel_id, err_code in (
+        (approval_channel_id, "approval_channel_denied"),
+        (completion_channel_id, "completion_channel_denied"),
+    ):
+        if not channel_id:
+            continue
         from fim_one.db.models.channel import Channel
 
         channel_org = (
-            await db.execute(
-                select(Channel.org_id).where(Channel.id == approval_channel_id)
-            )
+            await db.execute(select(Channel.org_id).where(Channel.id == channel_id))
         ).scalar_one_or_none()
-        if channel_org is None or channel_org not in await get_user_org_ids(
-            user_id, db
-        ):
-            raise AppError("approval_channel_denied", status_code=403)
+        if channel_org is None or channel_org not in await get_user_org_ids(user_id, db):
+            raise AppError(err_code, status_code=403)
+
+
+def _completion_channel_id(model_config_json: Any) -> str | None:
+    """The channel an agent config sends completion notifications to, if enabled."""
+    try:
+        on_complete = model_config_json["notifications"]["on_complete"]
+        channel_id = on_complete["channel_id"] if on_complete.get("enabled") else None
+    except (KeyError, TypeError, AttributeError):
+        return None
+    return channel_id if isinstance(channel_id, str) and channel_id else None
 
 
 @router.post("", response_model=ApiResponse)
@@ -188,6 +201,7 @@ async def create_agent(
         kb_ids=body.kb_ids,
         mcp_server_ids=body.mcp_server_ids,
         approval_channel_id=body.approval_channel_id,
+        completion_channel_id=_completion_channel_id(body.model_config_json),
     )
     agent = Agent(
         user_id=current_user.id,
@@ -303,12 +317,19 @@ async def update_agent(
     agent = await _get_owned_agent(agent_id, current_user.id, db)
 
     update_data = body.model_dump(exclude_unset=True)
+    # Checked when it changes: the settings form sends the whole model config
+    # with every save, and a channel that was deleted since must not block
+    # saving something else (it is skipped at send time).
+    completion_channel_id = _completion_channel_id(update_data.get("model_config_json"))
+    if completion_channel_id == _completion_channel_id(agent.model_config_json):
+        completion_channel_id = None
     await _validate_binding_ownership(
         current_user.id, db,
         connector_ids=update_data.get("connector_ids"),
         kb_ids=update_data.get("kb_ids"),
         mcp_server_ids=update_data.get("mcp_server_ids"),
         approval_channel_id=update_data.get("approval_channel_id"),
+        completion_channel_id=completion_channel_id,
     )
     for field, value in update_data.items():
         setattr(agent, field, value)
