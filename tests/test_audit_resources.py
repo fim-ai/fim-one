@@ -506,6 +506,27 @@ class TestMcpServerSettings:
         world.assert_absent(updated, header, "s3cr3t-in-the-query")
 
 
+class TestWorkflowSettings:
+    async def test_a_new_webhook_address_is_recorded_as_changed_never_by_value(
+        self, world: World, alice: Any
+    ) -> None:
+        workflow_id = await _create(world, "workflow", alice)
+        address = "https://203.0.113.10/hooks/T0AUDIT/s3cr3tHookT0k3nV4lu3"
+
+        with patch("fim_one.web.api.workflows._validate_webhook_url"):
+            await world.call(
+                "PUT", f"/api/workflows/{workflow_id}", by=alice, json={"webhook_url": address}
+            )
+
+        row = await world.one(
+            "workflow.update",
+            actor=alice,
+            target=("workflow", workflow_id),
+            changes={"webhook_url": {"changed": True}},
+        )
+        world.assert_absent(row, address, "s3cr3tHookT0k3nV4lu3", "203.0.113.10")
+
+
 class TestDatabaseFences:
     async def test_unmasking_a_column_and_hiding_a_table(self, world: World, alice: Any) -> None:
         await world.add(

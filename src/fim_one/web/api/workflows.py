@@ -302,8 +302,9 @@ def _version_to_response(v: WorkflowVersion) -> WorkflowVersionResponse:
     )
 
 
-# What an audit record compares of a workflow: whether it may run, and the
-# address its completion webhook posts to. Its steps are content.
+# What an audit record compares of a workflow: whether it may run, and
+# whether the address its completion webhook posts to changed (the address
+# itself is not recorded). Its steps are content.
 WORKFLOW_AUDITED_FIELDS = ("is_active", "status", "webhook_url")
 
 
@@ -1333,7 +1334,14 @@ async def update_workflow(
         reverted = False
 
     await record_resource_change(
-        db, current_user, actions.WORKFLOW_UPDATE, "workflow", wf, before
+        db,
+        current_user,
+        actions.WORKFLOW_UPDATE,
+        "workflow",
+        wf,
+        before,
+        # A webhook address carries the token that lets anyone post to it.
+        secret_fields=("webhook_url",),
     )
     await db.commit()
     result = await db.execute(select(Workflow).where(Workflow.id == wf.id))
