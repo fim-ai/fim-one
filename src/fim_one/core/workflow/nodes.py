@@ -1271,9 +1271,14 @@ async def _confirmed(
     from fim_one.core.assembly.confirmation import ConfirmationService, ConfirmationSpec
     from fim_one.core.assembly.errors import AssemblyRefusal
 
-    def failed(error: str) -> NodeResult:
+    def failed(error: str, *, answered: bool = False) -> NodeResult:
         return NodeResult(
-            node_id=node.id, status=NodeStatus.FAILED, error=error, duration_ms=_ms_since(t0)
+            node_id=node.id,
+            status=NodeStatus.FAILED,
+            error=error,
+            duration_ms=_ms_since(t0),
+            # A person's "no", or their silence, is not retried.
+            no_retry=answered,
         )
 
     asked = context.suspensions.get(node.id)
@@ -1332,11 +1337,13 @@ async def _confirmed(
         return failed(
             f"Action '{action.name}' was not run: the confirmation was rejected"
             + (f" ({note})" if note else "")
-            + "."
+            + ".",
+            answered=True,
         )
     return failed(
         f"Action '{action.name}' was not run: nobody confirmed it within "
-        f"{ACTION_CONFIRMATION_TIMEOUT_HOURS:g} hours."
+        f"{ACTION_CONFIRMATION_TIMEOUT_HOURS:g} hours.",
+        answered=True,
     )
 
 
@@ -1900,6 +1907,7 @@ class HumanInterventionExecutor:
                 status=NodeStatus.FAILED,
                 error=f"Approval rejected: {record.decision_note or 'No reason given'}",
                 duration_ms=_ms_since(t0),
+                no_retry=True,
             )
 
         return NodeResult(
@@ -1907,6 +1915,7 @@ class HumanInterventionExecutor:
             status=NodeStatus.FAILED,
             error=f"Approval timed out after {timeout_hours}h",
             duration_ms=_ms_since(t0),
+            no_retry=True,
         )
 
 

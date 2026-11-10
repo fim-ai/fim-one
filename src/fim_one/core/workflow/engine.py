@@ -436,6 +436,7 @@ class WorkflowEngine:
                 while (
                     result.status == NodeStatus.FAILED
                     and attempt < retry_count
+                    and not result.no_retry
                 ):
                     attempt += 1
                     # Exponential backoff: delay * 2^(attempt-1)

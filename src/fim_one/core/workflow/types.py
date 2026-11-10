@@ -115,6 +115,10 @@ class NodeResult:
     # (``confirmation_id``, ``kind``, ``expires_at``). The engine hands it
     # back in ``ExecutionContext.suspensions`` when the step is run again.
     suspension: dict[str, Any] | None = None
+    # With status FAILED: the failure is a person's answer (a rejection, or
+    # no answer in time), so the step's retries do not apply: asking again
+    # is not retrying.
+    no_retry: bool = False
 
 
 @dataclass
