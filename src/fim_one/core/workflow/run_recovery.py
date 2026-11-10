@@ -111,6 +111,11 @@ class WorkflowRunSupervisor:
         A workflow run's directory is removed only once nothing in it has
         changed for this long, so a run that is just starting or just
         ending is not raced.
+    legacy_grace_seconds:
+        A ``running`` run with no ``worker_id`` was started by a process
+        from before heartbeats existed, which may still be executing it
+        (a rolling deploy). Such runs are left alone until this supervisor
+        has been up for this long, then judged by their start time.
     sandbox_orphan_seconds:
         A directory with no run record to ask (a single-step test, a
         delegation, an evaluation run) is removed once nothing in it has
@@ -126,8 +131,11 @@ class WorkflowRunSupervisor:
         sweep_seconds: float = 30.0,
         sandbox_grace_seconds: float = 600.0,
         sandbox_orphan_seconds: float = 24 * 3600.0,
+        legacy_grace_seconds: float = 1800.0,
     ) -> None:
         self._service = service
+        self.legacy_grace_seconds = legacy_grace_seconds
+        self._born = time.monotonic()
         self.heartbeat_seconds = heartbeat_seconds
         self.stale_seconds = max(stale_seconds, heartbeat_seconds * 3)
         self.sweep_seconds = sweep_seconds
@@ -141,6 +149,7 @@ class WorkflowRunSupervisor:
             stale_seconds=float(os.getenv("WORKFLOW_RUN_STALE_SECONDS", "90")),
             sweep_seconds=float(os.getenv("WORKFLOW_RUN_SWEEP_SECONDS", "30")),
             sandbox_orphan_seconds=float(os.getenv("SANDBOX_ORPHAN_MAX_AGE_HOURS", "24")) * 3600,
+            legacy_grace_seconds=float(os.getenv("WORKFLOW_RUN_LEGACY_GRACE_SECONDS", "1800")),
         )
 
     @property
@@ -215,7 +224,7 @@ class WorkflowRunSupervisor:
             candidates = (
                 (
                     await db.execute(
-                        select(WorkflowRun.id)
+                        select(WorkflowRun.id, WorkflowRun.worker_id)
                         .where(
                             WorkflowRun.status.in_(("pending", "running")),
                             func.coalesce(
@@ -228,11 +237,16 @@ class WorkflowRunSupervisor:
                         .limit(_SWEEP_BATCH)
                     )
                 )
-                .scalars()
                 .all()
             )
-        for run_id in candidates:
+        # Runs no process has put its name on come from before this
+        # release. During a rolling deploy the old process may still be
+        # executing them, and it does not stamp: they are given time.
+        legacy_due = time.monotonic() - self._born >= self.legacy_grace_seconds
+        for run_id, worker_id in candidates:
             if run_id in mine:
+                continue
+            if worker_id is None and not legacy_due:
                 continue
             # Conditional on the heartbeat still being old: a process that
             # stamps the run in between keeps it.

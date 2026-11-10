@@ -868,11 +868,20 @@ class TestCrashRecovery:
         await rig.service._refuse_if_running(rig.wf.id)  # the trigger key is free again
 
     async def test_a_run_from_before_heartbeats_existed_is_closed_too(self, rig: Rig) -> None:
+        """...but not while the process that started it may still be alive:
+        on a rolling deploy the old process executes it and stamps nothing."""
         legacy = await _left_running(rig, heartbeat_age=None, started_age=7200)
 
-        report = await WorkflowRunSupervisor(rig.service).sweep()
+        just_started = WorkflowRunSupervisor(rig.service, legacy_grace_seconds=1800)
+        assert (await just_started.sweep()).closed == []
+        assert (await rig.run(legacy)).status == "running"
 
-        assert report.closed == [legacy]
+        up_for_a_while = WorkflowRunSupervisor(rig.service, legacy_grace_seconds=1800)
+        up_for_a_while._born -= 1801
+        assert (await up_for_a_while.sweep()).closed == [legacy]
+        # A run a current process had its name on gets no such grace.
+        named = await _left_running(rig, heartbeat_age=600)
+        assert (await just_started.sweep()).closed == [named]
 
     async def test_a_run_another_live_process_is_executing_is_left_alone(self, rig: Rig) -> None:
         alive = await _left_running(rig, heartbeat_age=20, started_age=7200)
