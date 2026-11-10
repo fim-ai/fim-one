@@ -65,6 +65,12 @@ class MCPServerResponse(BaseModel):
     is_active: bool
     tool_count: int
     allow_fallback: bool = True
+    # Fallback is off and the URL or the launch arguments carry a credential:
+    # nobody but the owner can connect, whatever credential they save.
+    address_private: bool = False
+    # For the owner of a shared server: why others cannot use it as saved.
+    # ``mcp_server_address_private`` or absent.
+    warning: str | None = None
     forked_from: str | None = None
     my_has_credentials: bool = False
     visibility: str = "personal"

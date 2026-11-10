@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { useTranslations } from "next-intl"
-import { Loader2, Plus, X, ExternalLink, CircleHelp } from "lucide-react"
+import { AlertTriangle, Loader2, Plus, X, ExternalLink, CircleHelp } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -27,6 +27,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { mcpServerApi } from "@/lib/api"
+import { MCP_SERVER_ADDRESS_PRIVATE } from "@/lib/mcp-server-notice"
 import { toast } from "sonner"
 import type { MCPServerResponse, MCPServerCreate, MCPServerUpdate } from "@/types/mcp-server"
 
@@ -243,6 +244,7 @@ export function MCPServerDialog({
             )
           : null
 
+      let saved: MCPServerResponse
       if (isEdit && server) {
         const body: MCPServerUpdate = {
           name: name.trim(),
@@ -259,6 +261,7 @@ export function MCPServerDialog({
         }
         const updated = await mcpServerApi.update(server.id, body)
         onSuccess(updated)
+        saved = updated
       } else {
         const body: MCPServerCreate = {
           name: name.trim(),
@@ -275,8 +278,13 @@ export function MCPServerDialog({
         }
         const created = await mcpServerApi.create(body)
         onSuccess(created)
+        saved = created
       }
       toast.success(isEdit ? t("mcpServerUpdated") : t("mcpServerCreated"))
+      if (saved.warning === MCP_SERVER_ADDRESS_PRIVATE) {
+        // Saved, and shared: say what the save means for everyone else.
+        toast.warning(t("addressPrivateWarning"), { duration: 15000 })
+      }
       onOpenChange(false)
     } catch {
       toast.error(t("failedToSaveMcpServer"))
@@ -561,6 +569,17 @@ export function MCPServerDialog({
                 onCheckedChange={setAllowFallback}
               />
             </div>
+          )}
+
+          {/* The saved server is shared, and others cannot use it as it is */}
+          {server?.warning === MCP_SERVER_ADDRESS_PRIVATE && !allowFallback && (
+            <p
+              role="alert"
+              className="flex items-start gap-1.5 rounded-md border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400"
+            >
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{t("addressPrivateWarning")}</span>
+            </p>
           )}
         </div>
         </div>

@@ -119,7 +119,7 @@ Resources that don't require credentials — such as a read-only public API conn
 
 A member's own credential for an MCP server is a set of environment variables (stdio servers) or request headers (SSE and HTTP servers). The server's URL and its launch arguments have no per-member counterpart: whoever connects, connects to what the owner configured. If the owner put a credential there, a member's own credential does not replace it.
 
-So with fallback disabled, an MCP server whose address carries a credential can be used by its owner only. Other members are refused with `mcp_server_address_private`, whether or not they saved credentials of their own. The owner has two ways out:
+So with fallback disabled, an MCP server whose address carries a credential can be used by its owner only. Other members are refused with `mcp_server_address_private`, whether or not they saved credentials of their own, and the server's card tells them so instead of asking for keys. The owner sees a warning on the card and in the editor once the server is shared (the save and publish responses carry `warning: "mcp_server_address_private"`), and has two ways out:
 
 - move the credential into a header or an environment variable, so that each member brings their own; or
 - enable fallback, which lends the server as configured, address included.

@@ -12,7 +12,8 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fim_one.core.assembly.credentials import personal_credential_fits
+from fim_one.core.assembly.credentials import address_is_private, personal_credential_fits
+from fim_one.core.assembly.errors import MCP_SERVER_ADDRESS_PRIVATE
 from fim_one.core.security import is_stdio_allowed, validate_stdio_command, validate_url
 from fim_one.db import get_session
 from fim_one.web.exceptions import AppError
@@ -63,6 +64,12 @@ def _to_response(srv: MCPServer, *, is_owner: bool = True, my_has_credentials: b
         args = None
         url = None
         working_dir = None
+    # Fallback off and a credential in the URL or the launch arguments: only
+    # the owner can connect (core/assembly/credentials.py). Everyone who
+    # sees the server is told; the owner is warned once it is shared, which
+    # is when it starts to matter.
+    address_private = address_is_private(srv)
+    shared = getattr(srv, "visibility", "personal") != "personal"
     return MCPServerResponse(
         id=srv.id,
         user_id=srv.user_id or "",
@@ -78,6 +85,8 @@ def _to_response(srv: MCPServer, *, is_owner: bool = True, my_has_credentials: b
         is_active=srv.is_active,
         tool_count=srv.tool_count,
         allow_fallback=getattr(srv, "allow_fallback", True),
+        address_private=address_private,
+        warning=MCP_SERVER_ADDRESS_PRIVATE if is_owner and address_private and shared else None,
         forked_from=getattr(srv, "forked_from", None),
         my_has_credentials=my_has_credentials,
         visibility=getattr(srv, "visibility", "personal"),

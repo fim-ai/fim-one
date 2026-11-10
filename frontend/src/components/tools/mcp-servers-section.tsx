@@ -21,6 +21,7 @@ import { MCPServerCard } from "@/components/tools/mcp-server-card"
 import { MCPServerDialog, type MCPServerInitialValues } from "@/components/tools/mcp-server-dialog"
 import { MCPHubDialog } from "@/components/tools/mcp-hub-dialog"
 import { EmptyState } from "@/components/shared/empty-state"
+import { MCP_SERVER_ADDRESS_PRIVATE } from "@/lib/mcp-server-notice"
 import type { MCPServerResponse } from "@/types/mcp-server"
 import type { ScopeValue } from "@/hooks/use-scope-filter"
 
@@ -193,6 +194,9 @@ export function MCPServersSection({ onReady, currentUserId, scope = "all", searc
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setServers((prev) => prev.map((s) => (s.id === id ? { ...updated, source: (s as any).source } : s)))
       toast.success(t("mcpServerPublished"))
+      if (updated.warning === MCP_SERVER_ADDRESS_PRIVATE) {
+        toast.warning(t("addressPrivateWarning"), { duration: 15000 })
+      }
     } catch {
       toast.error(t("mcpServerPublishFailed"))
     }

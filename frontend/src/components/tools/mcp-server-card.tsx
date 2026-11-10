@@ -40,6 +40,7 @@ import {
 import { mcpServerApi } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
 import { MARKET_ORG_ID } from "@/lib/constants"
+import { mcpServerNotice } from "@/lib/mcp-server-notice"
 import type { MCPServerResponse } from "@/types/mcp-server"
 
 interface MCPServerCardProps {
@@ -96,7 +97,9 @@ export function MCPServerCard({
   const isFromMarket = source === "market"
   const isFromOrg = source === "org"
   const isSubscribed = isFromMarket || isFromOrg
-  const needsKeyConfig = !isOwner && !server.allow_fallback && !server.my_has_credentials
+  // What the card says about using the server: keys to configure, or that
+  // its address holds a credential and only the owner can connect.
+  const notice = mcpServerNotice(server, isOwner)
   // A personal credential must supply what the transport reads: stdio servers
   // read environment variables, SSE / HTTP servers read request headers.
   const usesHeaders = server.transport !== "stdio"
@@ -405,8 +408,34 @@ export function MCPServerCard({
         </div>
       )}
 
+      {/* The address carries a credential and fallback is off: owner only */}
+      {(notice === "addressPrivateOwner" || notice === "addressPrivateMember") && (
+        <div className="flex items-center gap-1 mb-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge
+                variant="outline"
+                className="text-[10px] px-1.5 py-0 h-5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 cursor-default"
+              >
+                <AlertTriangle className="h-2.5 w-2.5 mr-0.5" />
+                {notice === "addressPrivateOwner"
+                  ? t("addressPrivateOwnerBadge")
+                  : t("addressPrivateMemberBadge")}
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" sideOffset={5} className="max-w-72">
+              <p>
+                {notice === "addressPrivateOwner"
+                  ? t("addressPrivateWarning")
+                  : t("addressPrivateMemberReason")}
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      )}
+
       {/* Key required warning badge */}
-      {needsKeyConfig && (
+      {notice === "keysRequired" && (
         <div className="flex items-center gap-1 mb-2">
           <Badge
             variant="outline"

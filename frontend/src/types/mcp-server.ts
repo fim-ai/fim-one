@@ -17,6 +17,10 @@ export interface MCPServerResponse {
   reviewed_at: string | null
   review_note: string | null
   allow_fallback: boolean
+  /** Fallback is off and the URL or launch arguments carry a credential: only the owner can connect. */
+  address_private?: boolean
+  /** For the owner of a shared server: why others cannot use it as saved. */
+  warning?: string | null
   my_has_credentials: boolean
   visibility?: string
   org_id?: string | null
