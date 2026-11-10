@@ -516,12 +516,20 @@ class WorkflowTriggerRequest(BaseModel):
 
 
 class WorkflowTriggerResponse(BaseModel):
-    """Response from the public trigger endpoint."""
+    """Response from the public trigger endpoint.
+
+    For a run that did not complete, ``error_code`` says why
+    (``workflow_step_failed``, ``workflow_run_timed_out``,
+    ``workflow_run_cancelled``, ``workflow_run_failed``) and ``error`` is a
+    fixed sentence for that code. The step names and the failure text are
+    in the run record, which the workflow's owner can read.
+    """
 
     run_id: str
     status: str
     outputs: dict[str, Any] | None = None
     error: str | None = None
+    error_code: str | None = None
     duration_ms: int | None = None
 
 

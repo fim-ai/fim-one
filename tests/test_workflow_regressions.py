@@ -409,6 +409,7 @@ class TestErrorStrategyRunStatus:
         name, data = _final(await _run(raw))
         assert name == "run_failed"
         assert "No End node was reached" in data["error"]
+        assert data["error_code"] == "workflow_step_failed"
 
     @pytest.mark.asyncio
     async def test_stop_workflow_still_fails_run(self) -> None:
@@ -419,6 +420,7 @@ class TestErrorStrategyRunStatus:
         name, data = _final(await _run(raw))
         assert name == "run_failed"
         assert data["error"] == "Nodes failed: ['bad']"
+        assert data["error_code"] == "workflow_step_failed"
 
 
 # ---------------------------------------------------------------------------

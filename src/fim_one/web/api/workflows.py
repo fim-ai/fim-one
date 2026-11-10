@@ -721,6 +721,21 @@ _TRIGGER_DEPRECATION_HEADERS = {
 }
 
 
+# What a trigger-key caller is told about a run that did not complete.
+_TRIGGER_FAILURE_MESSAGES = {
+    "workflow_step_failed": (
+        "A step of the workflow failed. The workflow's owner can see the details "
+        "in its run history."
+    ),
+    "workflow_run_timed_out": "The workflow run timed out.",
+    "workflow_run_cancelled": "The workflow run was cancelled.",
+    "workflow_run_failed": (
+        "The workflow run failed. The workflow's owner can see the details in its "
+        "run history."
+    ),
+}
+
+
 async def _resolve_trigger_workflow(raw_key: str | None, db: AsyncSession) -> Workflow:
     from fim_one.web.services.workflow_trigger_keys import (
         TriggerKeyRejectedError,
@@ -800,11 +815,20 @@ async def _execute_trigger(
     except RunRefusedError as exc:
         raise _refused(exc) from None
 
+    # The key holder is not a signed-in user: they learn that the run failed
+    # and in which way, not which step failed or what it said (a database's
+    # error text, an exception's message). That stays in the run record.
+    error_code = None
+    if outcome.status != "completed":
+        error_code = outcome.error_code or "workflow_run_failed"
+        if error_code not in _TRIGGER_FAILURE_MESSAGES:
+            error_code = "workflow_run_failed"
     trigger_response = WorkflowTriggerResponse(
         run_id=outcome.run_id,
         status=outcome.status,
         outputs=outcome.outputs or None,
-        error=outcome.error,
+        error=_TRIGGER_FAILURE_MESSAGES[error_code] if error_code else None,
+        error_code=error_code,
         duration_ms=outcome.duration_ms,
     )
     return ApiResponse(data=trigger_response.model_dump())

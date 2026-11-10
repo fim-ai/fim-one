@@ -194,6 +194,11 @@ class RunOutcome:
     outputs: dict[str, Any] = field(default_factory=dict)
     node_results: dict[str, Any] = field(default_factory=dict)
     error: str | None = None
+    # Why a run that did not complete stopped, as a stable code:
+    # ``workflow_step_failed``, ``workflow_run_timed_out``,
+    # ``workflow_run_cancelled`` or ``workflow_run_failed``. ``error`` is the
+    # full text for the run record; it can name steps and quote exceptions.
+    error_code: str | None = None
     duration_ms: int = 0
     total_tokens: int = 0
 
@@ -294,18 +299,27 @@ class StartedRun:
                     out.outputs = data.get("outputs", {}) or {}
                     out.status = data.get("status", "completed")
                     out.error = data.get("error") if out.status != "completed" else None
+                    if out.status == "completed":
+                        out.error_code = None
+                    elif out.status == "cancelled":
+                        out.error_code = "workflow_run_cancelled"
+                    else:
+                        out.error_code = data.get("error_code") or "workflow_run_failed"
                     out.total_tokens = int(data.get("total_tokens", 0) or 0)
                 elif name == "run_failed":
                     out.status = "failed"
                     out.error = data.get("error")
+                    out.error_code = data.get("error_code") or "workflow_run_failed"
                     out.total_tokens = int(data.get("total_tokens", 0) or 0)
                 await self._queue.put((name, data))
         except asyncio.CancelledError:
             out.status = "cancelled"
             out.error = "Execution cancelled"
+            out.error_code = "workflow_run_cancelled"
         except Exception as exc:
             out.status = "failed"
             out.error = f"{type(exc).__name__}: {exc}"
+            out.error_code = "workflow_run_failed"
             logger.exception("Workflow run %s failed", self.run_id)
             await self._queue.put(
                 ("run_failed", {"run_id": self.run_id, "status": "failed", "error": out.error})
