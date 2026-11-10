@@ -450,6 +450,11 @@ class TestADecisionContinuesTheRun:
         run = await rig.ended(outcome.run_id)
         assert run.status == "failed"
         assert "Approval rejected: not like this" in run.node_results["human_1"]["error"]
+        assert {nid: r["status"] for nid, r in run.node_results.items()} == {
+            "start_1": "completed",
+            "human_1": "failed",  # not left as "waiting"
+            "end_1": "skipped",
+        }
         assert "end_1" not in {n for n, r in run.node_results.items() if r.get("status") == "completed"}
 
     async def test_expired_the_run_fails_as_timed_out(self, rig: Rig) -> None:

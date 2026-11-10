@@ -202,6 +202,15 @@ def run_timeout_ms(workflow: Any) -> int:
     return (seconds or DEFAULT_RUN_TIMEOUT_SECONDS) * 1000
 
 
+# The status a step is in after each of these events (the others carry it).
+_EVENT_STATUS = {
+    "node_started": "running",
+    "node_resumed": "running",
+    "node_failed": "failed",
+    "node_skipped": "skipped",
+}
+
+
 # ---------------------------------------------------------------------------
 # Gate
 # ---------------------------------------------------------------------------
@@ -374,8 +383,11 @@ class StartedRun:
                 if name in _NODE_EVENTS:
                     nid = data.get("node_id", "")
                     out.node_results[nid] = {**(out.node_results.get(nid) or {}), **data}
-                    if name == "node_resumed":
-                        out.node_results[nid]["status"] = "running"
+                    # Where the step stands now. Not every event says, and
+                    # a step that waited and then failed must not keep the
+                    # status of its wait.
+                    if name in _EVENT_STATUS:
+                        out.node_results[nid]["status"] = _EVENT_STATUS[name]
                     await self._save_progress()
                 elif name == "run_suspended":
                     out.status = "waiting"
