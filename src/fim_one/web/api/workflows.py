@@ -941,6 +941,86 @@ async def reject_approval(
 
 
 # ---------------------------------------------------------------------------
+# What the editor offers for a step
+# ---------------------------------------------------------------------------
+
+# How long the editor waits for an MCP server to list its tools.
+_MCP_TOOL_LISTING_TIMEOUT_SECONDS = 30
+
+
+@router.get("/step-options/mcp-servers/{server_id}/tools", response_model=ApiResponse)
+async def list_step_mcp_tools(
+    server_id: str,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """The tools of an MCP server, for the editor of an MCP step.
+
+    Each tool comes with its description and the JSON schema of its
+    arguments. The server is opened the way a step by this user would open
+    it (``core.assembly``): it must be usable by them and is connected with
+    the credential they would call it with, so the same refusals apply
+    (``resource_not_found``, ``resource_inactive``, ``credential_required``).
+    A server that cannot be reached answers ``mcp_tools_unavailable``.
+    """
+    from fim_one.core.assembly.principal import CallContext
+    from fim_one.core.assembly.toolset import ToolsetError, mcp_tools
+    from fim_one.core.assembly.visibility import ResourceKind, authorize_use
+
+    ctx = CallContext(
+        principal=await _principal_of(db, current_user), binding=None, entry="workflow_node"
+    )
+    decision = await authorize_use(db, ctx, ResourceKind.MCP_SERVER, [server_id])
+    if not decision.usable:
+        raise decision.refused[server_id]
+    server = decision.usable[0]
+
+    def _unavailable(reason: str) -> AppError:
+        return AppError(
+            "mcp_tools_unavailable",
+            status_code=502,
+            detail=f"Could not list the tools of MCP server '{server.name}': {reason}",
+            detail_args={"name": server.name, "reason": reason},
+        )
+
+    client = None
+    try:
+        # asyncio.timeout, not wait_for: the stdio client must be closed by
+        # the task that opened it.
+        async with asyncio.timeout(_MCP_TOOL_LISTING_TIMEOUT_SECONDS):
+            tools, client = await mcp_tools(ctx, [server], mode="legacy", strict=True)
+        return ApiResponse(
+            data={
+                "tools": [
+                    {
+                        "name": getattr(tool, "original_name", tool.name),
+                        "description": tool.description,
+                        "input_schema": tool.parameters_schema,
+                    }
+                    for tool in tools
+                ]
+            }
+        )
+    except AssemblyRefusal:
+        raise
+    except ToolsetError as exc:
+        raise _unavailable(exc.detail) from None
+    except TimeoutError:
+        raise _unavailable(
+            f"no answer within {_MCP_TOOL_LISTING_TIMEOUT_SECONDS} seconds"
+        ) from None
+    except Exception as exc:
+        logger.warning("Listing the tools of MCP server %r failed", server.name, exc_info=True)
+        raise _unavailable(type(exc).__name__) from None
+    finally:
+        if client is not None:
+            try:
+                await client.disconnect_all()
+            except Exception:
+                logger.warning("Failed to close MCP server %r", server.name, exc_info=True)
+
+
+# ---------------------------------------------------------------------------
 # Single-workflow CRUD
 # ---------------------------------------------------------------------------
 

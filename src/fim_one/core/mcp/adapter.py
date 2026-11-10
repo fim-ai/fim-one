@@ -56,7 +56,7 @@ class MCPToolAdapter(BaseTool):
         self._schema: dict[str, Any] = tool_def.get(
             "inputSchema", {"type": "object", "properties": {}}
         )
-        self._original_name = tool_def["name"]
+        self._original_name: str = tool_def["name"]
         self._call_fn = call_fn
         self._on_call_complete: Callable[..., Awaitable[None]] | None = None
         self._server_id: str | None = None
@@ -89,6 +89,11 @@ class MCPToolAdapter(BaseTool):
     def display_name(self) -> str:
         action = self._original_name.replace("_", " ").title()
         return f"{self._server_name}: {action}"
+
+    @property
+    def original_name(self) -> str:
+        """The tool's name on its server, as ``tools/list`` gave it."""
+        return self._original_name
 
     @property
     def category(self) -> str:

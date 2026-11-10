@@ -126,6 +126,9 @@ export function NodeConfigPanel({ workflowId, node, allNodes, onUpdate, onDelete
 
           {NodeForm ? (
             <NodeForm
+              // A form's own state (a draft, an open section) belongs to
+              // one step: another step of the same type starts afresh.
+              key={node.id}
               data={node.data}
               setField={updateField}
               setFields={updateFields}

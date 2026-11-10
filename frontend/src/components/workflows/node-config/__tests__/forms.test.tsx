@@ -28,6 +28,7 @@ vi.mock("@/lib/api", () => {
     agentApi: { list: vi.fn(none) },
     kbApi: { list: vi.fn(none) },
     mcpServerApi: { list: vi.fn(none) },
+    workflowApi: { listStepMcpTools: vi.fn(() => Promise.resolve([])) },
   }
 })
 

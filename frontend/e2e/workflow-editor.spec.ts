@@ -13,6 +13,7 @@ import {
   canvasReported,
   configPanel,
   connect,
+  createConnectorWorkflow,
   createEmptyWorkflow,
   createLinearWorkflow,
   fetchBlueprint,
@@ -252,7 +253,11 @@ test("build, save, reload and run a workflow that uses every offered node type",
     const panel = await openConfig(page, "mcp")
     await panel.getByTestId("mcp-server-select").click()
     await page.getByRole("option", { name: seeded.mcpServerName }).click()
-    await panel.getByPlaceholder("Tool to execute").fill("echo")
+    // The server is asked for its tools; the tool's one argument gets a field.
+    await panel.getByTestId("mcp-tool-select").click()
+    await page.getByRole("option", { name: "echo", exact: true }).click()
+    await expect(panel.getByText("Return the given text.")).toBeVisible()
+    await panel.getByLabel("text").fill(`{{${ids.start}.topic}}`)
   })
 
   await test.step("configure End", async () => {
@@ -328,7 +333,13 @@ test("build, save, reload and run a workflow that uses every offered node type",
     ])
     const mcp = await openConfig(page, "mcp")
     await expect(mcp.getByTestId("mcp-server-select")).toContainText(seeded.mcpServerName)
-    expect(saved.nodes.find((n) => n.type === "mcp")?.data.server_id).toBe(seeded.mcpServerId)
+    await expect(mcp.getByTestId("mcp-tool-select")).toContainText("echo")
+    await expect(mcp.getByLabel("text")).toHaveValue(`{{${ids.start}.topic}}`)
+    expect(saved.nodes.find((n) => n.type === "mcp")?.data).toMatchObject({
+      server_id: seeded.mcpServerId,
+      tool_name: "echo",
+      parameters: { text: `{{${ids.start}.topic}}` },
+    })
     const end = await openConfig(page, "end")
     await expect(end.getByPlaceholder("Key")).toHaveCount(5)
 
@@ -356,7 +367,8 @@ test("build, save, reload and run a workflow that uses every offered node type",
     await expect(runPanel).toContainText("STUB_REPLY Write about otters")
     await expect(runPanel).toContainText("STUB_REPLY Summarise STUB_REPLY Write about otters")
     await expect(runPanel).toContainText(KB_FACT)
-    await expect(runPanel).toContainText("MCP_STUB")
+    // The MCP tool was called with the argument entered in the editor.
+    await expect(runPanel).toContainText("MCP_STUB otters")
     await expect(runPanel).toContainText("otters")
     await expect(runPanel.getByText("Failed")).toHaveCount(0)
 
@@ -413,6 +425,65 @@ test("build, save, reload and run a workflow that uses every offered node type",
     await expect(canvasNodes(page)).toHaveCount(OFFERED.length)
     await expect(canvasEdges(page)).toHaveCount(7)
     for (const type of OFFERED) await expect(nodeOfType(page, type)).toHaveCount(1)
+  })
+})
+
+test("a Connector step on a database connector picks an operation, saves and runs", async ({
+  page,
+  request,
+}) => {
+  const workflowId = await createConnectorWorkflow(request, seeded.session, "Database workflow")
+  await page.goto(`/workflows/${workflowId}`)
+  await expect(canvasNodes(page)).toHaveCount(3)
+  const stored = async () =>
+    (await fetchBlueprint(request, seeded.session, workflowId)).nodes.find(
+      (n) => n.id === "connector_1",
+    )?.data
+
+  const panel = await openConfig(page, "connector")
+  await test.step("the owner's database connector is offered, with operations for actions", async () => {
+    await panel.getByRole("combobox").nth(0).click()
+    await page.getByRole("option", { name: seeded.dbConnectorName }).click()
+    await expect(panel.getByText("Select action")).toHaveCount(0)
+    await expect(panel.getByRole("button", { name: "Add parameter" })).toHaveCount(0)
+    await expect(panel.getByText("Only you, the connector's owner, can run this step.", { exact: false })).toBeVisible()
+  })
+
+  await test.step("a query stores its SQL", async () => {
+    await panel.getByTestId("connector-operation").click()
+    await page.getByRole("option", { name: "Run a SQL query" }).click()
+    await panel.getByPlaceholder(/^SELECT/).fill("SELECT 1 AS one")
+    await saveWorkflow(page)
+    expect(await stored()).toMatchObject({
+      connector_id: seeded.dbConnectorId,
+      action_id: "query",
+      parameters: { sql: "SELECT 1 AS one" },
+    })
+  })
+
+  await test.step("another operation replaces the query's parameters", async () => {
+    await panel.getByTestId("connector-operation").click()
+    await page.getByRole("option", { name: "List tables" }).click()
+    await expect(panel.getByPlaceholder(/^SELECT/)).toHaveCount(0)
+    await saveWorkflow(page)
+    expect(await stored()).toMatchObject({ action_id: "list_tables", parameters: {} })
+  })
+
+  await test.step("reload shows the connector and the operation", async () => {
+    await page.reload()
+    const reopened = await openConfig(page, "connector")
+    await expect(reopened.getByRole("combobox").nth(0)).toContainText(seeded.dbConnectorName)
+    await expect(reopened.getByTestId("connector-operation")).toContainText("List tables")
+  })
+
+  await test.step("the step runs for the connector's owner", async () => {
+    await page.getByRole("button", { name: "Run", exact: true }).click()
+    const runPanel = page.getByTestId("run-panel")
+    await expect(runPanel).toBeVisible()
+    await runPanel.getByRole("button", { name: "Start Run" }).click()
+    await expect(runPanel.getByText("Completed").first()).toBeVisible({ timeout: 60_000 })
+    await expect(runPanel.getByText("Failed")).toHaveCount(0)
+    await expect(runPanel.getByText("3/3 nodes")).toBeVisible()
   })
 })
 

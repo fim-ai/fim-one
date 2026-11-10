@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import re
 import time
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
@@ -875,6 +876,50 @@ async def _interpolated_parameters(
     return params
 
 
+def _fit_tool_schema(
+    params: dict[str, Any], template: dict[str, Any], schema: Any
+) -> dict[str, Any]:
+    """Give each filled-in ``{{variable}}`` the type the tool's schema asks for.
+
+    Filling a reference in always yields text, so a number taken from an
+    earlier step would reach a tool that declares ``integer`` as ``"3"`` and
+    be rejected. A parameter that was a template is converted when the
+    schema names a number, a boolean, an object or an array and the text is
+    one; anything else is passed as it is, for the tool to judge. A value
+    written literally is never touched.
+    """
+    properties = schema.get("properties") if isinstance(schema, dict) else None
+    if not isinstance(properties, dict):
+        return params
+    fitted = dict(params)
+    for key, value in params.items():
+        written = template.get(key)
+        if not (isinstance(written, str) and "{{" in written and isinstance(value, str)):
+            continue
+        declared = properties.get(key)
+        kind = declared.get("type") if isinstance(declared, dict) else None
+        if isinstance(kind, list):
+            kind = next((k for k in kind if k != "null"), None)
+        text = value.strip()
+        try:
+            if kind == "integer":
+                fitted[key] = int(text)
+            elif kind == "number":
+                number = float(text)
+                # "nan" and "inf" parse, and are not JSON numbers.
+                if math.isfinite(number):
+                    fitted[key] = number
+            elif kind == "boolean" and text.lower() in ("true", "false"):
+                fitted[key] = text.lower() == "true"
+            elif kind in ("object", "array"):
+                parsed = json.loads(text)
+                if isinstance(parsed, dict if kind == "object" else list):
+                    fitted[key] = parsed
+        except ValueError:
+            pass
+    return fitted
+
+
 class _StepFailed(Exception):
     """A step cannot go on; ``detail`` is the text of its failure."""
 
@@ -1537,7 +1582,11 @@ class MCPExecutor:
                 tool_name,
                 list(params.keys()),
             )
-            output = await target_tool.run(**params)
+            output = await target_tool.run(
+                **_fit_tool_schema(
+                    params, params_template, getattr(target_tool, "parameters_schema", None)
+                )
+            )
 
             # Store output
             await _store_output(node, store, output)

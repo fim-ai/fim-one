@@ -30,6 +30,7 @@ vi.mock("@/lib/api", () => ({
   agentApi: { list: vi.fn(() => Promise.resolve({ items: listed.agents, pages: 1 })) },
   kbApi: { list: vi.fn(() => Promise.resolve({ items: listed.kbs, pages: 1 })) },
   mcpServerApi: { list: vi.fn(() => Promise.resolve({ items: listed.servers, pages: 1 })) },
+  workflowApi: { listStepMcpTools: vi.fn(() => Promise.resolve([])) },
 }))
 
 vi.mock("@/contexts/auth-context", () => ({
