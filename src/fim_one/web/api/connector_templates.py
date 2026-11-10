@@ -92,4 +92,4 @@ async def create_connector_from_template(
 
     from fim_one.web.api.connectors import _connector_to_response
 
-    return ApiResponse(data=_connector_to_response(connector).model_dump())
+    return ApiResponse(data=_connector_to_response(connector, is_owner=True).model_dump())

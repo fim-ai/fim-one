@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { api, type DependencyManifest, type MarketItem } from '@/lib/api'
 import { useDateFormatter } from '@/hooks/use-date-formatter'
+import { depsNeedingKeys, depsOnlyOwnerCanUse } from '@/lib/mcp-server-notice'
 
 const RESOURCE_ROUTES: Record<string, string> = {
   agent: '/agents',
@@ -125,7 +126,10 @@ export function ResourceDetailModal({
 
   if (!item) return null
 
-  const depsNeedingSetup = subscribeDeps?.connection_deps.filter(d => !d.allow_fallback) ?? []
+  // A server only its owner can connect to is not a matter of keys: it is
+  // listed apart, so that nobody is sent to configure keys that cannot help.
+  const depsNeedingSetup = depsNeedingKeys(subscribeDeps?.connection_deps)
+  const depsOwnerOnly = depsOnlyOwnerCanUse(subscribeDeps?.connection_deps)
 
   const isSolution = ['agent', 'skill', 'workflow'].includes(item.resource_type)
   const categoryLabel = isSolution ? t('categorySolutions') : t('categoryComponents')
@@ -176,6 +180,24 @@ export function ResourceDetailModal({
             </div>
           )}
 
+          {depsOwnerOnly.length > 0 && (
+            <div className="space-y-2 border-t pt-4">
+              <div className="flex items-start gap-2 text-sm font-medium text-amber-600 dark:text-amber-400">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{t('ownerOnlyDeps')}</span>
+              </div>
+              {depsOwnerOnly.map((dep) => (
+                <div
+                  key={`${dep.resource_type}:${dep.resource_id}`}
+                  className="flex items-center gap-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-sm text-amber-700 dark:text-amber-300"
+                >
+                  <Server className="h-3.5 w-3.5 shrink-0" />
+                  {dep.resource_name}
+                </div>
+              ))}
+            </div>
+          )}
+
           <DialogFooter className="sm:justify-center gap-2">
             <Button onClick={handleGoConfigure}>
               {t('goToConfigure')} &rarr;
@@ -218,6 +240,16 @@ export function ResourceDetailModal({
           {item.description && (
             <p className="text-sm text-muted-foreground leading-relaxed">
               {item.description}
+            </p>
+          )}
+
+          {item.resource_type === 'mcp_server' && item.address_private && !item.is_own && (
+            <p
+              role="note"
+              className="flex items-start gap-1.5 rounded-md border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400"
+            >
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{t('ownerOnlyServer')}</span>
             </p>
           )}
 

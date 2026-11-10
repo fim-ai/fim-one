@@ -28,6 +28,13 @@ logging.basicConfig(
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
+# At INFO the HTTP clients log each request with its full URL, and the MCP
+# SDK logs failed connections with theirs: user-info, query string and
+# token-shaped path segments are cut before any handler sees them. Here, so
+# that every uvicorn worker has it from its first record.
+from fim_one.core.security.log_secrets import install_url_secret_log_filter
+
+install_url_secret_log_filter()
 
 import json
 

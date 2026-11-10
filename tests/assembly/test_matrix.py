@@ -122,6 +122,8 @@ _KINDS = {
     "db": ResourceKind.CONNECTOR,
     "mcp_stdio": ResourceKind.MCP_SERVER,
     "mcp_http": ResourceKind.MCP_SERVER,
+    "mcp_stdio_secret": ResourceKind.MCP_SERVER,
+    "mcp_http_secret": ResourceKind.MCP_SERVER,
     "kb": ResourceKind.KNOWLEDGE_BASE,
     "skill": ResourceKind.SKILL,
     "workflow": ResourceKind.WORKFLOW,
@@ -158,7 +160,9 @@ async def test_authorize_use_implements_the_visibility_part_of_the_rule(
                 decision = await authorize_use(db, ctx, _KINDS[resource], [scene.ids[resource]])
                 got = None if decision.usable else decision.refused[scene.ids[resource]].error_code
                 want_code = (
-                    None if want.refusal_code == "credential_required" else want.refusal_code
+                    None
+                    if want.refusal_code in ("credential_required", "mcp_server_address_private")
+                    else want.refusal_code
                 )
                 if got != want_code:
                     mismatches.append(f"{cell}: rule {want_code!r}, authorize_use {got!r}")
@@ -184,6 +188,8 @@ _SECRETS = {
         "owner_fallback": {"env": None, "headers": m.OWNER_HEADERS},
     },
 }
+_SECRETS["mcp_stdio_secret"] = _SECRETS["mcp_stdio"]
+_SECRETS["mcp_http_secret"] = _SECRETS["mcp_http"]
 
 
 @pytest.mark.timeout(120)

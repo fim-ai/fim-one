@@ -277,7 +277,7 @@ async def ai_create_agent(
 
     return ApiResponse(
         data=AICreateAgentResult(
-            agent=_agent_to_response(agent),
+            agent=_agent_to_response(agent, is_owner=True),
             message="Agent created successfully.",
             message_key="ai_agent_created",
         ).model_dump()
@@ -359,7 +359,7 @@ async def ai_refine_agent(
 
     return ApiResponse(
         data=AIRefineAgentResult(
-            agent=_agent_to_response(agent),
+            agent=_agent_to_response(agent, is_owner=True),
             modified_fields=modified_fields,
             message=f"Updated {len(modified_fields)} field(s)." if modified_fields else "No changes applied.",
             message_key=refine_message_key,

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
+from fim_one.core.assembly.credentials import address_is_private
 from fim_one.core.workflow.blueprint_v2 import node_type_of
 
 if TYPE_CHECKING:
@@ -46,6 +47,9 @@ class ConnectionDep:
     resource_name: str
     credential_schema: dict[str, Any]  # field definitions for the onboarding form
     allow_fallback: bool = False  # if True, owner's credentials are shared as fallback
+    # MCP server only: fallback is off and its address may carry a credential,
+    # so only its owner can connect and no credential of the subscriber's helps.
+    address_private: bool = False
 
 
 @dataclass
@@ -98,6 +102,7 @@ class DependencyManifest:
                     "resource_name": d.resource_name,
                     "credential_schema": d.credential_schema,
                     "allow_fallback": d.allow_fallback,
+                    "address_private": d.address_private,
                 }
                 for d in self.connection_deps
             ],
@@ -296,6 +301,7 @@ async def _resolve_agent(agent_id: str, db: AsyncSession) -> DependencyManifest:
                     resource_name=server.name,
                     credential_schema=extract_mcp_credential_schema(server),
                     allow_fallback=getattr(server, "allow_fallback", False),
+                    address_private=address_is_private(server),
                 )
             )
 
@@ -367,6 +373,7 @@ async def _resolve_skill(skill_id: str, db: AsyncSession) -> DependencyManifest:
                         resource_name=server.name,
                         credential_schema=extract_mcp_credential_schema(server),
                         allow_fallback=getattr(server, "allow_fallback", False),
+                        address_private=address_is_private(server),
                     )
                 )
 
@@ -509,6 +516,7 @@ async def _resolve_workflow(
                             resource_name=server.name,
                             credential_schema=extract_mcp_credential_schema(server),
                             allow_fallback=getattr(server, "allow_fallback", False),
+                            address_private=address_is_private(server),
                         )
                     )
                 else:

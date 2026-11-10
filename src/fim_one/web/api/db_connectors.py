@@ -1015,7 +1015,7 @@ async def db_ai_chat(
                 "ok": True,
                 "message": f"已更新：{msg}",
                 "changes": len(filtered),
-                "connector": _connector_to_response(connector).model_dump(),
+                "connector": _connector_to_response(connector, is_owner=True).model_dump(),
             }
 
         if intent == "smart_select":

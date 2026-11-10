@@ -125,6 +125,27 @@ class TestListingAServersTools:
         assert refused.value.error_code == code
         assert out.mcp_connects == {}
 
+    @pytest.mark.parametrize("resource", m.MCP_SECRET_ADDRESS)
+    async def test_a_server_with_a_credential_in_its_address_is_its_owners_alone(
+        self, factory: async_sessionmaker[AsyncSession], resource: str
+    ) -> None:
+        """Fallback off: a subscriber's own credential does not open the owner's URL."""
+        scene = await _scene(factory, "subscriber", allow_fallback=False, has_personal=True)
+        with m.outside_world(factory) as out, pytest.raises(AssemblyRefusal) as refused:
+            await _list(factory, scene, resource)
+        assert refused.value.error_code == "mcp_server_address_private"
+        assert out.mcp_connects == {}
+
+    @pytest.mark.parametrize(("role", "allow_fallback"), [("owner", False), ("subscriber", True)])
+    async def test_its_owner_and_those_the_owner_lends_to_still_list_it(
+        self, factory: async_sessionmaker[AsyncSession], role: str, allow_fallback: bool
+    ) -> None:
+        scene = await _scene(factory, role, allow_fallback=allow_fallback)
+        with m.outside_world(factory) as out:
+            response = await _list(factory, scene, "mcp_http_secret")
+        assert [tool["name"] for tool in response.data["tools"]] == ["echo"]
+        assert out.mcp_connects[scene.names["mcp_http_secret"]]["url"] == m.SECRET_URL
+
 
 class TestAServerThatCannotBeListed:
     async def test_a_connection_error_is_reported_without_its_text(
@@ -391,9 +412,7 @@ class TestAUserCanOnlyHaveAFewListingsInFlight:
         assert "mcp_tools_busy" in messages
 
 
-async def _list_as(
-    factory: async_sessionmaker[AsyncSession], server_id: str, user_id: str
-) -> Any:
+async def _list_as(factory: async_sessionmaker[AsyncSession], server_id: str, user_id: str) -> Any:
     async with factory() as db:
         return await api.list_step_mcp_tools(
             server_id, current_user=SimpleNamespace(id=user_id), db=db

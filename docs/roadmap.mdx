@@ -349,6 +349,7 @@ note.
 
 - [x] Chunked compaction input and model-aware budgets on the main chat path, so any model mix stays within window
 - [x] One credential rule and one call record for chat, delegated agents and workflow steps; MCP calls recorded
+- [x] A shared MCP server with a credential in its URL or launch arguments is owner-only while fallback is off
 - [x] Read-only database connectors enforced by a read-only transaction (PostgreSQL family, MySQL), not by keyword check alone
 - [x] Workflow database steps bind `{{variable}}` values as query parameters; trigger responses carry an error code, not step details
 - [x] Workflow approvals suspend the run and resume it on decision, across restarts; approval inbox; crash recovery for interrupted runs

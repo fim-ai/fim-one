@@ -12,7 +12,9 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fim_one.core.assembly.credentials import personal_credential_fits
+from fim_one.core.assembly.credentials import address_is_private, personal_credential_fits
+from fim_one.core.assembly.errors import MCP_SERVER_ADDRESS_PRIVATE
+from fim_one.core.assembly.mcp_address import address_secret_reasons, error_without_url_secrets
 from fim_one.core.security import is_stdio_allowed, validate_stdio_command, validate_url
 from fim_one.db import get_session
 from fim_one.web.exceptions import AppError
@@ -47,7 +49,13 @@ def _mask_dict(d: dict[str, str] | None) -> dict[str, str] | None:
     return {k: "***" for k in d}
 
 
-def _to_response(srv: MCPServer, *, is_owner: bool = True, my_has_credentials: bool = False) -> MCPServerResponse:
+def _to_response(
+    srv: MCPServer,
+    *,
+    is_owner: bool,
+    my_has_credentials: bool = False,
+    bound_to_shared: bool = False,
+) -> MCPServerResponse:
     # Non-owners: mask sensitive fields, strip internal content (command/args/url)
     if is_owner:
         env = srv.env
@@ -63,6 +71,15 @@ def _to_response(srv: MCPServer, *, is_owner: bool = True, my_has_credentials: b
         args = None
         url = None
         working_dir = None
+    # Fallback off and the URL or the launch arguments look like they carry
+    # a credential: only the owner can connect (core/assembly/credentials.py).
+    # ``address_private`` says so to whoever is shown the server. The owner
+    # is warned when that locks somebody out: the server is shared, or it
+    # is personal and one of the owner's shared agents or workflows uses it
+    # (*bound_to_shared*), whose runners are refused the same way.
+    address_private = address_is_private(srv)
+    shared = getattr(srv, "visibility", "personal") != "personal"
+    warn = is_owner and address_private and (shared or bound_to_shared)
     return MCPServerResponse(
         id=srv.id,
         user_id=srv.user_id or "",
@@ -78,6 +95,9 @@ def _to_response(srv: MCPServer, *, is_owner: bool = True, my_has_credentials: b
         is_active=srv.is_active,
         tool_count=srv.tool_count,
         allow_fallback=getattr(srv, "allow_fallback", True),
+        address_private=address_private,
+        warning=MCP_SERVER_ADDRESS_PRIVATE if warn else None,
+        warning_reasons=address_secret_reasons(srv) if warn else [],
         forked_from=getattr(srv, "forked_from", None),
         my_has_credentials=my_has_credentials,
         visibility=getattr(srv, "visibility", "personal"),
@@ -91,6 +111,49 @@ def _to_response(srv: MCPServer, *, is_owner: bool = True, my_has_credentials: b
         created_at=srv.created_at.isoformat() if srv.created_at else "",
         updated_at=srv.updated_at.isoformat() if srv.updated_at else None,
     )
+
+
+async def _bound_to_shared(db: AsyncSession, owner_id: str, servers: list[MCPServer]) -> set[str]:
+    """Which of *servers* are used by a shared agent or workflow of *owner_id*.
+
+    Only the owner's own agents and workflows can use a personal server,
+    and the answer is only needed for a personal server that would warrant
+    the warning, so most calls return without a query.
+    """
+    candidates = {
+        s.id
+        for s in servers
+        if s.user_id == owner_id
+        and getattr(s, "visibility", "personal") == "personal"
+        and address_is_private(s)
+    }
+    if not candidates:
+        return set()
+
+    from fim_one.db.models.agent import Agent
+    from fim_one.db.models.workflow import Workflow
+
+    used: set[str] = set()
+    agent_rows = await db.execute(
+        select(Agent.mcp_server_ids).where(
+            Agent.user_id == owner_id, Agent.visibility != "personal"
+        )
+    )
+    for (server_ids,) in agent_rows.all():
+        if isinstance(server_ids, list):
+            used.update(str(server_id) for server_id in server_ids)
+    workflow_rows = await db.execute(
+        select(Workflow.blueprint).where(
+            Workflow.user_id == owner_id, Workflow.visibility != "personal"
+        )
+    )
+    for (blueprint,) in workflow_rows.all():
+        nodes = blueprint.get("nodes") if isinstance(blueprint, dict) else None
+        for node in nodes if isinstance(nodes, list) else []:
+            data = node.get("data") if isinstance(node, dict) else None
+            if isinstance(data, dict) and data.get("server_id"):
+                used.add(str(data["server_id"]))
+    return candidates & used
 
 
 def _credential_fits(transport: str | None, cred: Any) -> bool:
@@ -189,7 +252,7 @@ async def create_mcp_server(
 
     result = await db.execute(select(MCPServer).where(MCPServer.id == server.id))
     server = result.scalar_one()
-    return ApiResponse(data=_to_response(server).model_dump())
+    return ApiResponse(data=_to_response(server, is_owner=True).model_dump())
 
 
 @router.get("", response_model=PaginatedResponse)
@@ -249,10 +312,16 @@ async def list_mcp_servers(
         }
 
     subscribed_mcp_ids_set = set(subscribed_mcp_ids)
+    bound = await _bound_to_shared(db, current_user.id, list(servers))
     items = []
     for s in servers:
         _is_owner = s.user_id == current_user.id
-        resp = _to_response(s, is_owner=_is_owner, my_has_credentials=s.id in cred_set)
+        resp = _to_response(
+            s,
+            is_owner=_is_owner,
+            my_has_credentials=s.id in cred_set,
+            bound_to_shared=s.id in bound,
+        )
         if _is_owner:
             resp.source = "own"
         elif s.id in subscribed_mcp_ids_set:
@@ -303,7 +372,15 @@ async def get_mcp_server(
     _cred = cred_result.scalar_one_or_none()
     my_has_credentials = _cred is not None and _credential_fits(server.transport, _cred)
     _is_owner = server.user_id == current_user.id
-    return ApiResponse(data=_to_response(server, is_owner=_is_owner, my_has_credentials=my_has_credentials).model_dump())
+    bound = await _bound_to_shared(db, current_user.id, [server])
+    return ApiResponse(
+        data=_to_response(
+            server,
+            is_owner=_is_owner,
+            my_has_credentials=my_has_credentials,
+            bound_to_shared=server.id in bound,
+        ).model_dump()
+    )
 
 
 @router.put("/{server_id}", response_model=ApiResponse)
@@ -350,7 +427,8 @@ async def update_mcp_server(
 
     result = await db.execute(select(MCPServer).where(MCPServer.id == server.id))
     server = result.scalar_one()
-    data = _to_response(server).model_dump()
+    bound = await _bound_to_shared(db, current_user.id, [server])
+    data = _to_response(server, is_owner=True, bound_to_shared=server.id in bound).model_dump()
     if reverted:
         data["publish_status_reverted"] = True
     return ApiResponse(data=data)
@@ -400,7 +478,11 @@ async def test_mcp_server(
         tool_names = [t.name for t in tools]
         return ApiResponse(data={"ok": True, "tool_count": count, "tools": tool_names})
     except Exception as exc:
-        logger.warning("MCP test failed for server %r: %s", server.name, exc)
+        # The owner is shown the error as it is; the log keeps it without
+        # what the URL in it can authenticate with.
+        logger.warning(
+            "MCP test failed for server %r: %s", server.name, error_without_url_secrets(exc)
+        )
         return ApiResponse(data={"ok": False, "error": str(exc)})
     finally:
         await client.disconnect_all()
@@ -448,7 +530,7 @@ async def publish_mcp_server(
 
     await db.commit()
     await db.refresh(server)
-    return ApiResponse(data=_to_response(server).model_dump())
+    return ApiResponse(data=_to_response(server, is_owner=True).model_dump())
 
 
 @router.post("/{server_id}/resubmit", response_model=ApiResponse)
@@ -480,7 +562,7 @@ async def resubmit_mcp_server(
 
     await db.commit()
     await db.refresh(server)
-    return ApiResponse(data=_to_response(server).model_dump())
+    return ApiResponse(data=_to_response(server, is_owner=True).model_dump())
 
 
 @router.post("/{server_id}/unpublish", response_model=ApiResponse)
@@ -527,7 +609,13 @@ async def unpublish_mcp_server(
 
     await db.commit()
     await db.refresh(server)
-    return ApiResponse(data=_to_response(server).model_dump())
+    is_owner = server.user_id == current_user.id
+    bound = await _bound_to_shared(db, current_user.id, [server]) if is_owner else set()
+    return ApiResponse(
+        data=_to_response(
+            server, is_owner=is_owner, bound_to_shared=server.id in bound
+        ).model_dump()
+    )
 
 
 
@@ -598,7 +686,7 @@ async def fork_mcp_server(
         select(MCPServer).where(MCPServer.id == forked.id)
     )
     forked = result.scalar_one()
-    return ApiResponse(data=_to_response(forked).model_dump())
+    return ApiResponse(data=_to_response(forked, is_owner=True).model_dump())
 
 
 # ---------------------------------------------------------------------------

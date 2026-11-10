@@ -188,7 +188,7 @@ def _sse(event: str, data: Any) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-def _workflow_to_response(wf: Workflow, *, is_owner: bool = True) -> WorkflowResponse:
+def _workflow_to_response(wf: Workflow, *, is_owner: bool) -> WorkflowResponse:
     # Non-owners: strip internal content (blueprint, schemas, webhook are IP)
     if is_owner:
         blueprint = wf.blueprint or {"nodes": [], "edges": [], "viewport": {}}
@@ -584,7 +584,7 @@ async def create_workflow(
     await db.commit()
     result = await db.execute(select(Workflow).where(Workflow.id == wf.id))
     wf = result.scalar_one()
-    return ApiResponse(data=_workflow_to_response(wf).model_dump())
+    return ApiResponse(data=_workflow_to_response(wf, is_owner=True).model_dump())
 
 
 @router.get("", response_model=PaginatedResponse)
@@ -729,7 +729,7 @@ async def create_workflow_from_template(
     await db.commit()
     result = await db.execute(select(Workflow).where(Workflow.id == wf.id))
     wf = result.scalar_one()
-    return ApiResponse(data=_workflow_to_response(wf).model_dump())
+    return ApiResponse(data=_workflow_to_response(wf, is_owner=True).model_dump())
 
 
 # ---------------------------------------------------------------------------
@@ -1154,7 +1154,14 @@ async def list_step_mcp_tools(
             f"no answer within {_MCP_TOOL_LISTING_TIMEOUT_SECONDS} seconds"
         ) from None
     except Exception as exc:
-        logger.warning("Listing the tools of MCP server %r failed", server_name, exc_info=True)
+        from fim_one.core.assembly.mcp_address import traceback_without_url_secrets
+
+        # Not ``exc_info``: the error can quote the server's URL.
+        logger.warning(
+            "Listing the tools of MCP server %r failed\n%s",
+            server_name,
+            traceback_without_url_secrets(exc),
+        )
         raise _unavailable(type(exc).__name__) from None
     finally:
         if client is not None:
@@ -1268,7 +1275,7 @@ async def update_workflow(
     await db.commit()
     result = await db.execute(select(Workflow).where(Workflow.id == wf.id))
     wf = result.scalar_one()
-    data = _workflow_to_response(wf).model_dump()
+    data = _workflow_to_response(wf, is_owner=True).model_dump()
     if reverted:
         data["publish_status_reverted"] = True
     return ApiResponse(data=data)
@@ -1321,7 +1328,7 @@ async def fork_workflow(
     await db.commit()
     result = await db.execute(select(Workflow).where(Workflow.id == forked.id))
     forked = result.scalar_one()
-    return ApiResponse(data=_workflow_to_response(forked).model_dump())
+    return ApiResponse(data=_workflow_to_response(forked, is_owner=True).model_dump())
 
 
 @router.delete("/{workflow_id}", response_model=ApiResponse)
@@ -1395,7 +1402,7 @@ async def publish_workflow(
     await db.commit()
     await db.refresh(wf)
 
-    return ApiResponse(data=_workflow_to_response(wf).model_dump())
+    return ApiResponse(data=_workflow_to_response(wf, is_owner=True).model_dump())
 
 
 @router.post("/{workflow_id}/resubmit", response_model=ApiResponse)
@@ -1427,7 +1434,7 @@ async def resubmit_workflow(
 
     await db.commit()
     await db.refresh(wf)
-    return ApiResponse(data=_workflow_to_response(wf).model_dump())
+    return ApiResponse(data=_workflow_to_response(wf, is_owner=True).model_dump())
 
 
 @router.post("/{workflow_id}/unpublish", response_model=ApiResponse)
@@ -1474,7 +1481,7 @@ async def unpublish_workflow(
 
     await db.commit()
     await db.refresh(wf)
-    return ApiResponse(data=_workflow_to_response(wf).model_dump())
+    return ApiResponse(data=_workflow_to_response(wf, is_owner=wf.user_id == current_user.id).model_dump())
 
 
 # ---------------------------------------------------------------------------
@@ -2378,7 +2385,7 @@ async def restore_workflow_version(
     await db.commit()
     wf_result = await db.execute(select(Workflow).where(Workflow.id == wf.id))
     wf = wf_result.scalar_one()
-    return ApiResponse(data=_workflow_to_response(wf).model_dump())
+    return ApiResponse(data=_workflow_to_response(wf, is_owner=True).model_dump())
 
 
 # ---------------------------------------------------------------------------
@@ -3115,7 +3122,7 @@ async def import_workflow(
     wf = result.scalar_one()
 
     import_response = WorkflowImportResponse(
-        workflow=_workflow_to_response(wf),
+        workflow=_workflow_to_response(wf, is_owner=True),
         unresolved_references=[
             UnresolvedReferenceItem(
                 node_id=u.node_id,

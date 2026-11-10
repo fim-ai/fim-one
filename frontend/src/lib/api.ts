@@ -2457,11 +2457,13 @@ export interface MarketItem {
   is_own: boolean
   publish_status: string | null
   created_at: string | null
+  /** MCP server: fallback is off and its address may carry a credential; only its owner can use it. */
+  address_private?: boolean
 }
 
 export interface DependencyManifest {
   content_deps: Array<{ resource_type: string; resource_id: string; resource_name: string }>
-  connection_deps: Array<{ resource_type: string; resource_id: string; resource_name: string; credential_schema: Record<string, unknown>; allow_fallback: boolean }>
+  connection_deps: Array<{ resource_type: string; resource_id: string; resource_name: string; credential_schema: Record<string, unknown>; allow_fallback: boolean; address_private?: boolean }>
 }
 
 // --- Market API ---
