@@ -214,6 +214,127 @@ async def _validate_binding_ownership(
         _in_agent_org(completion, "completion_channel_not_in_agent_org")
 
 
+def _first_name_collision(
+    rows: list[tuple[str, str, str]],
+) -> tuple[tuple[str, str], tuple[str, str], str] | None:
+    """The first two ``(id, name, key)`` rows that share a non-empty key.
+
+    Returns ``((id, name), (id, name), key)`` for the earlier and the later
+    row, or ``None`` when every key is distinct.
+    """
+    seen: dict[str, tuple[str, str]] = {}
+    for rid, name, key in rows:
+        if not key:
+            continue
+        earlier = seen.get(key)
+        if earlier is not None:
+            return earlier, (rid, name), key
+        seen[key] = (rid, name)
+    return None
+
+
+async def _validate_distinct_tool_names(
+    db: AsyncSession,
+    connector_ids: list[str] | None = None,
+    mcp_server_ids: list[str] | None = None,
+) -> None:
+    """Refuse a binding whose connectors, or MCP servers, would share tool names.
+
+    A connector's tools are named after ``connector_tool_prefix(name)`` and an
+    MCP server's after ``server_tool_prefix(name)``. Two bound resources with
+    the same prefix collide at run time: the one bound first keeps the plain
+    name and the other is renamed or loses the tools of that name, so which
+    system a call reaches depends on binding order. API connectors and
+    database connectors are offered through separate tools and are compared
+    among themselves. A connector whose name has no ASCII letter or digit is
+    named after its id and collides with nothing.
+
+    Raises HTTP 400 naming the two resources. Pass only the lists that are
+    being changed: an agent saved before this check existed must stay
+    editable in every other respect.
+    """
+    from fim_one.core.mcp.adapter import server_tool_prefix
+    from fim_one.core.tool.connector.adapter import connector_tool_prefix
+
+    def _in_binding_order(ids: list[str], rows: Any) -> list[Any]:
+        by_id = {row.id: row for row in rows}
+        return [by_id[i] for i in dict.fromkeys(ids) if i in by_id]
+
+    if connector_ids:
+        connectors = _in_binding_order(
+            connector_ids,
+            (
+                await db.execute(
+                    select(Connector.id, Connector.name, Connector.type).where(
+                        Connector.id.in_(connector_ids)
+                    )
+                )
+            ).all(),
+        )
+        for is_database in (False, True):
+            clash = _first_name_collision(
+                [
+                    (row.id, row.name, connector_tool_prefix(row.name))
+                    for row in connectors
+                    if (row.type == "database") is is_database
+                ]
+            )
+            if clash is not None:
+                (first_id, first), (second_id, second), tool_name = clash
+                raise AppError(
+                    "agent_connector_names_collide",
+                    status_code=400,
+                    detail=(
+                        f'Connectors "{first}" and "{second}" would both be offered '
+                        f'to the agent as "{tool_name}". Rename one of them or bind '
+                        "only one."
+                    ),
+                    detail_args={
+                        "first": first,
+                        "second": second,
+                        "tool_name": tool_name,
+                        "first_id": first_id,
+                        "second_id": second_id,
+                    },
+                )
+
+    if mcp_server_ids:
+        servers = _in_binding_order(
+            mcp_server_ids,
+            (
+                await db.execute(
+                    select(MCPServer.id, MCPServer.name).where(MCPServer.id.in_(mcp_server_ids))
+                )
+            ).all(),
+        )
+        clash = _first_name_collision(
+            [(row.id, row.name, server_tool_prefix(row.name)) for row in servers]
+        )
+        if clash is not None:
+            (first_id, first), (second_id, second), tool_name = clash
+            raise AppError(
+                "agent_mcp_server_names_collide",
+                status_code=400,
+                detail=(
+                    f'MCP servers "{first}" and "{second}" would both offer their '
+                    f'tools to the agent as "{tool_name}". Rename one of them or '
+                    "bind only one."
+                ),
+                detail_args={
+                    "first": first,
+                    "second": second,
+                    "tool_name": tool_name,
+                    "first_id": first_id,
+                    "second_id": second_id,
+                },
+            )
+
+
+def _binding_changed(new: list[str] | None, stored: Any) -> bool:
+    """Whether an update binds a different set of resources than is stored."""
+    return set(new or []) != set(stored or [])
+
+
 def _completion_channel_id(model_config_json: Any) -> str | None:
     """The channel an agent config sends completion notifications to, if enabled."""
     try:
@@ -237,6 +358,9 @@ async def create_agent(
         mcp_server_ids=body.mcp_server_ids,
         approval_channel_id=body.approval_channel_id,
         completion_channel_id=_completion_channel_id(body.model_config_json),
+    )
+    await _validate_distinct_tool_names(
+        db, connector_ids=body.connector_ids, mcp_server_ids=body.mcp_server_ids
     )
     agent = Agent(
         user_id=current_user.id,
@@ -369,6 +493,24 @@ async def update_agent(
             update_data.get("approval_channel_id") != agent.approval_channel_id
         ),
         agent_org_id=agent.org_id,
+    )
+    # Checked only for a list this update changes: the form sends both lists
+    # with every save, and an agent bound to two same-named resources before
+    # this check existed must stay editable otherwise.
+    new_connector_ids = update_data.get("connector_ids")
+    new_mcp_server_ids = update_data.get("mcp_server_ids")
+    await _validate_distinct_tool_names(
+        db,
+        connector_ids=(
+            new_connector_ids
+            if _binding_changed(new_connector_ids, agent.connector_ids)
+            else None
+        ),
+        mcp_server_ids=(
+            new_mcp_server_ids
+            if _binding_changed(new_mcp_server_ids, agent.mcp_server_ids)
+            else None
+        ),
     )
     for field, value in update_data.items():
         setattr(agent, field, value)

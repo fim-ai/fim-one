@@ -17,13 +17,13 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from fim_one.core.tool.base import BaseTool
+from fim_one.core.tool.connector.adapter import connector_tool_prefix
 
 from .pool import ConnectionPoolManager
 from .redaction import pii_column_names, redact_rows
@@ -485,7 +485,7 @@ def build_database_meta_tool(
 
     for conn, db_config, schema_tables in db_connectors:
         # Sanitise connector name to safe identifier
-        safe_name = re.sub(r"[^a-zA-Z0-9]", "_", conn.name.lower()).strip("_")
+        safe_name = connector_tool_prefix(conn.name)
         if not safe_name:
             safe_name = f"db_{getattr(conn, 'id', '')[:8] or len(stubs)}"
         # Deduplicate: append connector ID prefix on collision

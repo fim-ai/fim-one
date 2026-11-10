@@ -157,12 +157,21 @@ class ChatDiscoveryRequest(BaseModel):
     ``app_secret`` to query Feishu.  If both ``app_secret`` and
     ``channel_id`` are present, ``app_secret`` wins (user explicitly
     re-entered it).
+
+    ``base_url`` is the Feishu API origin to ask, for a privately deployed
+    Feishu; empty means ``https://open.feishu.cn``. It follows the secret:
+    with ``channel_id`` and no ``app_secret`` the stored channel's own
+    ``base_url`` is used and this field is ignored, so a stored secret is
+    only ever sent to the host it was saved for. Any value must be one the
+    channel itself could be saved with (an official host or one listed in
+    ``FEISHU_ALLOWED_BASE_URLS``).
     """
 
     app_id: str = Field(min_length=1)
     app_secret: str | None = None
     channel_id: str | None = None
     org_id: str | None = None
+    base_url: str | None = None
 
 
 class ChatInfo(BaseModel):

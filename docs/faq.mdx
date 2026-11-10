@@ -151,7 +151,7 @@ description: "Frequently asked questions about FIM One — setup, features, lice
     | **How it works** | Single reasoning loop: Reason, Act, Observe, repeat | LLM decomposes the goal into a dependency graph; independent steps run in parallel |
     | **Best for** | Focused queries, single-system lookups, conversational tasks | Multi-step tasks, cross-system orchestration, parallel data gathering |
     | **Concurrency** | Sequential (one tool at a time) | Concurrent (independent steps run simultaneously via asyncio) |
-    | **Re-planning** | N/A | Up to 3 rounds of automatic re-planning if goals are not met |
+    | **Re-planning** | N/A | Up to 3 rounds in total (the first plan plus 2 automatic re-plans) if goals are not met |
 
     Chat and new agents start in **Standard** (ReAct) mode. **Auto mode** uses a fast LLM classifier to analyze each incoming query and routes it to the optimal engine automatically. Select the mode via the three-way toggle in the chat UI (Auto / Standard / Planner).
 

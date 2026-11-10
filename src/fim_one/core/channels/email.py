@@ -35,11 +35,12 @@ _BOLD_RE = re.compile(r"\*\*([^*\n]+)\*\*")
 
 
 def _notice_html(markdown: str) -> str:
-    """A notice body (see ``completion_notice``) as the HTML an email carries.
+    """A notice body as the HTML an email carries.
 
-    The body quotes the user's message and the agent's answer, so it is
-    escaped first: none of it is markup. Only the ``**bold**`` markers
-    and line breaks are then rendered.
+    The body is text someone else wrote (a completion notice quotes the
+    user's message and the agent's answer, ``send_notification`` posts what
+    a model wrote), so it is escaped first: none of it is markup. Only the
+    ``**bold**`` markers and line breaks are then rendered.
     """
     escaped = html.escape(markdown, quote=True)
     return _BOLD_RE.sub(r"<b>\1</b>", escaped).replace("\n", "<br>\n")
@@ -103,12 +104,24 @@ class EmailChannel(BaseChannel):
         return None
 
     async def send_message(self, payload: dict[str, Any]) -> ChannelSendResult:
-        """Send ``payload["subject"]`` / ``payload["body"]`` (HTML) to the recipients."""
-        return await self.send_notice(
+        """Send ``payload["subject"]`` / ``payload["body"]`` to the recipients.
+
+        The body is HTML and is sent as it is: the markup is the caller's.
+        Text that is not the caller's own (a model's, a user's) goes through
+        :meth:`send_notice`, which escapes it.
+        """
+        return await self._send_html(
             str(payload.get("subject") or ""), str(payload.get("body") or "")
         )
 
     async def send_notice(self, title: str, body: str) -> ChannelSendResult:
+        """Send *body* as text: escaped, with ``**bold**`` and line breaks kept.
+
+        The title becomes the subject, a header and not HTML, on one line.
+        """
+        return await self._send_html(title, _notice_html(body))
+
+    async def _send_html(self, title: str, body: str) -> ChannelSendResult:
         from fim_one.core.tool.builtin.email_send import parse_recipients, single_line
 
         # Checked on every send, whoever the caller is: a row saved before
@@ -144,7 +157,7 @@ class EmailChannel(BaseChannel):
 
     async def send_completion(self, summary: CompletionSummary) -> ChannelSendResult:
         title, body = completion_notice(summary)
-        return await self.send_notice(title, _notice_html(body))
+        return await self.send_notice(title, body)
 
     # -- Inbound: none --
 

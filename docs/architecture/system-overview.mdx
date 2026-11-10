@@ -115,7 +115,7 @@ The tool system and execution engines are independent concerns. The LLM-driven e
 
 **ReAct** is an iterative tool loop. The agent reasons, picks a tool, observes the result, and repeats until done. It excels at exploratory, conversational tasks where the next step depends on the previous result. The loop runs up to 20 iterations by default (`REACT_MAX_ITERATIONS`) with per-iteration context management via ContextGuard. See [ReAct Engine](/architecture/react-engine) for implementation details.
 
-**DAG** decomposes a goal into 2-6 parallel steps. Each step runs an independent ReAct agent. A PlanAnalyzer evaluates whether the goal was achieved; if not, the pipeline re-plans autonomously (up to 3 rounds). DAG excels at tasks with clear subtasks that can run concurrently -- "search three sources and compare results" finishes in the time of one search, not three. See [DAG Engine](/architecture/dag-engine) for the full pipeline.
+**DAG** decomposes a goal into 2-6 parallel steps. Each step runs an independent ReAct agent. A PlanAnalyzer evaluates whether the goal was achieved; if not, the pipeline re-plans autonomously (up to 3 rounds in total: the first plan plus 2 re-plans). DAG excels at tasks with clear subtasks that can run concurrently -- "search three sources and compare results" finishes in the time of one search, not three. See [DAG Engine](/architecture/dag-engine) for the full pipeline.
 
 The two engines share infrastructure: `structured_llm_call` for reliable structured output, `ContextGuard` for token budget enforcement, and the `ToolRegistry` for tool resolution. Adding a new tool requires zero changes to either engine. Adding a new engine (should one ever be needed) requires zero changes to the tool system.
 

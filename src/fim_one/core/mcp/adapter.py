@@ -25,6 +25,16 @@ def _sanitize_tool_name(name: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_-]", "_", name)[:128]
 
 
+def server_tool_prefix(server_name: str) -> str:
+    """The part of a tool name that stands for an MCP server called *server_name*.
+
+    A tool is named ``_sanitize_tool_name(f"{server_name}__{tool}")``, which
+    maps character by character, so this is the server's share of it. Two
+    servers with the same prefix offer their tools under the same names.
+    """
+    return _sanitize_tool_name(server_name)
+
+
 class MCPToolAdapter(BaseTool):
     """Wraps a single MCP tool into the FIM One ``Tool`` protocol.
 
