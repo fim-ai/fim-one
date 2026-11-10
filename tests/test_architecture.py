@@ -114,6 +114,28 @@ class TestCoreHasNoTopLevelWebImport:
         )
 
 
+class TestCoreDoesNotReachIntoChatOrTheHookBootstrap:
+    """An agent's runtime reaches core through the ``core.assembly.runtime`` port.
+
+    ``call_agent`` and the workflow Agent step used to import chat's private
+    resolvers and the web hook bootstrap inside their functions.
+    """
+
+    FORBIDDEN = ("fim_one.web.api.chat", "fim_one.web.hooks_bootstrap")
+
+    def test_no_import_at_any_level(self) -> None:
+        offenders = [
+            f"{py.relative_to(SRC)}: {module}"
+            for py in _core_py_files()
+            for module, _top in _collect_imports(py)
+            if module in self.FORBIDDEN
+        ]
+        assert not offenders, (
+            "core modules get an agent runtime from fim_one.core.assembly.runtime:\n  "
+            + "\n  ".join(offenders)
+        )
+
+
 class TestCoreDoesNotImportWebVisibility:
     """The visibility rule lives in core.assembly; core must not reach back.
 

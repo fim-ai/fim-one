@@ -711,10 +711,13 @@ class AgentExecutor:
         context: ExecutionContext,
     ) -> NodeResult:
         t0 = time.time()
+        if (failed := _missing_identity(node, context, t0)) is not None:
+            return failed
+        runtime = None
         try:
             from fim_one.core.agent import ReActAgent
-            from fim_one.db import create_session
-            from fim_one.web.deps import get_effective_fast_llm, get_tools
+            from fim_one.core.assembly.errors import AssemblyRefusal
+            from fim_one.core.assembly.runtime import get_agent_runtime_factory
 
             agent_id = node.data.get("agent_id", "")
             query_template = node.data.get("prompt_template", "")
@@ -729,90 +732,33 @@ class AgentExecutor:
                     duration_ms=_ms_since(t0),
                 )
 
-            # Resolve the agent's FULL runtime — its model, instructions, AND its
-            # bound tools (connectors / KB / MCP / categories).  Previously this
-            # node ran a stripped agent (instructions + a default toolset only),
-            # so a workflow's AGENT node silently dropped the agent's connectors,
-            # KB and MCP servers.  Route through the same resolvers chat.py uses,
-            # which also enforce the agent is visible to the workflow owner.
-            from fim_one.web.api.chat import (
-                _resolve_agent_config,
-                _resolve_llm,
-                _resolve_tools,
-            )
-
-            agent_cfg = (
-                await _resolve_agent_config(
-                    agent_id, conversation_id=None, user_id=context.user_id
+            # The agent's whole runtime, from the same assembly a chat with
+            # it gets: its model and instructions, its bound connectors,
+            # knowledge bases and MCP servers (connected), and its
+            # enforcement hooks. The agent is judged by the workflow
+            # author's view; an agent that is not usable fails the step. A
+            # step with no agent selected gets the bare runtime the factory
+            # defines for it.
+            try:
+                runtime = await get_agent_runtime_factory().build(
+                    _step_call_context(node, context), agent_id or None, conversation_id=None
                 )
-                if agent_id
-                else None
-            )
-            instructions: str | None = (
-                agent_cfg.get("instructions") if agent_cfg else None
-            )
-
-            async with create_session() as db:
-                if agent_cfg is not None:
-                    llm = await _resolve_llm(agent_cfg, db)
-                else:
-                    llm = await get_effective_fast_llm(db)
-
-            if agent_cfg is not None:
-                # ``entry``: what this step's connector calls are recorded as.
-                tools = await _resolve_tools(
-                    agent_cfg,
-                    conversation_id=None,
-                    user_id=context.user_id,
-                    entry="workflow_node",
+            except AssemblyRefusal as refused:
+                return NodeResult(
+                    node_id=node.id,
+                    status=NodeStatus.FAILED,
+                    error=refused.detail,
+                    duration_ms=_ms_since(t0),
                 )
-            else:
-                tools = get_tools()
-
-            # Build the agent's own enforcement hooks.  An AGENT node runs a
-            # real agent, so it must hit the same gates that agent hits in
-            # chat — otherwise wrapping a sensitive call in a workflow is a
-            # way to skip confirmation.  Fail closed: no hooks, no run.
-            _hook_registry = None
-            if agent_cfg is not None:
-                from types import SimpleNamespace
-
-                from fim_one.web.hooks_bootstrap import (
-                    build_hook_registry_for_agent,
-                )
-
-                try:
-                    _hook_registry = await build_hook_registry_for_agent(
-                        SimpleNamespace(
-                            model_config_json=agent_cfg.get("model_config_json")
-                        ),
-                        create_session,
-                    )
-                except Exception as exc:
-                    logger.error(
-                        "Failed to build hooks for agent node %s: %s",
-                        node.id,
-                        exc,
-                        exc_info=True,
-                    )
-                    return NodeResult(
-                        node_id=node.id,
-                        status=NodeStatus.FAILED,
-                        error=(
-                            "Could not load enforcement hooks for agent "
-                            f"{agent_id!r}; refusing to run unguarded"
-                        ),
-                        duration_ms=_ms_since(t0),
-                    )
 
             agent = ReActAgent(
-                llm=llm,
-                tools=tools,
-                extra_instructions=instructions,
+                llm=runtime.llm,
+                tools=runtime.tools,
+                extra_instructions=runtime.instructions,
                 max_iterations=10,
                 agent_id=agent_id or None,
                 user_id=context.user_id or None,
-                hook_registry=_hook_registry,
+                hook_registry=runtime.hooks,
             )
 
             agent_result = await agent.run(query)
@@ -848,6 +794,15 @@ class AgentExecutor:
                 error=f"Agent error: {exc}",
                 duration_ms=_ms_since(t0),
             )
+        finally:
+            # The agent's MCP connections, in the task that opened them.
+            if runtime is not None:
+                try:
+                    await runtime.aclose()
+                except Exception:
+                    logger.warning(
+                        "Failed to close the agent runtime of node %s", node.id, exc_info=True
+                    )
 
 
 # ---------------------------------------------------------------------------
@@ -883,6 +838,29 @@ def _node_call_context(node: WorkflowNodeDef, context: ExecutionContext) -> Call
     """
     from fim_one.core.assembly.principal import CallContext, provisional_principal
 
+    return CallContext(
+        principal=provisional_principal(context.user_id),
+        binding=None,
+        entry="workflow_node",
+        workflow_run_id=context.run_id,
+        node_id=node.id,
+    )
+
+
+def _step_call_context(node: WorkflowNodeDef, context: ExecutionContext) -> CallContext:
+    """The call context of a step: the run's, at this node.
+
+    The run service gives the run's context: the principal the run executes
+    as, the workflow as the binding (so its author's view decides what the
+    step may use), and the entry the run came through. A context built by
+    hand has none, and the step acts as ``context.user_id`` directly.
+    """
+    import dataclasses
+
+    from fim_one.core.assembly.principal import CallContext, provisional_principal
+
+    if context.call_context is not None:
+        return dataclasses.replace(context.call_context, node_id=node.id)
     return CallContext(
         principal=provisional_principal(context.user_id),
         binding=None,

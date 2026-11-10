@@ -38,6 +38,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "WebAgentRuntimeFactory",
+    "bare_runtime",
     "build_hooks",
     "call_context",
     "connect_mcp",
@@ -166,6 +167,24 @@ async def build_hooks(
     )
 
 
+async def bare_runtime(ctx: CallContext) -> AgentRuntime:
+    """The runtime of a step that names no agent: the fast model and the built-in tools."""
+    from fim_one.db import create_session
+    from fim_one.web.deps import get_effective_fast_llm, get_tools
+
+    async with create_session() as db:
+        llm = await get_effective_fast_llm(db)
+    return AgentRuntime(
+        ctx=ctx,
+        agent=None,
+        llm=llm,
+        fast_llm=llm,
+        tools=get_tools(),
+        hooks=await build_hooks(None),
+        instructions=None,
+    )
+
+
 class WebAgentRuntimeFactory:
     """``core.assembly.runtime.AgentRuntimeFactory``: the stages, back to back."""
 
@@ -179,6 +198,10 @@ class WebAgentRuntimeFactory:
         from fim_one.db import create_session
 
         agent_cfg = await resolve_agent(ctx, agent_id, conversation_id=conversation_id)
+        if agent_cfg is None and ctx.entry not in ("chat", "chat_noagent"):
+            # Only a chat turn has a "no agent" mode with everything the user
+            # can use; anywhere else no agent is no bound resources.
+            return await bare_runtime(ctx)
         run_ctx = call_context(
             ctx.principal, agent_cfg, conversation_id=conversation_id, base=ctx
         )

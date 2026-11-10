@@ -24,6 +24,7 @@ Decisions recorded in ``dev/T10-workflow-refactor.md`` §9 (2026-11-04).
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 import time
 import uuid
@@ -537,6 +538,7 @@ class WorkflowRunService:
                 db_session_factory=create_session,
                 depth=depth,
                 cancel_event=cancel_event,
+                call_context=dataclasses.replace(ctx, workflow_run_id=run_id),
             )
             engine = self._make_engine(
                 max_concurrency=5,
@@ -621,6 +623,8 @@ class WorkflowRunService:
             workflow_id=workflow.id,
             env_vars=env_vars,
             usage_tracker=usage_tracker,
+            # A single-step test has no run record for a call to point at.
+            call_context=ctx,
         )
         executor = get_executor(node.type)
 

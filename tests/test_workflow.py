@@ -3049,44 +3049,46 @@ class TestValidateAndDryRunSchemas:
 
 
 class TestAgentExecutorBindings:
-    """A workflow AGENT node must run the agent's FULL bound runtime — its
-    model AND its connectors/KB/MCP tools — not a stripped instructions-only
-    agent on a default toolset."""
+    """A workflow AGENT node runs whatever the agent runtime port hands it:
+    the agent's model, instructions, tools and hooks. What the port builds is
+    covered in ``tests/test_workflow_agent_step.py``."""
 
-    def _patch_runtime(
-        self, monkeypatch: pytest.MonkeyPatch, agent_cfg: Any, captured: dict[str, Any]
+    def _factory(self, captured: dict[str, Any]) -> Any:
+        from types import SimpleNamespace
+
+        from fim_one.core.assembly.runtime import AgentRuntime, set_agent_runtime_factory
+
+        class _Factory:
+            async def build(
+                self, ctx: Any, agent_id: Any, *, conversation_id: Any = None
+            ) -> AgentRuntime:
+                captured["build"] = (ctx, agent_id, conversation_id)
+                return AgentRuntime(
+                    ctx=ctx,
+                    agent={"agent_id": agent_id},
+                    llm="AGENT_LLM",  # type: ignore[arg-type]
+                    fast_llm="FAST_LLM",  # type: ignore[arg-type]
+                    tools="AGENT_TOOLS",  # type: ignore[arg-type]
+                    hooks="AGENT_HOOKS",  # type: ignore[arg-type]
+                    instructions="be precise",
+                    mcp_client=SimpleNamespace(disconnect_all=_closed),
+                )
+
+        async def _closed() -> None:
+            captured["closed"] = captured.get("closed", 0) + 1
+
+        factory = _Factory()
+        set_agent_runtime_factory(factory)
+        return factory
+
+    @pytest.mark.asyncio
+    async def test_bound_agent_uses_resolved_tools_and_llm(
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from unittest.mock import AsyncMock, MagicMock
+        from fim_one.core.workflow.nodes import AgentExecutor
 
-        async def _fake_resolve_agent_config(
-            aid: Any, conversation_id: Any = None, user_id: Any = None
-        ) -> Any:
-            captured["cfg_args"] = (aid, conversation_id, user_id)
-            return agent_cfg
-
-        async def _fake_resolve_llm(cfg: Any, db: Any) -> str:
-            captured["llm_cfg"] = cfg
-            return "AGENT_LLM"
-
-        async def _fake_resolve_tools(
-            cfg: Any, conversation_id: Any = None, user_id: Any = None, *, entry: Any = None
-        ) -> str:
-            captured["tools_cfg"] = cfg
-            captured["tools_user"] = user_id
-            captured["tools_entry"] = entry
-            return "AGENT_TOOLS"
-
-        def _fake_get_tools(*_a: Any, **_k: Any) -> str:
-            captured["used_default_tools"] = True
-            return "DEFAULT_TOOLS"
-
-        async def _fake_get_fast_llm(_db: Any) -> str:
-            captured["used_default_llm"] = True
-            return "DEFAULT_LLM"
-
-        cm = AsyncMock()
-        cm.__aenter__ = AsyncMock(return_value=MagicMock())
-        cm.__aexit__ = AsyncMock(return_value=False)
+        captured: dict[str, Any] = {}
+        self._factory(captured)
 
         class _FakeReActAgent:
             def __init__(self, **kwargs: Any) -> None:
@@ -3098,35 +3100,7 @@ class TestAgentExecutorBindings:
                 captured["query"] = query
                 return SimpleNamespace(answer="done", usage=None)
 
-        monkeypatch.setattr(
-            "fim_one.web.api.chat._resolve_agent_config", _fake_resolve_agent_config
-        )
-        monkeypatch.setattr("fim_one.web.api.chat._resolve_llm", _fake_resolve_llm)
-        monkeypatch.setattr("fim_one.web.api.chat._resolve_tools", _fake_resolve_tools)
-        monkeypatch.setattr("fim_one.web.deps.get_tools", _fake_get_tools)
-        monkeypatch.setattr(
-            "fim_one.web.deps.get_effective_fast_llm", _fake_get_fast_llm
-        )
-        monkeypatch.setattr(
-            "fim_one.db.create_session", MagicMock(return_value=cm)
-        )
         monkeypatch.setattr("fim_one.core.agent.ReActAgent", _FakeReActAgent)
-
-    @pytest.mark.asyncio
-    async def test_bound_agent_uses_resolved_tools_and_llm(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        from fim_one.core.workflow.nodes import AgentExecutor
-
-        agent_cfg = {
-            "agent_id": "a1",
-            "instructions": "be precise",
-            "connector_ids": ["c1"],
-            "kb_ids": ["k1"],
-            "owner_user_id": "owner1",
-        }
-        captured: dict[str, Any] = {}
-        self._patch_runtime(monkeypatch, agent_cfg, captured)
 
         node = WorkflowNodeDef(
             id="agent1",
@@ -3141,29 +3115,45 @@ class TestAgentExecutorBindings:
 
         assert result.status == NodeStatus.COMPLETED
         kw = captured["react_kwargs"]
-        # The agent's bound tools + model were used — not the defaults.
         assert kw["tools"] == "AGENT_TOOLS"
         assert kw["llm"] == "AGENT_LLM"
+        assert kw["hook_registry"] == "AGENT_HOOKS"
         assert kw["extra_instructions"] == "be precise"
         assert kw["agent_id"] == "a1"
         assert kw["user_id"] == "owner1"
-        # Tools resolved against the agent_cfg, attributed to the workflow owner.
-        assert captured["tools_cfg"] is agent_cfg
-        assert captured["tools_user"] == "owner1"
-        assert captured["tools_entry"] == "workflow_node"
-        assert "used_default_tools" not in captured
-        assert "used_default_llm" not in captured
+        # Built for the run's identity, at this step, with no conversation.
+        call_ctx, agent_id, conversation_id = captured["build"]
+        assert (agent_id, conversation_id) == ("a1", None)
+        assert call_ctx.principal.user_id == "owner1"
+        assert (call_ctx.entry, call_ctx.workflow_run_id, call_ctx.node_id) == (
+            "workflow_node",
+            "r",
+            "agent1",
+        )
         # Query template interpolated from the store.
         assert captured["query"] == "summarize the report"
+        # The runtime's connections are released when the step is over.
+        assert captured["closed"] == 1
 
     @pytest.mark.asyncio
-    async def test_bare_node_without_agent_id_falls_back_to_defaults(
+    async def test_a_node_without_an_agent_asks_the_port_for_no_agent(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from fim_one.core.workflow.nodes import AgentExecutor
 
         captured: dict[str, Any] = {}
-        self._patch_runtime(monkeypatch, None, captured)
+        self._factory(captured)
+
+        class _FakeReActAgent:
+            def __init__(self, **kwargs: Any) -> None:
+                captured["react_kwargs"] = kwargs
+
+            async def run(self, query: str) -> Any:
+                from types import SimpleNamespace
+
+                return SimpleNamespace(answer="done", usage=None)
+
+        monkeypatch.setattr("fim_one.core.agent.ReActAgent", _FakeReActAgent)
 
         node = WorkflowNodeDef(
             id="agent2",
@@ -3175,9 +3165,6 @@ class TestAgentExecutorBindings:
         result = await AgentExecutor().execute(node, VariableStore(), ctx)
 
         assert result.status == NodeStatus.COMPLETED
-        kw = captured["react_kwargs"]
-        assert kw["tools"] == "DEFAULT_TOOLS"
-        assert kw["llm"] == "DEFAULT_LLM"
-        assert kw["extra_instructions"] is None
-        # The agent resolvers were never consulted for a bare node.
-        assert "tools_cfg" not in captured
+        assert captured["build"][1] is None
+        assert captured["react_kwargs"]["agent_id"] is None
+

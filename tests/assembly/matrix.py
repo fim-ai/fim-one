@@ -949,10 +949,23 @@ async def probe_sub_agent(
 
 
 def _context(scene: Scene) -> Any:
+    """The context the run service gives a run of the owner's workflow by the actor."""
+    from fim_one.core.assembly.principal import Binding, CallContext, provisional_principal
     from fim_one.core.workflow.types import ExecutionContext
 
+    run_id = f"run-{uuid.uuid4().hex[:8]}"
     return ExecutionContext(
-        run_id=f"run-{uuid.uuid4().hex[:8]}", user_id=scene.actor, workflow_id="wf"
+        run_id=run_id,
+        user_id=scene.actor,
+        workflow_id=scene.ids["workflow"],
+        call_context=CallContext(
+            principal=provisional_principal(scene.actor),
+            binding=Binding(
+                kind="workflow", id=scene.ids["workflow"], owner_id=scene.users["owner"]
+            ),
+            entry="workflow_node",
+            workflow_run_id=run_id,
+        ),
     )
 
 
@@ -1184,18 +1197,8 @@ def _runner_is_subject(entry: str, cell: Cell, _so_far: Outcome) -> Outcome | No
     return rule(entry, cell, subject=cell.role)
 
 
-def _agent_entry_unchecked(_entry: str, cell: Cell, _so_far: Outcome) -> Outcome | None:
-    # Visible to the caller: used, switched on or not. Not visible: the
-    # entry point carries on without the agent and reports nothing.
-    return Outcome(exposed=sees(cell.role, "agent"))
-
-
 def _not_confirmed(_entry: str, _cell: Cell, so_far: Outcome) -> Outcome | None:
     return _replace(so_far, confirmed=False) if so_far.exposed else None
-
-
-def _never_connected(_entry: str, _cell: Cell, so_far: Outcome) -> Outcome | None:
-    return Outcome(exposed=False) if so_far.exposed else None
 
 
 def _database_unsupported(_entry: str, _cell: Cell, so_far: Outcome) -> Outcome | None:
@@ -1227,19 +1230,6 @@ KNOWN_DEVIATIONS: tuple[Deviation, ...] = (
         today=_runner_is_subject,
     ),
     Deviation(
-        name="workflow-agent-node-unchecked",
-        entries=("wf_agent_node",),
-        resources=("agent",),
-        what=(
-            "Judged by the runner, not the workflow author. A switched-off agent "
-            "still runs. An agent the runner cannot see does not fail the node: it "
-            "runs a bare model with the built-in tools and no hooks."
-        ),
-        ref="N6; design §1.1 row 3; B16",
-        removed_in="C1 phase 4",
-        today=_agent_entry_unchecked,
-    ),
-    Deviation(
         name="connector-node-cannot-confirm",
         entries=("wf_connector_node",),
         resources=API_CONNECTORS,
@@ -1259,15 +1249,6 @@ KNOWN_DEVIATIONS: tuple[Deviation, ...] = (
         ref="design §1.2 row 'DB 连接器 wf-节点'",
         removed_in="T10 P4 (support, or refuse at save)",
         today=_database_unsupported,
-    ),
-    Deviation(
-        name="agent-mcp-never-connected",
-        entries=("wf_agent_node",),
-        resources=MCP_SERVERS,
-        what="MCP servers bound to the agent are never connected, so its MCP tools are missing.",
-        ref="N7; B16",
-        removed_in="C1 phase 4",
-        today=_never_connected,
     ),
     Deviation(
         name="workflow-entry-own-inactive-code",
