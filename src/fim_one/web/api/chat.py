@@ -4886,7 +4886,9 @@ async def _dag_turn(
                     )
                 else:
                     # Autonomous replan — subject to budget and confidence gate.
-                    autonomous_replans += 1
+                    # DAG_MAX_REPLAN_ROUNDS counts rounds in total: the first
+                    # plan plus N-1 autonomous replans. Compare the replans
+                    # already spent before counting the one about to start.
                     if autonomous_replans >= max_replan_rounds - 1:
                         logger.info(
                             "DAG round %d: autonomous replan budget exhausted (%d/%d)",
@@ -4903,6 +4905,7 @@ async def _dag_turn(
                             analysis.confidence,
                         )
                         break
+                    autonomous_replans += 1
 
                 yield _emit(
                     sse_events,

@@ -192,7 +192,10 @@ def get_max_concurrency() -> int:
 
 
 def get_dag_max_replan_rounds() -> int:
-    """Max autonomous replan rounds for DAG mode (env: DAG_MAX_REPLAN_ROUNDS)."""
+    """Planning rounds in total for DAG mode (env: DAG_MAX_REPLAN_ROUNDS).
+
+    The first plan counts as a round, so N allows N-1 autonomous replans.
+    """
     return int(os.environ.get("DAG_MAX_REPLAN_ROUNDS", "3"))
 
 
