@@ -434,7 +434,7 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
               setContextMenu(null)
             }}
             onDuplicate={() => {
-              editing.duplicateSelected()
+              editing.duplicateNode(contextMenu.nodeId)
               setContextMenu(null)
             }}
             onDelete={() => {

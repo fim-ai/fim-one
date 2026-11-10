@@ -141,6 +141,33 @@ export function useCanvasEditing({
     paste()
   }, [copySelected, paste])
 
+  /**
+   * Duplicate from a node's context menu: the node that was right-clicked.
+   * When that node is part of the selection the whole selection is
+   * duplicated, as Cmd+D does; otherwise only that node is, whatever else
+   * is selected, and the clipboard is left as it was.
+   */
+  const duplicateNode = useCallback(
+    (nodeId: string) => {
+      const node = nodes.find((n) => n.id === nodeId)
+      if (!node) return
+      if (node.selected) {
+        duplicateSelected()
+        return
+      }
+      const { nodes: newNodes } = pasteClipboard(
+        { nodes: [{ ...node, data: { ...node.data } }], edges: [] },
+        Date.now(),
+      )
+      if (newNodes.length === 0) return
+      setNodes((nds) => [
+        ...nds.map((n) => (n.selected ? { ...n, selected: false } : n)),
+        ...newNodes,
+      ])
+    },
+    [nodes, duplicateSelected, setNodes],
+  )
+
   // --- Select all nodes ---
   const selectAll = useCallback(() => {
     setNodes((nds) => nds.map((n) => (n.selected ? n : { ...n, selected: true })))
@@ -156,6 +183,7 @@ export function useCanvasEditing({
     copyNode,
     paste,
     duplicateSelected,
+    duplicateNode,
     selectAll,
     hasClipboard,
   }
