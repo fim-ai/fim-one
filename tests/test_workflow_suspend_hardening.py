@@ -491,3 +491,192 @@ class TestWhatWasApprovedIsWhatRuns:
         async with rig.factory() as db:
             (item,) = (await wf_api.approval_inbox(current_user=rig.owner, db=db)).data["items"]
         assert item["arguments"] == request.payload["tool_args"] == {"target": "ledger-9"}
+
+
+# ---------------------------------------------------------------------------
+# M2. A continuation is admitted again, takes a slot, and waiting is capped
+# ---------------------------------------------------------------------------
+
+
+class TestAContinuationIsAdmittedAgain:
+    async def test_a_user_disabled_while_the_run_waited_does_not_get_it_continued(
+        self, rig: Rig, hooked: Any
+    ) -> None:
+        outcome = await rig.start()
+        request = await rig.request_of(outcome.run_id)
+        async with rig.factory() as s:
+            await s.execute(update(User).where(User.id == rig.owner.id).values(is_active=False))
+            await s.commit()
+
+        await rig.decide(request.id, "approve", by=rig.admin)
+
+        run = await rig.ended(outcome.run_id)
+        assert run.status == "failed"
+        assert "could not continue after its approval" in (run.error or "")
+        assert run.node_results.get("end_1", {}).get("status") != "completed"
+
+    async def test_what_the_gate_refuses_now_ends_the_run_with_that_refusal(
+        self, rig: Rig, hooked: Any
+    ) -> None:
+        """Quota used up while the run waited."""
+        outcome = await rig.start()
+        request = await rig.request_of(outcome.run_id)
+        asked: list[tuple[str, str | None]] = []
+
+        class Gate:
+            async def check(self, principal: Any, binding: Any = None) -> None:
+                asked.append((principal.user_id, getattr(binding, "id", None)))
+                raise rs.RunRefusedError("token_quota_exceeded", 429, "Token quota exceeded")
+
+        with patch.object(rig.service, "gate", Gate()):
+            await rig.decide(request.id, "approve")
+            run = await rig.ended(outcome.run_id)
+
+        assert asked == [(rig.owner.id, rig.wf.id)]
+        assert run.status == "failed"
+        assert run.error == (
+            "The run could not continue after its approval: Token quota exceeded "
+            "(token_quota_exceeded)"
+        )
+        assert run.suspend_state is None and _CountingEngine.continued == []
+
+    async def test_a_trigger_run_of_a_workflow_switched_off_meanwhile_is_not_continued(
+        self, rig: Rig, hooked: Any
+    ) -> None:
+        from fim_one.db.models.workflow import Workflow
+
+        outcome = await rig.start(caller_id=None, mode=rs.RunMode.TRIGGER)
+        request = await rig.request_of(outcome.run_id)
+        async with rig.factory() as s:
+            await s.execute(update(Workflow).where(Workflow.id == rig.wf.id).values(is_active=False))
+            await s.commit()
+
+        await rig.decide(request.id, "approve")
+
+        run = await rig.ended(outcome.run_id)
+        assert run.status == "failed" and "(workflow_inactive)" in (run.error or "")
+
+    async def test_the_human_intervention_switch_turned_off_meanwhile_stops_it(
+        self, rig: Rig, hooked: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        outcome = await rig.start()
+        request = await rig.request_of(outcome.run_id)
+        monkeypatch.setenv("WORKFLOW_HUMAN_INTERVENTION_ENABLED", "false")
+
+        await rig.decide(request.id, "approve")
+
+        run = await rig.ended(outcome.run_id)
+        assert run.status == "failed" and "(human_intervention_disabled)" in (run.error or "")
+
+
+class TestAContinuationTakesASlot:
+    @staticmethod
+    def _capped(cap: int) -> rs.WorkflowRunService:
+        return rs.WorkflowRunService(
+            engine_factory=_CountingEngine,
+            rate_limiter=WorkflowRateLimiter(max_runs_per_minute=1000, max_concurrent_runs=cap),
+        )
+
+    async def test_parked_runs_decided_together_do_not_exceed_the_concurrent_limit(
+        self, rig: Rig
+    ) -> None:
+        from fim_one.core.workflow.types import NodeResult, NodeStatus
+
+        service = self._capped(1)
+        remove = install_resume_on_decision(service)
+        running = peak = 0
+        release = asyncio.Event()
+
+        async def held_end(node: Any, store: Any, ctx: Any) -> Any:
+            nonlocal running, peak
+            running += 1
+            peak = max(peak, running)
+            await release.wait()
+            running -= 1
+            return NodeResult(node_id=node.id, status=NodeStatus.COMPLETED, output={})
+
+        try:
+            with patch("fim_one.core.workflow.nodes.EndExecutor.execute", side_effect=held_end):
+                ids = []
+                for _ in range(5):
+                    outcome = await rig.start(service=service)
+                    assert outcome.status == "waiting"
+                    ids.append(outcome.run_id)
+                for run_id in ids:
+                    await rig.decide((await rig.request_of(run_id)).id, "approve")
+                await asyncio.sleep(0.6)
+
+                assert peak == 1
+                # None was dropped: the rest are queued, shown as running,
+                # registered here (so stamped, and not taken for dead).
+                assert sorted(service.active_run_ids()) == sorted(ids)
+                assert {(await rig.run(i)).status for i in ids} == {"running"}
+                assert (
+                    await WorkflowRunSupervisor(service, stale_seconds=90).sweep()
+                ).closed == []
+
+                release.set()
+                for run_id in ids:
+                    assert (await rig.ended(run_id)).status == "completed"
+            assert peak == 1
+        finally:
+            remove()
+
+    async def test_a_queued_continuation_can_be_cancelled(self, rig: Rig) -> None:
+        service = self._capped(1)
+        outcome = await rig.start(service=service)
+        await rig.flip((await rig.request_of(outcome.run_id)).id, status="approved")
+        # Something else of this user's holds the only slot.
+        await service.rate_limiter.acquire(rig.owner.id, "another-run")
+
+        started = await service.resume_run(outcome.run_id)
+        assert started is not None
+        await asyncio.sleep(0.1)
+        assert not started.done and _CountingEngine.continued == []  # queued
+
+        assert service.cancel_run(outcome.run_id) is True
+        ended = await asyncio.wait_for(started.wait(), timeout=5)
+
+        assert ended.status == "cancelled"
+        assert (await rig.run(outcome.run_id)).status == "cancelled"
+
+
+class TestWaitingRunsAreCapped:
+    async def test_a_run_over_the_cap_fails_at_the_step_instead_of_waiting(
+        self, rig: Rig, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("WORKFLOW_MAX_WAITING_RUNS_PER_USER", "2")
+        first, second = (await rig.start()), (await rig.start())
+        assert (first.status, second.status) == ("waiting", "waiting")
+
+        third = await rig.start()
+
+        assert third.status == "failed"
+        assert third.error_code == "workflow_waiting_limit_reached"
+        assert "2 of this user's runs are already waiting" in (third.error or "")
+        assert [r.status for r in await _requests(rig, third.run_id)] == ["expired"]
+        # The ones already waiting are untouched, and once one is decided
+        # there is room again.
+        assert {(await rig.run(o.run_id)).status for o in (first, second)} == {"waiting"}
+        assert await rig.service.cancel_stored_run(first.run_id) is True
+        assert (await rig.start()).status == "waiting"
+
+    async def test_another_users_waiting_runs_do_not_count(
+        self, rig: Rig, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("WORKFLOW_MAX_WAITING_RUNS_PER_USER", "1")
+        assert (await rig.start()).status == "waiting"
+        # A trigger run is the owner's too; the administrator's is not.
+        async with rig.factory() as s:
+            s.add(
+                WorkflowRun(
+                    workflow_id=rig.wf.id,
+                    user_id=rig.admin.id,
+                    blueprint_snapshot=BLUEPRINT,
+                    status="waiting",
+                )
+            )
+            await s.commit()
+        assert await rig.service._waiting_limit_reached(rig.admin.id) is True
+        monkeypatch.setenv("WORKFLOW_MAX_WAITING_RUNS_PER_USER", "0")  # no limit
+        assert await rig.service._waiting_limit_reached(rig.owner.id) is False

@@ -90,6 +90,13 @@ RUN_INTERRUPTED_ERROR = (
     "Start the run again."
 )
 RUN_STATE_TOO_LARGE = "workflow_suspend_state_too_large"
+RUN_WAITING_LIMIT = "workflow_waiting_limit_reached"
+
+
+def waiting_runs_limit() -> int:
+    """How many of one user's runs may wait for a decision at once
+    (``WORKFLOW_MAX_WAITING_RUNS_PER_USER``; 0 = no limit)."""
+    return int(os.getenv("WORKFLOW_MAX_WAITING_RUNS_PER_USER", "20"))
 
 
 def suspend_state_max_bytes() -> int:
@@ -349,6 +356,7 @@ class StartedRun:
         engine: Any,
         cancel_event: asyncio.Event,
         holds_slot: bool,
+        queue_for_slot: bool = False,
         resume_state: dict[str, Any] | None = None,
         prior_node_results: dict[str, Any] | None = None,
         prior_duration_ms: int = 0,
@@ -367,6 +375,7 @@ class StartedRun:
         if resume_state is not None:
             self.outcome.node_results = dict(prior_node_results or {})
             self.outcome.total_tokens = int(resume_state.get("total_tokens") or 0)
+        self._queue_for_slot = queue_for_slot
         self._suspend_state: dict[str, Any] | None = None
         self._progress_saved_at = 0.0
         self._service = service
@@ -424,6 +433,8 @@ class StartedRun:
         start = time.time()
         out = self.outcome
         try:
+            if self._queue_for_slot:
+                await self._take_slot_when_free()
             if self._resume_state is not None:
                 stream = self._engine.execute_streaming(
                     self._parsed,
@@ -453,17 +464,30 @@ class StartedRun:
                     out.error_code = None
                     out.total_tokens = int(data.get("total_tokens", 0) or 0)
                     out.waiting = list(data.get("waiting") or [])
-                    try:
-                        # Serialised and encrypted in a thread: the state
-                        # can be megabytes, and other runs share this loop.
-                        self._suspend_state = await asyncio.to_thread(
-                            seal_state, data.get("state") or {}
+                    cannot_wait: tuple[str, str] | None = None
+                    # A run that waited before already has its place.
+                    if self._resume_state is None and await self._service._waiting_limit_reached(
+                        self.principal.user_id
+                    ):
+                        cannot_wait = (
+                            RUN_WAITING_LIMIT,
+                            f"The run cannot wait here: {waiting_runs_limit()} of this "
+                            "user's runs are already waiting for a decision. Decide or "
+                            "cancel some of them, then run the workflow again.",
                         )
-                    except SuspendStateTooLarge as too_large:
+                    else:
+                        try:
+                            # Serialised and encrypted in a thread: the state
+                            # can be megabytes, and other runs share this loop.
+                            self._suspend_state = await asyncio.to_thread(
+                                seal_state, data.get("state") or {}
+                            )
+                        except SuspendStateTooLarge as too_large:
+                            cannot_wait = (RUN_STATE_TOO_LARGE, str(too_large))
+                    if cannot_wait is not None:
                         # Not stored: the run ends here instead of waiting.
                         out.status = "failed"
-                        out.error = str(too_large)
-                        out.error_code = RUN_STATE_TOO_LARGE
+                        out.error_code, out.error = cannot_wait
                         out.waiting = []
                         name, data = "run_failed", {
                             "run_id": self.run_id,
@@ -578,6 +602,25 @@ class StartedRun:
             finally:
                 self._queue.put_nowait(self._END)
 
+    async def _take_slot_when_free(self) -> None:
+        """Wait for one of the principal's concurrent-run slots (a continued run).
+
+        Never refused, like a batch item. Cancelling the run ends the wait;
+        the engine then finds the cancel and ends the run as cancelled.
+        """
+        limiter = self._service.rate_limiter
+        taking = asyncio.ensure_future(
+            limiter.acquire_when_free(self.principal.user_id, self.run_id)
+        )
+        cancelled = asyncio.ensure_future(self.cancel_event.wait())
+        try:
+            await asyncio.wait({taking, cancelled}, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for pending in (taking, cancelled):
+                if not pending.done():
+                    pending.cancel()
+            await asyncio.gather(taking, cancelled, return_exceptions=True)
+
     async def _save_progress(self) -> None:
         """Write the step results so far to the run record, at most once a
         :data:`PROGRESS_SAVE_INTERVAL`: whoever opens the run meanwhile
@@ -618,6 +661,32 @@ class WorkflowRunService:
             return False
         started.cancel()
         return True
+
+    async def _waiting_limit_reached(self, user_id: str) -> bool:
+        """Whether *user_id* already has as many waiting runs as one user may.
+
+        A waiting run costs nothing to keep, which is why their number is
+        capped: asked at the moment a run would start to wait. A run over
+        the cap fails at that step (its request is closed); runs already
+        waiting are not affected.
+        """
+        from sqlalchemy import func, select
+
+        from fim_one.db import create_session
+        from fim_one.db.models import WorkflowRun
+
+        limit = waiting_runs_limit()
+        if limit <= 0:
+            return False
+        async with create_session() as db:
+            waiting = (
+                await db.execute(
+                    select(func.count()).where(
+                        WorkflowRun.user_id == user_id, WorkflowRun.status == "waiting"
+                    )
+                )
+            ).scalar_one()
+        return int(waiting) >= limit
 
     def active_run_ids(self) -> list[str]:
         """Runs executing in this process right now."""
@@ -970,9 +1039,14 @@ class WorkflowRunService:
         waiting are run again and read their requests: one decided or
         expired ends its wait, one still open makes the run wait again.
 
-        The run goes on as it was admitted: the same principal, the
-        blueprint it started with, no second pass through the gate and no
-        concurrent-run slot.
+        The run goes on as the same principal, on the blueprint it started
+        with, but it is admitted again first (:meth:`_readmit`): what a run
+        starting now would be refused for, a continuation is refused for
+        too, and the run then ends as failed with that refusal. It also
+        takes one of the principal's concurrent-run slots before any step
+        runs. A continuation is never dropped for lack of one: like a
+        batch item it waits for a free slot, registered and with its
+        heartbeat going, so it shows as running and is not taken for dead.
         """
         from sqlalchemy import CursorResult, select, update
 
@@ -1002,7 +1076,21 @@ class WorkflowRunService:
         try:
             if workflow is None:
                 raise ValueError("the workflow no longer exists")
-            started = self._continue(run, workflow)
+            mode = RunMode(run.mode) if run.mode else RunMode.INTERACTIVE
+            ctx, parsed = await self._readmit(workflow, run, mode)
+            started = self._continue(run, workflow, ctx, parsed, mode)
+        except RunRefusedError as refused:
+            logger.warning(
+                "Workflow run %s is not continued: %s", run_id, refused.error_code
+            )
+            await self._end_stored_run(
+                run_id,
+                ("running",),
+                "failed",
+                f"The run could not continue after its approval: {refused.detail} "
+                f"({refused.error_code})",
+            )
+            return None
         except Exception:
             logger.exception("Workflow run %s could not be continued", run_id)
             await self._end_stored_run(run_id, ("running",), "failed", RUN_NOT_RESUMABLE_ERROR)
@@ -1011,23 +1099,40 @@ class WorkflowRunService:
         started.start()
         return started
 
-    def _continue(self, run: Any, workflow: Any) -> StartedRun:
+    async def _readmit(self, workflow: Any, run: Any, mode: RunMode) -> tuple[CallContext, Any]:
+        """The checks a run starting now passes, for a run about to continue.
+
+        The principal's account, quota and plan and the owner's account
+        (the gate); for a trigger key or schedule run, that the workflow
+        is still switched on; that the run's steps are still allowed (the
+        Human Intervention switch). Hours can pass between a run's start
+        and its approval. Raises :class:`RunRefusedError`.
+        """
+        from .parser import parse_blueprint
+
+        if mode in ACTIVE_ONLY_MODES and not workflow.is_active:
+            raise RunRefusedError("workflow_inactive", 403, "Workflow is inactive")
+        ctx = await self._admit(
+            workflow, run.user_id, _AUTH.get(mode, AuthMethod.SESSION), mode
+        )
+        parsed = parse_blueprint(run.blueprint_snapshot)
+        if has_disabled_node(parsed.nodes):
+            raise RunRefusedError(
+                HUMAN_INTERVENTION_DISABLED, 409, HUMAN_INTERVENTION_DISABLED_DETAIL
+            )
+        return ctx, parsed
+
+    def _continue(
+        self, run: Any, workflow: Any, ctx: CallContext, parsed: Any, mode: RunMode
+    ) -> StartedRun:
         """The :class:`StartedRun` that goes on from *run*'s stored state."""
         from fim_one.db import create_session
 
         from .engine import SUSPEND_STATE_VERSION
-        from .parser import parse_blueprint
 
         state = unseal_state(run.suspend_state)
         if state.get("version") != SUSPEND_STATE_VERSION:
             raise ValueError("no usable suspend state")
-        mode = RunMode(run.mode) if run.mode else RunMode.INTERACTIVE
-        ctx = CallContext(
-            principal=provisional_principal(run.user_id, auth=_AUTH.get(mode, AuthMethod.SESSION)),
-            binding=workflow_binding(workflow),
-            entry=_ENTRY.get(mode, "workflow_node"),
-        )
-        parsed = parse_blueprint(run.blueprint_snapshot)
         cancel_event = asyncio.Event()
         env_vars = author_env_vars(workflow, ctx)
         context = ExecutionContext(
@@ -1061,7 +1166,9 @@ class WorkflowRunService:
             context=context,
             engine=engine,
             cancel_event=cancel_event,
-            holds_slot=False,
+            # Taken by the run itself, before its first step.
+            holds_slot=True,
+            queue_for_slot=True,
             resume_state=state,
             prior_node_results=run.node_results if isinstance(run.node_results, dict) else None,
             prior_duration_ms=int(run.duration_ms or 0),
