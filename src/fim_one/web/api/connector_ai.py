@@ -388,7 +388,7 @@ async def ai_create_connector(
 
     return ApiResponse(
         data=AICreateConnectorResult(
-            connector=_connector_to_response(connector),
+            connector=_connector_to_response(connector, is_owner=True),
             message=msg,
             message_key=msg_key,
             message_args=msg_args,
@@ -650,7 +650,7 @@ async def ai_refine_action(
             .where(Connector.id == connector.id)
         )
         refreshed_conn = refreshed_conn_result.scalar_one()
-        connector_updated_resp = _connector_to_response(refreshed_conn)
+        connector_updated_resp = _connector_to_response(refreshed_conn, is_owner=True)
 
     parts: list[str] = []
     if connector_changed:

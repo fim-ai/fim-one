@@ -119,14 +119,14 @@ class TestMCPServerAccessControl:
         assert resp.is_active is True
         assert resp.tool_count == 5
 
-    def test_default_is_owner_true(self, owner_id: str) -> None:
-        """Backward compat: _to_response defaults to is_owner=True."""
+    def test_ownership_has_to_be_stated(self, owner_id: str) -> None:
+        """No default: a call site that forgets it must not get the owner's view."""
         from fim_one.web.api.mcp_servers import _to_response
 
         server = self._make_server(owner_id)
-        resp = _to_response(server)
-        assert resp.command == "/usr/bin/node"
-        assert resp.env == {"SECRET_KEY": "super-secret-123"}
+        with pytest.raises(TypeError):
+            serialize: Any = _to_response
+            serialize(server)
 
 
 # ===========================================================================
@@ -200,13 +200,14 @@ class TestConnectorAccessControl:
         assert resp.icon == "github"
         assert resp.is_active is True
 
-    def test_default_is_owner_true(self, owner_id: str) -> None:
+    def test_ownership_has_to_be_stated(self, owner_id: str) -> None:
+        """No default: a call site that forgets it must not get the owner's view."""
         from fim_one.web.api.connectors import _connector_to_response
 
         connector = self._make_connector(owner_id)
-        resp = _connector_to_response(connector)
-        assert resp.base_url == "https://api.github.com"
-        assert len(resp.actions) == 1
+        with pytest.raises(TypeError):
+            serialize: Any = _connector_to_response
+            serialize(connector)
 
 
 # ===========================================================================
@@ -262,13 +263,14 @@ class TestAgentAccessControl:
         assert resp.icon == "robot"
         assert resp.is_active is True
 
-    def test_default_is_owner_true(self, owner_id: str) -> None:
+    def test_ownership_has_to_be_stated(self, owner_id: str) -> None:
+        """No default: a call site that forgets it must not get the owner's view."""
         from fim_one.web.api.agents import _agent_to_response
 
         agent = self._make_agent(owner_id)
-        resp = _agent_to_response(agent)
-        assert resp.instructions is not None
-        assert resp.model_config_json is not None
+        with pytest.raises(TypeError):
+            serialize: Any = _agent_to_response
+            serialize(agent)
 
 
 # ===========================================================================
@@ -318,13 +320,14 @@ class TestSkillAccessControl:
         assert resp.is_active is True
         assert resp.status == "published"
 
-    def test_default_is_owner_true(self, owner_id: str) -> None:
+    def test_ownership_has_to_be_stated(self, owner_id: str) -> None:
+        """No default: a call site that forgets it must not get the owner's view."""
         from fim_one.web.api.skills import _skill_to_response
 
         skill = self._make_skill(owner_id)
-        resp = _skill_to_response(skill)
-        assert resp.content is not None
-        assert resp.script is not None
+        with pytest.raises(TypeError):
+            serialize: Any = _skill_to_response
+            serialize(skill)
 
 
 # ===========================================================================
@@ -381,13 +384,14 @@ class TestWorkflowAccessControl:
         assert resp.status == "published"
         assert resp.is_active is True
 
-    def test_default_is_owner_true(self, owner_id: str) -> None:
+    def test_ownership_has_to_be_stated(self, owner_id: str) -> None:
+        """No default: a call site that forgets it must not get the owner's view."""
         from fim_one.web.api.workflows import _workflow_to_response
 
         wf = self._make_workflow(owner_id)
-        resp = _workflow_to_response(wf)
-        assert resp.blueprint is not None
-        assert resp.input_schema is not None
+        with pytest.raises(TypeError):
+            serialize: Any = _workflow_to_response
+            serialize(wf)
 
 
 # ===========================================================================

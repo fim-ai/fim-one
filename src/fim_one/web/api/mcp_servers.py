@@ -49,7 +49,7 @@ def _mask_dict(d: dict[str, str] | None) -> dict[str, str] | None:
     return {k: "***" for k in d}
 
 
-def _to_response(srv: MCPServer, *, is_owner: bool = True, my_has_credentials: bool = False) -> MCPServerResponse:
+def _to_response(srv: MCPServer, *, is_owner: bool, my_has_credentials: bool = False) -> MCPServerResponse:
     # Non-owners: mask sensitive fields, strip internal content (command/args/url)
     if is_owner:
         env = srv.env
@@ -199,7 +199,7 @@ async def create_mcp_server(
 
     result = await db.execute(select(MCPServer).where(MCPServer.id == server.id))
     server = result.scalar_one()
-    return ApiResponse(data=_to_response(server).model_dump())
+    return ApiResponse(data=_to_response(server, is_owner=True).model_dump())
 
 
 @router.get("", response_model=PaginatedResponse)
@@ -360,7 +360,7 @@ async def update_mcp_server(
 
     result = await db.execute(select(MCPServer).where(MCPServer.id == server.id))
     server = result.scalar_one()
-    data = _to_response(server).model_dump()
+    data = _to_response(server, is_owner=True).model_dump()
     if reverted:
         data["publish_status_reverted"] = True
     return ApiResponse(data=data)
@@ -462,7 +462,7 @@ async def publish_mcp_server(
 
     await db.commit()
     await db.refresh(server)
-    return ApiResponse(data=_to_response(server).model_dump())
+    return ApiResponse(data=_to_response(server, is_owner=True).model_dump())
 
 
 @router.post("/{server_id}/resubmit", response_model=ApiResponse)
@@ -494,7 +494,7 @@ async def resubmit_mcp_server(
 
     await db.commit()
     await db.refresh(server)
-    return ApiResponse(data=_to_response(server).model_dump())
+    return ApiResponse(data=_to_response(server, is_owner=True).model_dump())
 
 
 @router.post("/{server_id}/unpublish", response_model=ApiResponse)
@@ -541,7 +541,7 @@ async def unpublish_mcp_server(
 
     await db.commit()
     await db.refresh(server)
-    return ApiResponse(data=_to_response(server).model_dump())
+    return ApiResponse(data=_to_response(server, is_owner=server.user_id == current_user.id).model_dump())
 
 
 
@@ -612,7 +612,7 @@ async def fork_mcp_server(
         select(MCPServer).where(MCPServer.id == forked.id)
     )
     forked = result.scalar_one()
-    return ApiResponse(data=_to_response(forked).model_dump())
+    return ApiResponse(data=_to_response(forked, is_owner=True).model_dump())
 
 
 # ---------------------------------------------------------------------------

@@ -36,7 +36,7 @@ router = APIRouter(
 # ---------------------------------------------------------------------------
 
 
-def _skill_to_response(skill: Skill, *, is_owner: bool = True) -> SkillResponse:
+def _skill_to_response(skill: Skill, *, is_owner: bool) -> SkillResponse:
     # Non-owners: strip internal content (SOP content and script are IP)
     if is_owner:
         content = skill.content
@@ -134,7 +134,7 @@ async def create_skill(
     await db.commit()
     result = await db.execute(select(Skill).where(Skill.id == skill.id))
     skill = result.scalar_one()
-    return ApiResponse(data=_skill_to_response(skill).model_dump())
+    return ApiResponse(data=_skill_to_response(skill, is_owner=True).model_dump())
 
 
 @router.get("", response_model=PaginatedResponse)
@@ -233,7 +233,7 @@ async def update_skill(
     await db.commit()
     result = await db.execute(select(Skill).where(Skill.id == skill.id))
     skill = result.scalar_one()
-    data = _skill_to_response(skill).model_dump()
+    data = _skill_to_response(skill, is_owner=True).model_dump()
     if reverted:
         data["publish_status_reverted"] = True
     return ApiResponse(data=data)
@@ -302,7 +302,7 @@ async def fork_skill(
         select(Skill).where(Skill.id == forked.id)
     )
     forked = result.scalar_one()
-    return ApiResponse(data=_skill_to_response(forked).model_dump())
+    return ApiResponse(data=_skill_to_response(forked, is_owner=True).model_dump())
 
 
 # ---------------------------------------------------------------------------
@@ -355,7 +355,7 @@ async def publish_skill(
     await db.commit()
     await db.refresh(skill)
 
-    return ApiResponse(data=_skill_to_response(skill).model_dump())
+    return ApiResponse(data=_skill_to_response(skill, is_owner=True).model_dump())
 
 
 @router.post("/{skill_id}/resubmit", response_model=ApiResponse)
@@ -388,7 +388,7 @@ async def resubmit_skill(
 
     await db.commit()
     await db.refresh(skill)
-    return ApiResponse(data=_skill_to_response(skill).model_dump())
+    return ApiResponse(data=_skill_to_response(skill, is_owner=True).model_dump())
 
 
 @router.post("/{skill_id}/unpublish", response_model=ApiResponse)
@@ -437,7 +437,7 @@ async def unpublish_skill(
 
     await db.commit()
     await db.refresh(skill)
-    return ApiResponse(data=_skill_to_response(skill).model_dump())
+    return ApiResponse(data=_skill_to_response(skill, is_owner=skill.user_id == current_user.id).model_dump())
 
 
 @router.post("/{skill_id}/toggle", response_model=ApiResponse)
@@ -451,4 +451,4 @@ async def toggle_skill(
     skill.is_active = not skill.is_active
     await db.commit()
     await db.refresh(skill)
-    return ApiResponse(data=_skill_to_response(skill).model_dump())
+    return ApiResponse(data=_skill_to_response(skill, is_owner=True).model_dump())

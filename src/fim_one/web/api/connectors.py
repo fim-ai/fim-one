@@ -159,7 +159,7 @@ def _connector_to_response(
     connector: Connector,
     has_default_credentials: bool = False,
     *,
-    is_owner: bool = True,
+    is_owner: bool,
 ) -> ConnectorResponse:
     # Non-owners: strip internal content (actions, auth_config, base_url, db_config)
     if is_owner:
@@ -302,7 +302,7 @@ async def create_connector(
     )
     connector = result.scalar_one()
     has_creds = await _has_default_credential(connector.id, db)
-    return ApiResponse(data=_connector_to_response(connector, has_default_credentials=has_creds).model_dump())
+    return ApiResponse(data=_connector_to_response(connector, has_default_credentials=has_creds, is_owner=True).model_dump())
 
 
 @router.get("", response_model=PaginatedResponse)
@@ -510,7 +510,7 @@ async def update_connector(
     )
     connector = result.scalar_one()
     has_creds = await _has_default_credential(connector.id, db)
-    data = _connector_to_response(connector, has_default_credentials=has_creds).model_dump()
+    data = _connector_to_response(connector, has_default_credentials=has_creds, is_owner=True).model_dump()
     if reverted:
         data["publish_status_reverted"] = True
     return ApiResponse(data=data)
@@ -604,7 +604,7 @@ async def fork_connector(
         .where(Connector.id == forked.id)
     )
     forked = result.scalar_one()
-    return ApiResponse(data=_connector_to_response(forked).model_dump())
+    return ApiResponse(data=_connector_to_response(forked, is_owner=True).model_dump())
 
 
 # ---------------------------------------------------------------------------
@@ -648,7 +648,7 @@ async def resubmit_connector(
         .where(Connector.id == connector.id)
     )
     connector = result.scalar_one()
-    return ApiResponse(data=_connector_to_response(connector).model_dump())
+    return ApiResponse(data=_connector_to_response(connector, is_owner=True).model_dump())
 
 
 # ---------------------------------------------------------------------------
@@ -818,7 +818,7 @@ async def publish_connector(
         .where(Connector.id == connector.id)
     )
     connector = result.scalar_one()
-    return ApiResponse(data=_connector_to_response(connector).model_dump())
+    return ApiResponse(data=_connector_to_response(connector, is_owner=True).model_dump())
 
 
 @router.post("/{connector_id}/unpublish", response_model=ApiResponse)
@@ -875,7 +875,7 @@ async def unpublish_connector(
         .where(Connector.id == connector.id)
     )
     connector = result.scalar_one()
-    return ApiResponse(data=_connector_to_response(connector).model_dump())
+    return ApiResponse(data=_connector_to_response(connector, is_owner=connector.user_id == current_user.id).model_dump())
 
 
 # ---------------------------------------------------------------------------
@@ -983,7 +983,7 @@ async def import_openapi(
         .where(Connector.id == connector.id)
     )
     connector = result.scalar_one()
-    return ApiResponse(data=_connector_to_response(connector).model_dump())
+    return ApiResponse(data=_connector_to_response(connector, is_owner=True).model_dump())
 
 
 @router.post("/{connector_id}/import-openapi", response_model=ApiResponse)
@@ -1024,7 +1024,7 @@ async def import_openapi_actions(
         .where(Connector.id == connector.id)
     )
     connector = result.scalar_one()
-    return ApiResponse(data=_connector_to_response(connector).model_dump())
+    return ApiResponse(data=_connector_to_response(connector, is_owner=True).model_dump())
 
 
 # ---------------------------------------------------------------------------
@@ -1147,7 +1147,7 @@ async def import_connector(
         warnings.append("db_config")
 
     import_result = ConnectorImportResult(
-        connector=_connector_to_response(connector),
+        connector=_connector_to_response(connector, is_owner=True),
         warnings=warnings,
     )
     return ApiResponse(data=import_result.model_dump())
@@ -1307,7 +1307,7 @@ async def create_connector_from_config(
         .where(Connector.id == connector.id)
     )
     connector = result.scalar_one()
-    return ApiResponse(data=_connector_to_response(connector).model_dump())
+    return ApiResponse(data=_connector_to_response(connector, is_owner=True).model_dump())
 
 
 # ---------------------------------------------------------------------------
