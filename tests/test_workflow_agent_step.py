@@ -275,6 +275,7 @@ class TestAStepWithNoAgent:
                     entry="chat_noagent",
                 ),
                 None,
+                conversation_id="conv-1",
             )
             await built.aclose()
         assert {"shell_exec", "python_exec", "connector", "call_agent"} <= _names(built.tools)

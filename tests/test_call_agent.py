@@ -91,11 +91,18 @@ class _Factory:
         self.raises = raises
         self.client = _Client()
         self.asked: list[tuple[CallContext, str | None, str | None]] = []
+        self.sandboxes: list[str | None] = []
 
     async def build(
-        self, ctx: CallContext, agent_id: str | None, *, conversation_id: str | None = None
+        self,
+        ctx: CallContext,
+        agent_id: str | None,
+        *,
+        conversation_id: str | None = None,
+        sandbox_id: str | None = None,
     ) -> AgentRuntime:
         self.asked.append((ctx, agent_id, conversation_id))
+        self.sandboxes.append(sandbox_id)
         if self.raises is not None:
             raise self.raises
         return AgentRuntime(

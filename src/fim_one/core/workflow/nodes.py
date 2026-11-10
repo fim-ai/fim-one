@@ -738,10 +738,14 @@ class AgentExecutor:
             # enforcement hooks. The agent is judged by the workflow
             # author's view; an agent that is not usable fails the step. A
             # step with no agent selected gets the bare runtime the factory
-            # defines for it.
+            # defines for it. The agent's shell, code and file tools work in
+            # the run's own directory, never one shared with another run.
             try:
                 runtime = await get_agent_runtime_factory().build(
-                    _step_call_context(node, context), agent_id or None, conversation_id=None
+                    _step_call_context(node, context),
+                    agent_id or None,
+                    conversation_id=None,
+                    sandbox_id=context.sandbox_id,
                 )
             except AssemblyRefusal as refused:
                 return NodeResult(

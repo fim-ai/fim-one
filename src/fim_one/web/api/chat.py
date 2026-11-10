@@ -79,6 +79,8 @@ from fim_one.core.assembly.principal import (
     resolve_principal,
 )
 from fim_one.core.assembly.quota import check_quota, quota_reset_at, quota_status
+from fim_one.core.assembly.sandbox import is_run_sandbox, sandbox_base
+from fim_one.core.assembly.sandbox import sandbox_root as run_sandbox_root
 from fim_one.core.assembly.toolset import (
     connector_tools,
     database_tools,
@@ -1502,7 +1504,7 @@ def _conversation_sandbox_root(conversation_id: str | None) -> Path | None:
     """
     if not conversation_id:
         return None
-    return _PROJECT_ROOT.parent / "data" / "sandbox" / conversation_id
+    return sandbox_base() / conversation_id
 
 
 def _conversation_workspace(conversation_id: str | None) -> AgentWorkspace | None:
@@ -1565,25 +1567,40 @@ async def _resolve_tools(
     *,
     entry: Entry | None = None,
     ctx: CallContext | None = None,
+    sandbox_id: str | None = None,
 ) -> ToolRegistry:
     """Build tool registry, optionally scoped to a per-conversation sandbox.
 
     *entry* names where the tools will be used when that is not a chat turn
     (a ``call_agent`` delegate); it is what their call records carry. *ctx*,
     when the caller already holds the run's call context, is used as it is.
+
+    *sandbox_id* names the directory the shell, code-execution and file
+    tools work in when that is not *conversation_id*'s: a run's own
+    directory (``core.assembly.sandbox``), or the conversation a delegate
+    was called from. With neither, the registry has none of those tools.
     """
     # The context connector and MCP tools are built and recorded under.
     _tool_ctx = ctx or _use_context(
         user_id, agent_cfg, conversation_id=conversation_id, entry=entry
     )
-    sandbox_root = _conversation_sandbox_root(conversation_id)
     sandbox_config = agent_cfg.get("sandbox_config") if agent_cfg else None
-    # Per-conversation uploads dir so generated images are isolated and
-    # cleaned up when the conversation is deleted.
+    sandbox_root: Path | None
     uploads_root: Path | None = None
-    if conversation_id:
-        uploads_base = Path(os.environ.get("UPLOADS_DIR", "uploads"))
-        uploads_root = uploads_base / "conversations" / conversation_id
+    if is_run_sandbox(sandbox_id):
+        # A run's own directory: everything the run writes is under it, so
+        # removing it when the run ends removes all of it.
+        assert sandbox_id is not None
+        sandbox_root = run_sandbox_root(sandbox_id)
+        uploads_root = sandbox_root / "uploads"
+    else:
+        _files_of = sandbox_id or conversation_id
+        sandbox_root = _conversation_sandbox_root(_files_of)
+        # Per-conversation uploads dir so generated images are isolated and
+        # cleaned up when the conversation is deleted.
+        if _files_of:
+            uploads_base = Path(os.environ.get("UPLOADS_DIR", "uploads"))
+            uploads_root = uploads_base / "conversations" / _files_of
     tools = get_tools(
         sandbox_root=sandbox_root,
         sandbox_config=sandbox_config,
@@ -2055,8 +2072,8 @@ async def _resolve_tools(
                             {"id": a.id, "name": a.name, "description": a.description or ""}
                             for a in _visible_agents
                         ],
-                        # The delegate runs outside the conversation's
-                        # sandbox and its calls are recorded as its own.
+                        # The delegate's calls are recorded as its own,
+                        # not as the conversation's.
                         call_context=dataclasses.replace(
                             _tool_ctx,
                             binding=None,
@@ -2064,6 +2081,9 @@ async def _resolve_tools(
                             conversation_id=None,
                             agent_id=None,
                         ),
+                        # Its files are the conversation's, as in a chat
+                        # with that agent in this conversation.
+                        sandbox_id=conversation_id,
                     )
                 )
         except Exception:

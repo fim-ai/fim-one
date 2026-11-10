@@ -62,8 +62,15 @@ class AgentRuntimeFactory(Protocol):
         agent_id: str | None,
         *,
         conversation_id: str | None = None,
+        sandbox_id: str | None = None,
     ) -> AgentRuntime:
         """The runtime of *agent_id* as used through *ctx*.
+
+        *sandbox_id* names the directory the run's shell, code-execution and
+        file tools work in (``core.assembly.sandbox``); without it they work
+        in *conversation_id*'s directory. A runtime built with neither has
+        none of those tools. The caller that made up a run's sandbox id
+        releases it when the run ends.
 
         The agent is judged by ``ctx``'s subject (the binding's owner, or the
         principal with no binding); the resources bound to it by the agent's

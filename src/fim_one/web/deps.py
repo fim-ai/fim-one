@@ -542,8 +542,10 @@ def get_tools(
     into that package — no manual registration needed.
 
     When *sandbox_root* is provided, sandboxed tools (file_ops, shell_exec,
-    python_exec) are configured with per-conversation subdirectories under
-    that root.
+    python_exec, node_exec) are configured with per-conversation
+    subdirectories under that root. Without one the registry has none of
+    them: their fallback directory is one every caller would share (on the
+    local backend, a directory of the host).
 
     When *sandbox_config* is provided (from an agent's ``sandbox_config``
     column), per-agent resource limits are applied to exec tools.
@@ -552,12 +554,16 @@ def get_tools(
     python_exec, etc.) copy artifacts to a per-conversation subdirectory so
     files are isolated and cleaned up when the conversation is deleted.
     """
+    from fim_one.core.assembly.sandbox import SANDBOXED_TOOLS
+
     registry = ToolRegistry()
     for tool in discover_builtin_tools(
         sandbox_root=sandbox_root,
         sandbox_config=sandbox_config,
         uploads_root=uploads_root,
     ):
+        if sandbox_root is None and tool.name in SANDBOXED_TOOLS:
+            continue
         registry.register(tool)
     logger.info("Registered %d built-in tools: %s", len(registry), registry)
     return registry

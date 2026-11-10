@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any
 
 from fim_one.core.assembly.principal import Binding, CallContext, Entry, Principal
 from fim_one.core.assembly.runtime import AgentRuntime
+from fim_one.core.assembly.sandbox import SANDBOXED_TOOLS
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -134,13 +135,24 @@ async def resolve_models(
     return llm, fast_llm
 
 
-async def resolve_toolset(ctx: CallContext, agent_cfg: dict[str, Any] | None) -> ToolRegistry:
-    """The run's tools. MCP servers are looked up; :func:`connect_mcp` connects them."""
+async def resolve_toolset(
+    ctx: CallContext,
+    agent_cfg: dict[str, Any] | None,
+    *,
+    sandbox_id: str | None = None,
+) -> ToolRegistry:
+    """The run's tools. MCP servers are looked up; :func:`connect_mcp` connects them.
+
+    The shell, code-execution and file tools work in the directory of
+    *sandbox_id*, or of the context's conversation; with neither the
+    toolset has none of them.
+    """
     tools: ToolRegistry = await _chat()._resolve_tools(
         agent_cfg,
         ctx.conversation_id,
         user_id=ctx.principal.user_id,
         ctx=ctx,
+        sandbox_id=sandbox_id,
     )
     return tools
 
@@ -166,13 +178,6 @@ async def build_hooks(
         create_session,
         conversation_id=conversation_id,
     )
-
-
-# Built-in tools a run with no agent and no conversation does not get. In a
-# chat they are confined to the conversation's own sandbox directory; a
-# workflow step has no conversation, so they would run in the directory
-# every such run shares (the host's, with no Docker sandbox).
-SANDBOXED_TOOLS = ("shell_exec", "python_exec", "node_exec", "file_ops")
 
 
 async def _disabled_builtin_tools() -> list[str]:
@@ -224,6 +229,7 @@ class WebAgentRuntimeFactory:
         agent_id: str | None,
         *,
         conversation_id: str | None = None,
+        sandbox_id: str | None = None,
     ) -> AgentRuntime:
         from fim_one.db import create_session
 
@@ -237,7 +243,7 @@ class WebAgentRuntimeFactory:
         )
         async with create_session() as db:
             llm, fast_llm = await resolve_models(agent_cfg, db)
-        tools = await resolve_toolset(run_ctx, agent_cfg)
+        tools = await resolve_toolset(run_ctx, agent_cfg, sandbox_id=sandbox_id)
         mcp_client = await connect_mcp(tools, agent_cfg)
         try:
             hooks = await build_hooks(agent_cfg, conversation_id=conversation_id)

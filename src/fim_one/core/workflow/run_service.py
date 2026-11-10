@@ -45,6 +45,7 @@ from fim_one.core.assembly.principal import (
     provisional_principal,
 )
 from fim_one.core.assembly.quota import AssemblyRunGate
+from fim_one.core.assembly.sandbox import release_sandbox, workflow_run_sandbox_id
 
 from .node_gates import (
     HUMAN_INTERVENTION_DISABLED,
@@ -324,6 +325,8 @@ class StartedRun:
                         await self._service._persist(out, started_at=start)
                     finally:
                         self._service._active_runs.pop(self.run_id, None)
+                        # The files the run's Agent steps wrote go with the run.
+                        await release_sandbox(self._context.sandbox_id)
                         try:
                             self._service._fire_webhook(
                                 self.workflow, out, self.mode, self.call_context
@@ -539,6 +542,7 @@ class WorkflowRunService:
                 depth=depth,
                 cancel_event=cancel_event,
                 call_context=dataclasses.replace(ctx, workflow_run_id=run_id),
+                sandbox_id=workflow_run_sandbox_id(run_id),
             )
             engine = self._make_engine(
                 max_concurrency=5,
@@ -617,8 +621,10 @@ class WorkflowRunService:
             await store.set(key, value)
 
         usage_tracker = UsageTracker()
+        test_run_id = f"test-{uuid.uuid4()}"
         context = ExecutionContext(
-            run_id=f"test-{uuid.uuid4()}",
+            run_id=test_run_id,
+            sandbox_id=workflow_run_sandbox_id(test_run_id),
             user_id=principal.user_id,
             workflow_id=workflow.id,
             env_vars=env_vars,
@@ -653,6 +659,8 @@ class WorkflowRunService:
                 error=f"{type(exc).__name__}: {exc}",
                 duration_ms=int((time.time() - t0) * 1000),
             )
+        finally:
+            await release_sandbox(context.sandbox_id)
 
         total_tokens = int(usage_tracker.get_summary().total_tokens or 0)
         if total_tokens > 0:

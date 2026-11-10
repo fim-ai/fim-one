@@ -131,3 +131,9 @@ class ExecutionContext:
     # run service. ``None`` for a context built by hand: steps then act as
     # ``user_id`` directly, with no binding.
     call_context: CallContext | None = None
+    # The run's own sandbox directory (``core.assembly.sandbox``): where the
+    # shell, code-execution and file tools of its Agent steps work. Set by
+    # the run service, which removes the directory when the run ends.
+    # ``None`` for a context built by hand: its Agent steps get none of
+    # those tools.
+    sandbox_id: str | None = None

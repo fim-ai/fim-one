@@ -3056,9 +3056,15 @@ class TestAgentExecutorBindings:
 
         class _Factory:
             async def build(
-                self, ctx: Any, agent_id: Any, *, conversation_id: Any = None
+                self,
+                ctx: Any,
+                agent_id: Any,
+                *,
+                conversation_id: Any = None,
+                sandbox_id: Any = None,
             ) -> AgentRuntime:
                 captured["build"] = (ctx, agent_id, conversation_id)
+                captured["sandbox_id"] = sandbox_id
                 return AgentRuntime(
                     ctx=ctx,
                     agent={"agent_id": agent_id},
