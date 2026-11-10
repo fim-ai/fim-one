@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import csv
 import io
 import json
 import math
@@ -28,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from fim_one.core.audit import writer as audit
+from fim_one.web.csv_safe import safe_writer
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_admin, hash_password, hash_password_async
 from fim_one.db.models import Agent, AuditLog, Connector, ConnectorCallLog, Conversation, InviteCode, KnowledgeBase, MCPServer as MCPServerModel, Message, ModelConfig, Organization, SystemSetting, User
@@ -1292,7 +1292,7 @@ async def export_audit_log(
     rows = result.scalars().all()
 
     buf = io.StringIO()
-    writer = csv.writer(buf)
+    writer = safe_writer(buf)
     writer.writerow(
         [
             "timestamp", "admin", "action", "target_type", "target_label", "detail",
