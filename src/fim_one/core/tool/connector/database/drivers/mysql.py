@@ -53,7 +53,7 @@ class MySQLDriver(DatabaseDriver):
         # session (see ``_session``). ``False`` once the server has refused
         # the reset command: connections are then not reused at all.
         self._can_reset = True
-        # The SQL mode every session is put into (see ``_set_sql_mode``).
+        # The SQL mode a read-only session is put into (see ``_set_sql_mode``).
         self._sql_mode: str | None = None
 
     def _connection_settings(self) -> dict[str, Any]:
@@ -77,7 +77,7 @@ class MySQLDriver(DatabaseDriver):
         )
 
     @asynccontextmanager
-    async def _session(self) -> AsyncIterator[Any]:
+    async def _session(self, *, read_only: bool = True) -> AsyncIterator[Any]:
         """A connection whose session carries nothing over from its last use.
 
         A pooled connection keeps what earlier statements left on it: user
@@ -107,7 +107,7 @@ class MySQLDriver(DatabaseDriver):
             reusable = False
             clean = False
             try:
-                clean = await self._reset(conn)
+                clean = await self._reset(conn, read_only=read_only)
                 if clean:
                     try:
                         yield conn
@@ -126,28 +126,40 @@ class MySQLDriver(DatabaseDriver):
                 return
         conn = await aiomysql.connect(**self._connection_settings())
         try:
-            await self._set_sql_mode(conn)
+            await self._set_sql_mode(conn, read_only=read_only)
             yield conn
         finally:
             conn.close()
 
-    async def _set_sql_mode(self, conn: Any) -> None:
-        """Give the session the server's SQL mode without the two modes that change quoting.
+    async def _set_sql_mode(self, conn: Any, *, read_only: bool) -> None:
+        """Put the session into the SQL mode its use calls for.
 
         ``NO_BACKSLASH_ESCAPES`` makes a backslash in a string an ordinary
-        character and ``ANSI_QUOTES`` makes ``"..."`` a name. The safety
+        character and ``ANSI_QUOTES`` makes ``"..."`` a name. The read-only
         check reads statements by MySQL's default rules (``reading.py``);
         on a server whose global mode has either, a string would end
         somewhere else for the server than for the check, and what the
         check took for text would run (``SELECT '\\' , LOAD_FILE(...) , '\\'``).
-        So every session is put into the server's own mode minus these two
-        (and minus the combination modes that imply ``ANSI_QUOTES``; their
-        other parts are listed separately by the server and stay).
 
-        The mode is read from the server once and then set on every
-        session, so a later change of the global mode does not bring the
-        two back.
+        So a **read-only** session is put into the server's own mode minus
+        these two (and minus the combination modes that imply
+        ``ANSI_QUOTES``; their other parts are listed separately by the
+        server and stay). That mode is read from the server once and then
+        set every time, so a later change of the global mode does not
+        bring the two back.
+
+        A **read-write** session keeps the server's mode: its owner's SQL
+        is written for that server (``"name"`` a column, ``'C:\\tmp\\'`` a
+        path), and nothing but the short list of never-allowed functions is
+        checked on it.
+
+        The mode is set on every checkout for both kinds: one connector's
+        read-only and read-write calls share the pooled connections.
         """
+        if not read_only:
+            async with conn.cursor() as cur:
+                await cur.execute("SET SESSION sql_mode = @@GLOBAL.sql_mode")
+            return
         if self._sql_mode is None:
             async with conn.cursor() as cur:
                 await cur.execute("SELECT @@GLOBAL.sql_mode")
@@ -170,7 +182,7 @@ class MySQLDriver(DatabaseDriver):
             logger.debug("Clearing a MySQL session on release failed", exc_info=True)
             conn.close()
 
-    async def _reset(self, conn: Any) -> bool:
+    async def _reset(self, conn: Any, *, read_only: bool = True) -> bool:
         """Reset *conn*'s session; ``False`` when it could not be reset."""
         send = getattr(conn, "_execute_command", None)
         read_ok = getattr(conn, "_read_ok_packet", None)
@@ -188,7 +200,7 @@ class MySQLDriver(DatabaseDriver):
                 # The reset keeps the current database: after "USE other"
                 # every later query on this connection would run there.
                 await conn.select_db(settings["db"])
-            await self._set_sql_mode(conn)
+            await self._set_sql_mode(conn, read_only=read_only)
         except Exception as exc:
             if getattr(exc, "args", (None,))[0] == _ER_UNKNOWN_COM_ERROR:
                 logger.warning(
@@ -328,7 +340,7 @@ class MySQLDriver(DatabaseDriver):
 
         start = time.monotonic()
         try:
-            async with self._session() as conn:
+            async with self._session(read_only=read_only) as conn:
                 cur = await conn.cursor()
                 try:
                     await self._limit_statement_time(cur, timeout_s)

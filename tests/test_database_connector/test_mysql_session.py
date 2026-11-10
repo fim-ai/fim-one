@@ -34,6 +34,10 @@ STATE = (
     "SELECT @@character_set_client, @@sql_mode LIKE '%NO_BACKSLASH_ESCAPES%', @kept, "
     "0, @@autocommit"
 )
+# The same for a read-write session, which is given the server's own mode back.
+STATE_READ_WRITE = (
+    "SELECT @@character_set_client, @@sql_mode <> @@GLOBAL.sql_mode, @kept, 0, @@autocommit"
+)
 LOCK_HELD = "SELECT IS_USED_LOCK('kept_lock') IS NOT NULL"
 # What a read-write connector may leave on its connection.
 LEFT_BEHIND = (
@@ -139,13 +143,14 @@ class TestLive:
         read_write = _tool(live_mysql, read_only=False)
         for statement in LEFT_BEHIND:
             await read_write.run(sql=statement)
-        assert json.loads(await read_write.run(sql=STATE))["rows"] == [["utf8mb4", 0, None, 0, 1]]
+        state = json.loads(await read_write.run(sql=STATE_READ_WRITE))["rows"]
+        assert state == [["utf8mb4", 0, None, 0, 1]]
         assert json.loads(await read_write.run(sql=LOCK_HELD))["rows"] == [[0]]
 
     async def test_bound_text_is_safe_in_a_gbk_session_even_if_the_reset_is_missed(
         self, live_mysql: LiveDatabase, one_connection: None, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        async def _no_reset(_self: MySQLDriver, _conn: Any) -> bool:
+        async def _no_reset(_self: MySQLDriver, _conn: Any, **_kwargs: Any) -> bool:
             return True
 
         monkeypatch.setattr(MySQLDriver, "_reset", _no_reset)
@@ -407,6 +412,24 @@ class TestTheServerAndTheCheckReadTheSameStatement:
             bound = f"SELECT id FROM {strict.orders} WHERE customer = {{{{v}}}}"
             assert json.loads(await _bound(tool, bound, "\\' OR 1=1 -- "))["rows"] == []
             assert json.loads(await _bound(tool, bound, "alice"))["rows"] == [[1]]
+            # A read-write call on the same pooled connection keeps the
+            # server's own mode: its owner's SQL is written for it.
+            writer = _tool(strict, read_only=False)
+            reader_mode = "SELECT @@sql_mode LIKE '%ANSI_QUOTES%', @@sql_mode LIKE '%NO_BACKSLASH%'"
+            for _ in range(3):
+                assert json.loads(await writer.run(sql=reader_mode))["rows"] == [[1, 1]]
+                assert json.loads(await tool.run(sql=reader_mode))["rows"] == [[0, 0]]
+            # "customer" is the column, and a backslash is a character.
+            named = json.loads(
+                await writer.run(sql=f'SELECT "customer" FROM {strict.orders} WHERE id = 1')
+            )
+            assert named["rows"] == [["alice"]]
+            path = json.loads(await writer.run(sql="SELECT 'C:\\tmp\\' AS p"))
+            assert path["rows"] == [["C:\\tmp\\"]]
+            # Through the read-only tool the same text is MySQL's default.
+            assert json.loads(
+                await tool.run(sql=f'SELECT "customer" FROM {strict.orders} WHERE id = 1')
+            )["rows"] == [["customer"]]
             # The fallback path (a connection per call) is prepared the same way.
             driver = await ConnectionPoolManager.get_instance().get_driver(
                 strict.connector_id, strict.config
@@ -457,12 +480,12 @@ class TestAConnectionIsAlwaysGivenBack:
         driver._pool = pool
         entered = asyncio.Event()
 
-        async def _stuck(*_args: Any) -> bool:
+        async def _stuck(*_args: Any, **_kwargs: Any) -> bool:
             entered.set()
             await asyncio.sleep(3600)
             return True
 
-        async def _fine(*_args: Any) -> bool:
+        async def _fine(*_args: Any, **_kwargs: Any) -> bool:
             return True
 
         monkeypatch.setattr(MySQLDriver, "_reset", _stuck if where == "reset" else _fine)
@@ -498,7 +521,7 @@ class TestAConnectionIsAlwaysGivenBack:
     async def test_an_error_in_the_query_gives_the_connection_back_open(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        async def _fine(*_args: Any) -> bool:
+        async def _fine(*_args: Any, **_kwargs: Any) -> bool:
             return True
 
         monkeypatch.setattr(MySQLDriver, "_reset", _fine)
