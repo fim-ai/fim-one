@@ -222,6 +222,9 @@ CONNECTOR_UNPUBLISH_BY_ADMIN = "connector.unpublish_by_admin"
 CONNECTOR_ACTION_CREATE = "connector.action_create"
 CONNECTOR_ACTION_UPDATE = "connector.action_update"
 CONNECTOR_ACTION_DELETE = "connector.action_delete"
+# A real request was sent for one action with the owner's stored credential
+# (the builder's test tool). The parameters and the response are not recorded.
+CONNECTOR_ACTION_TEST = "connector.action_test"
 # Several actions added at once (an OpenAPI document, the AI builder).
 CONNECTOR_ACTIONS_IMPORT = "connector.actions_import"
 # What of a database connector's tables and columns the model may see, and

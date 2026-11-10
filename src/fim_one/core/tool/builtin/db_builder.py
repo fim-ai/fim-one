@@ -11,7 +11,7 @@ import json
 import logging
 import time
 from abc import ABC
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -721,6 +721,7 @@ class DbRunSampleQueryTool(_DbBuilderBase):
         try:
             config = decrypt_db_config(raw_config)
         except Exception as exc:
+            await self._record_sample("failed")
             return json.dumps({"ok": False, "error": f"Config decryption failed: {exc}"}, ensure_ascii=False)
 
         pool = ConnectionPoolManager.get_instance()
@@ -735,6 +736,7 @@ class DbRunSampleQueryTool(_DbBuilderBase):
                 timeout_s=30,
                 max_rows=limit,
             )
+            await self._record_sample("success", rows=result.row_count)
             return json.dumps(
                 {
                     "table_name": table_name,
@@ -746,4 +748,40 @@ class DbRunSampleQueryTool(_DbBuilderBase):
                 indent=2,
             )
         except Exception as exc:
+            await self._record_sample("failed")
             return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
+
+    async def _record_sample(
+        self, outcome: Literal["success", "failed"], *, rows: int | None = None
+    ) -> None:
+        """The builder read rows of the connector's database: recorded like
+        the portal's query box (``database.query``).
+
+        Who, which connector and how it ended; never the statement, the
+        table or what came back. Written on its own after the query, and a
+        failure to write it is logged: the tool's answer does not depend on it.
+        """
+        from fim_one.core.audit import actions as audit_actions
+        from fim_one.db import create_session
+
+        try:
+            async with create_session() as db:
+                connector = await self._get_connector(db)
+                if connector is None:
+                    return
+                read_only = bool((connector.db_config or {}).get("read_only", True))
+                detail = f"read_only={read_only}"
+                if rows is not None:
+                    detail += f"; rows={rows}"
+                await audited.record_resource(
+                    db,
+                    await audited.builder_actor(db, self.user_id),
+                    audit_actions.DATABASE_QUERY,
+                    "connector",
+                    connector,
+                    outcome=outcome,
+                    detail=f"{detail}; {audited.THROUGH_THE_BUILDER}",
+                )
+                await db.commit()
+        except Exception:
+            logger.error("Could not record the builder's sample query", exc_info=True)

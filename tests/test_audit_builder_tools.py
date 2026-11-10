@@ -157,6 +157,65 @@ class TestConnectorBuilder:
         )
         assert row.detail == f"1 action(s) from an OpenAPI document; {BUILDER}"
 
+    async def test_a_test_call_is_recorded_without_its_arguments(
+        self, world: World, alice: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The test tool sends a real request with the owner's credential."""
+        import httpx
+
+        await world.add(
+            Connector(
+                id="conn-1",
+                user_id=alice.id,
+                name="crm",
+                base_url="https://crm.example.test",
+                auth_type="bearer",
+                auth_config={"token": TOKEN},
+            )
+        )
+        await world.add(
+            ConnectorAction(
+                id="act-1",
+                connector_id="conn-1",
+                name="get customer",
+                method="GET",
+                path="/customers/{id}",
+            )
+        )
+        sent: list[httpx.Request] = []
+
+        def answer(request: httpx.Request) -> httpx.Response:
+            sent.append(request)
+            if "missing" in str(request.url):
+                return httpx.Response(404, json={"error": "no such customer"})
+            return httpx.Response(200, json={"name": "Customer Fourteen"})
+
+        monkeypatch.setattr(
+            connector_builder,
+            "get_safe_async_client",
+            lambda **_kw: httpx.AsyncClient(transport=httpx.MockTransport(answer)),
+        )
+        tool = connector_builder.ConnectorTestActionTool(connector_id="conn-1", user_id=alice.id)
+
+        await tool.run(action_id="act-1", params={"id": "cust-14", "note": "argument-marker"})
+        await tool.run(action_id="act-1", params={"id": "missing"})
+
+        assert [request.headers["Authorization"] for request in sent] == [f"Bearer {TOKEN}"] * 2
+        ok, refused = await world.events("connector.action_test")
+        assert (ok.outcome, refused.outcome) == ("success", "failed")
+        assert ok.detail == f"connector=conn-1; GET /customers/{{id}}; status=200; {BUILDER}"
+        assert refused.detail == f"connector=conn-1; GET /customers/{{id}}; status=404; {BUILDER}"
+        for row in (ok, refused):
+            assert (row.actor_id, row.target_type, row.target_id) == (
+                alice.id,
+                "connector_action",
+                "act-1",
+            )
+            assert row.ip_address == CLIENT_IP
+            world.assert_absent(
+                row, TOKEN, "cust-14", "argument-marker", "Customer Fourteen", "missing"
+            )
+
     async def test_someone_elses_connector_is_refused_and_nothing_is_recorded(
         self, world: World, alice: Any
     ) -> None:
@@ -240,6 +299,62 @@ class TestDatabaseBuilder:
             },
         )
         assert row.detail == BUILDER
+
+    async def test_a_sample_query_is_recorded_like_the_portal_query_box(
+        self, world: World, alice: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``SELECT * FROM <table> LIMIT n`` on the connector's database."""
+        from types import SimpleNamespace
+
+        from fim_one.core.tool.connector.database.pool import ConnectionPoolManager
+
+        await self._database(world, alice.id)
+        statements: list[str] = []
+
+        class _Driver:
+            async def execute_query(self, query: str, **_kw: Any) -> Any:
+                statements.append(query)
+                if "broken" in query:
+                    raise RuntimeError("relation does not exist: broken-marker")
+                return SimpleNamespace(
+                    columns=["name"], rows=[["row-marker-1"], ["row-marker-2"]], row_count=2
+                )
+
+        class _Pool:
+            async def get_driver(self, _connector_id: str, _config: Any) -> _Driver:
+                return _Driver()
+
+        monkeypatch.setattr(ConnectionPoolManager, "get_instance", classmethod(lambda _c: _Pool()))
+        monkeypatch.setattr(
+            "fim_one.core.security.encryption.decrypt_db_config", lambda config: config
+        )
+        tool = db_builder.DbRunSampleQueryTool(connector_id="db-1", user_id=alice.id)
+
+        assert "row-marker-1" in await tool.run(table_name="staff", limit=2)
+        assert "broken-marker" in await tool.run(table_name="broken")
+
+        assert len(statements) == 2
+        ok, failed = await world.events("database.query")
+        assert (ok.outcome, failed.outcome) == ("success", "failed")
+        assert ok.detail == f"read_only=True; rows=2; {BUILDER}"
+        assert failed.detail == f"read_only=True; {BUILDER}"
+        for row in (ok, failed):
+            assert (row.actor_id, row.target_type, row.target_id) == (alice.id, "connector", "db-1")
+            assert row.ip_address == CLIENT_IP
+            world.assert_absent(row, "SELECT", "staff", "broken", "row-marker")
+
+    async def test_a_sample_query_on_someone_elses_connector_runs_and_records_nothing(
+        self, world: World, alice: Any
+    ) -> None:
+        mallory = await world.user("mallory")
+        await self._database(world, alice.id)
+
+        answer = await db_builder.DbRunSampleQueryTool(
+            connector_id="db-1", user_id=mallory.id
+        ).run(table_name="staff")
+
+        assert answer.startswith("[Error]")
+        assert await world.events() == []
 
     async def test_hiding_and_showing_tables(self, world: World, alice: Any) -> None:
         await self._database(world, alice.id)
