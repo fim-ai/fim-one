@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from .principal import CallContext
 
 __all__ = [
+    "DATABASE_OPERATIONS",
     "ToolMode",
     "ToolsetError",
     "connector_tools",
@@ -42,6 +43,9 @@ logger = logging.getLogger(__name__)
 # ``progressive``: one meta-tool for all resources of a kind, with
 # discover / execute subcommands. ``legacy``: one tool per action.
 ToolMode = Literal["progressive", "legacy"]
+
+# What a database connector offers: in ``legacy`` mode, one tool for each.
+DATABASE_OPERATIONS = ("list_tables", "describe_table", "query")
 
 
 async def connector_tools(
@@ -169,6 +173,8 @@ async def database_tools(
     connectors: Sequence[Any],
     *,
     mode: ToolMode,
+    strict: bool = False,
+    operations: Collection[str] | None = None,
 ) -> list[BaseTool]:
     """Tools for the database connectors in *connectors*.
 
@@ -176,7 +182,11 @@ async def database_tools(
     tools run on the owner's database account with no per-caller scoping,
     so a connector is left out for anyone but its owner, whatever its
     ``allow_fallback`` says (that switch shares an API credential). One
-    with no connection config saved is left out too.
+    with no connection config saved is left out too. With *strict* the
+    refusal is raised instead, and a connector with no connection config
+    is a :class:`ToolsetError`: for a caller that needs this connector or
+    nothing. *operations* limits ``legacy`` mode to those of
+    :data:`DATABASE_OPERATIONS`: a caller that runs one builds one tool.
     """
     from fim_one.core.tool.connector.database.adapter import DatabaseToolAdapter
     from fim_one.core.tool.connector.database.meta_tool import build_database_meta_tool
@@ -185,14 +195,26 @@ async def database_tools(
     record = call_recorder(ctx, kind="database", credential_source=CredentialSource.OWNER)
     databases: list[tuple[Any, dict[str, Any], list[Any]]] = []
     for conn in connectors:
-        if not conn.db_config:
-            continue
         try:
+            # The refusal comes first: someone who may not use the connector
+            # is not told whether it is configured.
             credential = await resolve_credential(db, ctx.principal, conn)
+            if not conn.db_config:
+                if strict:
+                    raise ToolsetError(
+                        f"Database connector '{conn.name}' has no connection configured"
+                    )
+                continue
             databases.append((conn, credential.db_config or {}, _visible_schema(conn)))
         except AssemblyRefusal as refusal:
+            if strict:
+                raise
             logger.info("Skipping database connector %r: %s", conn.name, refusal.error_code)
+        except ToolsetError:
+            raise
         except Exception:
+            if strict:
+                raise
             logger.warning("Failed to load DB connector tools: %s", conn.name, exc_info=True)
 
     if mode == "progressive":
@@ -209,13 +231,19 @@ async def database_tools(
     tools: list[BaseTool] = []
     for conn, config, tables in databases:
         tools.extend(
-            DatabaseToolAdapter.create_tools(
-                connector_name=conn.name,
-                connector_id=conn.id,
-                db_config=config,
-                schema_tables=tables,
-                on_call_complete=record,
+            tool
+            for operation, tool in zip(
+                DATABASE_OPERATIONS,
+                DatabaseToolAdapter.create_tools(
+                    connector_name=conn.name,
+                    connector_id=conn.id,
+                    db_config=config,
+                    schema_tables=tables,
+                    on_call_complete=record,
+                ),
+                strict=True,
             )
+            if operations is None or operation in operations
         )
     logger.info("Loaded %d DB tools from %d connectors", len(tools), len(databases))
     return tools

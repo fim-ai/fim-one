@@ -895,6 +895,9 @@ async def _action_tool(
     from fim_one.core.assembly.errors import AssemblyRefusal
     from fim_one.core.assembly.toolset import connector_tools
 
+    if connector.type == "database":
+        return await _database_operation_tool(db, call_context, connector, action_id)
+
     action = next((a for a in connector.actions or [] if a.id == action_id), None)
     if not action:
         raise _StepFailed(f"Action '{action_id}' not found")
@@ -925,6 +928,44 @@ async def _action_tool(
     except AssemblyRefusal as refused:
         raise _StepFailed(refused.detail) from None
     return adapter
+
+
+async def _database_operation_tool(
+    db: AsyncSession, call_context: CallContext, connector: Any, operation: str
+) -> BaseTool:
+    """The tool that runs one operation of a database connector for this step.
+
+    A database connector has no actions of its own: the step's ``action_id``
+    names one of the operations a chat with the connector gets
+    (``list_tables``, ``describe_table``, ``query``), and the tool is the
+    one chat would be given, built in core/assembly: the owner's connection,
+    the connector's read-only switch, row limit and timeout, the columns
+    marked as personal data masked, and the call recorded.
+    """
+    from fim_one.core.assembly.errors import AssemblyRefusal
+    from fim_one.core.assembly.toolset import (
+        DATABASE_OPERATIONS,
+        ToolsetError,
+        database_tools,
+    )
+
+    if operation not in DATABASE_OPERATIONS:
+        raise _StepFailed(
+            f"Database connector '{connector.name}' has no operation '{operation}'. "
+            f"Choose one of: {', '.join(DATABASE_OPERATIONS)}"
+        )
+    try:
+        (tool,) = await database_tools(
+            db, call_context, [connector], mode="legacy", strict=True, operations=[operation]
+        )
+    except (AssemblyRefusal, ToolsetError) as refused:
+        raise _StepFailed(refused.detail) from None
+    return tool
+
+
+# How a database tool reports a query it did not run or that failed. The
+# model reads these in chat; a step has no reader, so it fails.
+_DATABASE_TOOL_ERRORS = ("[SQL Safety Error]", "[Timeout]", "[Error]")
 
 
 class KnowledgeRetrievalExecutor:
@@ -1041,7 +1082,14 @@ class KnowledgeRetrievalExecutor:
 
 
 class ConnectorExecutor:
-    """Load a connector + action and execute it."""
+    """Run one action of an API connector, or one operation of a database connector.
+
+    Node data: ``connector_id``, ``action_id`` and ``parameters``. For an
+    API connector ``action_id`` is the id of one of its actions and
+    ``parameters`` are the action's. For a database connector ``action_id``
+    is ``list_tables``, ``describe_table`` (``parameters.table_name``) or
+    ``query`` (``parameters.sql``).
+    """
 
     @staticmethod
     def output_schema() -> list[dict[str, str]]:
@@ -1087,6 +1135,7 @@ class ConnectorExecutor:
                     authorize_use,
                 )
                 from fim_one.db.models.connector import Connector
+                from fim_one.db.models.database_schema import DatabaseSchema
 
                 call_context = _step_call_context(node, context)
                 _decision = await authorize_use(
@@ -1094,12 +1143,15 @@ class ConnectorExecutor:
                     call_context,
                     ResourceKind.CONNECTOR,
                     [connector_id],
-                    options=(selectinload(Connector.actions),),
+                    options=(
+                        selectinload(Connector.actions),
+                        selectinload(Connector.database_schemas).selectinload(
+                            DatabaseSchema.columns
+                        ),
+                    ),
                 )
-                # A database connector is its owner's alone (``owner_only``).
-                # The owner's own run still fails below: a Connector step has
-                # no way to query a database (registered in
-                # tests/assembly/matrix.py; T10 P4).
+                # A database connector is its owner's alone (``owner_only``):
+                # anyone else running the workflow is refused here.
                 _usable = _decision.usable
                 if not _usable:
                     return NodeResult(
@@ -1119,6 +1171,17 @@ class ConnectorExecutor:
                     )
 
             output = await adapter.run(**params)
+            if (
+                adapter.category == "database"
+                and isinstance(output, str)
+                and output.startswith(_DATABASE_TOOL_ERRORS)
+            ):
+                return NodeResult(
+                    node_id=node.id,
+                    status=NodeStatus.FAILED,
+                    error=output,
+                    duration_ms=_ms_since(t0),
+                )
             await _store_output(node, store, output)
 
             return NodeResult(

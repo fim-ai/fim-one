@@ -11,9 +11,9 @@ the difference is registered in :data:`KNOWN_DEVIATIONS`.
 
 ``tests/assembly/test_matrix.py`` asserts *actual deviations == registered
 deviations*: fixing one without removing its registration fails, and so
-does introducing a new one. C1 phases 2 to 4 removed every registration
-that was C1's to remove; the two left are the workflow Connector step's and
-belong to T10 P4 and P5 (see :data:`KNOWN_DEVIATIONS`).
+does introducing a new one. C1 phases 2 to 4 and T10 P4 removed all but
+one: the workflow Connector step cannot wait for a human, which is T10 P5's
+(see :data:`KNOWN_DEVIATIONS`).
 
 A **cell** is ``(role, resource, allow_fallback, is_active, has_personal)``:
 
@@ -1028,10 +1028,17 @@ async def probe_wf_connector_node(
                 logged=await _log_count(factory, scene.ids[resource]) > logs,
                 confirmed=len(out.gate_asked) > asked and flagged.status == NodeStatus.COMPLETED,
             )
-        # A database connector has no actions; the node is given none.
-        result = await _run("db", "no-such-action")
+        # A database connector has operations instead of actions. Listing
+        # its tables needs no database to answer.
+        logs = await _log_count(factory, scene.ids["db"])
+        result = await _run("db", "list_tables")
         results["db"] = (
-            Outcome(exposed=True, credential_source="owner", logged=True)
+            Outcome(
+                exposed=True,
+                # Only the owner gets this far, on the stored connection.
+                credential_source="owner",
+                logged=await _log_count(factory, scene.ids["db"]) > logs,
+            )
             if result.status == NodeStatus.COMPLETED
             else Outcome(exposed=False, refusal_code=_classify(result.error))
         )
@@ -1246,10 +1253,6 @@ def _not_confirmed(_entry: str, _cell: Cell, so_far: Outcome) -> Outcome | None:
     return _replace(so_far, confirmed=False) if so_far.exposed else None
 
 
-def _database_unsupported(_entry: str, _cell: Cell, so_far: Outcome) -> Outcome | None:
-    return Outcome(exposed=False, refusal_code="error") if so_far.exposed else None
-
-
 # Applied in this order: a later entry sees the outcome the earlier ones left.
 KNOWN_DEVIATIONS: tuple[Deviation, ...] = (
     Deviation(
@@ -1260,19 +1263,6 @@ KNOWN_DEVIATIONS: tuple[Deviation, ...] = (
         ref="design §1.3 row 'wf-节点 (连接器)'",
         removed_in="T10 P5 (not C1)",
         today=_not_confirmed,
-    ),
-    Deviation(
-        name="connector-node-database-unsupported",
-        entries=("wf_connector_node",),
-        resources=("db",),
-        what=(
-            "A Connector step cannot query a database: the owner's own run of a step "
-            "that names a database connector fails ('action not found'). Anyone "
-            "else is refused as owner_only, as the rule says."
-        ),
-        ref="design §1.2 row 'DB 连接器 wf-节点'",
-        removed_in="T10 P4 (support, or refuse at save)",
-        today=_database_unsupported,
     ),
 )
 
