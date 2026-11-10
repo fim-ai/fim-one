@@ -87,6 +87,35 @@ async def test_a_connector_call_is_attributed_to_who_made_it_and_where(
     assert row.credential_source == "personal"
 
 
+async def test_a_call_through_an_organization_resource_names_the_organization(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """The agent or workflow can be deleted later; the record still says
+    whose organization the call was made through."""
+    ctx = CallContext(
+        principal=provisional_principal("u-1"),
+        binding=Binding(kind="workflow", id="wf-1", owner_id="u-owner", org_id="org-9"),
+        entry="workflow_node",
+        workflow_run_id="run-1",
+    )
+
+    await call_recorder(ctx, kind="mcp")(mcp_server_id="srv-1", action_name="search", success=True)
+
+    (row,) = await _rows(factory)
+    assert (row.org_id, row.workflow_run_id, row.user_id) == ("org-9", "run-1", "u-1")
+
+
+async def test_a_call_with_no_binding_or_a_personal_one_names_no_organization(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    direct = CallContext(principal=provisional_principal("u-1"), binding=None, entry="chat_noagent")
+
+    await call_recorder(direct, kind="connector")(connector_id="c-1", success=True)
+    await call_recorder(_ctx(), kind="connector")(connector_id="c-1", success=True)
+
+    assert [row.org_id for row in await _rows(factory)] == [None, None]
+
+
 async def test_a_database_call_keeps_the_fences_it_ran_under(
     factory: async_sessionmaker[AsyncSession],
 ) -> None:

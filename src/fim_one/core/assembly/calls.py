@@ -4,7 +4,7 @@
 adapters invoke when a call finishes. Every entry point gets its recorder
 here, so a call to a connector, a database or an MCP server is recorded the
 same way whoever made it: who, from where, through which agent or workflow
-run, and with whose credential.
+run (and which organization's), and with whose credential.
 """
 
 from __future__ import annotations
@@ -50,6 +50,7 @@ def call_recorder(
     logged and dropped: it never fails the call it describes.
     """
     user_id = ctx.principal.user_id or None
+    org_id = ctx.binding.org_id if ctx.binding is not None else None
 
     def _source_of(resource_id: str | None) -> str | None:
         if credential_source is None:
@@ -77,6 +78,7 @@ def call_recorder(
                         action_name=_fit(call.get("action_name"), 200),
                         conversation_id=ctx.conversation_id,
                         user_id=user_id,
+                        org_id=org_id,
                         agent_id=ctx.agent_id,
                         workflow_run_id=ctx.workflow_run_id,
                         entry=ctx.entry,

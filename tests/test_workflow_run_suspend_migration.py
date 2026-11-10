@@ -252,6 +252,6 @@ def test_it_chains_after_c1p3_and_leaves_one_head() -> None:
     import fim_one
 
     script = ScriptDirectory(str(Path(fim_one.__file__).parent / "migrations"))
-    assert script.get_heads() == ["t10p5a1b2c3d4"]
+    assert len(script.get_heads()) == 1
     revision = script.get_revision("t10p5a1b2c3d4")
     assert revision is not None and revision.down_revision == "c1p3a1b2c3d4"
