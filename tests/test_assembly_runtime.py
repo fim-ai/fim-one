@@ -67,10 +67,8 @@ class TestBuild:
             try:
                 # Connector and knowledge-base tools, and the MCP servers connected.
                 assert {"connector", "mcp", "kb_retrieve"} <= _names(built.tools)
-                assert set(out.mcp_connects) == {
-                    scene.names["mcp_stdio"],
-                    scene.names["mcp_http"],
-                }
+                # Fallback is on: all of them, a credential in the address or not.
+                assert set(out.mcp_connects) == {scene.names[r] for r in m.MCP_SERVERS}
                 assert built.mcp_client is not None
                 assert [h.name for h in built.hooks.list_hooks()] == ["approval_gate"]
                 assert built.instructions == "carrier"
@@ -216,7 +214,7 @@ class TestADelegatedAgent:
             assert answer == "done"
             delegate = out.agents_built[-1]
             assert {"mcp", "connector", "kb_retrieve"} <= _names(delegate["tools"])
-            assert set(out.mcp_connects) == {scene.names["mcp_stdio"], scene.names["mcp_http"]}
+            assert set(out.mcp_connects) == {scene.names[r] for r in m.MCP_SERVERS}
             # The subscriber has no credential of their own: the owner allowed fallback.
             assert out.mcp_connects[scene.names["mcp_http"]]["headers"] == m.OWNER_HEADERS
             assert delegate["agent_id"] == scene.carrier_agent_id

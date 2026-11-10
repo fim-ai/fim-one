@@ -20,14 +20,16 @@ A **cell** is ``(role, resource, allow_fallback, is_active, has_personal)``:
 - *role* of the acting user towards the resource: its ``owner``; a
   ``member`` of the owner's organization who has not subscribed; a
   ``subscriber``; an ``outsider`` from another organization.
-- *resource*: nine kinds, see :data:`RESOURCES`.
+- *resource*: eleven kinds, see :data:`RESOURCES`. Each MCP transport comes
+  twice: once with a plain address, once with one that carries a credential
+  (a token in the URL's query string, an ``--api-key`` launch argument).
 - the resource's ``allow_fallback`` and ``is_active`` switches, and whether
   the acting user saved a personal credential for it.
 
 A **scene** seeds one of every resource under one ``(role, allow_fallback,
 is_active, has_personal)`` combination, plus an always-usable *carrier*
 agent bound to those resources, so that one assembly per entry point serves
-all nine cells of the scene. External HTTP, MCP and the model are faked.
+all eleven cells of the scene. External HTTP, MCP and the model are faked.
 """
 
 from __future__ import annotations
@@ -71,6 +73,8 @@ RESOURCES = (
     "db",  # database connector
     "mcp_stdio",  # MCP server, stdio transport (reads env)
     "mcp_http",  # MCP server, streamable HTTP (reads headers)
+    "mcp_stdio_secret",  # the same, started with a credential in its arguments
+    "mcp_http_secret",  # the same, reached at a URL with a credential in it
     "kb",  # knowledge base
     "skill",
     "workflow",
@@ -90,7 +94,9 @@ ENTRIES = (
 )
 
 API_CONNECTORS = ("api_bearer", "api_none")
-MCP_SERVERS = ("mcp_stdio", "mcp_http")
+MCP_SERVERS = ("mcp_stdio", "mcp_http", "mcp_stdio_secret", "mcp_http_secret")
+# MCP servers whose address (launch arguments, URL) carries a credential.
+MCP_SECRET_ADDRESS = ("mcp_stdio_secret", "mcp_http_secret")
 CREDENTIALED = (*API_CONNECTORS, *MCP_SERVERS)
 
 
@@ -245,7 +251,11 @@ def rule(entry: str, cell: Cell, *, subject: str) -> Outcome:
         if principal != "owner":
             return refuse("owner_only")
         return Outcome(exposed=True, credential_source="owner", logged=True)
-    # 4. One credential rule for API connectors and MCP servers.
+    # 4. An MCP server whose address carries a credential is its owner's
+    #    alone unless the owner lends it; a personal credential does not help.
+    if resource in MCP_SECRET_ADDRESS and principal != "owner" and not cell.allow_fallback:
+        return refuse("mcp_server_address_private")
+    # 5. One credential rule for API connectors and MCP servers.
     if resource in CREDENTIALED:
         source = credential_source(cell)
         if source is None:
@@ -288,7 +298,16 @@ OWNER_ENV = {"KEY": "env-owner"}
 PERSONAL_ENV = {"KEY": "env-personal"}
 OWNER_HEADERS = {"Authorization": "Bearer hdr-owner"}
 PERSONAL_HEADERS = {"Authorization": "Bearer hdr-personal"}
+# The address of the two servers in ``MCP_SECRET_ADDRESS``.
+SECRET_ARGS = ("-y", "some-mcp-server", "--api-key", "sk-owner-0123456789")
+SECRET_URL = "https://mcp.example.test/mcp?token=owner-url-token"
 AGENT_MARKER = "INSTRUCTIONS-OF-THE-AGENT-UNDER-TEST"
+
+
+def _reads_env(resource: str) -> bool:
+    """Whether the MCP server *resource* is a stdio one (reads ``env``)."""
+    return resource.startswith("mcp_stdio")
+
 
 _BLUEPRINT = {
     "nodes": [
@@ -433,17 +452,46 @@ async def seed_scene(factory: async_sessionmaker[AsyncSession], key: SceneKey) -
                 **shared,
             )
         )
+        s.add(
+            MCPServer(
+                id=ids["mcp_stdio_secret"],
+                user_id=owner,
+                name=names["mcp_stdio_secret"],
+                transport="stdio",
+                command="npx",
+                args=list(SECRET_ARGS),
+                env=dict(OWNER_ENV),
+                is_active=key.is_active,
+                allow_fallback=key.allow_fallback,
+                **shared,
+            )
+        )
+        s.add(
+            MCPServer(
+                id=ids["mcp_http_secret"],
+                user_id=owner,
+                name=names["mcp_http_secret"],
+                transport="streamable_http",
+                url=SECRET_URL,
+                headers=dict(OWNER_HEADERS),
+                is_active=key.is_active,
+                allow_fallback=key.allow_fallback,
+                **shared,
+            )
+        )
         if key.has_personal:
-            s.add(
-                MCPServerCredential(
-                    server_id=ids["mcp_stdio"], user_id=actor, env_blob=dict(PERSONAL_ENV)
+            for resource in MCP_SERVERS:
+                s.add(
+                    MCPServerCredential(
+                        server_id=ids[resource],
+                        user_id=actor,
+                        **(
+                            {"env_blob": dict(PERSONAL_ENV)}
+                            if _reads_env(resource)
+                            else {"headers_blob": dict(PERSONAL_HEADERS)}
+                        ),
+                    )
                 )
-            )
-            s.add(
-                MCPServerCredential(
-                    server_id=ids["mcp_http"], user_id=actor, headers_blob=dict(PERSONAL_HEADERS)
-                )
-            )
         # A knowledge base cannot be shared: it stays personal.
         s.add(KnowledgeBase(id=ids["kb"], user_id=owner, name=names["kb"], is_active=key.is_active))
         s.add(
@@ -498,7 +546,7 @@ async def seed_scene(factory: async_sessionmaker[AsyncSession], key: SceneKey) -
                 instructions="carrier",
                 is_active=True,
                 connector_ids=[ids["api_bearer"], ids["api_none"], ids["db"]],
-                mcp_server_ids=[ids["mcp_stdio"], ids["mcp_http"]],
+                mcp_server_ids=[ids[resource] for resource in MCP_SERVERS],
                 kb_ids=[ids["kb"]],
                 grounding_config={"retrieval_mode": "simple"},
                 **shared,
@@ -523,6 +571,8 @@ _SUBSCRIPTION_TYPE = {
     "db": "connector",
     "mcp_stdio": "mcp_server",
     "mcp_http": "mcp_server",
+    "mcp_stdio_secret": "mcp_server",
+    "mcp_http_secret": "mcp_server",
     "skill": "skill",
     "workflow": "workflow",
     "agent": "agent",
@@ -697,7 +747,7 @@ def _token_source(scene: Scene, authorization: str | None) -> str:
 
 
 def _mcp_source(scene: Scene, resource: str, connect_kwargs: dict[str, Any]) -> str:
-    if resource == "mcp_stdio":
+    if _reads_env(resource):
         used, own, owners = connect_kwargs.get("env"), PERSONAL_ENV, OWNER_ENV
     else:
         used, own, owners = connect_kwargs.get("headers"), PERSONAL_HEADERS, OWNER_HEADERS
@@ -849,6 +899,8 @@ def _classify(error: str | None) -> str:
         return "resource_not_found"
     if "requires your own" in text and "credentials" in text:
         return "credential_required"
+    if "can only be used by its owner: its" in text and "contain a credential" in text:
+        return "mcp_server_address_private"
     if "is disabled" in text:
         return "resource_inactive"
     if "can only be used by its owner" in text:
@@ -1092,9 +1144,7 @@ async def probe_wf_kb_node(
                 read.append(kb_id)
             return []
 
-    node = _node(
-        NodeType.KNOWLEDGE_RETRIEVAL, {"kb_ids": [scene.ids["kb"]], "query_template": "q"}
-    )
+    node = _node(NodeType.KNOWLEDGE_RETRIEVAL, {"kb_ids": [scene.ids["kb"]], "query_template": "q"})
     with outside_world(factory), patch("fim_one.web.deps.get_kb_manager", lambda: _Manager()):
         result = await KnowledgeRetrievalExecutor().execute(node, VariableStore(), _context(scene))
     if result.status != NodeStatus.COMPLETED:

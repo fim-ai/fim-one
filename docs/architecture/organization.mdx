@@ -115,6 +115,28 @@ There are two modes:
 
 Resources that don't require credentials — such as a read-only public API connector or an Agent with no authentication — work immediately after subscription. No configuration needed.
 
+### MCP servers: the address is the owner's
+
+A member's own credential for an MCP server is a set of environment variables (stdio servers) or request headers (SSE and HTTP servers). The server's URL and its launch arguments have no per-member counterpart: whoever connects, connects to what the owner configured. If the owner put a credential there, a member's own credential does not replace it.
+
+So with fallback disabled, an MCP server whose address carries a credential can be used by its owner only. Other members are refused with `mcp_server_address_private`, whether or not they saved credentials of their own. The owner has two ways out:
+
+- move the credential into a header or an environment variable, so that each member brings their own; or
+- enable fallback, which lends the server as configured, address included.
+
+What counts as "carries a credential" is decided by shape:
+
+| Where | Counts | Example |
+| --- | --- | --- |
+| URL | user-info, any query string, a fragment | `https://user:pass@host/mcp`, `https://host/mcp?token=…` |
+| Launch arguments | a flag or assignment whose name contains `token`, `key`, `secret`, `password`, `passwd`, `pwd`, `auth`, `credential` or `bearer`, given a value | `--api-key VALUE`, `--token=VALUE`, `API_KEY=VALUE`, `X-Api-Key: VALUE` |
+| Launch arguments | a URL with user-info, a query string or a fragment | `--endpoint=https://host/?key=…` |
+| Launch arguments | a known token shape | `sk-…`, `ghp_…`, `gho_…`, `github_pat_…`, `xoxb-…`, `xoxp-…`, `AKIA…`, a JWT, `Bearer …` |
+
+The check errs towards flagging: `--keyboard-layout us` counts, because the name contains `key`. It does not recognise a secret written as a URL path segment (`https://host/mcp/3f9c…/sse`), as a bare positional argument, or after a flag whose name says nothing (`-k VALUE`, `--id VALUE`). Keep credentials in headers and environment variables, where they are encrypted at rest and never shown to other members.
+
+Other members never see a shared server's URL, command or launch arguments, with fallback on or off.
+
 <Info>
 Credential fallback only applies after a member subscribes to the resource. The fallback mechanism determines how credentials are resolved at runtime, not whether the resource is accessible.
 </Info>

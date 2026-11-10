@@ -115,6 +115,7 @@
   "mcp_tools_busy": "Too many MCP servers are being asked for their tools at once. Wait for one to answer and try again.",
   "credential_required": "This resource needs your own credentials: its owner has switched fallback off. Save your own credentials for it.",
   "credential_unavailable": "The credentials for this resource could not be loaded. Try again shortly.",
+  "mcp_server_address_private": "Only the owner can use this MCP server: its address or launch arguments contain a credential and the owner has switched fallback off. Saving your own credentials does not change that.",
 
   "session_expired": "Session expired, please log in again.",
   "session_required": "This action requires signing in to your account; API keys cannot be used.",

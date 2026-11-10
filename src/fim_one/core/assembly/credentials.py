@@ -21,6 +21,14 @@ credential of their own or not at all, whatever the server stores. A server
 that stores nothing is opened with nothing by its owner and by those the
 owner lends to (source ``none``).
 
+The URL and the command arguments have no per-user counterpart: whoever
+connects, connects to the owner's. Where they carry a credential themselves
+(``https://host/mcp?token=…``, ``--api-key sk-…``; see
+:mod:`.mcp_address`), a personal credential does not replace it, so with
+``allow_fallback`` off nobody but the owner may use such a server:
+``mcp_server_address_private``. With ``allow_fallback`` on the owner has
+agreed to lend the server as configured, and the rule above applies.
+
 "That the resource can use" matters for MCP servers. A server row carries
 the owner's ``env`` (read by a stdio server) and ``headers`` (sent to an SSE
 or streamable-HTTP server), and a personal credential may hold either. An
@@ -44,7 +52,14 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
-from .errors import CREDENTIAL_REQUIRED, CREDENTIAL_UNAVAILABLE, OWNER_ONLY, AssemblyRefusal
+from .errors import (
+    CREDENTIAL_REQUIRED,
+    CREDENTIAL_UNAVAILABLE,
+    MCP_SERVER_ADDRESS_PRIVATE,
+    OWNER_ONLY,
+    AssemblyRefusal,
+)
+from .mcp_address import address_carries_secret
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -54,6 +69,7 @@ if TYPE_CHECKING:
 __all__ = [
     "CredentialSource",
     "ResolvedCredential",
+    "address_is_private",
     "must_bring_own_credential",
     "personal_credential_fits",
     "resolve_credential",
@@ -349,11 +365,43 @@ def must_bring_own_credential(server: Any, user_id: str | None) -> bool:
     return not user_id or getattr(server, "user_id", None) != user_id
 
 
+def address_is_private(server: Any) -> bool:
+    """Whether only the owner of *server* may connect to it, whatever others save.
+
+    True when ``allow_fallback`` is off and the server's URL or launch
+    arguments carry a credential (:func:`.mcp_address.address_carries_secret`):
+    connecting at all would use it, and the owner has not agreed to lend it.
+    """
+    return not getattr(server, "allow_fallback", True) and address_carries_secret(server)
+
+
+def _address_private(server: Any) -> AssemblyRefusal:
+    where = "launch arguments" if getattr(server, "transport", None) == "stdio" else "address"
+    return AssemblyRefusal(
+        MCP_SERVER_ADDRESS_PRIVATE,
+        403,
+        f"MCP server '{_name(server)}' can only be used by its owner: its {where} "
+        "contain a credential and fallback to the owner's is disabled. Saving your own "
+        "credentials does not change that; ask the owner to move the credential into "
+        f"{'an environment variable' if where == 'launch arguments' else 'a header'} "
+        "or to allow fallback.",
+    )
+
+
 async def _mcp_credentials(
     db: AsyncSession, principal: Principal, servers: Sequence[tuple[int, Any]]
 ) -> dict[int, ResolvedCredential | AssemblyRefusal]:
     """Answers for MCP servers, keyed by the index each came with."""
     answers: dict[int, ResolvedCredential | AssemblyRefusal] = {}
+    # A server only its owner may connect to is answered before anything is
+    # looked up: no credential of the caller's could change the answer.
+    lendable: list[tuple[int, Any]] = []
+    for index, server in servers:
+        if not _is_owner(principal, server) and address_is_private(server):
+            answers[index] = _address_private(server)
+        else:
+            lendable.append((index, server))
+    servers = lendable
     if not servers:
         return answers
 
