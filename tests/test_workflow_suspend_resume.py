@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import sys
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -122,6 +123,58 @@ def _decision(run: WorkflowRun) -> dict[str, Any]:
     """The approval step's output as the End step handed it out."""
     value = run.outputs["decision"]
     return dict(value) if isinstance(value, dict) else dict(json.loads(value))
+
+
+# A server process of its own: starts a run of the workflow in the SQLite
+# file it is given, prints the run id and its worker id once the run waits,
+# and dies without any shutdown.
+_CHILD_SERVER = """
+import asyncio, os, sys
+from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock, patch
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+import fim_one.db.models  # noqa: F401
+from fim_one.core.workflow import run_service as rs
+from fim_one.db.models.workflow import Workflow
+from fim_one.web.services.assembly_ports import register_assembly_ports
+
+db_file, workflow_id, user_id = sys.argv[1:4]
+register_assembly_ports()  # what the web layer does at start-up
+
+
+async def main():
+    engine = create_async_engine(f"sqlite+aiosqlite:///{db_file}", connect_args={"timeout": 30})
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    @asynccontextmanager
+    async def create_session():
+        async with factory() as session:
+            yield session
+
+    with (
+        patch("fim_one.db.create_session", create_session),
+        patch("fim_one.web.services.quota_backend.usage_and_cap", new=AsyncMock(return_value=(0, 0))),
+        patch(
+            "fim_one.web.services.quota_enforcer.is_user_unentitled",
+            new=AsyncMock(return_value=False),
+        ),
+    ):
+        async with factory() as session:
+            workflow = await session.get(Workflow, workflow_id)
+        outcome = await rs.WorkflowRunService().run_to_completion(
+            workflow,
+            caller_id=user_id,
+            inputs={"q": "from the other process"},
+            mode=rs.RunMode.INTERACTIVE,
+        )
+        assert outcome.status == "waiting", outcome
+        print(outcome.run_id, rs.WORKER_ID, flush=True)
+    os.kill(os.getpid(), 9)
+
+
+asyncio.run(main())
+"""
 
 
 class _CountingEngine(WorkflowEngine):
@@ -452,6 +505,40 @@ class TestRestart:
         assert run.status == "completed"
         assert run.outputs["asked"] == "ship it?"
         assert _decision(run)["status"] == "approved"
+        assert run.worker_id == rs.WORKER_ID
+
+    async def test_the_process_that_started_the_run_has_really_exited(
+        self, rig: Rig, hooked: rs.WorkflowRunService, tmp_path: Path
+    ) -> None:
+        """A second server process, for real: it starts the run, reaches the
+        approval and is killed. This process, which never saw the run, takes
+        the decision and finishes it from the record alone."""
+        if rig.backend != "sqlite":
+            pytest.skip("the child process opens the SQLite file")
+        child = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-c",
+            _CHILD_SERVER,
+            str(tmp_path / "suspend.db"),
+            rig.wf.id,
+            rig.owner.id,
+            env={**os.environ, "WORKFLOW_HUMAN_INTERVENTION_ENABLED": "true"},
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        out, err = await asyncio.wait_for(child.communicate(), timeout=60)
+        assert child.returncode == -9, err.decode()[-2000:]  # killed, no shutdown
+        run_id, child_worker = out.decode().split()
+        waiting = await rig.run(run_id)
+        assert waiting.status == "waiting"
+        assert waiting.worker_id == child_worker != rs.WORKER_ID
+
+        request = await rig.request_of(run_id)
+        await rig.decide(request.id, "approve")
+
+        run = await rig.ended(run_id)
+        assert run.status == "completed"
+        assert run.outputs["asked"] == "from the other process"
         assert run.worker_id == rs.WORKER_ID
 
     async def test_a_decision_made_while_nothing_listened_is_picked_up_at_startup(
