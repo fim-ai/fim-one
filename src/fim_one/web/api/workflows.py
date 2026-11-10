@@ -1841,6 +1841,7 @@ async def batch_run_workflow(
                     inputs=inputs,
                     mode=RunMode.BATCH,
                     authorized=authorized,
+                    inputs_checked=True,
                 )
             except Exception as exc:
                 logger.exception("Batch run %s item %d failed", batch_id, index)

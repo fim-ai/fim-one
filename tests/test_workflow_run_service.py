@@ -463,6 +463,36 @@ async def test_a_batch_with_one_bad_row_is_refused_whole_naming_the_row(world: W
     assert world.engines == [] and await _runs(world) == []
 
 
+@pytest.mark.asyncio
+async def test_a_batch_checks_each_items_inputs_once(world: World) -> None:
+    """Checked up front and again at start, a JSON input given as the JSON
+    text of a string was parsed twice: refused, or turned into another type."""
+    blueprint = {
+        **TYPED_BLUEPRINT,
+        "nodes": [
+            {
+                **TYPED_BLUEPRINT["nodes"][0],
+                "data": {
+                    "type": "START",
+                    "validate_inputs": True,
+                    "variables": [{"name": "doc", "type": "object", "required": True}],
+                },
+            },
+            *TYPED_BLUEPRINT["nodes"][1:],
+        ],
+    }
+    await _typed(world, blueprint)
+    async with world.factory() as db:
+        response = await wf_api.batch_run_workflow(
+            world.wf.id,
+            WorkflowBatchRunRequest(inputs=[{"doc": '"plain words"'}, {"doc": '"12"'}]),
+            current_user=world.subscriber,
+            db=db,
+        )
+    assert [item["status"] for item in response.data["results"]] == ["completed", "completed"]
+    assert sorted(built["inputs"]["doc"] for built in world.engines) == ["12", "plain words"]
+
+
 @pytest.mark.usefixtures("human_intervention_enabled")
 @pytest.mark.asyncio
 @pytest.mark.parametrize("entry", ENTRIES)

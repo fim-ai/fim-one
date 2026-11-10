@@ -731,6 +731,7 @@ class WorkflowRunService:
         acquire_slot: bool = True,
         single_flight: bool = False,
         record_refusal: bool = False,
+        inputs_checked: bool = False,
     ) -> StartedRun:
         """Check, record and start a run; the engine starts immediately.
 
@@ -743,14 +744,19 @@ class WorkflowRunService:
         or running; that is decided before a slot is taken, so a refused
         request costs the principal nothing. *record_refusal* writes a failed
         ``WorkflowRun`` when a check refuses, for entry points with nobody
-        to tell (schedules).
+        to tell (schedules). *inputs_checked* says the caller already passed
+        *inputs* through :meth:`check_inputs` (a batch checks every item
+        before any starts).
         """
         inputs = inputs or {}
         try:
             ctx, parsed = authorized or await self.authorize(workflow, caller_id, mode)
             # Against the Start step's declaration, before anything runs:
             # the steps get each input in its declared type.
-            inputs = self.check_inputs(parsed, inputs)
+            # Once: a value already put in its type does not always pass
+            # again (JSON text "\"a\"" becomes the text a, which is not JSON).
+            if not inputs_checked:
+                inputs = self.check_inputs(parsed, inputs)
             if single_flight:
                 # Early answer without taking the workflow's lock. Requests
                 # that arrive together all pass it; the check that decides
