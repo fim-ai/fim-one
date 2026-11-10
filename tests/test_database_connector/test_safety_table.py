@@ -137,6 +137,16 @@ READS: tuple[str, ...] = (
     "SELECT set_config('search_path', 'rv', true)",
     "SELECT set_config('search_path', 'rv', TRUE), current_setting('search_path')",
     "SELECT set_config, dblink, pg_read_file FROM t",
+    # PostgreSQL's SEARCH and CYCLE clauses of a recursive query.
+    "WITH RECURSIVE t(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM t WHERE n < 3) "
+    "SEARCH DEPTH FIRST BY n SET ord SELECT * FROM t",
+    "WITH RECURSIVE t(n, m) AS (SELECT 1, 1 UNION ALL SELECT n+1, m FROM t WHERE n < 3) "
+    "SEARCH BREADTH FIRST BY n, m SET ord SELECT * FROM t ORDER BY ord",
+    "WITH RECURSIVE t(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM t WHERE n < 3) "
+    "CYCLE n SET is_cycle USING path SELECT * FROM t",
+    "WITH RECURSIVE t(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM t WHERE n < 3) "
+    "SEARCH DEPTH FIRST BY n SET ord CYCLE n SET is_cycle TO 'y' DEFAULT 'n' USING path, "
+    "u AS (SELECT 2) SELECT * FROM t, u",
     "SELECT 'x' AS pg_read_file, (1) AS set_config",
     "SELECT coalesce(set_config.dblink, 0) FROM set_config",
     "SELECT COUNT(*) create FROM t",
@@ -222,6 +232,12 @@ WRITES: tuple[str, ...] = (
     "WITH d AS (SELECT 1) /* gap */ DELETE FROM t",
     "WITH d AS (SELECT 1)\n-- gap\nDELETE FROM t",
     "WITH x AS (SELECT 1) INSERT INTO t SELECT 5",
+    "WITH RECURSIVE t(n) AS (SELECT 1) SEARCH DEPTH FIRST BY n SET ord DELETE FROM u",
+    "WITH RECURSIVE t(n) AS (SELECT 1) CYCLE n SET c USING p INSERT INTO u SELECT * FROM t",
+    "WITH RECURSIVE t(n) AS (SELECT 1) SEARCH DEPTH FIRST BY n SET ord, "
+    "d AS (DELETE FROM u RETURNING id) SELECT * FROM d",
+    "SELECT 1 AS a, dblink_exec('x', 'y')",
+    "SELECT * FROM t AS a, dblink('x', 'select 1') AS b (c int)",
     "WITH d AS (DELETE FROM t RETURNING id) SELECT * FROM d",
     "WITH d AS (UPDATE t SET a = 1 RETURNING id) SELECT * FROM d",
     "WITH d AS (UPDATE ONLY s.t AS x SET a = 1 RETURNING id) SELECT * FROM d",

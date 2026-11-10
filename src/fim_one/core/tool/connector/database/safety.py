@@ -421,9 +421,9 @@ def _row_change_at(lexemes: list[Lexeme], i: int) -> str | None:
 def _statement_after_with(lexemes: list[Lexeme]) -> str | None:
     """The first keyword of the statement that follows a WITH clause.
 
-    ``WITH [RECURSIVE] name [(columns)] AS [[NOT] MATERIALIZED] (body) [, ...]``
-    and then the statement. ``None`` when the clause is not written that way
-    (PostgreSQL's SEARCH and CYCLE clauses, a dialect's own extension): the
+    ``WITH [RECURSIVE] name [(columns)] AS [[NOT] MATERIALIZED] (body)
+    [SEARCH ...] [CYCLE ...] [, ...]`` and then the statement. ``None`` when
+    the clause is not written that way (a dialect's own extension): the
     statement is then judged by the other rules alone.
     """
     i = 0
@@ -449,6 +449,12 @@ def _statement_after_with(lexemes: list[Lexeme]) -> str | None:
         if i >= len(lexemes) or not lexemes[i].is_punct("("):
             return None
         i = _closing(lexemes, i) + 1
+        # PostgreSQL: [SEARCH ...] [CYCLE ...] after a recursive query's body.
+        for clause in (_after_search_clause, _after_cycle_clause):
+            after = clause(lexemes, i)
+            if after is None:
+                return None
+            i = after
         if i < len(lexemes) and lexemes[i].is_punct(",") and lexemes[i].depth == base:
             i += 1
             continue
@@ -458,3 +464,59 @@ def _statement_after_with(lexemes: list[Lexeme]) -> str | None:
     if i >= len(lexemes):
         return ""
     return lexemes[i].upper if lexemes[i].kind == "word" else None
+
+
+def _names_from(lexemes: list[Lexeme], i: int) -> int | None:
+    """Index after ``name [, name ...]`` at *i*; ``None`` if no name stands there."""
+    while True:
+        if i >= len(lexemes) or lexemes[i].kind not in ("word", "name"):
+            return None
+        i += 1
+        if i < len(lexemes) and lexemes[i].is_punct(","):
+            i += 1
+            continue
+        return i
+
+
+def _after_search_clause(lexemes: list[Lexeme], i: int) -> int | None:
+    """Index after ``SEARCH {DEPTH | BREADTH} FIRST BY col [, ...] SET col`` at *i*.
+
+    *i* itself when no SEARCH clause stands there; ``None`` when one starts
+    and is not written this way.
+    """
+    words = [lex.upper for lex in lexemes[i : i + 4]]
+    if not words or words[0] != "SEARCH":
+        return i
+    if len(words) < 4 or words[1] not in ("DEPTH", "BREADTH") or words[2:] != ["FIRST", "BY"]:
+        return None
+    # "a, b SET ord": SET ends the list of columns.
+    at = i + 4
+    while at < len(lexemes) and lexemes[at].upper != "SET":
+        if lexemes[at].kind not in ("word", "name") and not lexemes[at].is_punct(","):
+            return None
+        at += 1
+    if at >= len(lexemes) - 1 or lexemes[at + 1].kind not in ("word", "name"):
+        return None
+    return at + 2
+
+
+def _after_cycle_clause(lexemes: list[Lexeme], i: int) -> int | None:
+    """Index after ``CYCLE col [, ...] SET col [TO value DEFAULT value] USING col`` at *i*."""
+    if i >= len(lexemes) or lexemes[i].upper != "CYCLE":
+        return i
+    at = i + 1
+    while at < len(lexemes) and lexemes[at].upper != "SET":
+        if lexemes[at].kind not in ("word", "name") and not lexemes[at].is_punct(","):
+            return None
+        at += 1
+    at += 2  # SET col
+    if at < len(lexemes) and lexemes[at].upper == "TO":
+        # TO value DEFAULT value: each a constant (a word, a number or a string).
+        if at + 3 >= len(lexemes) or lexemes[at + 2].upper != "DEFAULT":
+            return None
+        at += 4
+    if at + 1 >= len(lexemes) or lexemes[at].upper != "USING":
+        return None
+    if lexemes[at + 1].kind not in ("word", "name"):
+        return None
+    return at + 2
