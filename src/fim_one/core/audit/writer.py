@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from .actions import is_registered
@@ -34,7 +35,7 @@ from .events import Actor, Outcome, RequestMeta
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from fim_one.core.assembly.principal import Principal
+    from fim_one.core.assembly.principal import CallContext, Principal
 
 __all__ = [
     "actor_from_principal",
@@ -109,14 +110,29 @@ def _check_registered(action: str) -> None:
     logger.warning("Audit action %r is not registered; written as it is", action)
 
 
+def _fit(value: Any, limit: int) -> str | None:
+    """*value* as text no longer than the column that stores it.
+
+    PostgreSQL rejects an over-long value, and the record with it.
+    """
+    if value is None:
+        return None
+    return str(value)[:limit]
+
+
 async def record(
     action: str,
     *,
     actor: Actor,
+    org_id: str | None = None,
     target_type: str | None = None,
     target_id: str | None = None,
     target_label: str | None = None,
+    outcome: Outcome = "success",
+    changes: Mapping[str, Mapping[str, Any]] | None = None,
     detail: str | None = None,
+    context: CallContext | None = None,
+    request: RequestMeta | None = None,
     db: AsyncSession | None = None,
 ) -> None:
     """Write one audit event.
@@ -124,18 +140,39 @@ async def record(
     With *db* the row is added to that session and the caller commits it
     together with the change; without, it is committed in a session of its
     own and a failure is logged, never raised.
+
+    Where the request came from is read from the request being served
+    (:mod:`.context`); *request* overrides it. *context* supplies the
+    conversation, workflow run and agent the event happened in. *changes*
+    comes from :func:`fim_one.core.audit.redact.diff_changes`, which keeps
+    secrets out of it.
     """
     from fim_one.db.models.audit_log import AuditLog
 
     _check_registered(action)
+    meta = request if request is not None else current_request_meta()
     row = AuditLog(
-        admin_id=actor.user_id,
-        admin_username=actor.label,
+        actor_id=actor.user_id,
+        # NOT NULL in the database; the system and an anonymous caller
+        # have no name of their own.
+        actor_label=_fit(actor.label or actor.kind, 255),
+        actor_kind=actor.kind,
+        auth_method=_fit(actor.auth, 20),
+        credential_ref=_fit(actor.credential_ref, 64),
         action=action,
-        target_type=target_type,
-        target_id=target_id,
-        target_label=target_label,
+        org_id=org_id,
+        target_type=_fit(target_type, 50),
+        target_id=_fit(target_id, 36),
+        target_label=_fit(target_label, 255),
+        outcome=outcome,
+        changes={name: dict(change) for name, change in changes.items()} if changes else None,
         detail=detail,
+        ip_address=_fit(meta.ip, 45) if meta else None,
+        user_agent=_fit(meta.user_agent, 500) if meta else None,
+        request_id=_fit(meta.request_id, 36) if meta else None,
+        conversation_id=context.conversation_id if context else None,
+        workflow_run_id=context.workflow_run_id if context else None,
+        agent_id=context.agent_id if context else None,
     )
     if db is not None:
         db.add(row)
@@ -162,11 +199,15 @@ async def record_login(
     username: str | None,
     email: str | None,
     success: bool,
+    method: str | None = None,
     failure_reason: str | None = None,
     request: RequestMeta | None = None,
     db: AsyncSession | None = None,
 ) -> None:
     """Write one sign-in attempt.
+
+    *method* is how it was attempted: ``password``, ``email_code`` or
+    ``oauth:<provider>``.
 
     *request* defaults to the request being served. With *db* the row joins
     that session (the caller commits); without, it is written in a session
@@ -179,10 +220,11 @@ async def record_login(
         user_id=user_id,
         username=username,
         email=email,
-        ip_address=meta.ip if meta else None,
+        ip_address=_fit(meta.ip, 45) if meta else None,
         user_agent=meta.user_agent if meta else None,
         success=success,
-        failure_reason=failure_reason,
+        failure_reason=_fit(failure_reason, 100),
+        method=_fit(method, 40),
     )
     if db is not None:
         db.add(row)

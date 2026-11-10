@@ -1213,6 +1213,13 @@ class AuditLogEntry(BaseModel):
     target_label: str | None
     detail: str | None
     created_at: str
+    # Empty on rows written before these columns existed; such a row is an
+    # administrator's successful action.
+    actor_kind: str | None = None
+    org_id: str | None = None
+    outcome: str = "success"
+    changes: dict[str, Any] | None = None
+    ip_address: str | None = None
 
 
 def _build_audit_filters(
@@ -1226,7 +1233,7 @@ def _build_audit_filters(
     if action:
         filters.append(AuditLog.action == action)
     if admin_id:
-        filters.append(AuditLog.admin_id == admin_id)
+        filters.append(AuditLog.actor_id == admin_id)
     if date_from:
         try:
             dt_from = datetime.strptime(date_from, "%Y-%m-%d").replace(
@@ -1267,15 +1274,25 @@ async def export_audit_log(
 
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(["timestamp", "admin", "action", "target_type", "target_label", "detail"])
+    writer.writerow(
+        [
+            "timestamp", "admin", "action", "target_type", "target_label", "detail",
+            "actor_kind", "org_id", "outcome", "changes", "ip_address",
+        ]
+    )  # fmt: skip
     for r in rows:
         writer.writerow([
             r.created_at.isoformat() if r.created_at else "",
-            r.admin_username or "",
+            r.actor_label or "",
             r.action,
             r.target_type or "",
             r.target_label or "",
             r.detail or "",
+            r.actor_kind or "",
+            r.org_id or "",
+            r.outcome or "success",
+            json.dumps(r.changes, ensure_ascii=False, sort_keys=True) if r.changes else "",
+            r.ip_address or "",
         ])
 
     buf.seek(0)
@@ -1322,14 +1339,19 @@ async def list_audit_log(
     items = [
         AuditLogEntry(
             id=r.id,
-            admin_id=r.admin_id or "",
-            admin_username=r.admin_username,
+            admin_id=r.actor_id or "",
+            admin_username=r.actor_label,
             action=r.action,
             target_type=r.target_type,
             target_id=r.target_id,
             target_label=r.target_label,
             detail=r.detail,
             created_at=r.created_at.isoformat() if r.created_at else "",
+            actor_kind=r.actor_kind,
+            org_id=r.org_id,
+            outcome=r.outcome or "success",
+            changes=r.changes,
+            ip_address=r.ip_address,
         ).model_dump()
         for r in rows
     ]

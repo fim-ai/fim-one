@@ -18,3 +18,6 @@ class LoginHistory(UUIDPKMixin, TimestampMixin, Base):
     user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
     success: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     failure_reason: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # How the sign-in was attempted: ``password``, ``email_code`` or
+    # ``oauth:<provider>``. Rows written before the column existed leave it empty.
+    method: Mapped[str | None] = mapped_column(String(40), nullable=True)

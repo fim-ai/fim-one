@@ -254,6 +254,9 @@ async def list_system_events(
         select(AuditLog)
         .where(
             AuditLog.created_at >= cutoff,
+            # Administrators' actions only, as this panel has always shown:
+            # the table now also holds what users do with their own things.
+            or_(AuditLog.actor_kind.is_(None), AuditLog.actor_kind == "admin"),
             or_(
                 AuditLog.action.like("%delete%"),
                 AuditLog.action.like("%security%"),
@@ -267,7 +270,7 @@ async def list_system_events(
         events.append(
             SystemEvent(
                 event_type="admin_action",
-                description=f"Admin {log.admin_username}: {log.action}",
+                description=f"Admin {log.actor_label}: {log.action}",
                 severity="info",
                 created_at=log.created_at.isoformat() if log.created_at else "",
                 details={

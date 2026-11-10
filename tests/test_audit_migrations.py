@@ -98,9 +98,12 @@ def test_the_chain_has_one_head_and_the_c2_revisions_are_on_it() -> None:
 
     (head,) = script.get_heads()
     chain = [revision.revision for revision in script.iterate_revisions(head, "t10p5a1b2c3d4")]
-    assert "c2p0a1b2c3d4" in chain
+    # Newest first: the audit fields come after the call log's organization.
+    assert chain.index("c2p1a1b2c3d4") < chain.index("c2p0a1b2c3d4")
     revision = script.get_revision("c2p0a1b2c3d4")
     assert revision is not None and revision.down_revision == "t10p5a1b2c3d4"
+    revision = script.get_revision("c2p1a1b2c3d4")
+    assert revision is not None and revision.down_revision == "c2p0a1b2c3d4"
 
 
 # ---------------------------------------------------------------------------
@@ -169,3 +172,151 @@ class TestCallLogOrganization:
         _migrate(before_c2p0, _C2P0, "upgrade")
         assert _shape(before_c2p0, _CALLS) == upgraded
         assert _rows(before_c2p0, _CALL_ROW_SQL) == row
+
+
+# ---------------------------------------------------------------------------
+# c2p1a1b2c3d4: audit_logs fields, login_history.method
+# ---------------------------------------------------------------------------
+
+_C2P1 = "fim_one.migrations.versions.c2p1a1b2c3d4_audit_fields"
+_AUDIT = "audit_logs"
+_LOGINS = "login_history"
+_AUDIT_COLUMNS = {
+    "actor_kind", "auth_method", "credential_ref", "org_id", "outcome", "changes",
+    "ip_address", "user_agent", "request_id", "conversation_id", "workflow_run_id", "agent_id",
+}  # fmt: skip
+_AUDIT_INDEXES = {
+    "ix_audit_logs_created_at": ("created_at",),
+    "ix_audit_logs_org_id_created_at": ("org_id", "created_at"),
+    "ix_audit_logs_target": ("target_type", "target_id"),
+}
+_AUDIT_ROW_SQL = (
+    "SELECT id, admin_id, admin_username, action, target_type, target_id, target_label, detail"
+    f" FROM {_AUDIT} ORDER BY id"
+)
+_LOGIN_ROW_SQL = f"SELECT id, user_id, email, ip_address, success FROM {_LOGINS}"
+_AUDIT_ROWS = [("audit-1", "user-1", "root", "user.create", "user", "user-2", "bob", "created")]
+_LOGIN_ROWS = [("login-1", "user-1", "root@x.io", "198.51.100.4", True)]
+
+
+@pytest.fixture()
+def before_c2p1(current_db: sa.Engine) -> sa.Engine:
+    """``audit_logs`` and ``login_history`` as they were, one row in each."""
+    with current_db.begin() as conn:
+        for index in _AUDIT_INDEXES:
+            conn.execute(text(f"DROP INDEX {index}"))
+        for column in sorted(_AUDIT_COLUMNS):
+            conn.execute(text(f"ALTER TABLE {_AUDIT} DROP COLUMN {column}"))
+        conn.execute(text(f"ALTER TABLE {_LOGINS} DROP COLUMN method"))
+    if current_db.dialect.name == "postgresql":
+        with current_db.begin() as conn:
+            conn.execute(
+                text(f"ALTER TABLE {_AUDIT} ALTER COLUMN admin_username TYPE VARCHAR(50)")
+            )
+    else:
+        with current_db.connect() as conn:
+            with Operations.context(MigrationContext.configure(conn)) as ops:
+                with ops.batch_alter_table(_AUDIT) as batch:
+                    batch.alter_column(
+                        "admin_username", existing_type=sa.String(255), type_=sa.String(50)
+                    )
+            conn.commit()
+    with current_db.begin() as conn:
+        conn.execute(
+            text(
+                f"INSERT INTO {_AUDIT} (id, admin_id, admin_username, action, target_type,"
+                " target_id, target_label, detail) VALUES ('audit-1', 'user-1', 'root',"
+                " 'user.create', 'user', 'user-2', 'bob', 'created')"
+            )
+        )
+        conn.execute(
+            text(
+                f"INSERT INTO {_LOGINS} (id, user_id, email, ip_address, success)"
+                " VALUES ('login-1', 'user-1', 'root@x.io', '198.51.100.4', TRUE)"
+            )
+        )
+    return current_db
+
+
+class TestAuditFields:
+    def test_upgrade_adds_the_columns_widens_the_name_and_indexes(
+        self, before_c2p1: sa.Engine
+    ) -> None:
+        before = _shape(before_c2p1, _AUDIT)
+        logins_before = _shape(before_c2p1, _LOGINS)
+        assert not before["columns"] & _AUDIT_COLUMNS
+        assert before["lengths"]["admin_username"] == 50
+
+        _migrate(before_c2p1, _C2P1, "upgrade")
+
+        shape = _shape(before_c2p1, _AUDIT)
+        assert shape["columns"] == before["columns"] | _AUDIT_COLUMNS
+        assert shape["nullable"] >= _AUDIT_COLUMNS - {"outcome"}
+        assert "outcome" not in shape["nullable"]
+        assert shape["lengths"]["admin_username"] == 255
+        assert shape["foreign_keys"] == 0
+        for name, columns in _AUDIT_INDEXES.items():
+            assert shape["indexes"][name] == columns
+        # The indexes the table already had are still there.
+        assert set(before["indexes"]) <= set(shape["indexes"])
+        assert _shape(before_c2p1, _LOGINS)["columns"] == logins_before["columns"] | {"method"}
+        # The rows written before: unchanged, and read as a successful action.
+        assert _rows(before_c2p1, _AUDIT_ROW_SQL) == _AUDIT_ROWS
+        assert _rows(before_c2p1, f"SELECT outcome, actor_kind, ip_address FROM {_AUDIT}") == [
+            ("success", None, None)
+        ]
+        assert _rows(before_c2p1, _LOGIN_ROW_SQL) == _LOGIN_ROWS
+        assert _rows(before_c2p1, f"SELECT method FROM {_LOGINS}") == [(None,)]
+
+    def test_upgrade_twice_changes_nothing_more(self, before_c2p1: sa.Engine) -> None:
+        _migrate(before_c2p1, _C2P1, "upgrade")
+        once = (_shape(before_c2p1, _AUDIT), _shape(before_c2p1, _LOGINS))
+
+        _migrate(before_c2p1, _C2P1, "upgrade")
+
+        assert (_shape(before_c2p1, _AUDIT), _shape(before_c2p1, _LOGINS)) == once
+        assert _rows(before_c2p1, _AUDIT_ROW_SQL) == _AUDIT_ROWS
+
+    def test_a_long_operator_name_fits_after_the_upgrade(self, before_c2p1: sa.Engine) -> None:
+        _migrate(before_c2p1, _C2P1, "upgrade")
+        long_email = "a" * 100 + "@example.test"
+
+        with before_c2p1.begin() as conn:
+            conn.execute(
+                text(
+                    f"INSERT INTO {_AUDIT} (id, admin_username, action)"
+                    " VALUES ('audit-2', :name, 'user.create')"
+                ),
+                {"name": long_email},
+            )
+
+        stored = _rows(before_c2p1, f"SELECT admin_username FROM {_AUDIT} WHERE id = 'audit-2'")
+        assert stored == [(long_email,)]
+
+    def test_down_then_up_again(self, before_c2p1: sa.Engine) -> None:
+        before = (_shape(before_c2p1, _AUDIT), _shape(before_c2p1, _LOGINS))
+        _migrate(before_c2p1, _C2P1, "upgrade")
+        upgraded = (_shape(before_c2p1, _AUDIT), _shape(before_c2p1, _LOGINS))
+        with before_c2p1.begin() as conn:
+            conn.execute(
+                text(
+                    f"INSERT INTO {_AUDIT} (id, admin_username, action, outcome, ip_address)"
+                    " VALUES ('audit-2', :name, 'user.create', 'denied', '203.0.113.7')"
+                ),
+                {"name": "b" * 120},
+            )
+
+        _migrate(before_c2p1, _C2P1, "downgrade")
+        assert (_shape(before_c2p1, _AUDIT), _shape(before_c2p1, _LOGINS)) == before
+        _migrate(before_c2p1, _C2P1, "downgrade")  # again: nothing left to undo
+        assert (_shape(before_c2p1, _AUDIT), _shape(before_c2p1, _LOGINS)) == before
+        # Rows survive; a name that no longer fits is cut, not lost.
+        assert _rows(before_c2p1, _AUDIT_ROW_SQL) == [
+            *_AUDIT_ROWS,
+            ("audit-2", None, "b" * 50, "user.create", None, None, None, None),
+        ]
+        assert _rows(before_c2p1, _LOGIN_ROW_SQL) == _LOGIN_ROWS
+
+        _migrate(before_c2p1, _C2P1, "upgrade")
+        assert (_shape(before_c2p1, _AUDIT), _shape(before_c2p1, _LOGINS)) == upgraded
+        assert len(_rows(before_c2p1, _AUDIT_ROW_SQL)) == 2

@@ -453,6 +453,13 @@ def create_app() -> FastAPI:
             )
         return await call_next(request)
 
+    # -- Where the request came from, for the audit writer -------------------
+    # Added last, so it is outermost: every other middleware and every
+    # endpoint runs with the request's address already set.
+    from fim_one.web.request_meta import RequestMetaMiddleware
+
+    app.add_middleware(RequestMetaMiddleware)
+
     # -- Exception handlers -------------------------------------------------
     @app.exception_handler(AppError)
     async def app_error_handler(
