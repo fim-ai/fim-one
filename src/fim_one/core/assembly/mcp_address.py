@@ -50,6 +50,7 @@ __all__ = [
     "launch_arg_reasons",
     "launch_args_carry_secret",
     "names_a_secret",
+    "strip_path_secrets",
     "strip_url_secrets",
     "traceback_without_url_secrets",
     "url_carries_secret",
@@ -128,6 +129,21 @@ def strip_url_secrets(text: str | None) -> str | None:
     stripped = _URL_IN_TEXT.sub(_bare, text)
     stripped = _STRAY_USERINFO.sub("//", stripped)
     return _STRAY_QUERY.sub("", stripped)
+
+
+def strip_path_secrets(path: str | None) -> str | None:
+    """A request path given without scheme or host, as it may be printed or stored.
+
+    A connector action's path (``/v1/send?api_key=…``,
+    ``/bot123456789:AAH…/sendMessage``) carries a credential in the same
+    places a URL does. The query string and fragment are cut and a segment
+    shaped like a token is written ``***``, as :func:`strip_url_secrets`
+    does for the path of a URL.
+    """
+    if not path:
+        return path
+    bare = re.split(r"[?#]", path, maxsplit=1)[0]
+    return "/".join(_masked_segment(segment) for segment in bare.split("/"))
 
 
 def error_without_url_secrets(exc: BaseException) -> str:
@@ -273,6 +289,8 @@ URL_PATH_PARAMETER = "url_path_parameter"
 URL_TOKEN = "url_token"
 URL_UNPARSEABLE = "url_unparseable"
 
+# What joins a name to a token inside one path segment.
+_SEGMENT_PIECES = re.compile(r"[:=,@!$~|]")
 _UUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
 _LONG_HEX = re.compile(r"[0-9a-fA-F]{16,}")
 _LONG_ID = re.compile(r"[A-Za-z0-9_\-]{20,}")
@@ -291,6 +309,11 @@ def _segment_is_token(segment: str) -> bool:
         return False
     if _TOKEN_SHAPES.match(segment) or _UUID.fullmatch(segment) or _LONG_HEX.fullmatch(segment):
         return True
+    # A name and a token in one segment: ``bot123456789:AAH…`` (Telegram),
+    # ``key=…``, ``v1,…``, ``user@…``. Each piece is judged on its own.
+    pieces = [piece for piece in _SEGMENT_PIECES.split(segment) if piece]
+    if len(pieces) > 1:
+        return any(_segment_is_token(piece) for piece in pieces)
     if not _LONG_ID.fullmatch(segment):
         return False
     # Letters and digits mixed within one run: ``aB3dE5gH7jK9mN1pQ3sT5``,

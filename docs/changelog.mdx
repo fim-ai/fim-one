@@ -94,6 +94,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **A token glued to a name in a URL path, and a key in a connector action's path, no longer reach records.** A Telegram-style address (`/bot<id>:<token>/…`) and an action path with a query string (`/v1/send?api_key=…`) were kept whole in audit entries; the first also in call-record error text and logs. The token segment is now written `***` and the query string is cut, with or without a scheme and host. An MCP server whose address carries such a segment counts as carrying a secret, so it is owner-only while fallback is off.
 - **Every action in Admin → Audit Log has a readable name.** 42 actions that were already recorded (model groups and providers, billing plans, batch operations, workflow templates, eval cleanup, Market moderation) were shown by their internal name, such as `model_group.deactivate_all`.
 - **Workflow editor: right-click Duplicate copies the step you clicked.** It copied whichever step was selected, or nothing when none was.
 - **Workflow editor: clicking or selecting is no longer an undo step.** Undo stepped back through selections and was enabled right after opening a workflow.

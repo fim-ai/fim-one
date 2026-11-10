@@ -23,7 +23,7 @@ import uuid
 from collections.abc import Collection, Mapping
 from typing import Any
 
-__all__ = ["CHANGED", "diff_changes", "hint", "safe_text"]
+__all__ = ["CHANGED", "diff_changes", "hint", "safe_path", "safe_text"]
 
 # What is recorded for a secret that was set, replaced or removed.
 CHANGED: dict[str, Any] = {"changed": True}
@@ -39,12 +39,32 @@ def hint(secret: str | None, *, keep: int = 4) -> str | None:
     return f"{secret[:keep]}…"
 
 
+def safe_path(path: str | None, *, limit: int = _MAX_TEXT) -> str | None:
+    """A request path (no scheme, no host) with its query string and token-shaped segments cut.
+
+    For a record's detail: never quote a raw path there, it carries a
+    credential in the same places a URL does.
+    """
+    if path is None:
+        return None
+    from fim_one.core.assembly.mcp_address import strip_path_secrets
+
+    stripped = strip_path_secrets(str(path)) or ""
+    return stripped if len(stripped) <= limit else stripped[: limit - 1] + "…"
+
+
 def safe_text(text: str | None, *, limit: int = _MAX_TEXT) -> str | None:
-    """*text* with URL secrets cut out and no longer than *limit*."""
+    """*text* with URL secrets cut out and no longer than *limit*.
+
+    Text that is one path (``/v1/send?api_key=…``) is treated as the path
+    of a URL.
+    """
     if text is None:
         return None
     from fim_one.core.assembly.mcp_address import strip_url_secrets
 
+    if str(text).startswith("/") and not any(ch.isspace() for ch in str(text)):
+        return safe_path(text, limit=limit)
     stripped = strip_url_secrets(str(text)) or ""
     return stripped if len(stripped) <= limit else stripped[: limit - 1] + "…"
 
@@ -71,7 +91,10 @@ def _printable(value: Any) -> Any:
     if isinstance(value, str):
         if _is_identifier(value):
             return value
-        if value_is_secret_shaped(value) and "://" not in value:
+        if value.startswith("/") or "://" in value:
+            # A path or a URL: where it points stays, what authenticates goes.
+            return safe_text(value)
+        if value_is_secret_shaped(value):
             return "***"
         return safe_text(value)
     if isinstance(value, list | tuple | set | frozenset):

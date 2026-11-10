@@ -133,7 +133,7 @@ def _without_url_secrets(detail: str | None) -> str | None:
     Free text is where a webhook URL or an error message that quotes one
     ends up. The stripper is the one call records and logs go through.
     """
-    if not detail or "//" not in detail:
+    if not detail or ("//" not in detail and "?" not in detail):
         return detail
     from fim_one.core.assembly.mcp_address import strip_url_secrets
 

@@ -198,3 +198,83 @@ class TestFreeTextDetail:
 
         row = await world.one("settings.update", actor=root, ip=None)
         assert row.detail == "registration_mode=invite; a/b"
+
+
+TELEGRAM = "123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"
+API_KEY = "sk-live-0123456789abcdef0123456789abcdef"
+
+
+class TestPathsAndTokensGluedToAName:
+    """A connector action's path has no scheme; a Telegram bot URL has its
+    token after ``bot<id>:`` in one segment. Both were stored whole."""
+
+    def test_a_path_loses_its_query_string_and_token_segments(self) -> None:
+        from fim_one.core.assembly.mcp_address import strip_path_secrets
+
+        assert strip_path_secrets(f"/v1/send?api_key={API_KEY}&x=1") == "/v1/send"
+        assert strip_path_secrets(f"/bot{TELEGRAM}/sendMessage") == "/***/sendMessage"
+        assert strip_path_secrets("/customers/{id}") == "/customers/{id}"
+        assert strip_path_secrets(None) is None
+
+    def test_a_token_after_a_name_in_one_url_segment_is_cut(self) -> None:
+        from fim_one.core.assembly.mcp_address import strip_url_secrets, url_carries_secret
+
+        url = f"https://api.telegram.org/bot{TELEGRAM}/getMe"
+        assert strip_url_secrets(f"GET {url} failed") == "GET https://api.telegram.org/***/getMe failed"
+        assert url_carries_secret(url)
+        # Ordinary segments with these separators are kept.
+        plain = "https://api.example.test/v1,v2/users:search/name=alice"
+        assert strip_url_secrets(plain) == plain
+
+    def test_a_changed_path_is_recorded_without_the_credential(self) -> None:
+        changes = diff_changes(
+            {"path": "/v1/items", "base_url": "https://api.example.test"},
+            {
+                "path": f"/bot{TELEGRAM}/send?token={API_KEY}",
+                "base_url": f"https://api.telegram.org/bot{TELEGRAM}",
+            },
+        )
+        assert changes == {
+            "path": {"from": "/v1/items", "to": "/***/send"},
+            "base_url": {"from": "https://api.example.test", "to": "https://api.telegram.org/***"},
+        }
+        assert TELEGRAM not in json.dumps(changes) and API_KEY not in json.dumps(changes)
+
+    async def test_deleting_an_action_does_not_quote_its_path(self, world: World) -> None:
+        alice = await world.user("alice")
+        created = (
+            await world.call(
+                "POST",
+                "/api/connectors",
+                by=alice,
+                json={"name": "tg", "base_url": f"https://api.telegram.org/bot{TELEGRAM}"},
+            )
+        ).json()["data"]
+        actions_path = f"/api/connectors/{created['id']}/actions"
+        for path in (f"/v1/send?api_key={API_KEY}", f"/bot{TELEGRAM}/sendMessage"):
+            action = (
+                await world.call(
+                    "POST", actions_path, by=alice, json={"name": "send", "path": path}
+                )
+            ).json()["data"]
+            await world.call("DELETE", f"{actions_path}/{action['id']}", by=alice)
+
+        rows = await world.events()
+        assert [r.detail for r in rows if r.action == "connector.action_delete"] == [
+            f"connector={created['id']}; GET /v1/send",
+            f"connector={created['id']}; GET /***/sendMessage",
+        ]
+        for row in rows:
+            world.assert_absent(row, TELEGRAM, API_KEY)
+
+    async def test_a_detail_with_a_query_string_and_no_scheme_is_cut(self, world: World) -> None:
+        root = await world.user("root", admin=True)
+
+        await audit.record(
+            "notifications.test",
+            actor=audit.actor_of(root),
+            detail=f"GET /v1/send?api_key={API_KEY} returned 403",
+        )
+
+        row = await world.one("notifications.test", actor=root, ip=None)
+        world.assert_absent(row, API_KEY)

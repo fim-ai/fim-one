@@ -20,7 +20,7 @@ from fim_one.core.tool.connector.openapi_parser import parse_openapi_spec
 from fim_one.core.tool.connector.semantic_tags import get_all_semantic_tags
 from fim_one.web.exceptions import AppError
 from fim_one.core.audit import actions
-from fim_one.core.audit.redact import CHANGED, diff_changes
+from fim_one.core.audit.redact import CHANGED, diff_changes, safe_path
 from fim_one.db import get_session
 from fim_one.web.audit_events import (
     record_resource,
@@ -1371,7 +1371,8 @@ async def delete_action(
         "connector_action",
         action,
         org_id=connector.org_id,
-        detail=f"connector={connector_id}; {action.method} {action.path}",
+        # Never the raw path: it can carry a key in a segment or its query.
+        detail=f"connector={connector_id}; {action.method} {safe_path(action.path)}",
     )
     await db.delete(action)
     await db.commit()
