@@ -957,6 +957,54 @@ def _fit_text(text: str, kind: str | None) -> Any:
 _UNFIT = object()
 
 
+def _not_json(constant: str) -> Any:
+    raise ValueError(f"{constant} is not JSON")
+
+
+def _json_value(text: str) -> Any:
+    """The value *text* is the JSON of, or ``_UNFIT``. ``NaN`` and ``Infinity`` are not JSON."""
+    try:
+        return json.loads(text, parse_constant=_not_json)
+    except (ValueError, RecursionError):
+        return _UNFIT
+
+
+def _bare_value(value: Any, name: str, schema: dict[str, Any] | None) -> Any:
+    """What a reference outside a JSON string (``{"n": {{v}}}``) puts in its place.
+
+    A value that is not text is itself. Text is what the template's author
+    would have got by filling it in and parsing the result, as far as that
+    is one value: at a place declared as text it stays text; at one
+    declared as a number or a boolean it is read strictly as that; at any
+    other place (undeclared, an object, a list) it is read as JSON, so the
+    text ``5`` is 5, ``true`` is true, ``null`` is null and
+    ``{"k": [1, 2]}`` is that object, and text that is not JSON (or is not
+    the declared object or list) stays a string. Whatever it becomes, it
+    is one value at this place and cannot add keys or items next to it.
+    A quoted reference (``"{{v}}"``) is not handled here: it is always a
+    string.
+    """
+    if value is _UNFIT:
+        # A variable nothing has set stays visible, as in a text.
+        return f"{{{{{name}}}}}"
+    if not isinstance(value, str):
+        return value
+    kinds = _declared_types(schema)
+    if "string" in kinds:
+        return value
+    kind = next((k for k in kinds if k != "null"), None)
+    if kind in ("integer", "number", "boolean"):
+        return _fit_text(value, kind)
+    read = _json_value(value)
+    if read is _UNFIT:
+        return value
+    if kind == "object":
+        return read if isinstance(read, dict) else value
+    if kind == "array":
+        return read if isinstance(read, list) else value
+    return read
+
+
 async def _filled_json(
     store: VariableStore, written: str, schema: dict[str, Any] | None, kind: str | None
 ) -> Any:
@@ -996,9 +1044,8 @@ async def _filled_json(
             continue
         text.append(ch)
         i += 1
-    try:
-        parsed = json.loads("".join(text))
-    except ValueError:
+    parsed = _json_value("".join(text))
+    if parsed is _UNFIT:
         return _UNFIT
     values = [await store.resolve(name, _UNFIT) for name in names]
 
@@ -1014,25 +1061,12 @@ async def _filled_json(
         # it is the text of.
         value = values[whole]
         if isinstance(value, str):
-            try:
-                value = json.loads(value)
-            except ValueError:
-                return _UNFIT
+            value = _json_value(value)
         return value if isinstance(value, wanted) else _UNFIT
 
     async def placed(node: Any, node_schema: dict[str, Any] | None) -> Any:
         if (index := marked(node)) is not None:
-            value = values[index]
-            if value is _UNFIT:
-                # A variable nothing has set stays visible, as in a text.
-                return f"{{{{{names[index]}}}}}"
-            if isinstance(value, str):
-                # Text takes the type declared at this place, like text
-                # filled into a field of its own: "5" for an integer is 5.
-                kinds = _declared_types(node_schema)
-                if "string" not in kinds:
-                    return _fit_text(value, next((k for k in kinds if k != "null"), None))
-            return value
+            return _bare_value(values[index], names[index], node_schema)
         if isinstance(node, str):
             return await _filled(store, node, node_schema)
         if isinstance(node, dict):

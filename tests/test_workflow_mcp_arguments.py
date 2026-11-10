@@ -199,6 +199,91 @@ class TestAValueCannotAddToTheStructureAroundIt:
         assert await _fill({"filter": "{{s.missing}}"}, {}) == {"filter": "{{s.missing}}"}
 
 
+class TestABareReferenceIsReadAsJson:
+    """``{"count": {{n}}}`` with the text 5 gave 5 before fill-after-parse, and does again."""
+
+    VALUES: dict[str, Any] = {
+        "s.n": "5",
+        "s.f": "1.5",
+        "s.b": "true",
+        "s.null": "null",
+        "s.js": '{"k": [1, 2]}',
+        "s.jl": "[1, 2]",
+        "s.text": "plain text",
+        "s.quoted": '"already quoted"',
+        "s.evil": 'x", "admin": true, "y": "',
+        "s.evil2": '1, "admin": true',
+        "s.nan": "NaN",
+        "s.i": 5,
+        "s.t": True,
+        "s.none": None,
+        "s.obj": {"a": 1},
+    }
+    TEMPLATE = (
+        '{"count": {{s.n}}, "ratio": {{s.f}}, "flag": {{s.b}}, "nothing": {{s.null}}, '
+        '"data": {{s.js}}, "list": {{s.jl}}, "name": {{s.text}}, "q": {{s.quoted}}, '
+        '"e": {{s.evil}}, "e2": {{s.evil2}}, "nan": {{s.nan}}, "i": {{s.i}}, "t": {{s.t}}, '
+        '"none": {{s.none}}, "obj": {{s.obj}}, "missing": {{s.missing}}, '
+        '"text": "{{s.n}}", "both": "{{s.b}} and {{s.js}}"}'
+    )
+    EXPECTED: dict[str, Any] = {
+        "count": 5,
+        "ratio": 1.5,
+        "flag": True,
+        "nothing": None,
+        "data": {"k": [1, 2]},
+        "list": [1, 2],
+        # Text that is not JSON is a string ...
+        "name": "plain text",
+        # ... JSON text of a string is that string ...
+        "q": "already quoted",
+        # ... and neither can add a key beside itself.
+        "e": 'x", "admin": true, "y": "',
+        "e2": '1, "admin": true',
+        "nan": "NaN",
+        "i": 5,
+        "t": True,
+        "none": None,
+        "obj": {"a": 1},
+        "missing": "{{s.missing}}",
+        # A quoted reference is always a string.
+        "text": "5",
+        "both": 'true and {"k": [1, 2]}',
+    }
+
+    async def test_in_an_object_argument_of_a_tool(self) -> None:
+        filled = await _fill({"filter": self.TEMPLATE}, self.VALUES)
+        assert filled == {"filter": self.EXPECTED}
+
+    @pytest.mark.parametrize("schema", [None, {"type": "object", "properties": {"p": {}}}])
+    async def test_in_json_written_into_a_text_parameter(self, schema: Any) -> None:
+        filled = await _fill({"p": self.TEMPLATE}, self.VALUES, schema)
+        assert json.loads(filled["p"]) == self.EXPECTED
+
+    async def test_a_declared_object_or_list_place_takes_json_text_of_that_kind_only(self) -> None:
+        schema = {
+            "type": "object",
+            "properties": {
+                "o": {
+                    "type": "object",
+                    "properties": {
+                        "obj": {"type": "object"},
+                        "arr": {"type": "array"},
+                        "txt": {"type": "string"},
+                    },
+                }
+            },
+        }
+        template = {"o": '{"obj": {{s.js}}, "arr": {{s.jl}}, "txt": {{s.js}}}'}
+        assert await _fill(template, self.VALUES, schema) == {
+            "o": {"obj": {"k": [1, 2]}, "arr": [1, 2], "txt": '{"k": [1, 2]}'}
+        }
+        swapped = {"o": '{"obj": {{s.jl}}, "arr": {{s.js}}}'}
+        assert await _fill(swapped, self.VALUES, schema) == {
+            "o": {"obj": "[1, 2]", "arr": '{"k": [1, 2]}'}
+        }
+
+
 class TestJsonWrittenIntoATextParameter:
     """With no object or list schema the result is text; the receiver may parse it."""
 
@@ -291,8 +376,9 @@ class TestReferencesAreFilledInAtAnyDepth:
         }
         values = {"s.n": "5", "s.r": "0.5", "s.bad": "1_000", "s.t": "true"}
         assert await _fill(template, values, schema) == {
-            # "name" is declared as text and "other" is not declared: both stay text.
-            "filter": {"limit": 5, "name": "5", "ranges": [0.5, 2], "other": "5"},
+            # "name" is declared as text and stays text; "other" is not
+            # declared, and the text 5 is read as the JSON it is.
+            "filter": {"limit": 5, "name": "5", "ranges": [0.5, 2], "other": 5},
             # Text that is not a plain whole number stays text, for the tool to judge.
             "ids": [5, 2, "1_000"],
             "flags": [True],
