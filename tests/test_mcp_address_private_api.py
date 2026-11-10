@@ -263,3 +263,91 @@ class TestWhatSomeoneElseSees:
 
         for seen in await _as_subscriber(session, server_id):
             assert seen["address_private"] is False
+
+
+class TestAPersonalServerUsedByASharedAgentOrWorkflow:
+    """Runners of the agent or workflow are refused the server like subscribers are."""
+
+    async def _personal(self, session: AsyncSession) -> str:
+        created = await _create(session, transport="streamable_http", url=SECRET_URL)
+        assert created["warning"] is None
+        server_id: str = created["id"]
+        return server_id
+
+    async def _views(self, session: AsyncSession, server_id: str) -> list[dict[str, Any]]:
+        detail = (await get_mcp_server(server_id, current_user=_user(OWNER), db=session)).data
+        listed = await list_mcp_servers(page=1, size=50, current_user=_user(OWNER), db=session)
+        updated = await _update(session, server_id, description="edited")
+        return [detail, *listed.items, updated]
+
+    async def test_a_shared_agent_that_uses_it_brings_the_warning(
+        self, session: AsyncSession
+    ) -> None:
+        from fim_one.db.models.agent import Agent
+
+        server_id = await self._personal(session)
+        session.add(
+            Agent(
+                id="agent-1",
+                user_id=OWNER,
+                name="a",
+                mcp_server_ids=[server_id],
+                visibility="org",
+                org_id=ORG,
+            )
+        )
+        await session.commit()
+
+        for seen in await self._views(session, server_id):
+            assert seen["visibility"] == "personal"
+            assert seen["warning"] == CODE
+            assert seen["warning_reasons"] == ["url_user_info", "url_query", "url_fragment"]
+
+    async def test_a_shared_workflow_with_a_step_on_it_brings_the_warning(
+        self, session: AsyncSession
+    ) -> None:
+        from fim_one.db.models.workflow import Workflow
+
+        server_id = await self._personal(session)
+        session.add(
+            Workflow(
+                id="wf-1",
+                user_id=OWNER,
+                name="w",
+                blueprint={
+                    "nodes": [
+                        {"id": "n1", "type": "mcp", "data": {"type": "MCP", "server_id": server_id}}
+                    ],
+                    "edges": [],
+                },
+                status="active",
+                visibility="org",
+                org_id=ORG,
+            )
+        )
+        await session.commit()
+
+        for seen in await self._views(session, server_id):
+            assert seen["warning"] == CODE
+
+    async def test_a_personal_agent_or_one_that_uses_another_server_does_not(
+        self, session: AsyncSession
+    ) -> None:
+        from fim_one.db.models.agent import Agent
+
+        server_id = await self._personal(session)
+        session.add(Agent(id="agent-1", user_id=OWNER, name="mine", mcp_server_ids=[server_id]))
+        session.add(
+            Agent(
+                id="agent-2",
+                user_id=OWNER,
+                name="shared",
+                mcp_server_ids=["another"],
+                visibility="org",
+                org_id=ORG,
+            )
+        )
+        await session.commit()
+
+        for seen in await self._views(session, server_id):
+            assert seen["warning"] is None

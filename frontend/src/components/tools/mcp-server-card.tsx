@@ -428,7 +428,7 @@ export function MCPServerCard({
             <TooltipContent side="bottom" sideOffset={5} className="max-w-72">
               <p>
                 {notice === "addressPrivateOwner"
-                  ? addressWarning(server.warning_reasons)
+                  ? addressWarning(server)
                   : t("addressPrivateMemberReason")}
               </p>
             </TooltipContent>

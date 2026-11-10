@@ -68,8 +68,9 @@ class MCPServerResponse(BaseModel):
     # Fallback is off and the URL or the launch arguments carry a credential:
     # nobody but the owner can connect, whatever credential they save.
     address_private: bool = False
-    # For the owner of a shared server: why others cannot use it as saved.
-    # ``mcp_server_address_private`` or absent.
+    # For the owner, when ``address_private`` locks somebody out: the server
+    # is shared, or it is personal and a shared agent or workflow of the
+    # owner uses it. ``mcp_server_address_private`` or absent.
     warning: str | None = None
     # With ``warning``: which part of the address counted, never its value.
     # ``url_user_info``, ``url_query``, ``url_fragment``, ``url_path_segment``,

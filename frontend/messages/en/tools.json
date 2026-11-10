@@ -82,6 +82,7 @@
   "myCredentialsSaved": "Credentials saved",
   "keyRequiredWarning": "Configure keys to use this tool",
   "addressPrivateWarning": "Other members cannot use this server while \"Allow credential fallback\" is off, because {parts} may contain a credential. Move the credential into a header or an environment variable, or turn on \"Allow credential fallback\". Turning it on also lends members the headers and environment variables saved on this server.",
+  "addressPrivateWarningBound": "People who run your shared agents or workflows cannot use this server while \"Allow credential fallback\" is off, because {parts} may contain a credential. Move the credential into a header or an environment variable, or turn on \"Allow credential fallback\". Turning it on also lends them the headers and environment variables saved on this server.",
   "addressPartsUnknown": "its address or launch arguments",
   "addressReasons": {
     "url_user_info": "the user name or password in its URL",

@@ -285,7 +285,7 @@ export function MCPServerDialog({
       toast.success(isEdit ? t("mcpServerUpdated") : t("mcpServerCreated"))
       if (saved.warning === MCP_SERVER_ADDRESS_PRIVATE) {
         // Saved, and shared: say what the save means for everyone else.
-        toast.warning(addressWarning(saved.warning_reasons), { duration: 15000 })
+        toast.warning(addressWarning(saved), { duration: 15000 })
       }
       onOpenChange(false)
     } catch {
@@ -580,7 +580,7 @@ export function MCPServerDialog({
               className="flex items-start gap-1.5 rounded-md border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400"
             >
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>{addressWarning(server.warning_reasons)}</span>
+              <span>{addressWarning(server)}</span>
             </p>
           )}
         </div>

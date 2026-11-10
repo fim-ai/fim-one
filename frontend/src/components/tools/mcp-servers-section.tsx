@@ -197,7 +197,7 @@ export function MCPServersSection({ onReady, currentUserId, scope = "all", searc
       setServers((prev) => prev.map((s) => (s.id === id ? { ...updated, source: (s as any).source } : s)))
       toast.success(t("mcpServerPublished"))
       if (updated.warning === MCP_SERVER_ADDRESS_PRIVATE) {
-        toast.warning(addressWarning(updated.warning_reasons), { duration: 15000 })
+        toast.warning(addressWarning(updated), { duration: 15000 })
       }
     } catch {
       toast.error(t("mcpServerPublishFailed"))
