@@ -32,6 +32,22 @@ from .variable_store import VariableStore
 
 logger = logging.getLogger(__name__)
 
+# Asking whether the run is still this process's: tries, and the pause between.
+_OWNERSHIP_TRIES = 3
+_OWNERSHIP_RETRY_SECONDS = 0.2
+# Steps that act outside the run or spend tokens. When ownership cannot be
+# established they are not run; the others (Start, End, branches) are.
+_SIDE_EFFECT_STEPS = frozenset(
+    {
+        NodeType.CONNECTOR,
+        NodeType.MCP,
+        NodeType.AGENT,
+        NodeType.LLM,
+        NodeType.KNOWLEDGE_RETRIEVAL,
+        NodeType.HUMAN_INTERVENTION,
+    }
+)
+
 # Version of the state a suspended run is continued from (``run_suspended``).
 SUSPEND_STATE_VERSION = 1
 
@@ -413,36 +429,58 @@ class WorkflowEngine:
             async with semaphore:
                 await _run_node_inner(nid)
 
-        async def _still_ours() -> bool:
+        async def _still_ours() -> bool | None:
             """Whether the run's record is still this process's to write.
 
             Asked before each step and each retry, so a run closed by
             someone else stops before its next side effect, not at the
-            next heartbeat.
+            next heartbeat. ``None`` when the question could not be
+            answered (the database did not respond, three tries a short
+            pause apart): the caller decides by what the step would do.
             """
             if ctx.still_owned is None or abandoned["run"]:
                 return not abandoned["run"]
-            try:
-                owned = bool(await ctx.still_owned())
-            except Exception:
-                # Not knowing is not a reason to stop a run.
-                logger.exception("Could not check whether run %s is still ours", self._run_id)
-                return True
-            if not owned:
-                abandoned["run"] = True
-            return owned
+            for attempt in range(_OWNERSHIP_TRIES):
+                try:
+                    owned = bool(await ctx.still_owned())
+                except Exception:
+                    if attempt + 1 < _OWNERSHIP_TRIES:
+                        await asyncio.sleep(_OWNERSHIP_RETRY_SECONDS)
+                        continue
+                    logger.exception("Could not check whether run %s is still ours", self._run_id)
+                    return None
+                if not owned:
+                    abandoned["run"] = True
+                return owned
+            return None
 
         async def _run_node_inner(nid: str) -> None:
             """Inner node execution logic (retry, timeout, event emission)."""
             node = node_index[nid]
             executor = get_executor(node.type)
 
-            if not await _still_ours():
+            ours = await _still_ours()
+            if ours is False:
                 node_status[nid] = NodeStatus.SKIPPED
                 await _emit(
                     "node_skipped",
                     {"node_id": nid, "reason": "The run was closed while it was in progress"},
                 )
+                return
+            if ours is None and node.type in _SIDE_EFFECT_STEPS:
+                # Not knowing whether the run is still ours, a step that
+                # acts on the outside world (or spends tokens) is not run:
+                # it fails, like any step that could not do its work.
+                unknown = NodeResult(
+                    node_id=nid,
+                    status=NodeStatus.FAILED,
+                    error=(
+                        "The step was not run: the server could not confirm that this run "
+                        "is still its own (the database did not answer)."
+                    ),
+                )
+                node_results[nid] = unknown
+                await _handle_node_failure(nid, unknown)
                 return
 
             # Retry config from node data (default: no retry)
@@ -500,7 +538,7 @@ class WorkflowEngine:
                     if self._cancel_event and self._cancel_event.is_set():
                         break
 
-                    if not await _still_ours():
+                    if await _still_ours() is not True:
                         break
 
                     # A new attempt asks again; it does not reuse a

@@ -346,3 +346,67 @@ class TestEndingWhileAStepWaits:
         assert events[-1][1]["status"] == "cancelled"
         assert events[-1][1]["error_code"] == "workflow_run_cancelled"
         assert {d["node_id"] for d in _named(events, "node_skipped")} == {"b", "end_1"}
+
+
+class TestOwnershipCannotBeEstablished:
+    """The database does not answer the question "is this run still ours"."""
+
+    @staticmethod
+    def _bp() -> WorkflowBlueprint:
+        return parse_blueprint(
+            {
+                "nodes": [
+                    _node("start_1", "start"),
+                    _node("call", "connector"),
+                    _node("end_1", "end"),
+                ],
+                "edges": [_edge("start_1", "call"), _edge("call", "end_1")],
+            }
+        )
+
+    async def test_a_step_with_side_effects_is_not_run(self) -> None:
+        asked = 0
+        called: list[str] = []
+
+        async def unknown() -> bool:
+            nonlocal asked
+            asked += 1
+            raise OSError("database unreachable")
+
+        async def call(node: Any, store: Any, ctx: Any) -> NodeResult:
+            called.append(node.id)
+            return NodeResult(node_id=node.id, status=NodeStatus.COMPLETED, output="sent")
+
+        context = ExecutionContext(run_id="r", user_id="u", workflow_id="w", still_owned=unknown)
+        with (
+            patch("fim_one.core.workflow.nodes.ConnectorExecutor.execute", side_effect=call),
+            patch("fim_one.core.workflow.engine._OWNERSHIP_RETRY_SECONDS", 0),
+        ):
+            events = [e async for e in WorkflowEngine().execute_streaming(self._bp(), {}, context)]
+
+        assert called == []
+        (failed,) = _named(events, "node_failed")
+        assert failed["node_id"] == "call" and "could not confirm" in failed["error"]
+        assert events[-1][0] == "run_failed"
+        assert asked >= 3  # a bounded retry first; Start ran without the answer
+
+    async def test_a_hiccup_that_passes_does_not_stop_anything(self) -> None:
+        answers = iter([OSError("blip"), True, True, True, True, True])
+
+        async def flaky() -> bool:
+            answer = next(answers)
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+
+        async def call(node: Any, store: Any, ctx: Any) -> NodeResult:
+            return NodeResult(node_id=node.id, status=NodeStatus.COMPLETED, output="sent")
+
+        context = ExecutionContext(run_id="r", user_id="u", workflow_id="w", still_owned=flaky)
+        with (
+            patch("fim_one.core.workflow.nodes.ConnectorExecutor.execute", side_effect=call),
+            patch("fim_one.core.workflow.engine._OWNERSHIP_RETRY_SECONDS", 0),
+        ):
+            events = [e async for e in WorkflowEngine().execute_streaming(self._bp(), {}, context)]
+
+        assert _named(events, "run_completed")[0]["status"] == "completed"
