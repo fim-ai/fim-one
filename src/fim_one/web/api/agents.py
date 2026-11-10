@@ -122,6 +122,7 @@ async def _validate_binding_ownership(
     mcp_server_ids: list[str] | None = None,
     approval_channel_id: str | None = None,
     completion_channel_id: str | None = None,
+    approval_channel_changed: bool = True,
 ) -> None:
     """Verify the user can *access* every referenced connector / KB / MCP server.
 
@@ -132,7 +133,14 @@ async def _validate_binding_ownership(
     "not owned". A knowledge base cannot be shared, so it must be the user's
     own; one that is not would be dropped from the agent on every run.
 
-    Raises HTTP 403 if any referenced resource is not accessible to the user.
+    The approval channel must also be of a type that can carry approvals.
+    *approval_channel_changed* is ``False`` when an update keeps the stored
+    approval channel: the form sends it with every save, and a binding
+    stored before that check existed must not block saving something else
+    (it is treated as unbound when used).
+
+    Raises HTTP 403 if any referenced resource is not accessible to the user,
+    HTTP 400 if the approval channel cannot carry approvals.
     """
     from fim_one.core.assembly.visibility import ResourceKind, use_clause_for
 
@@ -164,19 +172,30 @@ async def _validate_binding_ownership(
     # channel the user's message and the answer, so either may only come from
     # an organization the user belongs to.  At run time it must also belong to
     # the agent's own organization (``resolve_org_channel``).
-    for channel_id, err_code in (
-        (approval_channel_id, "approval_channel_denied"),
-        (completion_channel_id, "completion_channel_denied"),
-    ):
-        if not channel_id:
-            continue
-        from fim_one.db.models.channel import Channel
+    from fim_one.core.channels import ApprovalCarrier, get_channel_class
+    from fim_one.db.models.channel import Channel
 
-        channel_org = (
-            await db.execute(select(Channel.org_id).where(Channel.id == channel_id))
-        ).scalar_one_or_none()
-        if channel_org is None or channel_org not in await get_user_org_ids(user_id, db):
-            raise AppError(err_code, status_code=403)
+    async def _channel(channel_id: str, denied: str) -> Any:
+        """The ``(org_id, type)`` of a channel in one of the user's organizations."""
+        row = (
+            await db.execute(
+                select(Channel.org_id, Channel.type).where(Channel.id == channel_id)
+            )
+        ).one_or_none()
+        if row is None or row.org_id not in await get_user_org_ids(user_id, db):
+            raise AppError(denied, status_code=403)
+        return row
+
+    if approval_channel_id:
+        approval = await _channel(approval_channel_id, "approval_channel_denied")
+        channel_class = get_channel_class(approval.type)
+        carries = channel_class is not None and issubclass(channel_class, ApprovalCarrier)
+        if approval_channel_changed and not carries:
+            # A webhook or an email list has no way back for a decision, so
+            # at run time such a binding is treated as no channel at all.
+            raise AppError("approval_channel_type_unsupported", status_code=400)
+    if completion_channel_id:
+        await _channel(completion_channel_id, "completion_channel_denied")
 
 
 def _completion_channel_id(model_config_json: Any) -> str | None:
@@ -330,6 +349,9 @@ async def update_agent(
         mcp_server_ids=update_data.get("mcp_server_ids"),
         approval_channel_id=update_data.get("approval_channel_id"),
         completion_channel_id=completion_channel_id,
+        approval_channel_changed=(
+            update_data.get("approval_channel_id") != agent.approval_channel_id
+        ),
     )
     for field, value in update_data.items():
         setattr(agent, field, value)

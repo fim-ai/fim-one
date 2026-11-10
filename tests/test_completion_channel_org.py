@@ -267,3 +267,126 @@ class TestSaveTime:
                     db=db,
                 )
             assert exc.value.error_code == "completion_channel_denied"
+
+
+class TestApprovalChannelType:
+    """An approval channel must be able to bring a decision back."""
+
+    async def _webhook_channel(
+        self, session_factory: async_sessionmaker[AsyncSession], seed: dict[str, str], kind: str
+    ) -> str:
+        channel_id = str(uuid.uuid4())
+        config: dict[str, Any] = (
+            {"to": "ops@a.test"}
+            if kind == "email"
+            else {"webhook_url": "https://hooks.slack.com/services/T/B/x"}
+        )
+        async with session_factory() as db:
+            db.add(
+                Channel(
+                    id=channel_id,
+                    name=kind,
+                    type=kind,
+                    org_id=seed["org_a"],
+                    created_by=seed["member"],
+                    is_active=True,
+                    config=config,
+                )
+            )
+            await db.commit()
+        return channel_id
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("kind", ["slack_webhook", "lark_webhook", "wecom_webhook", "email", "wecom"])
+    async def test_a_channel_that_cannot_carry_approvals_is_refused_on_create(
+        self,
+        kind: str,
+        session_factory: async_sessionmaker[AsyncSession],
+        seed: dict[str, str],
+    ) -> None:
+        channel_id = await self._webhook_channel(session_factory, seed, kind)
+        async with session_factory() as db:
+            member = await db.get(User, seed["member"])
+            assert member is not None
+            with pytest.raises(AppError) as exc:
+                await create_agent(
+                    AgentCreate(name="gated", approval_channel_id=channel_id),
+                    current_user=member,
+                    db=db,
+                )
+            assert exc.value.error_code == "approval_channel_type_unsupported"
+            assert exc.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_a_feishu_app_channel_is_accepted(
+        self, session_factory: async_sessionmaker[AsyncSession], seed: dict[str, str]
+    ) -> None:
+        async with session_factory() as db:
+            member = await db.get(User, seed["member"])
+            assert member is not None
+            created = await create_agent(
+                AgentCreate(name="gated", approval_channel_id=seed["channel_a"]),
+                current_user=member,
+                db=db,
+            )
+            assert created.data["approval_channel_id"] == seed["channel_a"]
+
+    @pytest.mark.asyncio
+    async def test_a_foreign_channel_is_still_denied_before_its_type_is_looked_at(
+        self, session_factory: async_sessionmaker[AsyncSession], seed: dict[str, str]
+    ) -> None:
+        channel_id = await self._webhook_channel(session_factory, seed, "slack_webhook")
+        async with session_factory() as db:
+            with pytest.raises(AppError) as exc:
+                await _validate_binding_ownership(
+                    seed["outsider"], db, approval_channel_id=channel_id
+                )
+            assert exc.value.error_code == "approval_channel_denied"
+
+    @pytest.mark.asyncio
+    async def test_update_refuses_a_new_binding_but_not_one_saved_earlier(
+        self, session_factory: async_sessionmaker[AsyncSession], seed: dict[str, str]
+    ) -> None:
+        stored = await self._webhook_channel(session_factory, seed, "slack_webhook")
+        other = await self._webhook_channel(session_factory, seed, "email")
+        agent_id = str(uuid.uuid4())
+        async with session_factory() as db:
+            # A row saved before the check existed.
+            db.add(
+                Agent(
+                    id=agent_id,
+                    user_id=seed["member"],
+                    name="legacy",
+                    status="draft",
+                    approval_channel_id=stored,
+                )
+            )
+            await db.commit()
+            member = await db.get(User, seed["member"])
+            assert member is not None
+
+            # The form sends the stored binding with every save: not blocked.
+            await update_agent(
+                agent_id,
+                AgentUpdate(name="renamed", approval_channel_id=stored),
+                current_user=member,
+                db=db,
+            )
+            # Choosing another channel that cannot carry approvals is.
+            with pytest.raises(AppError) as exc:
+                await update_agent(
+                    agent_id,
+                    AgentUpdate(approval_channel_id=other),
+                    current_user=member,
+                    db=db,
+                )
+            assert exc.value.error_code == "approval_channel_type_unsupported"
+            # A Feishu app channel, or none, is fine.
+            for channel_id in (seed["channel_a"], None):
+                updated = await update_agent(
+                    agent_id,
+                    AgentUpdate(approval_channel_id=channel_id),
+                    current_user=member,
+                    db=db,
+                )
+                assert updated.data["approval_channel_id"] == channel_id
