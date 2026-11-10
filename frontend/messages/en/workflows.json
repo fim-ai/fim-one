@@ -185,6 +185,7 @@
   "approvalUnknownWorkflow": "Unknown workflow",
   "approvalDismiss": "Dismiss",
   "approvalArguments": "Arguments",
+  "approvalExpandFirst": "Open the arguments ({count} characters) before approving.",
   "runPanelShowOutput": "Show output",
   "runPanelHideOutput": "Hide output",
   "runPanelTabResults": "Results",

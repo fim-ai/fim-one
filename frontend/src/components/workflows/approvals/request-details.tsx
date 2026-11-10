@@ -10,15 +10,31 @@ import type { ApprovalInboxItem } from "@/types/workflow"
 const LONG_ARGUMENTS = 240
 
 /**
+ * How many characters of a request's arguments are not shown until they are
+ * expanded; 0 when everything is in view. A request with hidden arguments
+ * cannot be approved before they have been opened.
+ */
+export function hiddenArgumentCharacters(
+  item: Pick<ApprovalInboxItem, "kind" | "arguments">,
+): number {
+  if (item.kind !== "confirmation" || !item.arguments) return 0
+  const length = JSON.stringify(item.arguments, null, 2).length
+  return length > LONG_ARGUMENTS ? length : 0
+}
+
+/**
  * What a request asks: the message of a Human Review step, or the action a
  * connector step is about to call and what it is called with.
  */
 export function RequestDetails({
   item,
   compact = false,
+  onExpanded,
 }: {
   item: Pick<ApprovalInboxItem, "kind" | "title" | "description" | "action" | "arguments">
   compact?: boolean
+  /** The collapsed arguments were opened (once is enough to have seen them). */
+  onExpanded?: () => void
 }) {
   const t = useTranslations("workflows")
   const json = useMemo(
@@ -57,7 +73,10 @@ export function RequestDetails({
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
             aria-expanded={!isLong || expanded}
             disabled={!isLong}
-            onClick={() => setExpanded((v) => !v)}
+            onClick={() => {
+              if (!expanded) onExpanded?.()
+              setExpanded((v) => !v)
+            }}
           >
             {isLong && (
               <ChevronDown

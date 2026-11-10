@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
 import { useTranslations } from "next-intl"
 import { Clock, GitBranch, X } from "lucide-react"
@@ -10,7 +11,7 @@ import type { ConfirmationDecision } from "@/lib/api/confirmations"
 import type { SettledStatus } from "@/lib/workflow-approvals"
 import type { ApprovalInboxItem } from "@/types/workflow"
 import { DecisionControls } from "./decision-controls"
-import { RequestDetails } from "./request-details"
+import { hiddenArgumentCharacters, RequestDetails } from "./request-details"
 
 interface ApprovalCardProps {
   item: ApprovalInboxItem
@@ -24,6 +25,10 @@ interface ApprovalCardProps {
 /** One request of the approval inbox. */
 export function ApprovalCard({ item, settled, busy, onDecide, onDismiss }: ApprovalCardProps) {
   const t = useTranslations("workflows")
+  // Long arguments start collapsed; they must have been opened once
+  // before the request can be approved.
+  const [argumentsSeen, setArgumentsSeen] = useState(false)
+  const hidden = hiddenArgumentCharacters(item)
   const { formatRelativeTime, formatDateTime } = useDateFormatter()
 
   const starter = item.started_by?.name
@@ -67,7 +72,7 @@ export function ApprovalCard({ item, settled, busy, onDecide, onDismiss }: Appro
         </Badge>
       </div>
 
-      <RequestDetails item={item} />
+      <RequestDetails item={item} onExpanded={() => setArgumentsSeen(true)} />
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         {startedBy && <span>{startedBy}</span>}
@@ -89,7 +94,15 @@ export function ApprovalCard({ item, settled, busy, onDecide, onDismiss }: Appro
           </Button>
         </div>
       ) : (
-        <DecisionControls busy={busy} onDecide={onDecide} />
+        <DecisionControls
+          busy={busy}
+          onDecide={onDecide}
+          approveBlockedReason={
+            hidden > 0 && !argumentsSeen
+              ? t("approvalExpandFirst", { count: hidden })
+              : undefined
+          }
+        />
       )}
     </div>
   )

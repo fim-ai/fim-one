@@ -14,10 +14,20 @@ interface DecisionControlsProps {
   onDecide: (decision: ConfirmationDecision, note: string) => void
   /** Smaller controls, for the run panel. */
   compact?: boolean
+  /**
+   * Why Approve is not available yet (part of what would be approved has
+   * not been looked at); shown beside the buttons. Reject stays available.
+   */
+  approveBlockedReason?: string
 }
 
 /** Approve / Reject with an optional note. */
-export function DecisionControls({ busy, onDecide, compact = false }: DecisionControlsProps) {
+export function DecisionControls({
+  busy,
+  onDecide,
+  compact = false,
+  approveBlockedReason,
+}: DecisionControlsProps) {
   const t = useTranslations("workflows")
   const [note, setNote] = useState("")
 
@@ -37,7 +47,7 @@ export function DecisionControls({ busy, onDecide, compact = false }: DecisionCo
         <Button
           size="sm"
           className={compact ? "h-7 gap-1 text-xs" : "gap-1.5"}
-          disabled={busy}
+          disabled={busy || !!approveBlockedReason}
           onClick={() => onDecide("approve", note)}
         >
           {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
@@ -54,6 +64,11 @@ export function DecisionControls({ busy, onDecide, compact = false }: DecisionCo
           {t("approvalReject")}
         </Button>
       </div>
+      {approveBlockedReason && (
+        <p className="text-xs text-amber-600 dark:text-amber-500" role="note">
+          {approveBlockedReason}
+        </p>
+      )}
     </div>
   )
 }

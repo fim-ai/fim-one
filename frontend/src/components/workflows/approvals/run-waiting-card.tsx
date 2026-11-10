@@ -9,7 +9,7 @@ import { useDateFormatter } from "@/hooks/use-date-formatter"
 import { announceApprovalsChanged, type SettledStatus } from "@/lib/workflow-approvals"
 import type { ApprovalInboxItem, RunWaitingItem } from "@/types/workflow"
 import { DecisionControls } from "./decision-controls"
-import { RequestDetails } from "./request-details"
+import { hiddenArgumentCharacters, RequestDetails } from "./request-details"
 import { useApprovalDecision } from "./use-approval-decision"
 
 interface RunWaitingCardProps {
@@ -29,6 +29,8 @@ interface RunWaitingCardProps {
  */
 export function RunWaitingCard({ waitingFor, nodeLabel, onDecided }: RunWaitingCardProps) {
   const t = useTranslations("workflows")
+  // Requests whose collapsed arguments have been opened.
+  const [seen, setSeen] = useState<Record<string, boolean>>({})
   const { formatDateTime } = useDateFormatter()
   // The user's inbox by request id; null until it has been read.
   const [inbox, setInbox] = useState<Record<string, ApprovalInboxItem> | null>(null)
@@ -96,7 +98,13 @@ export function RunWaitingCard({ waitingFor, nodeLabel, onDecided }: RunWaitingC
                 </span>
               )}
             </p>
-            {item && <RequestDetails item={item} compact />}
+            {item && (
+              <RequestDetails
+                item={item}
+                compact
+                onExpanded={() => setSeen((prev) => ({ ...prev, [id]: true }))}
+              />
+            )}
             {expires && (
               <p className="text-[11px] text-muted-foreground">
                 {t("runPanelWaitingExpires", { time: formatDateTime(expires) })}
@@ -111,6 +119,11 @@ export function RunWaitingCard({ waitingFor, nodeLabel, onDecided }: RunWaitingC
                 compact
                 busy={busyId === id}
                 onDecide={(decision, note) => decide(id, decision, note)}
+                approveBlockedReason={
+                  item && hiddenArgumentCharacters(item) > 0 && !seen[id]
+                    ? t("approvalExpandFirst", { count: hiddenArgumentCharacters(item) })
+                    : undefined
+                }
               />
             ) : inbox ? (
               <p className="text-xs text-muted-foreground">{t("runPanelWaitingOthers")}</p>
