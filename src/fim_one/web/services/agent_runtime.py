@@ -191,9 +191,17 @@ async def build_hooks(
 
 # Built-in tools a step that names no agent does not get, besides the
 # sandboxed ones: they write files for, or read the knowledge bases of, a
-# user the step has no agent to act for. ``email_send`` and
-# ``send_notification`` stay: the operator opts in to them for the instance.
-BARE_RUNTIME_EXCLUDED = (*SANDBOXED_TOOLS, "generate_image", "kb_list", "kb_retrieve")
+# user the step has no agent to act for, or they message people from a run
+# that a trigger or a schedule can start with nobody watching. A step that
+# should send mail or a notification selects an agent that has the tool.
+BARE_RUNTIME_EXCLUDED = (
+    *SANDBOXED_TOOLS,
+    "generate_image",
+    "kb_list",
+    "kb_retrieve",
+    "email_send",
+    "send_notification",
+)
 
 
 def bind_send_notification(tools: ToolRegistry, user_id: str | None) -> ToolRegistry:
@@ -234,8 +242,8 @@ async def bare_runtime(ctx: CallContext) -> AgentRuntime:
     The fast model and the built-in tools that need neither a user's
     resources nor a sandbox: no connectors, MCP servers, knowledge bases or
     delegation (the step selected no agent to bind them to), and none of
-    :data:`BARE_RUNTIME_EXCLUDED` (the sandboxed tools, image generation and
-    the knowledge-base tools). Tools an administrator disabled are left
+    :data:`BARE_RUNTIME_EXCLUDED` (the sandboxed tools, image generation,
+    the knowledge-base tools, and the mail and notification tools). Tools an administrator disabled are left
     out, as everywhere else.
     """
     from fim_one.db import create_session
