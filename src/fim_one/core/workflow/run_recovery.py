@@ -485,10 +485,17 @@ class WorkflowRunSupervisor:
             batch = waiting_ids[start : start + _SWEEP_BATCH]
             async with create_session() as db:
                 states = {
-                    str(row[0]): row[1]
+                    str(row[0]): (
+                        {"waiting": row[1]} if isinstance(row[1], dict) and not row[2] else None
+                    )
                     for row in (
                         await db.execute(
-                            select(WorkflowRun.id, WorkflowRun.suspend_state).where(
+                            # Not the sealed state: only what the run waits on.
+                            select(
+                                WorkflowRun.id,
+                                WorkflowRun.waiting_on,
+                                WorkflowRun.suspend_state.is_(None),
+                            ).where(
                                 WorkflowRun.id.in_(batch), WorkflowRun.status == "waiting"
                             )
                         )

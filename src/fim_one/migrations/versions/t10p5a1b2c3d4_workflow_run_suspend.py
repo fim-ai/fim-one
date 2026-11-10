@@ -5,7 +5,10 @@ by another server process, so what the continuation needs is kept on the
 run itself:
 
 - ``workflow_runs.suspend_state``: the variables and step states of a run
-  that is waiting for a decision (JSON, empty for every other run).
+  that is waiting for a decision (JSON, encrypted by the application,
+  empty for every other run).
+- ``workflow_runs.waiting_on``: which request each waiting step waits on
+  (small JSON, in the clear, read by the recovery sweep).
 - ``workflow_runs.worker_id`` / ``heartbeat_at``: which server process is
   executing the run and when it last said so. A run still ``running`` with
   an old heartbeat was left behind by a process that died.
@@ -50,6 +53,7 @@ _REQUESTS = "confirmation_requests"
 def _new_columns() -> list[sa.Column[Any]]:
     return [
         sa.Column("suspend_state", sa.JSON(), nullable=True),
+        sa.Column("waiting_on", sa.JSON(), nullable=True),
         sa.Column("worker_id", sa.String(64), nullable=True),
         sa.Column("heartbeat_at", sa.DateTime(timezone=True), nullable=True),
     ]

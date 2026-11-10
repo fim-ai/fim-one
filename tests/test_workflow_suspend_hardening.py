@@ -244,15 +244,17 @@ class TestStoredState:
         outcome = await rig.start(inputs={"q": "the launch code is 0000"})
         request = await rig.request_of(outcome.run_id)
 
-        stored = (await rig.run(outcome.run_id)).suspend_state
+        run = await rig.run(outcome.run_id)
+        stored = run.suspend_state
 
         assert "launch code" not in json.dumps(stored)
-        assert set(stored) == {"version", "waiting", "sealed"}
-        assert stored["waiting"] == {
+        assert set(stored) == {"version", "sealed"}
+        # What the sweep and the API need is beside it, in a column of its own.
+        assert run.waiting_on == {
             "human_1": {
                 "confirmation_id": request.id,
                 "kind": "workflow_approval",
-                "expires_at": stored["waiting"]["human_1"]["expires_at"],
+                "expires_at": run.waiting_on["human_1"]["expires_at"],
             }
         }
         assert rs.unseal_state(stored)["variables"]["start_1.q"] == "the launch code is 0000"
@@ -440,7 +442,7 @@ class TestWhatWasApprovedIsWhatRuns:
         await rig.decide(requests["workflow_approval"].id, "approve", note="prod-ledger")
         for _ in range(500):
             run = await rig.run(outcome.run_id)
-            if run.status == "waiting" and "human_1" not in run.suspend_state["waiting"]:
+            if run.status == "waiting" and "human_1" not in run.waiting_on:
                 break
             await asyncio.sleep(0.02)
         await rig.decide(requests["confirmation"].id, "approve")

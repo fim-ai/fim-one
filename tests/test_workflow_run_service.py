@@ -543,7 +543,7 @@ async def test_approval_step(entry: str, world: World, real_engine: None) -> Non
         )
         assert run.status == "waiting"
         assert run.completed_at is None
-        assert run.suspend_state["waiting"]["human_1"]["confirmation_id"] == approvals[0].id
+        assert run.waiting_on["human_1"]["confirmation_id"] == approvals[0].id
         # Nothing of the run is left in the process, and it holds no slot.
         service = rs.get_run_service()
         assert service.active_run_ids() == []

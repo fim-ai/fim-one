@@ -260,8 +260,8 @@ def _run_to_response(run: WorkflowRun) -> WorkflowRunResponse:
 
 def _waiting_for(run: WorkflowRun) -> list[RunWaitingItem] | None:
     """The requests a waiting run is waiting on, from its stored state."""
-    state = run.suspend_state
-    if run.status != "waiting" or not isinstance(state, dict):
+    waiting_on = run.waiting_on
+    if run.status != "waiting" or not isinstance(waiting_on, dict):
         return None
     return [
         RunWaitingItem(
@@ -270,7 +270,7 @@ def _waiting_for(run: WorkflowRun) -> list[RunWaitingItem] | None:
             kind=str(record.get("kind") or ""),
             expires_at=record.get("expires_at"),
         )
-        for node_id, record in sorted((state.get("waiting") or {}).items())
+        for node_id, record in sorted(waiting_on.items())
         if isinstance(record, dict)
     ]
 

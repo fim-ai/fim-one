@@ -177,6 +177,11 @@ class WorkflowRun(UUIDPKMixin, TimestampMixin, Base):
     # result, and the request each waiting step is waiting on. Written
     # when the run enters ``waiting``, emptied when it ends.
     suspend_state: Any = Column(JSON, nullable=True)
+    # Which request each waiting step waits on: ``{node_id: {confirmation_id,
+    # kind, expires_at}}``. In the clear and small, beside the sealed state,
+    # so the recovery sweep and the API never load or decrypt that. Set when
+    # the run is about to wait, emptied when it is continued or ends.
+    waiting_on: Any = Column(JSON, nullable=True)
     # The server process executing the run and when it last said so. A run
     # still ``running`` whose heartbeat is old was left by a process that
     # died (``core/workflow/run_recovery.py``).

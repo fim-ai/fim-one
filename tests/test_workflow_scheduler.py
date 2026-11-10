@@ -415,7 +415,7 @@ class TestScheduledRunGates:
         assert run.status == "waiting"
         assert run.mode == "schedule"
         assert run.user_id == wf.user_id
-        assert run.suspend_state["waiting"]["human_1"]["confirmation_id"] == approval.id
+        assert run.waiting_on["human_1"]["confirmation_id"] == approval.id
 
         await asyncio.sleep(1.3)  # past max_run_duration_seconds
         async with factory() as s:

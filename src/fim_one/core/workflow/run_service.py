@@ -147,8 +147,9 @@ def seal_state(state: dict[str, Any]) -> dict[str, Any]:
 
     The state holds the run's variables: step outputs, which can be
     connector responses. It is stored encrypted with the credential key
-    (``sealed``). Beside it, in the clear, only what the sweep and the API
-    read without the key: which request each waiting step waits on.
+    (``sealed``). What the sweep and the API read without the key (which
+    request each waiting step waits on) is kept in a column of its own,
+    ``WorkflowRun.waiting_on``.
     Through JSON first, so what is stored is what a later read gives back;
     values JSON has no form for become text. Raises
     :class:`SuspendStateTooLargeError` over the limit. CPU-bound: call it off the
@@ -161,11 +162,7 @@ def seal_state(state: dict[str, Any]) -> dict[str, Any]:
     if size > limit:
         raise SuspendStateTooLargeError(size, limit)
     plain = json.loads(text)
-    return {
-        "version": plain.get("version"),
-        "waiting": plain.get("waiting") or {},
-        "sealed": encrypt_credential(plain),
-    }
+    return {"version": plain.get("version"), "sealed": encrypt_credential(plain)}
 
 
 def unseal_state(stored: Any) -> dict[str, Any]:
@@ -406,6 +403,7 @@ class StartedRun:
             self.outcome.total_tokens = int(resume_state.get("total_tokens") or 0)
         self._queue_for_slot = queue_for_slot
         self._suspend_state: dict[str, Any] | None = None
+        self._waiting_on: dict[str, Any] = {}
         self._progress_saved_at = 0.0
         self._service = service
         self._parsed = parsed
@@ -493,6 +491,9 @@ class StartedRun:
                     out.error_code = None
                     out.total_tokens = int(data.get("total_tokens", 0) or 0)
                     out.waiting = list(data.get("waiting") or [])
+                    self._waiting_on = json.loads(
+                        json.dumps((data.get("state") or {}).get("waiting") or {}, default=str)
+                    )
                     cannot_wait: tuple[str, str] | None = None
                     # A run that waited before already has its place.
                     if self._resume_state is None and await self._service._waiting_limit_reached(
@@ -586,6 +587,7 @@ class StartedRun:
                             # A continued run keeps the start time it has.
                             started_at=start if self._resume_state is None else None,
                             suspend_state=self._suspend_state if suspended else None,
+                            waiting_on=self._waiting_on if suspended else None,
                         )
                         if closed_as is not None:
                             # Someone else closed the run while it executed
@@ -614,7 +616,7 @@ class StartedRun:
                             # still running found the run busy; pick it up.
                             try:
                                 await self._service._resume_if_decided(
-                                    self.run_id, self._suspend_state or {}
+                                    self.run_id, {"waiting": self._waiting_on}
                                 )
                             except Exception:
                                 logger.exception(
@@ -842,7 +844,13 @@ class WorkflowRunService:
                     result = await db.execute(
                         update(WorkflowRun)
                         .where(*conditions)
-                        .values(status=status, error=error, completed_at=now, suspend_state=None)
+                        .values(
+                            status=status,
+                            error=error,
+                            completed_at=now,
+                            suspend_state=None,
+                            waiting_on=None,
+                        )
                         .execution_options(synchronize_session=False)
                     )
                     if (cast(CursorResult[Any], result).rowcount or 0) == 1:
@@ -1143,7 +1151,11 @@ class WorkflowRunService:
                 update(WorkflowRun)
                 .where(WorkflowRun.id == run_id, WorkflowRun.status == "waiting")
                 .values(
-                    status="running", worker_id=WORKER_ID, heartbeat_at=db_now(_dialect_of(db))
+                    status="running",
+                    worker_id=WORKER_ID,
+                    heartbeat_at=db_now(_dialect_of(db)),
+                    # Running again: it waits on nothing until it says so.
+                    waiting_on=None,
                 )
                 .execution_options(synchronize_session=False)
             )
@@ -1548,6 +1560,7 @@ class WorkflowRunService:
         *,
         started_at: float | None,
         suspend_state: dict[str, Any] | None = None,
+        waiting_on: dict[str, Any] | None = None,
     ) -> tuple[str, str | None] | None:
         """Write how the run stands to its record.
 
@@ -1577,6 +1590,7 @@ class WorkflowRunService:
             "error": out.error,
             "total_tokens": out.total_tokens,
             "suspend_state": suspend_state,
+            "waiting_on": waiting_on if suspend_state is not None else None,
         }
         if started_at is not None:
             values["started_at"] = datetime.fromtimestamp(started_at, tz=UTC)
@@ -1688,7 +1702,10 @@ class WorkflowRunService:
 
 
 def waited_request_ids(state: Any) -> list[str]:
-    """The ids of the requests a waiting run's steps wait on (from its ``suspend_state``)."""
+    """The ids of the requests a waiting run's steps wait on.
+
+    *state* is ``{"waiting": <the run's waiting_on>}``.
+    """
     waiting = state.get("waiting") if isinstance(state, dict) else None
     return [
         str(record.get("confirmation_id"))

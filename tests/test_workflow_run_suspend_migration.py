@@ -31,7 +31,7 @@ _PG = os.environ.get("FIM_TEST_PG_URL")
 _MIGRATION = "fim_one.migrations.versions.t10p5a1b2c3d4_workflow_run_suspend"
 _RUNS = "workflow_runs"
 _INDEX = "ix_workflow_runs_status"
-_NEW_COLUMNS = {"suspend_state", "worker_id", "heartbeat_at"}
+_NEW_COLUMNS = {"suspend_state", "waiting_on", "worker_id", "heartbeat_at"}
 _APPROVALS_DDL = """
     CREATE TABLE workflow_approvals (
         id VARCHAR(36) PRIMARY KEY,
@@ -188,9 +188,9 @@ class TestMigration:
         assert _copied(legacy_db) == _COPIED_ROWS
         with legacy_db.connect() as conn:
             rows = conn.execute(
-                text(f"SELECT suspend_state, worker_id, heartbeat_at FROM {_RUNS}")
+                text(f"SELECT suspend_state, waiting_on, worker_id, heartbeat_at FROM {_RUNS}")
             ).all()
-            assert [tuple(r) for r in rows] == [(None, None, None)]
+            assert [tuple(r) for r in rows] == [(None, None, None, None)]
 
     def test_upgrade_twice_changes_nothing_more(self, legacy_db: sa.Engine) -> None:
         _migrate(legacy_db, "upgrade")
@@ -226,13 +226,15 @@ class TestMigration:
             run = session.get(WorkflowRun, "run-1")
             assert run is not None
             run.status = "waiting"
-            run.suspend_state = {"version": 1, "waiting": {"human_1": {"confirmation_id": "c"}}}
+            run.suspend_state = {"version": 1, "sealed": "x"}
+            run.waiting_on = {"human_1": {"confirmation_id": "c"}}
             run.worker_id = "host-1-abc"
             session.commit()
         with Session(legacy_db) as session:
             run = session.get(WorkflowRun, "run-1")
             assert run is not None
-            assert run.suspend_state["waiting"]["human_1"]["confirmation_id"] == "c"
+            assert run.waiting_on["human_1"]["confirmation_id"] == "c"
+            assert run.suspend_state == {"version": 1, "sealed": "x"}
 
 
 def test_the_model_and_the_migration_agree() -> None:
