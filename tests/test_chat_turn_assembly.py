@@ -123,7 +123,7 @@ async def world(db_env: None) -> World:
 
 
 @pytest.fixture()
-def loops(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+def loops(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> list[dict[str, Any]]:
     """Every agent loop the endpoints build, with a scripted model behind them."""
     from fim_one.web.api import chat as chat_mod
 
@@ -157,6 +157,12 @@ def loops(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     async def _no_network(*_args: Any, **_kwargs: Any) -> Any:
         raise AssertionError("a chat turn under test reached for a real model")
 
+    # Conversation sandboxes go under the test's own directory, not the checkout's data/.
+    monkeypatch.setattr(
+        chat_mod,
+        "_conversation_sandbox_root",
+        lambda conversation_id: tmp_path / "sandbox" / conversation_id if conversation_id else None,
+    )
     monkeypatch.setattr(chat_mod, "ReActAgent", _Recording)
     monkeypatch.setattr(chat_mod, "_resolve_llm", _llm)
     monkeypatch.setattr(chat_mod, "_resolve_fast_llm", _llm)

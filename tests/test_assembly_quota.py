@@ -1,13 +1,22 @@
-"""The quota gate: ``core.assembly.quota`` and its web backend."""
+"""The quota gate: ``core.assembly.quota`` and its web backend.
+
+The tests that read the database run on SQLite and, with ``FIM_TEST_PG_URL``
+pointing at an empty throwaway database, on PostgreSQL.
+"""
 
 from __future__ import annotations
 
+import os
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import patch
 
 import pytest
+from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import fim_one.db.models  # noqa: F401
@@ -17,7 +26,7 @@ from fim_one.core.assembly.principal import Binding, provisional_principal
 from fim_one.db.base import Base
 from fim_one.db.models import BillingPlan, Conversation, SystemSetting
 from fim_one.db.models.user import User
-from fim_one.db.models.workflow import WorkflowRun
+from fim_one.db.models.workflow import Workflow, WorkflowRun
 
 RESET = datetime(2027, 1, 1, tzinfo=UTC)
 
@@ -115,21 +124,57 @@ class TestQuotaStatus:
         assert status.unlimited and not status.exhausted
 
 
-@pytest.fixture()
-async def factory() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    maker = async_sessionmaker(engine, expire_on_commit=False)
+_PG = os.environ.get("FIM_TEST_PG_URL")
 
-    @asynccontextmanager
-    async def _create_session() -> AsyncIterator[AsyncSession]:
-        async with maker() as s:
-            yield s
 
-    with patch("fim_one.db.create_session", _create_session):
-        yield maker
-    await engine.dispose()
+def _backends() -> list[Any]:
+    return [
+        pytest.param("sqlite", id="sqlite"),
+        pytest.param(
+            "postgresql",
+            id="postgresql",
+            marks=pytest.mark.skipif(not _PG, reason="FIM_TEST_PG_URL not set"),
+        ),
+    ]
+
+
+@pytest.fixture(params=_backends())
+async def factory(
+    request: pytest.FixtureRequest,
+) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    """A database the app's session factory points at: SQLite, and PostgreSQL
+    (a schema of its own in the throwaway database) when one is given."""
+    admin = None
+    schema = f"assembly_quota_{uuid.uuid4().hex[:12]}"
+    if request.param == "sqlite":
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    else:
+        assert _PG is not None
+        url = make_url(_PG).set(drivername="postgresql+asyncpg")
+        admin = create_async_engine(url)
+        async with admin.begin() as conn:
+            await conn.execute(text(f'CREATE SCHEMA "{schema}"'))
+        engine = create_async_engine(
+            url, connect_args={"server_settings": {"search_path": schema}}
+        )
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        maker = async_sessionmaker(engine, expire_on_commit=False)
+
+        @asynccontextmanager
+        async def _create_session() -> AsyncIterator[AsyncSession]:
+            async with maker() as s:
+                yield s
+
+        with patch("fim_one.db.create_session", _create_session):
+            yield maker
+    finally:
+        await engine.dispose()
+        if admin is not None:
+            async with admin.begin() as conn:
+                await conn.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+            await admin.dispose()
 
 
 async def _users(factory: async_sessionmaker[AsyncSession], **active: bool) -> None:
@@ -311,6 +356,8 @@ class TestTheChain:
         )
         assert await _refusal(user_id) is None
         async with factory() as s:
+            s.add(Workflow(id="w", user_id=user_id, name="w", blueprint={}))
+            await s.flush()
             s.add(WorkflowRun(workflow_id="w", user_id=user_id, blueprint_snapshot={}, total_tokens=1))
             await s.commit()
         assert await _refusal(user_id) == "token_quota_exceeded"
