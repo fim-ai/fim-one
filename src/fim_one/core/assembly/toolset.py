@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from .calls import call_recorder
 from .credentials import CredentialSource, resolve_credential, resolve_credentials
 from .errors import AssemblyRefusal
+from .mcp_address import traceback_without_url_secrets
 from .visibility import ResourceKind, authorize_use
 
 if TYPE_CHECKING:
@@ -388,7 +389,13 @@ async def _open_mcp_servers(
             elif isinstance(exc, ToolsetError):
                 logger.warning("Skipping MCP server %r: %s", server.name, exc.detail)
             else:
-                logger.warning("Failed to connect user MCP server %r", server.name, exc_info=True)
+                # Not ``exc_info``: a connection error quotes the URL it
+                # failed for, which can carry a credential.
+                logger.warning(
+                    "Failed to connect user MCP server %r\n%s",
+                    server.name,
+                    traceback_without_url_secrets(exc),
+                )
 
     if mode == "progressive":
         meta_tool = build_mcp_meta_tool(connected) if connected else None

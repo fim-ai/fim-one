@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.core.assembly.credentials import address_is_private, personal_credential_fits
 from fim_one.core.assembly.errors import MCP_SERVER_ADDRESS_PRIVATE
+from fim_one.core.assembly.mcp_address import error_without_url_secrets
 from fim_one.core.security import is_stdio_allowed, validate_stdio_command, validate_url
 from fim_one.db import get_session
 from fim_one.web.exceptions import AppError
@@ -409,7 +410,11 @@ async def test_mcp_server(
         tool_names = [t.name for t in tools]
         return ApiResponse(data={"ok": True, "tool_count": count, "tools": tool_names})
     except Exception as exc:
-        logger.warning("MCP test failed for server %r: %s", server.name, exc)
+        # The owner is shown the error as it is; the log keeps it without
+        # what the URL in it can authenticate with.
+        logger.warning(
+            "MCP test failed for server %r: %s", server.name, error_without_url_secrets(exc)
+        )
         return ApiResponse(data={"ok": False, "error": str(exc)})
     finally:
         await client.disconnect_all()

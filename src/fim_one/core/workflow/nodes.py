@@ -1921,11 +1921,20 @@ class MCPExecutor:
                 duration_ms=_ms_since(t0),
             )
         except Exception as exc:
-            logger.exception("MCP node %s failed", node.id)
+            # The server is opened at its owner's URL, which the runner is
+            # never shown and which can carry a credential; a connection
+            # error quotes it. Neither the log nor the step's error keeps
+            # that part.
+            from fim_one.core.assembly.mcp_address import (
+                strip_url_secrets,
+                traceback_without_url_secrets,
+            )
+
+            logger.error("MCP node %s failed\n%s", node.id, traceback_without_url_secrets(exc))
             return NodeResult(
                 node_id=node.id,
                 status=NodeStatus.FAILED,
-                error=f"MCP tool error: {exc}",
+                error=strip_url_secrets(f"MCP tool error: {exc}"),
                 duration_ms=_ms_since(t0),
             )
         finally:

@@ -31,6 +31,7 @@ credential in someone else's hands.
 from __future__ import annotations
 
 import re
+import traceback
 from collections.abc import Sequence
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
@@ -38,8 +39,10 @@ from urllib.parse import urlsplit, urlunsplit
 __all__ = [
     "SECRET_NAME_WORDS",
     "address_carries_secret",
+    "error_without_url_secrets",
     "launch_args_carry_secret",
     "strip_url_secrets",
+    "traceback_without_url_secrets",
     "url_carries_secret",
 ]
 
@@ -74,6 +77,24 @@ def strip_url_secrets(text: str | None) -> str | None:
             return f"{scheme}://{rest.rsplit('@', 1)[-1]}"
 
     return _URL_IN_TEXT.sub(_bare, text)
+
+
+def error_without_url_secrets(exc: BaseException) -> str:
+    """``Type: message`` of *exc*, safe to show or store.
+
+    A connection error quotes the URL it failed for
+    (``Client error '401 Unauthorized' for url 'https://host/mcp?token=…'``).
+    """
+    return strip_url_secrets(f"{type(exc).__name__}: {exc}") or type(exc).__name__
+
+
+def traceback_without_url_secrets(exc: BaseException) -> str:
+    """The traceback of *exc*, causes included, safe to log.
+
+    In place of ``exc_info=True`` where the exception came from opening an
+    MCP server: the messages along the chain can quote the server's URL.
+    """
+    return strip_url_secrets("".join(traceback.format_exception(exc))) or type(exc).__name__
 
 
 # ---------------------------------------------------------------------------

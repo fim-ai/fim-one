@@ -14,6 +14,13 @@ from .adapter import MCPToolAdapter
 logger = logging.getLogger(__name__)
 
 
+def _loggable_url(url: str) -> str:
+    """*url* without what can authenticate: user-info, query string, fragment."""
+    from fim_one.core.assembly.mcp_address import strip_url_secrets
+
+    return strip_url_secrets(url) or ""
+
+
 def _tool_def_from_mcp(tool: Any) -> dict[str, Any]:
     """Build the adapter's tool dict from an MCP ``Tool``.
 
@@ -124,7 +131,11 @@ class MCPClient:
             cwd=working_dir,
         )
 
-        logger.info("Connecting to MCP server %r: %s %s", name, command, args or [])
+        # The arguments can carry a credential (``--api-key …``): their
+        # number is logged, not their text.
+        logger.info(
+            "Connecting to MCP server %r: %s (%d argument(s))", name, command, len(args or [])
+        )
 
         # Enter the stdio_client and ClientSession context managers via the
         # exit stack so they stay alive until disconnect_all() is called.
@@ -199,7 +210,7 @@ class MCPClient:
         except ValueError as exc:
             raise ValueError(f"SSRF check failed for MCP SSE URL: {exc}") from exc
 
-        logger.info("Connecting to MCP server %r via SSE: %s", name, url)
+        logger.info("Connecting to MCP server %r via SSE: %s", name, _loggable_url(url))
 
         read, write = await self._exit_stack.enter_async_context(
             sse_client(url, headers=headers or {})
@@ -272,7 +283,9 @@ class MCPClient:
         except ValueError as exc:
             raise ValueError(f"SSRF check failed for MCP Streamable HTTP URL: {exc}") from exc
 
-        logger.info("Connecting to MCP server %r via Streamable HTTP: %s", name, url)
+        logger.info(
+            "Connecting to MCP server %r via Streamable HTTP: %s", name, _loggable_url(url)
+        )
 
         # mcp 2 removed ``streamablehttp_client`` (and the third
         # ``get_session_id`` yield). Headers and the v1 timeouts

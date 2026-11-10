@@ -1078,7 +1078,14 @@ async def list_step_mcp_tools(
             f"no answer within {_MCP_TOOL_LISTING_TIMEOUT_SECONDS} seconds"
         ) from None
     except Exception as exc:
-        logger.warning("Listing the tools of MCP server %r failed", server_name, exc_info=True)
+        from fim_one.core.assembly.mcp_address import traceback_without_url_secrets
+
+        # Not ``exc_info``: the error can quote the server's URL.
+        logger.warning(
+            "Listing the tools of MCP server %r failed\n%s",
+            server_name,
+            traceback_without_url_secrets(exc),
+        )
         raise _unavailable(type(exc).__name__) from None
     finally:
         if client is not None:
