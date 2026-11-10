@@ -519,25 +519,69 @@ class ConfirmationService:
         By the row only: an administrator sees those naming them like
         anyone else, not everything.
         """
-        from sqlalchemy import and_, or_, select
+        from sqlalchemy import select
 
         from fim_one.db.models.channel import ConfirmationRequest
 
-        eligible = or_(
-            and_(
-                ConfirmationRequest.eligible_scope.in_(_SINGLE_USER_SCOPES),
-                ConfirmationRequest.eligible_user_id == actor.user_id,
-            ),
-            and_(
-                ConfirmationRequest.eligible_scope == "org_members",
-                ConfirmationRequest.org_id.in_(sorted(actor.org_ids)),
-            ),
+        stmt = select(ConfirmationRequest).where(
+            ConfirmationRequest.status == "pending", _eligible_clause(actor)
         )
-        stmt = select(ConfirmationRequest).where(ConfirmationRequest.status == "pending", eligible)
         if kind is not None:
             stmt = stmt.where(ConfirmationRequest.kind == kind)
         result = await db.execute(stmt.order_by(ConfirmationRequest.created_at.desc()))
         return list(result.scalars().all())
+
+    async def count_pending_for(
+        self,
+        db: Any,
+        actor: Principal,
+        *,
+        kinds: tuple[str, ...] | None = None,
+        of_workflow_runs: bool = False,
+    ) -> int:
+        """How many open requests *actor* may decide, counted by the database.
+
+        The rule of :meth:`pending_for`, without loading a row: for a
+        badge that is asked for often. A request past its deadline is not
+        counted, whether or not the sweep has closed it. *of_workflow_runs*
+        counts only requests a workflow run waits on.
+        """
+        from sqlalchemy import func, or_, select
+
+        from fim_one.db.models.channel import ConfirmationRequest
+
+        stmt = select(func.count()).where(
+            ConfirmationRequest.status == "pending",
+            _eligible_clause(actor),
+            or_(
+                ConfirmationRequest.expires_at.is_(None),
+                ConfirmationRequest.expires_at > datetime.now(UTC),
+            ),
+        )
+        if kinds is not None:
+            stmt = stmt.where(ConfirmationRequest.kind.in_(kinds))
+        if of_workflow_runs:
+            stmt = stmt.where(ConfirmationRequest.workflow_run_id.is_not(None))
+        return int((await db.execute(stmt)).scalar_one())
+
+
+def _eligible_clause(actor: Principal) -> Any:
+    """SQL for "the row says *actor* may decide it" (what ``may_decide``
+    reads off a row with a scope, minus the administrator's bypass)."""
+    from sqlalchemy import and_, or_
+
+    from fim_one.db.models.channel import ConfirmationRequest
+
+    return or_(
+        and_(
+            ConfirmationRequest.eligible_scope.in_(_SINGLE_USER_SCOPES),
+            ConfirmationRequest.eligible_user_id == actor.user_id,
+        ),
+        and_(
+            ConfirmationRequest.eligible_scope == "org_members",
+            ConfirmationRequest.org_id.in_(sorted(actor.org_ids)),
+        ),
+    )
 
 
 async def validate_assignee(

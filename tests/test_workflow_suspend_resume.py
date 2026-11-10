@@ -1275,6 +1275,33 @@ class TestApprovalInbox:
 
         assert (await _inbox(rig, rig.owner))["count"] == 0
 
+    async def test_the_badge_count_is_a_count_not_a_load_of_the_rows(self, rig: Rig) -> None:
+        """Asked for every 30 s by every open tab: no request row, with its
+        payload, is read to answer it."""
+        for _ in range(3):
+            await rig.start()
+        expired = await rig.request_of((await rig.start()).run_id)
+        await rig.flip(expired.id, expires_at=datetime.now(UTC) - timedelta(seconds=1))
+        assert (await _inbox(rig, rig.owner))["count"] == 3
+
+        loaded: list[Any] = []
+        from sqlalchemy import event
+
+        from fim_one.db.models.channel import ConfirmationRequest as Row
+
+        def on_load(target: Any, _context: Any) -> None:
+            loaded.append(target)
+
+        event.listen(Row, "load", on_load)
+        try:
+            async with rig.factory() as db:
+                count = (await wf_api.approval_inbox_count(current_user=rig.owner, db=db)).data
+                nobody = (await wf_api.approval_inbox_count(current_user=rig.admin, db=db)).data
+        finally:
+            event.remove(Row, "load", on_load)
+        assert count == {"count": 3} and nobody == {"count": 0}
+        assert loaded == []
+
     async def test_requests_of_chat_tool_calls_are_not_in_it(self, rig: Rig) -> None:
         from fim_one.core.assembly.confirmation import ConfirmationSpec
 

@@ -1049,7 +1049,12 @@ async def approval_inbox_count(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     """How many requests wait for the signed-in user's decision (for a badge)."""
-    return ApiResponse(data={"count": len(await _inbox_rows(db, current_user))})
+    # Counted by the database: the badge of every open tab asks every 30 s.
+    actor = await _principal_of(db, current_user)
+    count = await _confirmation_service().count_pending_for(
+        db, actor, kinds=_INBOX_KINDS, of_workflow_runs=True
+    )
+    return ApiResponse(data={"count": count})
 
 
 # ---------------------------------------------------------------------------
