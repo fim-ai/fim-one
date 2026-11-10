@@ -82,6 +82,9 @@ class SqlTemplate:
 
     parts: tuple[str, ...]
     variables: tuple[str, ...]
+    # Where each reference stands: ``"count"`` right after LIMIT or OFFSET
+    # (the one place where SQL wants a bare whole number), else ``"value"``.
+    positions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -272,9 +275,11 @@ def parse_sql_template(sql: str, *, dialect: SqlDialect) -> SqlTemplate:
 
     parts: list[str] = [""]
     variables: list[str] = []
+    positions: list[str] = []
     for token in tokens:
         if token.kind == "variable":
             variables.append(token.text)
+            positions.append(_position(parts[-1], positions, len(parts)))
             parts.append("")
         elif token.kind == "comment":
             # A comment says nothing to the database; a space keeps the
@@ -282,7 +287,22 @@ def parse_sql_template(sql: str, *, dialect: SqlDialect) -> SqlTemplate:
             parts[-1] += " "
         else:
             parts[-1] += token.text
-    return SqlTemplate(parts=tuple(parts), variables=tuple(variables))
+    return SqlTemplate(
+        parts=tuple(parts), variables=tuple(variables), positions=tuple(positions)
+    )
+
+
+_AFTER_COUNT_KEYWORD = re.compile(r"(?<![\w$.])(?:LIMIT|OFFSET)\s*$", re.IGNORECASE)
+
+
+def _position(before: str, earlier: list[str], part_count: int) -> str:
+    """Where the reference that follows *before* stands (see ``SqlTemplate.positions``)."""
+    if _AFTER_COUNT_KEYWORD.search(before):
+        return "count"
+    # MySQL's ``LIMIT {{offset}}, {{count}}``.
+    if part_count > 1 and earlier and earlier[-1] == "count" and before.strip() == ",":
+        return "count"
+    return "value"
 
 
 def _value_may_follow(before: _Token | None) -> bool:
@@ -357,7 +377,11 @@ def render_sql(
             break
         value = bound_value(values[index])
         if style == "literal":
-            out.append(mysql_literal(value, name=template.variables[index]))
+            name = template.variables[index]
+            position = template.positions[index] if template.positions else "value"
+            out.append(
+                _mysql_count(value, name) if position == "count" else mysql_literal(value, name=name)
+            )
         else:
             parameters.append(value)
             out.append(f"${len(parameters)}" if style == "numeric" else "?")
@@ -373,22 +397,50 @@ def mysql_literal(value: Any, *, name: str = "value") -> str:
     text. (Escaping a quote is only correct for the character set the
     session is in: with ``SET NAMES gbk`` a two-byte character that ends
     in 0x5C swallows the escaping backslash.)
+
+    Numbers and booleans are written as text too (``5`` as the text
+    ``'5'``, ``true`` as ``'1'``). MySQL compares a number with a text
+    column by turning the column's text into a number, and text that is
+    not a number becomes 0: bound as the number 0, a value would match
+    every row whose text column does not start with a digit. Bound as
+    text, it is compared as text with a text column, and MySQL still turns
+    it into a number where the other side is one (``id = '5'``).
     """
     if value is None:
         return "NULL"
     if isinstance(value, bool):
-        return "1" if value else "0"
-    if isinstance(value, int):
-        return str(value)
-    if isinstance(value, float):
-        if value != value or value in (float("inf"), float("-inf")):
-            raise SqlBindingError(f"{{{{{name}}}}} is not a number MySQL can take ({value})")
-        return repr(value)
+        value = "1" if value else "0"
     try:
         encoded = str(value).encode("utf-8")
     except UnicodeEncodeError:
         raise SqlBindingError(f"{{{{{name}}}}} holds text that is not valid Unicode") from None
     return f"_utf8mb4 X'{encoded.hex().upper()}'"
+
+
+_COUNT_TEXT = re.compile(r"[0-9]+", re.ASCII)
+
+
+def _mysql_count(value: Any, name: str) -> str:
+    """*value* as the bare whole number MySQL's LIMIT and OFFSET take.
+
+    They accept no expression and no text, so this is the one place a value
+    is written as a number: digits only, checked here.
+    """
+    count: int | None = None
+    if isinstance(value, bool):
+        count = None
+    elif isinstance(value, int):
+        count = value
+    elif isinstance(value, float) and value.is_integer():
+        count = int(value)
+    elif isinstance(value, str) and _COUNT_TEXT.fullmatch(value.strip()):
+        count = int(value.strip())
+    if count is None or count < 0 or count > 2**63 - 1:
+        raise SqlBindingError(
+            f"{{{{{name}}}}} stands after LIMIT or OFFSET and must be a whole number "
+            f"that is not negative (got {value!r:.40})"
+        )
+    return str(count)
 
 
 def _code_of(part: str) -> str:

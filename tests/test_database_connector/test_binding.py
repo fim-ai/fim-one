@@ -247,6 +247,44 @@ class TestMySQLLiterals:
     def test_null_is_null(self) -> None:
         assert mysql_literal(None) == "NULL"
 
+    def test_numbers_and_booleans_are_written_as_text(self) -> None:
+        """A number against a text column would match every non-numeric row."""
+        assert mysql_literal(0) == _hex("0")
+        assert mysql_literal(-7) == _hex("-7")
+        assert mysql_literal(1.5) == _hex("1.5")
+        assert mysql_literal(-0.0) == _hex("-0.0")
+        assert mysql_literal(True) == _hex("1")
+        assert mysql_literal(False) == _hex("0")
+        assert mysql_literal(2**70) == _hex(str(2**70))
+
+    def _limit(self, sql: str, values: list[object]) -> str:
+        template = parse_sql_template(sql, dialect="mysql")
+        return render_sql(template, "literal", values)[0]
+
+    def test_limit_and_offset_take_a_checked_whole_number(self) -> None:
+        sql = "SELECT a FROM t WHERE b = {{b}} LIMIT {{n}} OFFSET {{m}}"
+        assert self._limit(sql, [5, 10, "20"]) == (
+            f"SELECT a FROM t WHERE b = {_hex('5')} LIMIT 10 OFFSET 20"
+        )
+        assert self._limit("SELECT a FROM t LIMIT {{m}}, {{n}}", [0, 5.0]) == (
+            "SELECT a FROM t LIMIT 0, 5"
+        )
+        assert self._limit("SELECT a FROM t limit {{n}}", [" 3 "]) == "SELECT a FROM t limit 3"
+
+    @pytest.mark.parametrize(
+        "value", ["1; DROP TABLE t", "1 OR 1=1", "-1", -1, 1.5, True, None, "", "٣", "1e3", [1]]
+    )
+    def test_limit_refuses_what_is_not_a_whole_number(self, value: object) -> None:
+        with pytest.raises(SqlBindingError, match="after LIMIT or OFFSET"):
+            self._limit("SELECT a FROM t LIMIT {{n}}", [value])
+
+    def test_only_limit_and_offset_are_count_positions(self) -> None:
+        template = parse_sql_template(
+            "SELECT a FROM t WHERE x.limit = {{a}} AND c IN ({{b}}, {{c}}) LIMIT {{n}}",
+            dialect="mysql",
+        )
+        assert template.positions == ("value", "value", "value", "count")
+
     def test_text_that_is_not_unicode_is_refused(self) -> None:
         with pytest.raises(SqlBindingError, match="not valid Unicode"):
             mysql_literal("\udcbf' OR 1=1", name="v")

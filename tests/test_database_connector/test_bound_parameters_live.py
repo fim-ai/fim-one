@@ -145,6 +145,44 @@ class TestMySQL(_BoundValues):
     async def test_sql_in_a_number_is_not_run(self, live_mysql: LiveDatabase) -> None:
         await self._check_number_payload(live_mysql)
 
+    @pytest.mark.parametrize("value", [0, False, -0.0, 0.0, 1, True, 7, "0"])
+    async def test_a_number_or_boolean_does_not_match_text_that_is_not_that_number(
+        self, live_mysql: LiveDatabase, value: object
+    ) -> None:
+        """Bound as a number, 0 equals every text that does not start with a digit."""
+        for column in ("customer", "note"):
+            text = await _query(
+                live_mysql,
+                f"SELECT id FROM {live_mysql.orders} WHERE {column} = {{{{v}}}}",
+                {"v": value},
+            )
+            assert json.loads(text)["rows"] == [], (column, value)
+        text = await _query(
+            live_mysql, f"SELECT token FROM {live_mysql.secrets} WHERE token = {{{{v}}}}", {"v": value}
+        )
+        assert SECRET not in text
+
+    async def test_a_numeric_column_still_matches_by_value(self, live_mysql: LiveDatabase) -> None:
+        by_id = f"SELECT customer FROM {live_mysql.orders} WHERE id = {{{{v}}}}"
+        for value in (1, 1.0, "1", " 1", True):
+            assert json.loads(await _query(live_mysql, by_id, {"v": value}))["rows"] == [
+                ["alice"]
+            ], value
+        above = f"SELECT id FROM {live_mysql.orders} WHERE id > {{{{v}}}} ORDER BY id"
+        assert json.loads(await _query(live_mysql, above, {"v": 1}))["rows"] == [[2]]
+        # Numeric, not text, comparison: '10' > '9' only as numbers.
+        assert json.loads(await _query(live_mysql, above, {"v": 10}))["rows"] == []
+        total = f"SELECT id + {{{{v}}}} FROM {live_mysql.orders} WHERE id = 1"
+        assert json.loads(await _query(live_mysql, total, {"v": 2}))["rows"] == [[3.0]]
+
+    async def test_limit_takes_a_whole_number_and_nothing_else(
+        self, live_mysql: LiveDatabase
+    ) -> None:
+        limited = f"SELECT id FROM {live_mysql.orders} ORDER BY id LIMIT {{{{n}}}} OFFSET {{{{m}}}}"
+        assert json.loads(await _query(live_mysql, limited, {"n": 1, "m": "1"}))["rows"] == [[2]]
+        text = await _query(live_mysql, limited, {"n": "1; DROP TABLE x", "m": 0})
+        assert text.startswith("[SQL Safety Error]") and "LIMIT or OFFSET" in text
+
     async def test_a_literal_percent_sign_survives_binding(self, live_mysql: LiveDatabase) -> None:
         text = await _query(
             live_mysql,
