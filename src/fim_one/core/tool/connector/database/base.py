@@ -53,6 +53,9 @@ class DatabaseDriver(ABC):
     # ``None``: the driver cannot take parameters, and SQL with
     # ``{{variable}}`` references is refused for it.
     placeholder_style: ClassVar[Literal["numeric", "format", "qmark"] | None] = None
+    # Whether ``execute_query(read_only=True)`` runs the query in a
+    # read-only transaction that the database itself enforces.
+    enforces_read_only: ClassVar[bool] = False
     # Which comment and quoting rules the database reads SQL by.
     sql_dialect: ClassVar[Literal["postgresql", "mysql", "generic"]] = "generic"
 
@@ -89,8 +92,15 @@ class DatabaseDriver(ABC):
         timeout_s: int = 30,
         max_rows: int = 1000,
         parameters: Sequence[Any] | None = None,
+        read_only: bool = True,
     ) -> QueryResult:
         """Execute a query and return results.
+
+        With *read_only* (the default) the query runs in a read-only
+        transaction when :attr:`enforces_read_only` is true: the database
+        refuses to change rows, whatever the SQL looks like. Each driver's
+        docstring says what its transaction does not cover. A driver
+        without one relies on the keyword check made before this call.
 
         *parameters* are the values of the placeholders in *sql*, written in
         the driver's :attr:`placeholder_style`. They are sent to the database

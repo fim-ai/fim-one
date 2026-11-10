@@ -422,6 +422,7 @@ class _DatabaseQueryTool(BaseTool):
                 timeout_s=self._query_timeout,
                 max_rows=self._max_rows,
                 parameters=parameters,
+                read_only=self._read_only,
             )
 
             rows, redacted = redact_rows(result.columns, result.rows, self._pii)

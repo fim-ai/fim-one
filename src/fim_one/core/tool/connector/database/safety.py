@@ -3,6 +3,11 @@
 Validates and sanitises SQL statements before execution to prevent
 dangerous operations. Only SELECT queries (and WITH...SELECT CTEs)
 are allowed unless ``allow_write=True`` is explicitly passed.
+
+This check reads keywords; it is the first line, not the fence. A read-only
+connector also runs every query in a read-only transaction where the driver
+has one (see ``DatabaseDriver.execute_query``), so a write the check does
+not recognise is refused by the database itself.
 """
 
 from __future__ import annotations
@@ -84,10 +89,12 @@ def validate_sql(sql: str, *, allow_write: bool = False) -> str:
                 raise SqlSafetyError(
                     "WITH (CTE) queries must end with SELECT, not a write operation"
                 )
+            _refuse_writes_inside_a_read(cleaned)
         elif first_keyword == "SELECT":
-            pass  # OK
+            _refuse_writes_inside_a_read(cleaned)
         elif first_keyword == "EXPLAIN":
-            pass  # EXPLAIN is read-only
+            # EXPLAIN only plans a statement; EXPLAIN ANALYZE runs it.
+            _refuse_explain_that_writes(cleaned)
         elif first_keyword == "SHOW":
             pass  # SHOW is read-only (MySQL)
         elif first_keyword == "DESCRIBE" or first_keyword == "DESC":
@@ -123,9 +130,92 @@ def _get_first_keyword(sql: str) -> str:
     return match.group(0).upper() if match else ""
 
 
+# A statement that changes rows, wherever it stands: a data-modifying CTE
+# (``WITH d AS (DELETE ... RETURNING ...) SELECT ...``), the statement after
+# a CTE, the statement EXPLAIN ANALYZE runs. INSERT(), REPLACE() are MySQL
+# string functions, hence the look-ahead. ``FOR UPDATE`` locks rows and is
+# refused with the rest.
+_ROW_CHANGING = re.compile(
+    r"\b(?:(?:INSERT|REPLACE)\b(?!\s*\()|(?:UPDATE|DELETE|MERGE)\b)", re.IGNORECASE
+)
+# ``SELECT ... INTO new_table`` creates a table (PostgreSQL, DM8);
+# ``INTO OUTFILE`` writes a file, ``INTO @var`` a session variable (MySQL).
+_INTO = re.compile(r"\bINTO\b", re.IGNORECASE)
+_EXPLAIN_RUNS = re.compile(r"\bANALY[ZS]E\b", re.IGNORECASE)
+# The words between EXPLAIN and the statement it explains.
+_EXPLAIN_OPTION_LIST = re.compile(r"\s*\([^()]*\)")
+_EXPLAIN_OPTION = re.compile(
+    r"\s*(?:(?:ANALY[ZS]E|VERBOSE|EXTENDED|PARTITIONS)\b|FORMAT\s*=?\s*[A-Za-z]+\b)",
+    re.IGNORECASE,
+)
+_READS = ("SELECT", "WITH", "TABLE", "VALUES")
+
+
+def _code_of(sql: str) -> str:
+    """*sql* without its comments, each quoted string or name replaced by ``''``.
+
+    What is left is the statement's own words, so a keyword inside a string
+    or a comment is not mistaken for one, and a comment cannot hide one.
+    """
+    from .binding import sql_tokens
+
+    out: list[str] = []
+    # ``#`` is read as PostgreSQL's operator, not MySQL's comment: the
+    # words of a MySQL ``#`` comment are then checked as if they were SQL,
+    # which can refuse a harmless query but cannot hide a keyword.
+    for token in sql_tokens(sql, dialect="postgresql"):
+        if token.kind == "comment":
+            out.append(" ")
+        elif token.kind in ("quoted", "variable"):
+            out.append(" '' ")
+        else:
+            out.append(token.text)
+    return "".join(out)
+
+
+def _refuse_writes_inside_a_read(sql: str) -> None:
+    """Refuse a SELECT or WITH statement that changes data on the way."""
+    code = _code_of(sql)
+    if match := _ROW_CHANGING.search(code):
+        raise SqlSafetyError(
+            f"Only SELECT queries are allowed: {match.group(0).upper()} inside the "
+            "query changes or locks rows. Write operations require explicit permission."
+        )
+    if _INTO.search(code):
+        raise SqlSafetyError(
+            "Only SELECT queries are allowed: SELECT ... INTO writes the result to "
+            "a table, a file or a variable. Write operations require explicit permission."
+        )
+
+
+def _refuse_explain_that_writes(sql: str) -> None:
+    """Refuse EXPLAIN ANALYZE of anything but a plain read.
+
+    Without ANALYZE the explained statement is planned, not run. With it,
+    the statement runs: it must be a read, and one that changes nothing.
+    """
+    code = _code_of(sql)
+    if not _EXPLAIN_RUNS.search(code):
+        return
+    rest = code.lstrip()[len("EXPLAIN") :]
+    # PostgreSQL: ``EXPLAIN (ANALYZE, BUFFERS) SELECT ...``.
+    if match := _EXPLAIN_OPTION_LIST.match(rest):
+        rest = rest[match.end() :]
+    while match := _EXPLAIN_OPTION.match(rest):
+        rest = rest[match.end() :]
+    explained = re.match(r"[\s(]*([A-Za-z_]+)", rest)
+    keyword = explained.group(1).upper() if explained else ""
+    if keyword not in _READS:
+        raise SqlSafetyError(
+            "EXPLAIN ANALYZE runs the statement it explains, so on a read-only "
+            f"connection it is allowed for SELECT queries only (got {keyword or 'nothing'})."
+        )
+    _refuse_writes_inside_a_read(rest)
+
+
 def _cte_is_select(sql: str) -> bool:
     """Check whether a WITH (CTE) query ends with SELECT rather than a write op."""
-    upper = sql.upper()
+    sql = _code_of(sql)
     # Find the last top-level statement keyword after the CTE definitions
     # Look for the final SELECT/INSERT/UPDATE/DELETE after the last closing paren
     # of the CTE block. A simplified approach: find the last occurrence of

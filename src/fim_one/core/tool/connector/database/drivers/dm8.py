@@ -199,8 +199,14 @@ class DM8Driver(DatabaseDriver):
         timeout_s: int = 30,
         max_rows: int = 1000,
         parameters: Sequence[Any] | None = None,
+        read_only: bool = True,
     ) -> QueryResult:
         """Execute ``sql`` and return a :class:`QueryResult`.
+
+        *read_only* is not enforced here: the connection runs in
+        auto-commit mode and this driver opens no read-only transaction, so
+        a read-only connector relies on the keyword check
+        (``safety.validate_sql``) alone.
 
         *parameters* are bound to the ``?`` placeholders by ``dmPython``.
 

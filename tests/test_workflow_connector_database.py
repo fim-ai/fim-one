@@ -57,10 +57,22 @@ class _Driver:
         self.ran: list[dict[str, Any]] = []
 
     async def execute_query(
-        self, sql: str, *, timeout_s: int, max_rows: int, parameters: list[Any] | None
+        self,
+        sql: str,
+        *,
+        timeout_s: int,
+        max_rows: int,
+        parameters: list[Any] | None,
+        read_only: bool,
     ) -> QueryResult:
         self.ran.append(
-            {"sql": sql, "timeout_s": timeout_s, "max_rows": max_rows, "parameters": parameters}
+            {
+                "sql": sql,
+                "timeout_s": timeout_s,
+                "max_rows": max_rows,
+                "parameters": parameters,
+                "read_only": read_only,
+            }
         )
         return QueryResult(
             columns=["id", "email"], rows=[[1, "a@example.test"]], row_count=1
@@ -186,6 +198,8 @@ class TestTheOwnerRunsADatabaseStep:
         ]
         # The connector's own limits, as in chat.
         assert (driver.ran[0]["max_rows"], driver.ran[0]["timeout_s"]) == (1000, 30)
+        # A read-only connector's query runs in a read-only transaction.
+        assert driver.ran[0]["read_only"] is True
         output = json.loads(await store.get("db_1.output"))
         assert output["row_count"] == 1
         # A column the owner marked as personal data comes back masked.

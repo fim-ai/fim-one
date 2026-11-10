@@ -193,3 +193,102 @@ class TestValidateSqlEdgeCases:
     def test_case_insensitive_select_allowed(self) -> None:
         result = validate_sql("select * from users")
         assert result == "select * from users"
+
+
+# ---------------------------------------------------------------------------
+# Writes dressed as reads
+# ---------------------------------------------------------------------------
+
+
+class TestWritesInsideAReadAreBlocked:
+    """Shapes that start like a read and change data on a read-only connection."""
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "WITH d AS (DELETE FROM users WHERE id = 1 RETURNING id) SELECT * FROM d",
+            "WITH d AS (UPDATE users SET name = 'x' RETURNING id) SELECT * FROM d",
+            "WITH d AS (INSERT INTO users (name) VALUES ('x') RETURNING id) SELECT * FROM d",
+            "with d as (delete from users returning id) select * from d",
+            "WITH d AS (/* hidden */ DELETE /* x */ FROM users RETURNING id) SELECT * FROM d",
+            "WITH o AS (SELECT 1) /* gap */ DELETE FROM users",
+            "WITH o AS (SELECT 1)\n-- gap\nDELETE FROM users",
+            "SELECT id FROM users FOR UPDATE",
+        ],
+    )
+    def test_a_statement_that_changes_or_locks_rows(self, sql: str) -> None:
+        with pytest.raises(SqlSafetyError):
+            validate_sql(sql)
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT * INTO copied FROM users",
+            "SELECT id, name INTO TEMP copied FROM users",
+            "SELECT id INTO @last FROM users LIMIT 1",
+            "WITH o AS (SELECT * FROM users) SELECT * INTO copied FROM o",
+        ],
+    )
+    def test_select_into(self, sql: str) -> None:
+        with pytest.raises(SqlSafetyError, match="INTO"):
+            validate_sql(sql)
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "EXPLAIN ANALYZE DELETE FROM users",
+            "EXPLAIN ANALYSE DELETE FROM users",
+            "explain analyze update users set name = 'x'",
+            "EXPLAIN (ANALYZE) DELETE FROM users",
+            "EXPLAIN (ANALYZE, BUFFERS) INSERT INTO users (name) VALUES ('x')",
+            "EXPLAIN (VERBOSE, ANALYZE TRUE) DELETE FROM users",
+            "EXPLAIN ANALYZE VERBOSE DELETE FROM users",
+            "EXPLAIN /* c */ ANALYZE /* c */ DELETE FROM users",
+            "EXPLAIN ANALYZE CREATE TABLE copied AS SELECT * FROM users",
+            "EXPLAIN ANALYZE REFRESH MATERIALIZED VIEW totals",
+            "EXPLAIN ANALYZE EXECUTE prepared_delete",
+            "EXPLAIN ANALYZE WITH d AS (DELETE FROM users RETURNING id) SELECT * FROM d",
+            "EXPLAIN ANALYZE SELECT * INTO copied FROM users",
+            "EXPLAIN ANALYZE FORMAT=TREE DELETE a FROM users a JOIN users b ON a.id = b.id",
+        ],
+    )
+    def test_explain_analyze_of_anything_but_a_read(self, sql: str) -> None:
+        with pytest.raises(SqlSafetyError):
+            validate_sql(sql)
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "WITH o AS (SELECT id FROM users) SELECT * FROM o",
+            "WITH a AS (SELECT 1), b AS (SELECT 2) SELECT * FROM a, b",
+            "SELECT 'DELETE FROM users' AS example, 'copy INTO x' AS other",
+            "SELECT * FROM users -- UPDATE later\nWHERE id = 1",
+            "SELECT /* INSERT INTO nothing */ id FROM users",
+            'SELECT "update", `delete` FROM audit',
+            "SELECT updated_at, deleted, inserted_by, into_stock FROM users",
+            "SELECT REPLACE(name, 'a', 'b'), INSERT(name, 1, 2, 'x') FROM users",
+            "SELECT $$ DELETE FROM users $$ AS body",
+            "EXPLAIN SELECT * FROM users",
+            "EXPLAIN ANALYZE SELECT * FROM users",
+            "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) SELECT * FROM users",
+            "EXPLAIN ANALYZE VERBOSE SELECT * FROM users",
+            "EXPLAIN FORMAT=JSON SELECT * FROM users",
+            "EXPLAIN ANALYZE WITH o AS (SELECT 1) SELECT * FROM o",
+            "EXPLAIN ANALYZE (SELECT 1)",
+            # Planned, never run.
+            "EXPLAIN DELETE FROM users",
+        ],
+    )
+    def test_reads_are_still_allowed(self, sql: str) -> None:
+        assert validate_sql(sql) == sql
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "WITH d AS (DELETE FROM users WHERE id = 1 RETURNING id) SELECT * FROM d",
+            "EXPLAIN ANALYZE DELETE FROM users",
+            "SELECT * INTO copied FROM users",
+        ],
+    )
+    def test_a_connection_that_allows_writes_is_not_limited(self, sql: str) -> None:
+        assert validate_sql(sql, allow_write=True) == sql

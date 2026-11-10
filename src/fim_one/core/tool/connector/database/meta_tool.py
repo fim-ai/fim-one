@@ -288,6 +288,7 @@ class DatabaseMetaTool(BaseTool):
                 cleaned_sql,
                 timeout_s=stub.query_timeout,
                 max_rows=stub.max_rows,
+                read_only=stub.read_only,
             )
 
             rows, redacted = redact_rows(

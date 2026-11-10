@@ -510,7 +510,7 @@ async def execute_query(
     try:
         driver = await pool.get_driver(connector_id, config)
         result = await driver.execute_query(
-            cleaned_sql, timeout_s=query_timeout, max_rows=max_rows
+            cleaned_sql, timeout_s=query_timeout, max_rows=max_rows, read_only=bool(read_only)
         )
         resp = QueryResponse(
             columns=result.columns,

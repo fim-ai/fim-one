@@ -28,6 +28,7 @@ class PostgreSQLDriver(DatabaseDriver):
     """PostgreSQL driver backed by asyncpg connection pool."""
 
     placeholder_style = "numeric"
+    enforces_read_only = True
     sql_dialect = "postgresql"
 
     def __init__(self, config: dict[str, Any]) -> None:
@@ -150,10 +151,17 @@ class PostgreSQLDriver(DatabaseDriver):
         timeout_s: int = 30,
         max_rows: int = 1000,
         parameters: Sequence[Any] | None = None,
+        read_only: bool = True,
     ) -> QueryResult:
         """Execute a SQL query with timeout and row limit.
 
-        *parameters* are bound to ``$1``, ``$2``, ... by the server.
+        *parameters* are bound to ``$1``, ``$2``, ... by the server. With
+        *read_only* the query runs in a ``READ ONLY`` transaction that is
+        rolled back when the rows have been read. The server refuses
+        INSERT, UPDATE, DELETE, DDL and ``SELECT ... INTO`` in it, inside a
+        CTE or under ``EXPLAIN ANALYZE`` as well. What it does not refuse
+        (PostgreSQL 16 runs ``EXPLAIN ANALYZE CREATE TABLE ... AS`` in a
+        read-only transaction) is undone by the rollback.
         """
         assert self._pool is not None
 
@@ -170,11 +178,29 @@ class PostgreSQLDriver(DatabaseDriver):
                     # Use cursor to cap rows without fetching everything.
                     # asyncpg's stmt.fetch(n) treats n as a bind param, not a limit.
                     records: list[asyncpg.Record] = []
-                    async with conn.transaction():
+                    transaction = conn.transaction(readonly=read_only)
+                    await transaction.start()
+                    try:
                         async for record in stmt.cursor(*args):
                             records.append(record)
                             if len(records) > max_rows:
                                 break
+                    except BaseException:
+                        try:
+                            await transaction.rollback()
+                        except Exception:
+                            # The connection is unusable (cancelled in the
+                            # middle of a query): the pool discards it,
+                            # and the server rolls back with it.
+                            logger.debug("Rollback after a failed query failed", exc_info=True)
+                        raise
+                    else:
+                        if read_only:
+                            # Nothing to keep, and anything the read-only
+                            # mode let through is undone.
+                            await transaction.rollback()
+                        else:
+                            await transaction.commit()
 
                     truncated = len(records) > max_rows
                     if truncated:

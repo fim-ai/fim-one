@@ -24,6 +24,7 @@ class MySQLDriver(DatabaseDriver):
     """MySQL / MariaDB driver backed by aiomysql connection pool."""
 
     placeholder_style = "format"
+    enforces_read_only = True
     sql_dialect = "mysql"
 
     def __init__(self, config: dict[str, Any]) -> None:
@@ -137,8 +138,20 @@ class MySQLDriver(DatabaseDriver):
         timeout_s: int = 30,
         max_rows: int = 1000,
         parameters: Sequence[Any] | None = None,
+        read_only: bool = True,
     ) -> QueryResult:
         """Execute a SQL query with timeout and row limit.
+
+        With *read_only* the query runs between ``START TRANSACTION READ
+        ONLY`` and ``ROLLBACK`` (MySQL 5.6.5+, MariaDB 10.0+): the server
+        refuses INSERT, UPDATE, DELETE and locking reads, under ``EXPLAIN
+        ANALYZE`` and after a CTE as well. A server too old for the
+        statement fails the query rather than running it unguarded.
+
+        It does not stop DDL: MySQL commits the open transaction before a
+        ``CREATE``, ``DROP`` or ``ALTER`` and then runs it. Those can only
+        be a statement's first word, which the keyword check
+        (``safety.validate_sql``) refuses on a read-only connector.
 
         *parameters* fill the ``%s`` placeholders. aiomysql has no
         server-side parameters: it writes each value into the statement as
@@ -156,6 +169,8 @@ class MySQLDriver(DatabaseDriver):
                         (int(timeout_s * 1000),),
                     )
                     try:
+                        if read_only:
+                            await cur.execute("START TRANSACTION READ ONLY")
                         await asyncio.wait_for(
                             cur.execute(sql, tuple(parameters) if parameters else None),
                             timeout=timeout_s,
@@ -186,6 +201,9 @@ class MySQLDriver(DatabaseDriver):
                             execution_time_ms=round(elapsed, 2),
                         )
                     finally:
+                        if read_only:
+                            # Ends the transaction; there is nothing to keep.
+                            await cur.execute("ROLLBACK")
                         await cur.execute("SET SESSION MAX_EXECUTION_TIME = 0")
         except asyncio.TimeoutError:
             raise TimeoutError(f"Query timed out after {timeout_s}s") from None
