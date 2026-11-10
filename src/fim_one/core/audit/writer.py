@@ -238,15 +238,22 @@ def login_outcome(success: bool, failure_reason: str | None) -> str:
     return "success" if success else "failed"
 
 
-_EMAIL_SHAPE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+# A strict address: what a mail system would accept as one, and nothing a
+# password usually is. The local part of ``[A-Za-z0-9._%+-]``, domain labels
+# of ``[A-Za-z0-9-]``, and a top-level domain of two or more letters.
+_STRICT_ADDRESS = re.compile(
+    r"[A-Za-z0-9._%+\-]+@(?:[A-Za-z0-9\-]+\.)+[A-Za-z]{2,}"
+)
 
 
 def typed_identifier(value: str | None) -> str | None:
     """What may be stored of the name typed for an account that does not exist.
 
-    People type a password into the email field. The value is kept when it
-    is shaped like an email address and not like a credential; otherwise
-    only that something was typed, and how long it was.
+    People type a password into the email field, and a password may hold an
+    ``@`` and a dot (``P@ssw0rd.2024``, ``Tr0ub4dor&3@x.y``). The value is
+    kept only when it is strictly an email address and its local part is
+    not shaped like a credential; otherwise only that something was typed,
+    and how long it was.
     """
     if not value:
         return value
@@ -254,7 +261,7 @@ def typed_identifier(value: str | None) -> str | None:
 
     text = str(value)
     local = text.split("@", 1)[0]
-    if len(text) <= 255 and _EMAIL_SHAPE.fullmatch(text) and not value_is_secret_shaped(local):
+    if len(text) <= 255 and _STRICT_ADDRESS.fullmatch(text) and not value_is_secret_shaped(local):
         return text
     return f"(not an email address; {len(text)} characters)"
 
