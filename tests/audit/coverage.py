@@ -44,6 +44,7 @@ PROBE = "probe"
 CODE_DELIVERY = "code_delivery"
 SESSION = "session"
 PAYMENT_REDIRECT = "payment_redirect"
+DISABLED = "disabled"
 EXEMPT_REASONS: dict[str, str] = {
     CONTENT: (
         "edits or removes the caller's own content (a conversation, a document, a "
@@ -57,6 +58,10 @@ EXEMPT_REASONS: dict[str, str] = {
     ),
     CODE_DELIVERY: "sends a one-time code; the action the code confirms is the one recorded",
     SESSION: "session plumbing: renews a token or hands out a short-lived ticket",
+    DISABLED: (
+        "switched off: answers 501 before doing anything. Its record is in place for "
+        "when it returns, and it then moves to AUDITED with a behaviour test"
+    ),
     PAYMENT_REDIRECT: (
         "opens a payment page at the processor; the plan change is recorded when the "
         "processor reports it"
@@ -233,7 +238,6 @@ AUDITED: dict[Route, tuple[str, ...]] = {
     ("POST", "/api/auth/2fa/disable"): ("auth.two_factor_disable",),
     ("POST", "/api/auth/2fa/enable"): ("auth.two_factor_enable",),
     ("DELETE", "/api/auth/account"): ("account.self_delete",),
-    ("POST", "/api/auth/change-email/confirm"): ("auth.email_change",),
     ("POST", "/api/auth/change-password"): ("auth.password_change",),
     ("POST", "/api/auth/forgot-password"): ("auth.password_reset",),
     ("POST", "/api/auth/login"): (LOGIN,),
@@ -396,6 +400,9 @@ EXEMPT: dict[Route, str] = {
     ("POST", "/api/eval/runs"): MODEL_CALL,
     ("POST", "/api/knowledge-bases/{kb_id}/ai/chat"): MODEL_CALL,
     ("POST", "/api/react"): MODEL_CALL,
+    # disabled
+    # ``auth.email_change`` is written by its code, which nothing reaches.
+    ("POST", "/api/auth/change-email/confirm"): DISABLED,
     # probe
     # Named a toggle, it changes nothing: it returns the agent as it is.
     ("PATCH", "/api/admin/agents/{agent_id}/active"): PROBE,
@@ -513,6 +520,12 @@ KNOWN_NON_ROUTE_GAPS: dict[str, Gap] = {
 # Records written outside any route: action -> the test that shows it
 # (``tests/<file>.py::<Class>::<test>``).
 NON_ROUTE_ACTIONS: dict[str, str] = {
+    # In the code of the email-change route, which answers 501 today (EXEMPT,
+    # ``disabled``); the test holds that it does nothing and records nothing.
+    "auth.email_change": (
+        "tests/test_audit_account.py::TestEmailChange::"
+        "test_the_endpoint_is_switched_off_and_records_nothing"
+    ),
     # Written by the confirmation service (a forbidden decision) and by the
     # channel callback (a card click from an unlinked or disabled account).
     "confirmation.decision_denied": (
@@ -671,3 +684,35 @@ OTHER_WRITERS: dict[str, str] = {
 # user and no request (``scripts/``). Not recorded: they are run by whoever
 # operates the instance, on its database directly.
 UNRECORDED_SCRIPTS = ("scripts/seed_workflow_examples.py", "scripts/smoke_feishu_gate.py")
+
+
+# ---------------------------------------------------------------------------
+# Behaviour proof
+# ---------------------------------------------------------------------------
+
+# The tests that drive the application over HTTP and whose requests are
+# observed: for every AUDITED and AUDITED_READS route, one of them must
+# reach the route with a request that succeeds and writes a row of each
+# listed action (``test_route_proofs.py``).
+PROOF_TESTS = (
+    "tests/test_audit_account.py",
+    "tests/test_audit_admin.py",
+    "tests/test_audit_admin_transaction.py",
+    "tests/test_audit_builder_tools.py",
+    "tests/test_audit_channels_credentials.py",
+    "tests/test_audit_confirmations.py",
+    "tests/test_audit_exports.py",
+    "tests/test_audit_organizations.py",
+    "tests/test_audit_plan_changes.py",
+    "tests/test_audit_redact.py",
+    "tests/test_audit_refusals.py",
+    "tests/test_audit_request_meta.py",
+    "tests/test_audit_resources.py",
+    "tests/test_audit_sign_in.py",
+    "tests/test_audit_trigger_keys_schedules.py",
+    "tests/test_csv_safe.py",
+    "tests/audit/test_route_smoke.py",
+)
+# The plain smoke requests, as opposed to the tests written for a group of
+# actions; only used to say how each route is proven.
+SMOKE_TESTS = ("tests/audit/test_route_smoke.py",)

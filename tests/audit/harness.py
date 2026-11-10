@@ -14,6 +14,8 @@ Import the fixtures a test module needs by name::
 from __future__ import annotations
 
 import json
+import os
+import re
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -39,6 +41,9 @@ __all__ = ["CLIENT_IP", "USER_AGENT", "World", "world"]
 CLIENT_IP = "203.0.113.7"
 USER_AGENT = "audit-tests/1.0"
 PASSWORD = "correct horse battery staple"
+# Set to a file path, every request made through :meth:`World.call` appends
+# the route it reached and the audit, sign-in and review rows it wrote.
+OBSERVE_ENV = "AUDIT_OBSERVE_OUT"
 
 
 def _row_text(row: Any) -> str:
@@ -136,12 +141,65 @@ class World:
     ) -> Response:
         """One request, as *by* (or nobody). Fails the test on an unexpected status."""
         sent = {"User-Agent": USER_AGENT, **(self.auth(by) if by else {}), **(headers or {})}
+        observing = os.environ.get(OBSERVE_ENV)
+        before = await self._row_ids() if observing else None
         response = await self.client.request(method, path, headers=sent, **kwargs)
+        if observing and before is not None:
+            await self._observe(observing, method, path, response.status_code, before)
         allowed = (expect,) if isinstance(expect, int) else expect
         assert response.status_code in allowed, (
             f"{method} {path} -> {response.status_code}: {response.text[:500]}"
         )
         return response
+
+    # -- observing which route wrote what (``test_route_proofs.py``) -------------
+
+    async def _row_ids(self) -> set[str]:
+        async with self.factory() as db:
+            ids: set[str] = set()
+            for model in (AuditLog, LoginHistory, ReviewLog):
+                ids |= set((await db.execute(select(model.id))).scalars().all())
+            return ids
+
+    async def _observe(
+        self, out: str, method: str, path: str, status: int, before: set[str]
+    ) -> None:
+        """Append what this request wrote to the observation file, one JSON line."""
+        from tests.audit.coverage import LOGIN, REVIEW_LOG, all_routes
+
+        written: list[str] = []
+        async with self.factory() as db:
+            for model in (AuditLog, LoginHistory, ReviewLog):
+                for row in (await db.execute(select(model))).scalars():
+                    if row.id in before:
+                        continue
+                    if model is AuditLog:
+                        written.append(row.action)
+                    elif model is LoginHistory:
+                        written.append(LOGIN)
+                    else:
+                        written.append(REVIEW_LOG + row.action)
+        bare = path.split("?", 1)[0]
+        template = None
+        for (route_method, route_path), _endpoint in all_routes(self.app):
+            pattern = "^" + re.sub(r"\\\{[^/]+?\\\}", "[^/]+", re.escape(route_path)) + "$"
+            if route_method == method.upper() and re.match(pattern, bare):
+                # A literal route wins over one with a parameter in its place.
+                if template is None or "{" not in route_path:
+                    template = route_path
+        with open(out, "a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {
+                        "test": os.environ.get("PYTEST_CURRENT_TEST", "").split(" ")[0],
+                        "method": method.upper(),
+                        "route": template,
+                        "status": status,
+                        "written": written,
+                    }
+                )
+                + "\n"
+            )
 
     # -- what was recorded -------------------------------------------------------
 
