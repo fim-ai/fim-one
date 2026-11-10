@@ -465,6 +465,7 @@ async def update_connector(
 ) -> ApiResponse:
     connector = await _get_owned_connector(connector_id, current_user.id, db)
     before = snapshot(connector, CONNECTOR_AUDITED_FIELDS)
+    db_config_before = dict(connector.db_config or {})
     # Secrets replaced by this update; recorded as changed, never by value.
     secrets_replaced: list[str] = []
 
@@ -526,8 +527,11 @@ async def update_connector(
     if "db_config" in update_data:
         from sqlalchemy.orm.attributes import flag_modified
         flag_modified(connector, "db_config")
-        # Where the database is and how it is signed in to.
-        secrets_replaced.append("db_config")
+        # Where the database is and how it is signed in to. The form sends
+        # the whole configuration with every save: recorded only when
+        # something in it is different (a re-entered password counts).
+        if dict(connector.db_config or {}) != db_config_before:
+            secrets_replaced.append("db_config")
     if "auth_config" in update_data:
         from sqlalchemy.orm.attributes import flag_modified
         flag_modified(connector, "auth_config")

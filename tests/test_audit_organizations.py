@@ -161,3 +161,36 @@ class TestMembers:
         )
 
         assert await world.events() == []
+
+
+class TestFreeTextAndAddresses:
+    async def test_a_description_and_an_icon_are_recorded_as_changed_not_quoted(
+        self, world: World
+    ) -> None:
+        """The description's text and the icon's address, signed query
+        included, were stored before and after."""
+        alice = await world.user("alice")
+        acme = await world.org("Acme", alice)
+
+        await world.call(
+            "PUT",
+            f"/api/orgs/{acme.id}",
+            by=alice,
+            json={
+                "description": "Internal: the merger closes in March.",
+                "icon": "https://cdn.example.test/i.png?sig=s1gnedQueryValue",
+                "name": "Acme Ltd",
+            },
+        )
+
+        row = await world.one(
+            "org.update",
+            actor=alice,
+            org=acme,
+            changes={
+                "description": {"changed": True},
+                "icon": {"changed": True},
+                "name": {"from": "Acme", "to": "Acme Ltd"},
+            },
+        )
+        world.assert_absent(row, "merger", "s1gnedQueryValue", "cdn.example.test")

@@ -216,6 +216,12 @@ async def _ensure_unique_slug(slug: str, db: AsyncSession, exclude_id: str | Non
 # ---------------------------------------------------------------------------
 
 
+# Fields of an organization whose change is recorded without the value: a
+# description is free text, an icon is an address that can carry a signed
+# query, and the settings are a structure.
+ORG_UNQUOTED_FIELDS = ("description", "icon", "settings")
+
+
 async def _record_org(
     db: AsyncSession,
     actor: User,
@@ -416,7 +422,7 @@ async def update_org(
         setattr(org, field, value)
 
     await _record_org(
-        db, current_user, actions.ORG_UPDATE, org, changes=diff_changes(before, update_data)
+        db, current_user, actions.ORG_UPDATE, org, changes=diff_changes(before, update_data, secret_fields=ORG_UNQUOTED_FIELDS)
     )
     await db.commit()
 
@@ -844,7 +850,7 @@ async def admin_update_org(
         setattr(org, field, value)
 
     await _record_org(
-        db, _admin, actions.ORG_ADMIN_UPDATE, org, changes=diff_changes(before, update_data)
+        db, _admin, actions.ORG_ADMIN_UPDATE, org, changes=diff_changes(before, update_data, secret_fields=ORG_UNQUOTED_FIELDS)
     )
     await db.commit()
     await db.refresh(org)

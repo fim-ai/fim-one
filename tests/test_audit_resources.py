@@ -396,6 +396,53 @@ class TestConnectorSafetySettings:
         world.assert_absent(row, TOKEN, "user:pw", "abc123")
 
 
+class TestDatabaseConnectorSettings:
+    CONFIG = {"driver": "postgresql", "host": "db.example.test", "port": 5432, "database": "d",
+              "username": "u"}  # fmt: skip
+
+    async def test_a_save_that_sends_the_same_configuration_records_nothing(
+        self, world: World, alice: Any
+    ) -> None:
+        """The form sends the configuration with every save; each one was
+        recorded as a changed database connection."""
+        from fim_one.core.security.encryption import encrypt_db_config
+
+        await world.add(
+            Connector(
+                id="db-1",
+                user_id=alice.id,
+                name="warehouse",
+                type="database",
+                db_config=encrypt_db_config({**self.CONFIG, "password": "db-Passw0rd-1"}),
+            )
+        )
+
+        pool = SimpleNamespace(close_driver=AsyncMock())
+        with patch(
+            "fim_one.core.tool.connector.database.pool.ConnectionPoolManager.get_instance",
+            return_value=pool,
+        ):
+            await world.call(
+                "PUT", "/api/connectors/db-1", by=alice,
+                json={"db_config": {**self.CONFIG, "password": "***"}, "description": "x"},
+            )
+            assert await world.events("connector.update") == []
+
+            await world.call(
+                "PUT", "/api/connectors/db-1", by=alice,
+                json={"db_config": {**self.CONFIG, "host": "db2.example.test",
+                                    "password": "db-Passw0rd-2"}},
+            )
+
+        row = await world.one(
+            "connector.update",
+            actor=alice,
+            target=("connector", "db-1"),
+            changes={"db_config": {"changed": True}},
+        )
+        world.assert_absent(row, "db-Passw0rd-2", "db2.example.test")
+
+
 class TestConnectorActions:
     async def test_create_change_and_delete(self, world: World, alice: Any) -> None:
         connector_id = await _create(world, "connector", alice)
