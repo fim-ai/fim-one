@@ -94,7 +94,8 @@ export default function WorkflowEditorPage() {
     readCanvas,
   })
   const { workflow, setWorkflow, isLoadingWorkflow, discardChanges } = doc
-  const run = useWorkflowRun(workflow?.id ?? null)
+  // A run executes the stored workflow: what is on the canvas is saved first.
+  const run = useWorkflowRun(workflow?.id ?? null, doc.saveBeforeRun)
   const publishing = useWorkflowPublishing(workflow, setWorkflow)
   // With unsaved changes, a link to another page asks before it is followed.
   const leaveGuard = useLeaveGuard(doc.hasUnsavedChanges)

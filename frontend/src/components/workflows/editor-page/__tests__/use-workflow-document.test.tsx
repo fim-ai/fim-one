@@ -931,4 +931,101 @@ describe("useWorkflowDocument", () => {
       expect(api.update.mock.calls[0][1].blueprint.viewport).toEqual({ x: -80, y: 32, zoom: 0.5 })
     })
   })
+
+  // Run executes what the server holds. Clicked within the automatic save's
+  // five seconds, it ran the graph as it was before the last edits.
+  describe("saving before a run", () => {
+    it("saves an edit that was still waiting for the automatic save, and says the run may start", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      act(() => result.current.changeBlueprint(canvasOf("second")))
+      let ready: boolean | undefined
+      await act(async () => {
+        ready = await result.current.saveBeforeRun()
+      })
+      expect(ready).toBe(true)
+      expect(api.update).toHaveBeenCalledTimes(1)
+      expect(api.update.mock.calls[0][1].blueprint).toEqual(canvasOf("second"))
+      expect(result.current.isDirty).toBe(false)
+    })
+
+    it("saves an edit the canvas has not reported yet", async () => {
+      const readCanvas = vi.fn(() => canvasOf("typed a moment ago"))
+      const { result } = await mountDocument(canvasOf("first"), { readCanvas })
+      let ready: boolean | undefined
+      await act(async () => {
+        ready = await result.current.saveBeforeRun()
+      })
+      expect(ready).toBe(true)
+      expect(api.update.mock.calls[0][1].blueprint).toEqual(canvasOf("typed a moment ago"))
+    })
+
+    it("says the run must not start when the save fails, and shows why", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      act(() => result.current.changeBlueprint(canvasOf("second")))
+      api.update.mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      let ready: boolean | undefined
+      await act(async () => {
+        ready = await result.current.saveBeforeRun()
+      })
+      expect(ready).toBe(false)
+      expect(toast.error).toHaveBeenLastCalledWith("workflowUpdateFailed")
+      expect(result.current.isDirty).toBe(true)
+    })
+
+    it("sends nothing when everything is saved", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      let ready: boolean | undefined
+      await act(async () => {
+        ready = await result.current.saveBeforeRun()
+      })
+      expect(ready).toBe(true)
+      expect(api.update).not.toHaveBeenCalled()
+    })
+
+    it("waits for a save already on its way and does not send the same thing twice", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      vi.useFakeTimers()
+      act(() => result.current.changeBlueprint(canvasOf("second")))
+      const auto = deferred<WorkflowResponse>()
+      api.update.mockReturnValueOnce(auto.promise)
+      await act(() => vi.advanceTimersByTimeAsync(5000))
+      expect(api.update).toHaveBeenCalledTimes(1)
+
+      let settled = false
+      let pending!: Promise<boolean>
+      act(() => {
+        pending = result.current.saveBeforeRun()
+        void pending.then(() => {
+          settled = true
+        })
+      })
+      await act(() => vi.advanceTimersByTimeAsync(50))
+      expect(settled).toBe(false)
+      let ready: boolean | undefined
+      await act(async () => {
+        auto.resolve(workflowWith(canvasOf("second")))
+        ready = await pending
+      })
+      expect(ready).toBe(true)
+      expect(api.update).toHaveBeenCalledTimes(1)
+    })
+
+    it("when the save on its way fails, saves again itself and reports that outcome", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      vi.useFakeTimers()
+      act(() => result.current.changeBlueprint(canvasOf("second")))
+      const auto = deferred<WorkflowResponse>()
+      api.update.mockReturnValueOnce(auto.promise)
+      await act(() => vi.advanceTimersByTimeAsync(5000))
+      let ready: boolean | undefined
+      await act(async () => {
+        const pending = result.current.saveBeforeRun()
+        auto.reject(new TypeError("Failed to fetch"))
+        ready = await pending
+      })
+      expect(ready).toBe(true)
+      expect(api.update).toHaveBeenCalledTimes(2)
+      expect(api.update.mock.calls[1][1].blueprint).toEqual(canvasOf("second"))
+    })
+  })
 })

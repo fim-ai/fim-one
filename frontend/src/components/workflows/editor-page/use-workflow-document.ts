@@ -214,7 +214,7 @@ export function useWorkflowDocument({
   }, [])
 
   // `runSave` and `scheduleAutoSave` call each other; the timer goes through a ref.
-  const runSaveRef = useRef<(mode: "manual" | "auto") => Promise<void>>(async () => {})
+  const runSaveRef = useRef<(mode: "manual" | "auto") => Promise<boolean>>(async () => false)
 
   /** (Re)start the pause after which the document saves itself. */
   const scheduleAutoSave = useCallback(() => {
@@ -233,11 +233,15 @@ export function useWorkflowDocument({
     else cancelAutoSave()
   }, [isUnsaved, hasUnsavedEdits, scheduleAutoSave, cancelAutoSave])
 
+  /**
+   * Resolves true when the server accepted the save (or an automatic save
+   * had nothing to send), false when it failed or could not be made.
+   */
   const runSave = useCallback(
-    async (mode: "manual" | "auto") => {
+    async (mode: "manual" | "auto"): Promise<boolean> => {
       // Whichever way a save was asked for, the pending automatic one is this one.
       cancelAutoSave()
-      if (suspendedRef.current) return
+      if (suspendedRef.current) return false
       const manual = mode === "manual"
       if (manual) {
         manualSavesRef.current += 1
@@ -247,9 +251,9 @@ export function useWorkflowDocument({
         // One request at a time: the server must receive saves in the order
         // they were made, and each must send the document as it then is.
         while (inFlightRef.current) await inFlightRef.current
-        if (suspendedRef.current) return
+        if (suspendedRef.current) return false
         const wf = workflowRef.current
-        if (!wf) return
+        if (!wf) return false
 
         // Edits the canvas has not reported yet are part of what is saved.
         const canvas = readCanvasRef.current?.()
@@ -261,7 +265,7 @@ export function useWorkflowDocument({
         // took the edit) does not send anything.
         if (!manual && !isUnsaved()) {
           setIsDirty(false)
-          return
+          return true
         }
 
         const epoch = epochRef.current
@@ -273,6 +277,7 @@ export function useWorkflowDocument({
           description: wf.description,
           icon: wf.icon,
         }
+        let accepted = false
         const request = (async () => {
           try {
             const updated = await workflowApi.update(wf.id, {
@@ -286,6 +291,7 @@ export function useWorkflowDocument({
             // The document was replaced while this was in flight: the answer
             // is about a document that is no longer being edited.
             if (epochRef.current !== epoch) return
+            accepted = true
             savedRef.current = sent
             setWorkflow((local) => (local ? keepingLocalEdits(updated, local) : local))
             setLastSavedAt(new Date())
@@ -311,6 +317,7 @@ export function useWorkflowDocument({
         })()
         inFlightRef.current = request
         await request
+        return accepted
       } finally {
         if (manual) {
           manualSavesRef.current -= 1
@@ -323,7 +330,31 @@ export function useWorkflowDocument({
   runSaveRef.current = runSave
 
   /** Save now (the Save button and Cmd+S). */
-  const save = useCallback(() => runSave("manual"), [runSave])
+  const save = useCallback(async () => {
+    await runSave("manual")
+  }, [runSave])
+
+  /**
+   * A run executes the workflow the server holds, not the canvas. Before
+   * one starts, whatever is not saved yet is saved: an edit waiting out the
+   * automatic save's pause, one the canvas has not even reported, a save
+   * already on its way. Resolves true when the server holds what was on
+   * screen, false when the save failed (the failure is shown as for Save);
+   * the run must not start then.
+   */
+  const saveBeforeRun = useCallback(async (): Promise<boolean> => {
+    // Nothing may be saved (a version restore is under way): the run takes
+    // what the server holds.
+    if (suspendedRef.current) return true
+    while (inFlightRef.current) await inFlightRef.current
+    const canvas = readCanvasRef.current?.()
+    if (canvas) {
+      blueprintRef.current = withVariablesOf(canvas, blueprintRef.current)
+      trackNodeTypes(blueprintRef.current)
+    }
+    if (!isUnsaved()) return true
+    return runSave("manual")
+  }, [blueprintRef, trackNodeTypes, isUnsaved, runSave])
 
   // Leaving the page: nothing may be saved from here on.
   useEffect(() => {
@@ -690,6 +721,7 @@ export function useWorkflowDocument({
     changeDescription,
     changeStatus,
     save,
+    saveBeforeRun,
     changeBlueprint,
     changeVariables,
     exportToFile,

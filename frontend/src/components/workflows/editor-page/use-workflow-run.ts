@@ -17,8 +17,13 @@ import {
  * One interactive run of the workflow: the run panel being open, the event
  * stream, and what it has reported so far (per-node results, final outputs
  * or error, duration, the execution log).
+ *
+ * The server runs the workflow it has stored. `beforeRun` is awaited before
+ * each run is requested, to save what is on the canvas first; when it
+ * resolves false (the save failed) the run does not start and the panel
+ * goes back to its input form.
  */
-export function useWorkflowRun(workflowId: string | null) {
+export function useWorkflowRun(workflowId: string | null, beforeRun?: () => Promise<boolean>) {
   const tError = useTranslations("errors")
 
   const [isRunning, setIsRunning] = useState(false)
@@ -31,6 +36,11 @@ export function useWorkflowRun(workflowId: string | null) {
   // until then.
   const [totalNodeCount, setTotalNodeCount] = useState<number | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  // Counts run attempts and cancellations: an attempt that was cancelled or
+  // superseded while `beforeRun` was pending does not go on to run.
+  const attemptRef = useRef(0)
+  const beforeRunRef = useRef(beforeRun)
+  beforeRunRef.current = beforeRun
   const [logEvents, setLogEvents] = useState<WorkflowLogEvent[]>([])
 
   /** Open the run panel on its input form. */
@@ -64,6 +74,7 @@ export function useWorkflowRun(workflowId: string | null) {
         abortRef.current.abort()
       }
 
+      const attempt = ++attemptRef.current
       const controller = new AbortController()
       abortRef.current = controller
       setIsRunning(true)
@@ -73,6 +84,24 @@ export function useWorkflowRun(workflowId: string | null) {
       setRunDuration(null)
       setTotalNodeCount(null)
       setLogEvents([])
+
+      if (beforeRunRef.current) {
+        let ready = false
+        try {
+          ready = await beforeRunRef.current()
+        } catch {
+          ready = false
+        }
+        // Cancelled, or started again, while that was pending.
+        if (attemptRef.current !== attempt) return
+        if (!ready) {
+          // Not run. Whoever refused has said why; back to the input form.
+          abortRef.current = null
+          setNodeResults(null)
+          setIsRunning(false)
+          return
+        }
+      }
 
       try {
         const token = typeof window !== "undefined" ? localStorage.getItem(ACCESS_TOKEN_KEY) : null
@@ -164,6 +193,7 @@ export function useWorkflowRun(workflowId: string | null) {
   )
 
   const cancelRun = useCallback(() => {
+    attemptRef.current += 1
     if (abortRef.current) {
       abortRef.current.abort()
       abortRef.current = null

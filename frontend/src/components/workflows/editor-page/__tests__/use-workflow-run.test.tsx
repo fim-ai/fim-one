@@ -97,4 +97,75 @@ describe("useWorkflowRun", () => {
     expect(result.current.finalError).toBe("Workflow is already running")
     expect(result.current.isRunning).toBe(false)
   })
+
+  // The server runs the stored workflow, so what is on the canvas has to be
+  // saved before the run is requested.
+  describe("saving before the run", () => {
+    const finishedRun = () =>
+      sseResponse(event("run_started", { node_count: 1 }) + event("run_completed", { outputs: {} }) + event("end", {}))
+
+    it("requests the run only after the save has finished", async () => {
+      fetchMock.mockResolvedValue(finishedRun())
+      let saved!: (ok: boolean) => void
+      const beforeRun = vi.fn(() => new Promise<boolean>((resolve) => (saved = resolve)))
+      const { result } = renderHook(() => useWorkflowRun("wf1", beforeRun))
+      let started!: Promise<void>
+      act(() => {
+        started = result.current.startRun({ topic: "x" })
+      })
+      expect(beforeRun).toHaveBeenCalledTimes(1)
+      // Busy from the click on, so that the form cannot be sent twice.
+      expect(result.current.isRunning).toBe(true)
+      expect(fetchMock).not.toHaveBeenCalled()
+
+      await act(async () => {
+        saved(true)
+        await started
+      })
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      await waitFor(() => expect(result.current.isRunning).toBe(false))
+      expect(result.current.totalNodeCount).toBe(1)
+    })
+
+    it("does not run when the save failed, and goes back to the input form", async () => {
+      fetchMock.mockResolvedValue(finishedRun())
+      const { result } = renderHook(() => useWorkflowRun("wf1", async () => false))
+      await act(() => result.current.startRun({}))
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(result.current.isRunning).toBe(false)
+      expect(result.current.nodeResults).toBeNull()
+      expect(result.current.finalError).toBeNull()
+    })
+
+    it("does not run when the save threw", async () => {
+      const { result } = renderHook(() =>
+        useWorkflowRun("wf1", async () => {
+          throw new Error("boom")
+        }),
+      )
+      await act(() => result.current.startRun({}))
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(result.current.isRunning).toBe(false)
+    })
+
+    it("does not run when it was cancelled while the save was pending", async () => {
+      fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({}) })
+      let saved!: (ok: boolean) => void
+      const { result } = renderHook(() =>
+        useWorkflowRun("wf1", () => new Promise<boolean>((resolve) => (saved = resolve))),
+      )
+      let started!: Promise<void>
+      act(() => {
+        started = result.current.startRun({})
+      })
+      act(() => result.current.cancelRun())
+      expect(result.current.isRunning).toBe(false)
+      await act(async () => {
+        saved(true)
+        await started
+      })
+      const runRequests = fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/run"))
+      expect(runRequests).toHaveLength(0)
+    })
+  })
 })
