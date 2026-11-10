@@ -1221,6 +1221,22 @@ async def _admit_turn(
     return agent_cfg
 
 
+@dataclasses.dataclass(frozen=True)
+class _AdmittedTurn:
+    """A chat turn that passed :func:`_admit_turn`, and who it acts as.
+
+    Auto mode admits the turn before it asks a model how to route, then
+    hands this to the endpoint it routes to, so the user is resolved and
+    the turn admitted once.
+    """
+
+    principal: Principal
+    system_instructions: str | None
+    preferred_language: str | None
+    timezone: str | None
+    agent_cfg: dict[str, Any] | None
+
+
 async def _resolve_llm(
     agent_cfg: dict[str, Any] | None,
     db: AsyncSession,
@@ -2810,6 +2826,15 @@ async def react_endpoint(
     body : ChatStreamRequest
         JSON request body containing the query and optional parameters.
     """
+    return await _react_turn(request, body, None)
+
+
+async def _react_turn(
+    request: Request,
+    body: ChatStreamRequest,
+    admitted: _AdmittedTurn | None,
+) -> StreamingResponse:
+    """A ReAct turn. *admitted* is set when Auto mode already admitted it."""
     q = body.q
     conversation_id = body.conversation_id
     agent_id = body.agent_id
@@ -2831,12 +2856,19 @@ async def react_endpoint(
         )
 
     # -- Pre-stream resolution (before StreamingResponse) -------------------
-    (
-        principal,
-        user_system_instructions,
-        preferred_language,
-        user_timezone,
-    ) = await _resolve_user(token)
+    principal: Principal | None
+    if admitted is not None:
+        principal = admitted.principal
+        user_system_instructions = admitted.system_instructions
+        preferred_language = admitted.preferred_language
+        user_timezone = admitted.timezone
+    else:
+        (
+            principal,
+            user_system_instructions,
+            preferred_language,
+            user_timezone,
+        ) = await _resolve_user(token)
     if principal is None:
         raise AppError("authentication_required", status_code=401)
     current_user_id: str = principal.user_id
@@ -2852,7 +2884,12 @@ async def react_endpoint(
     if not user_timezone:
         user_timezone = request.headers.get("X-Timezone") or None
 
-    agent_cfg = await _admit_turn(principal, conversation_id, agent_id)
+    # Auto mode admitted the turn before routing it here; once is enough.
+    agent_cfg = (
+        admitted.agent_cfg
+        if admitted is not None
+        else await _admit_turn(principal, conversation_id, agent_id)
+    )
     # The context this turn's resources are used and recorded under.
     turn_ctx = agent_runtime.call_context(
         principal, agent_cfg, conversation_id=conversation_id
@@ -4111,6 +4148,15 @@ async def dag_endpoint(
     body : ChatStreamRequest
         JSON request body containing the query and optional parameters.
     """
+    return await _dag_turn(request, body, None)
+
+
+async def _dag_turn(
+    request: Request,
+    body: ChatStreamRequest,
+    admitted: _AdmittedTurn | None,
+) -> StreamingResponse:
+    """A plan (DAG) turn. *admitted* is set when Auto mode already admitted it."""
     q = body.q
     conversation_id = body.conversation_id
     agent_id = body.agent_id
@@ -4120,12 +4166,19 @@ async def dag_endpoint(
     dag_doc_mode = body.doc_mode
 
     # -- Pre-stream resolution ----------------------------------------------
-    (
-        principal,
-        user_system_instructions,
-        preferred_language,
-        user_timezone,
-    ) = await _resolve_user(token)
+    principal: Principal | None
+    if admitted is not None:
+        principal = admitted.principal
+        user_system_instructions = admitted.system_instructions
+        preferred_language = admitted.preferred_language
+        user_timezone = admitted.timezone
+    else:
+        (
+            principal,
+            user_system_instructions,
+            preferred_language,
+            user_timezone,
+        ) = await _resolve_user(token)
     if principal is None:
         raise AppError("authentication_required", status_code=401)
     current_user_id: str = principal.user_id
@@ -4138,7 +4191,12 @@ async def dag_endpoint(
     if not user_timezone:
         user_timezone = request.headers.get("X-Timezone") or None
 
-    agent_cfg = await _admit_turn(principal, conversation_id, agent_id)
+    # Auto mode admitted the turn before routing it here; once is enough.
+    agent_cfg = (
+        admitted.agent_cfg
+        if admitted is not None
+        else await _admit_turn(principal, conversation_id, agent_id)
+    )
     # The context this turn's resources are used and recorded under.
     turn_ctx = agent_runtime.call_context(
         principal, agent_cfg, conversation_id=conversation_id
@@ -5408,14 +5466,24 @@ async def auto_endpoint(
     token = body.token
 
     # -- Pre-stream: resolve auth to get fast_llm for classification --------
-    principal, _, _, _ = await _resolve_user(token)
+    principal, system_instructions, preferred_language, user_timezone = await _resolve_user(
+        token
+    )
     if principal is None:
         raise AppError("authentication_required", status_code=401)
 
-    # The same admission as the endpoint this turn is routed to, before the
+    # The admission of the endpoint this turn is routed to, before the
     # classification below spends a model call: the conversation is the
-    # caller's, plan and quota allow the turn, the agent is usable.
+    # caller's, plan and quota allow the turn, the agent is usable. The
+    # routed endpoint is handed the result and does not admit again.
     agent_cfg = await _admit_turn(principal, body.conversation_id, body.agent_id)
+    admitted = _AdmittedTurn(
+        principal=principal,
+        system_instructions=system_instructions,
+        preferred_language=preferred_language,
+        timezone=user_timezone,
+        agent_cfg=agent_cfg,
+    )
 
     # Determine execution mode
     from fim_one.core.planner.router import classify_execution_mode
@@ -5446,9 +5514,9 @@ async def auto_endpoint(
 
     # Wrap the inner endpoint's StreamingResponse to prepend the routing event
     if mode == "dag":
-        inner_response = await dag_endpoint(request, body)
+        inner_response = await _dag_turn(request, body, admitted)
     else:
-        inner_response = await react_endpoint(request, body)
+        inner_response = await _react_turn(request, body, admitted)
 
     async def auto_generate() -> AsyncGenerator[str, None]:
         # Emit routing decision first

@@ -313,3 +313,46 @@ class TestAutoIsAdmittedBeforeItClassifies:
         assert resp.status_code == 429, resp.text
         assert resp.json()["error_code"] == "token_quota_exceeded"
         assert asked == [] and loops == []
+
+    @pytest.mark.parametrize("routed_to", ["react", "dag"])
+    async def test_the_turn_is_admitted_once_and_in_order_before_it_is_routed(
+        self,
+        app: FastAPI,
+        world: World,
+        loops: list[dict[str, Any]],
+        monkeypatch: pytest.MonkeyPatch,
+        routed_to: str,
+    ) -> None:
+        """The routed endpoint resolved the user and admitted the turn a second time."""
+        from fim_one.core.planner import router as router_mod
+        from fim_one.web.api import chat as chat_mod
+        from fim_one.web.services import agent_runtime
+
+        seen: list[str] = []
+
+        def _spy(module: Any, name: str, label: str) -> None:
+            original = getattr(module, name)
+
+            async def _recorded(*args: Any, **kwargs: Any) -> Any:
+                seen.append(label)
+                return await original(*args, **kwargs)
+
+            monkeypatch.setattr(module, name, _recorded)
+
+        async def _classify(_query: str, _llm: Any) -> Any:
+            seen.append("route")
+            return router_mod.RouteDecision(mode=routed_to, reasoning="scripted")
+
+        _spy(chat_mod, "_resolve_user", "user")
+        _spy(chat_mod, "_validate_conversation_ownership", "conversation")
+        _spy(chat_mod, "check_quota", "quota")
+        _spy(agent_runtime, "resolve_agent", "agent")
+        monkeypatch.setattr(router_mod, "classify_execution_mode", _classify)
+
+        body = await _turn(app, "/api/auto", world, world.agent)
+
+        events = _events(body)
+        assert events[0] == ("routing", {"mode": routed_to, "reasoning": "scripted"})
+        assert "done" in [name for name, _ in events], body[-2000:]
+        assert loops and all(loop["agent_id"] == world.agent for loop in loops)
+        assert seen == ["user", "conversation", "quota", "agent", "route"]
