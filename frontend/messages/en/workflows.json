@@ -462,7 +462,7 @@
   "configPromptMessage": "Review Prompt",
   "configPromptMessagePlaceholder": "Describe what the reviewer should check...",
   "configAssignee": "Assignee",
-  "configAssigneePlaceholder": "Username or email (optional)",
+  "configAssigneePlaceholder": "User ID, username or email (optional)",
   "configTimeoutHours": "Timeout (hours)",
 
   "nodeType_mcp": "MCP Tool",

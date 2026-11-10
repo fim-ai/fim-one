@@ -81,6 +81,7 @@ from fim_one.core.assembly.toolset import (
     kb_binding,
     mcp_tools,
 )
+from fim_one.core.assembly.errors import AGENT_UNAVAILABLE, AssemblyRefusal
 from fim_one.core.assembly.visibility import ResourceKind, authorize_use, list_usable
 from fim_one.core.agent.workspace import AgentWorkspace
 from fim_one.core.agent.guardrail import (
@@ -256,6 +257,42 @@ def _emit(sse_events: list[dict[str, Any]], event: str, data: Any) -> str:
     """
     entry = _append_event(sse_events, event, data)
     return _sse(event, {"cursor": entry["cursor"], "data": data})
+
+
+def _start_confirmation_pump(
+    agent_id: str | None,
+    conversation_id: str | None,
+    user_id: str | None,
+    progress_queue: "asyncio.Queue[str]",
+    sse_events: list[dict[str, Any]],
+) -> "asyncio.Task[None] | None":
+    """Start the pump that puts this turn's confirmation and question cards on its stream.
+
+    One entry for the ReAct and the DAG handler, so both listen on the
+    scope the bridge files a request under: the agent, or the
+    conversation for a chat with no agent. Events already queued for that
+    scope were left by an earlier turn and are discarded first; a turn
+    shows only the requests it raises. Returns ``None`` when the turn has
+    no addressable scope (no agent and no conversation, or no user).
+    """
+    from fim_one.web.confirmation_sse import discard_pending, scope_for
+
+    scope = scope_for(str(agent_id or ""), str(conversation_id or ""))
+    user = str(user_id or "")
+    if not scope or not user:
+        return None
+    stale = discard_pending(scope, user)
+    if stale:
+        logger.info(
+            "Discarded %d confirmation event(s) left over from an earlier turn "
+            "(scope=%s user=%s)",
+            stale,
+            scope,
+            user,
+        )
+    return asyncio.create_task(
+        _pump_inline_confirmations(scope, user, progress_queue, sse_events)
+    )
 
 
 async def _pump_inline_confirmations(
@@ -1213,31 +1250,40 @@ async def _resolve_agent_config(
     agent_id: str | None,
     conversation_id: str | None,
     user_id: str | None = None,
+    *,
+    refuse_unavailable: bool = False,
 ) -> dict[str, Any] | None:
     """Load agent configuration from DB.
 
     Resolution priority: explicit ``agent_id`` > conversation's bound agent.
-    When *user_id* is provided, the agent must belong to that user (returns
-    ``None`` otherwise) to prevent cross-user agent access.
+    When *user_id* is provided, the agent must be usable by that user: one
+    they own or are subscribed to, and switched on.
+
+    An agent that is not usable is, with ``refuse_unavailable``, a refusal
+    (the chat endpoints): ``agent_unavailable`` (409) when the conversation
+    is bound to it, so the user is told to start a new conversation;
+    ``resource_not_found`` / ``resource_inactive`` for an agent named
+    explicitly. Without it, ``None``: the caller carries on with no agent
+    (the composer's vision check; the workflow Agent step until C1 phase 4).
+
     Returns a dict with ``instructions``, ``tool_categories``,
     ``model_config_json``, ``kb_ids``, and ``grounding_config``, or ``None``.
     """
     from fim_one.db import create_session
     from fim_one.db.models import Agent, Conversation
 
-    resolved_id = agent_id
-
-    if not resolved_id and conversation_id:
+    async def _bound_agent_id() -> str | None:
+        if not conversation_id:
+            return None
         async with create_session() as session:
             conv_result = await session.execute(
                 sa_select(Conversation.agent_id).where(
                     Conversation.id == conversation_id,
                 )
             )
-            row = conv_result.scalar_one_or_none()
-            if row:
-                resolved_id = row
+            return conv_result.scalar_one_or_none() or None
 
+    resolved_id = agent_id or await _bound_agent_id()
     if not resolved_id:
         return None
 
@@ -1249,10 +1295,32 @@ async def _resolve_agent_config(
                 ResourceKind.AGENT,
                 [resolved_id],
             )
-            # Not applied here yet: a switched-off agent still answers
-            # (registered in tests/assembly/matrix.py).
-            _agents = _agent_decision.including("resource_inactive")
-            agent = _agents[0] if _agents else None
+            if not refuse_unavailable:
+                # The workflow Agent step keeps running a switched-off agent
+                # until C1 phase 4 (B16; registered in tests/assembly/matrix.py).
+                _agents = _agent_decision.including("resource_inactive")
+                agent = _agents[0] if _agents else None
+            elif _agent_decision.usable:
+                agent = _agent_decision.usable[0]
+            else:
+                refusal = _agent_decision.refused.get(resolved_id) or AssemblyRefusal(
+                    "resource_not_found", 404
+                )
+                # The explicit agent and the conversation's own are told
+                # apart only now, so a turn that goes through costs no
+                # extra query.
+                if not agent_id or await _bound_agent_id() == resolved_id:
+                    # The conversation's own agent: nothing the user can do
+                    # in this conversation puts it back.
+                    raise AssemblyRefusal(
+                        AGENT_UNAVAILABLE,
+                        409,
+                        "The agent this conversation uses is no longer available to you "
+                        "(unpublished, unsubscribed or switched off). Start a new "
+                        "conversation to continue.",
+                        {"agent_id": resolved_id, "reason": refusal.error_code},
+                    )
+                raise refusal
         else:
             agent_result = await session.execute(sa_select(Agent).where(Agent.id == resolved_id))
             agent = agent_result.scalar_one_or_none()
@@ -1274,6 +1342,25 @@ async def _resolve_agent_config(
             "compact_instructions": agent.compact_instructions,
             "suggest_followups": bool(getattr(agent, "suggest_followups", False)),
         }
+
+
+async def _admit_turn(
+    user_id: str, conversation_id: str | None, agent_id: str | None
+) -> dict[str, Any] | None:
+    """The checks a chat turn passes before it streams; returns the agent config.
+
+    The conversation is confirmed to be the caller's before its agent is
+    looked at: resolving the agent of someone else's conversation would
+    answer ``agent_unavailable`` with that agent's id where "not found" is
+    due. The quota check and the agent resolution then run together.
+    """
+    if conversation_id:
+        await _validate_conversation_ownership(conversation_id, user_id)
+    _, agent_cfg = await asyncio.gather(
+        _check_token_quota(user_id),
+        _resolve_agent_config(agent_id, conversation_id, user_id=user_id, refuse_unavailable=True),
+    )
+    return agent_cfg
 
 
 async def _resolve_llm(
@@ -2927,16 +3014,7 @@ async def react_endpoint(
     if not user_timezone:
         user_timezone = request.headers.get("X-Timezone") or None
 
-    # Run independent validations and agent config resolution in parallel
-    _parallel_tasks: list[Any] = [_check_token_quota(current_user_id)]
-    if conversation_id:
-        _parallel_tasks.append(_validate_conversation_ownership(conversation_id, current_user_id))
-    _parallel_tasks.append(
-        _resolve_agent_config(agent_id, conversation_id, user_id=current_user_id)
-    )
-    _parallel_results = await asyncio.gather(*_parallel_tasks)
-    # _resolve_agent_config is always the last task appended
-    agent_cfg = _parallel_results[-1]
+    agent_cfg = await _admit_turn(current_user_id, conversation_id, agent_id)
 
     from fim_one.db import create_session as _create_session
 
@@ -3235,23 +3313,13 @@ async def react_endpoint(
         # while the DB poll is still blocked.  Scope falls back to the
         # conversation for agent-less playground runs so question cards
         # work without an agent binding.  Cancelled below at teardown.
-        from fim_one.web.confirmation_sse import scope_for as _confirm_scope_for
-
-        _react_confirm_scope = _confirm_scope_for(
-            str((agent_cfg or {}).get("agent_id") or ""),
-            str(conversation_id or ""),
+        _confirmation_pump_task = _start_confirmation_pump(
+            (agent_cfg or {}).get("agent_id"),
+            conversation_id,
+            current_user_id,
+            progress_queue,
+            sse_events,
         )
-        _react_confirm_user_id = str(current_user_id or "")
-        _confirmation_pump_task: asyncio.Task[None] | None = None
-        if _react_confirm_scope and _react_confirm_user_id:
-            _confirmation_pump_task = asyncio.create_task(
-                _pump_inline_confirmations(
-                    _react_confirm_scope,
-                    _react_confirm_user_id,
-                    progress_queue,
-                    sse_events,
-                )
-            )
         iter_start = time.time()
         thinking_done_iter = 0  # track which iteration's thinking-done was emitted
         current_iteration = 1  # track the current iteration for _on_answer_token
@@ -3533,7 +3601,7 @@ async def react_endpoint(
             # Load any class_hooks declared on this agent's ``model_config_json``
             # and hand the resulting HookRegistry to ReAct.  The session factory
             # (``create_session``) is independent of the per-request session
-            # so hooks can open/commit their own transactions (FeishuGateHook
+            # so hooks can open/commit their own transactions (ApprovalGateHook
             # polls the ``confirmation_requests`` table from a background
             # task while the request is still streaming).
             from fim_one.db import create_session as _create_hook_session
@@ -3543,7 +3611,7 @@ async def react_endpoint(
                 model_config_json=(agent_cfg or {}).get("model_config_json")
             )
             _hook_registry = await build_hook_registry_for_agent(
-                _agent_shim_ns, _create_hook_session
+                _agent_shim_ns, _create_hook_session, conversation_id=conversation_id
             )
 
             agent = ReActAgent(
@@ -4236,18 +4304,7 @@ async def dag_endpoint(
     if not user_timezone:
         user_timezone = request.headers.get("X-Timezone") or None
 
-    # Run independent validations and agent config resolution in parallel
-    _parallel_tasks_dag: list[Any] = [_check_token_quota(current_user_id)]
-    if conversation_id:
-        _parallel_tasks_dag.append(
-            _validate_conversation_ownership(conversation_id, current_user_id)
-        )
-    _parallel_tasks_dag.append(
-        _resolve_agent_config(agent_id, conversation_id, user_id=current_user_id)
-    )
-    _parallel_results_dag = await asyncio.gather(*_parallel_tasks_dag)
-    # _resolve_agent_config is always the last task appended
-    agent_cfg = _parallel_results_dag[-1]
+    agent_cfg = await _admit_turn(current_user_id, conversation_id, agent_id)
 
     from fim_one.db import create_session as _create_session
 
@@ -4525,20 +4582,15 @@ async def dag_endpoint(
         progress_queue: asyncio.Queue[str] = asyncio.Queue(maxsize=1000)
         done_event = asyncio.Event()
 
-        # Inline confirmation pump — mirrors the ReAct handler.  See
-        # ``_pump_inline_confirmations`` for rationale.
-        _dag_confirm_agent_id = str((agent_cfg or {}).get("agent_id") or "")
-        _dag_confirm_user_id = str(current_user_id or "")
-        _dag_confirmation_pump_task: asyncio.Task[None] | None = None
-        if _dag_confirm_agent_id and _dag_confirm_user_id:
-            _dag_confirmation_pump_task = asyncio.create_task(
-                _pump_inline_confirmations(
-                    _dag_confirm_agent_id,
-                    _dag_confirm_user_id,
-                    progress_queue,
-                    sse_events,
-                )
-            )
+        # Inline confirmation pump: the same entry as the ReAct handler,
+        # so a chat with no agent is served under its conversation here too.
+        _dag_confirmation_pump_task = _start_confirmation_pump(
+            (agent_cfg or {}).get("agent_id"),
+            conversation_id,
+            current_user_id,
+            progress_queue,
+            sse_events,
+        )
 
         # Step-level checkpoint: keyed by conversation + raw query hash so a
         # retry of the same request after a mid-execution crash resumes the
@@ -4747,7 +4799,7 @@ async def dag_endpoint(
                     model_config_json=(agent_cfg or {}).get("model_config_json")
                 )
                 _hook_registry_dag = await build_hook_registry_for_agent(
-                    _agent_shim_ns_dag, _create_hook_session_dag
+                    _agent_shim_ns_dag, _create_hook_session_dag, conversation_id=conversation_id
                 )
 
                 agent = ReActAgent(
@@ -5541,7 +5593,10 @@ async def auto_endpoint(
     async with _create_session() as _llm_db:
         fast_llm = await _resolve_fast_llm(
             await _resolve_agent_config(
-                body.agent_id, body.conversation_id, user_id=current_user_id
+                body.agent_id,
+                body.conversation_id,
+                user_id=current_user_id,
+                refuse_unavailable=True,
             ),
             _llm_db,
         )

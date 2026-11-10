@@ -116,7 +116,7 @@ class ConnectorToolAdapter(BaseTool):
         """True when this action was flagged as sensitive in the action row.
 
         The ReAct / DAG engines forward this flag into ``HookContext.metadata``
-        so that pre-tool-use hooks (e.g. :class:`FeishuGateHook`) can gate
+        so that pre-tool-use hooks (e.g. :class:`ApprovalGateHook`) can gate
         the call on human approval.
         """
         return self._requires_confirmation

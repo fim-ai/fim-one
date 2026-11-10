@@ -173,7 +173,7 @@ Every tool call in the iteration loop is wrapped by two hook points:
   - **Rewrite** the observation (e.g. truncate a 200 KB SQL result to a 4 KB summary)
   - **Trigger side effects** (write to `ConnectorCallLog`, update usage counters)
 
-Hooks run **outside the LLM loop** — nothing the LLM says or does can skip them. This is the deterministic enforcement layer for policies that cannot be trusted to a prompt instruction: today human-in-the-loop approval (`FeishuGateHook`); the same layer can carry audit logging, rate limiting, and read-only-mode guards. See [Hook System](/architecture/hook-system) for the full design.
+Hooks run **outside the LLM loop** — nothing the LLM says or does can skip them. This is the deterministic enforcement layer for policies that cannot be trusted to a prompt instruction: today human-in-the-loop approval (`ApprovalGateHook`); the same layer can carry audit logging, rate limiting, and read-only-mode guards. See [Hook System](/architecture/hook-system) for the full design.
 
 The same hook points exist in the [DAG engine](/architecture/dag-engine) — each DAG step runs its own ReAct loop, so hooks apply uniformly regardless of which execution engine is driving the tool call.
 

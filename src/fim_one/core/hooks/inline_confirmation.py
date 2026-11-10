@@ -1,6 +1,7 @@
 """In-app (inline) confirmation listener plumbing.
 
-The core ``FeishuGateHook`` supports two delivery modes:
+The confirmation service (``fim_one.core.assembly.confirmation``) supports
+two delivery modes:
 
 * ``channel`` — push an Approve/Reject card to a messaging channel
   (currently Feishu only).  This is the v0 behaviour.
@@ -11,7 +12,7 @@ The core ``FeishuGateHook`` supports two delivery modes:
 The SSE emission itself lives in the web layer (``fim_one.web.api.chat``)
 — the core layer MUST NOT import ``fim_one.web``.  To bridge the two,
 the web layer registers an async listener through
-:func:`set_inline_confirmation_listener`; the hook calls it after
+:func:`set_inline_confirmation_listener`; the service calls it after
 committing the pending row.
 
 The listener receives a ``ConfirmationRequest`` ORM instance.  It should
@@ -69,8 +70,8 @@ async def emit_inline_confirmation(
 ) -> None:
     """Fire the listener if one is registered.  Never raises.
 
-    Called by :class:`fim_one.core.hooks.feishu_gate_hook.FeishuGateHook`
-    right after committing a ``mode="inline"`` ``ConfirmationRequest``.
+    Called by :class:`fim_one.core.assembly.confirmation.ConfirmationService`
+    right after committing a ``ConfirmationRequest``.
     """
     listener = _inline_confirmation_listener
     if listener is None:

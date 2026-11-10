@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import abc
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal, Protocol, runtime_checkable
 
 
 @dataclass
@@ -33,6 +33,59 @@ class CompletionSummary:
     final_answer: str
     conversation_id: str | None
     conversation_url: str | None
+
+
+@dataclass
+class ApprovalRequestSummary:
+    """Channel-agnostic description of something a human is asked to approve.
+
+    A carrier renders it in its native interactive format (for Feishu, a
+    card with Approve / Reject buttons) and makes sure the click comes back
+    carrying ``confirmation_id``.
+    """
+
+    confirmation_id: str
+    title: str
+    summary: str
+    tool_name: str
+    tool_args_preview: str
+    # One line telling readers of the message who is allowed to decide.
+    approver_hint: str | None = None
+
+
+@dataclass(frozen=True)
+class CarrierDecision:
+    """An approve / reject click as the carrier's platform reported it.
+
+    ``decision`` is ``None`` when the click carried no recognisable choice,
+    ``confirmation_id`` when it named no request. ``actor`` is the clicker's
+    id on the platform (a Feishu ``open_id``); mapping it to a local user is
+    not the carrier's job.
+    """
+
+    confirmation_id: str | None
+    decision: Literal["approve", "reject"] | None
+    actor: str | None
+
+
+@runtime_checkable
+class ApprovalCarrier(Protocol):
+    """A channel that can put an approval before people and report their answer.
+
+    The approval gate asks for this capability, not for a channel type: a
+    channel that implements these three methods can carry approvals.
+    """
+
+    def approval_target(self) -> str | None:
+        """Where approval requests go (a chat id); ``None`` when not configured."""
+
+    async def send_approval(
+        self, chat_target: str, request: ApprovalRequestSummary
+    ) -> ChannelSendResult:
+        """Post *request* to *chat_target* with a way to approve or reject it."""
+
+    def parse_decision(self, body: dict[str, Any]) -> CarrierDecision | None:
+        """The decision a (decrypted) callback body carries; ``None`` if it is not one."""
 
 
 class BaseChannel(abc.ABC):

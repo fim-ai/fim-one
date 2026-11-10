@@ -1,10 +1,10 @@
 #!/usr/bin/env python
-"""Hook System end-to-end smoke test — real ReAct turn + real FeishuGateHook.
+"""Hook System end-to-end smoke test — real ReAct turn + real approval gate (``ApprovalGateHook``).
 
 Proves the handoff between:
 
 - :func:`fim_one.web.hooks_bootstrap.build_hook_registry_for_agent`
-- :class:`fim_one.core.hooks.FeishuGateHook`
+- :class:`fim_one.core.assembly.confirmation.ApprovalGateHook`
 - :meth:`fim_one.core.agent.react.ReActAgent._build_hook_metadata`
 - :class:`fim_one.core.tool.connector.adapter.ConnectorToolAdapter` (for
   ``requires_confirmation`` property forwarding)
@@ -240,7 +240,7 @@ async def _build_agent(
     # gate PRE_TOOL_USE hook.
     pre = registry_real.list_hooks(HookPoint.PRE_TOOL_USE)
     assert len(pre) == 1, f"expected 1 PRE hook, got {len(pre)}"
-    assert pre[0].name == "feishu_gate"
+    assert pre[0].name == "approval_gate"
 
     # The bootstrap builds a hook with default timing (120s / 1.5s poll) —
     # fine for production, too slow for a smoke test.  Rebuild the same
@@ -529,7 +529,7 @@ async def run_reject_case() -> tuple[bool, str]:
 
 async def run_timeout_case() -> tuple[bool, str, bool]:
     """Returns (ok, message, skipped)."""
-    # The bootstrap factory _build_feishu_gate does NOT expose
+    # The bootstrap factory _build_approval_gate does NOT expose
     # ``timeout_seconds`` as a pluggable kwarg — it hardcodes the default.
     # A production-quality test of this path would require extending
     # :data:`HOOK_FACTORIES` to accept per-hook kwargs from the agent's

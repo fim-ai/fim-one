@@ -431,6 +431,12 @@ async def api_client(session_factory: Any) -> Any:
 
     from types import SimpleNamespace
 
+    from fim_one.db.models.user import User
+
+    # Who may answer is resolved from the users table, so the user exists.
+    async with session_factory() as session:
+        session.add(User(id="user-1", username="asker", email="asker@x.io"))
+        await session.commit()
     current_user = SimpleNamespace(id="user-1", is_admin=False)
 
     app.dependency_overrides[get_session] = _override_session

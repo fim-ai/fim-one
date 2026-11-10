@@ -15,19 +15,23 @@ import logging
 import os
 import uuid
 from datetime import datetime, UTC
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fim_one.core.channels import build_channel
-from fim_one.core.channels.feishu import (
-    FeishuChannel,
-    build_confirmation_card,
-    build_decided_card,
+from fim_one.core.assembly.confirmation import ConfirmationService, ConfirmationSpec
+from fim_one.core.assembly.errors import AssemblyRefusal
+from fim_one.core.assembly.principal import (
+    AuthMethod,
+    Principal,
+    resolve_external_actor,
+    resolve_principal,
 )
+from fim_one.core.channels import ApprovalCarrier, build_channel
+from fim_one.core.channels.feishu import FeishuChannel, build_decided_card
 from fim_one.db import get_session
 from fim_one.web.auth import (
     get_current_user,
@@ -280,6 +284,9 @@ async def test_channel(
 # ---------------------------------------------------------------------------
 
 
+# A playground card is answered within the session that sent it; the
+# expiry sweep closes one that is not.
+_TEST_APPROVAL_TTL_SECONDS = 24 * 3600
 _DEFAULT_TEST_TOOL_NAME = "delete_customer_records"
 _DEFAULT_TEST_TOOL_ARGS: dict[str, Any] = {
     "customer_id": "C-20240892",
@@ -303,7 +310,7 @@ async def test_approval(
     user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> TestApprovalResponse:
-    """Simulate a ``FeishuGateHook`` round-trip.
+    """Simulate an approval round-trip through the real ``ConfirmationService``.
 
     Creates a real ``ConfirmationRequest`` row in ``pending`` state, sends
     the production approval card to the channel's chat, and returns the
@@ -313,7 +320,8 @@ async def test_approval(
 
     Unlike ``/test`` which uses a sentinel ``test-*`` id that the callback
     handler ignores, this endpoint creates a genuine DB row — so the card
-    buttons drive the same code path that a production hook would.
+    buttons drive the same code path that a production hook would. The
+    tester is the one person allowed to decide it.
     """
     channel = await _load_channel_or_404(db, channel_id)
     await require_org_member(channel.org_id, user, db)
@@ -324,7 +332,7 @@ async def test_approval(
         )
 
     adapter = build_channel(channel.type, dict(channel.config or {}))
-    if adapter is None or not isinstance(adapter, FeishuChannel):
+    if not isinstance(adapter, ApprovalCarrier):
         return TestApprovalResponse(
             ok=False,
             error=(
@@ -333,65 +341,67 @@ async def test_approval(
             ),
         )
 
-    chat_id = str((channel.config or {}).get("chat_id") or "").strip()
-    if not chat_id:
-        return TestApprovalResponse(
-            ok=False, error="channel has no chat_id configured"
-        )
-
     tool_name = (body.tool_name or _DEFAULT_TEST_TOOL_NAME).strip()
     tool_args = body.tool_args if body.tool_args is not None else _DEFAULT_TEST_TOOL_ARGS
     title = (body.title or _DEFAULT_TEST_TITLE).strip()
     summary = (body.summary or _DEFAULT_TEST_SUMMARY).strip()
 
-    # Pretty-render args for the card body.
-    try:
-        import json as _json  # local alias to avoid the outer json shadow
-        preview = _json.dumps(tool_args, ensure_ascii=False, indent=2)
-    except Exception:
-        preview = str(tool_args)
-
-    confirmation_id = str(uuid.uuid4())
-    req = ConfirmationRequest(
-        id=confirmation_id,
-        tool_call_id=None,
-        agent_id=None,
-        user_id=user.id,
+    spec = ConfirmationSpec(
+        kind="confirmation",
+        initiator=await resolve_principal(db, user_id=user.id, auth=AuthMethod.SESSION),
+        binding=None,
         org_id=channel.org_id,
-        channel_id=channel.id,
-        status="pending",
+        title=title,
+        description=summary,
         payload={
             "tool_name": tool_name,
             "tool_args": tool_args,
             "test_mode": True,
             "initiator": user.email or user.username,
         },
+        eligible_scope="initiator",
+        eligible_user_id=user.id,
+        delivery="channel_only",
+        channel_id=channel.id,
+        timeout_seconds=_TEST_APPROVAL_TTL_SECONDS,
     )
-    db.add(req)
-    await db.commit()
-
-    card = build_confirmation_card(
-        confirmation_id=confirmation_id,
-        title=title,
-        summary=summary,
-        tool_name=tool_name,
-        tool_args_preview=preview,
-    )
-    result = await adapter.send_interactive_card(chat_id, card)
-
-    if not result.ok:
-        # Roll the pending row into a terminal failure so the UI can stop
-        # polling immediately.
-        req.status = "expired"
-        req.responded_at = datetime.now(UTC)
-        await db.commit()
+    try:
+        row = await _confirmation_service().request(spec)
+    except AssemblyRefusal as refusal:
+        # Send failures leave a row behind; close it so the UI stops polling.
+        confirmation_id = (refusal.detail_args or {}).get("confirmation_id")
+        if confirmation_id:
+            await _expire_now(db, str(confirmation_id))
         return TestApprovalResponse(
             ok=False,
-            confirmation_id=confirmation_id,
-            error=result.error or "Failed to deliver approval card.",
+            confirmation_id=str(confirmation_id) if confirmation_id else None,
+            error=refusal.detail,
         )
 
-    return TestApprovalResponse(ok=True, confirmation_id=confirmation_id)
+    return TestApprovalResponse(ok=True, confirmation_id=str(row.id))
+
+
+def _confirmation_service() -> ConfirmationService:
+    # Resolved per call: the session factory is the module attribute, which
+    # tests point at their own engine.
+    from fim_one.db import create_session
+
+    return ConfirmationService(create_session)
+
+
+async def _expire_now(db: AsyncSession, confirmation_id: str) -> None:
+    row = (
+        await db.execute(
+            select(ConfirmationRequest).where(
+                ConfirmationRequest.id == confirmation_id,
+                ConfirmationRequest.status == "pending",
+            )
+        )
+    ).scalar_one_or_none()
+    if row is not None:
+        row.status = "expired"
+        row.responded_at = datetime.now(UTC)
+        await db.commit()
 
 
 @router.get(
@@ -653,7 +663,6 @@ async def channel_callback(
     parsed = adapter.decrypt_callback(parsed)
     result = await adapter.handle_callback(parsed, headers)
 
-    event = result.get("event") if isinstance(result, dict) else None
     response_body: dict[str, Any] = (
         result.get("response") if isinstance(result, dict) else None
     ) or {}
@@ -665,67 +674,24 @@ async def channel_callback(
     #    modes but fails for ``card.action.trigger`` events sent under
     #    the schema=2.0 envelope — so we always return a ``toast`` and a
     #    card update, which satisfies both paths.
-    if isinstance(event, dict) and event.get("kind") == "card_action":
-        confirmation_id = event.get("confirmation_id")
-        decision = event.get("action")
-        if confirmation_id and decision in ("approve", "reject"):
-            open_id_raw = event.get("open_id")
-            open_id = str(open_id_raw) if open_id_raw else None
-            # Approver-scope enforcement: the clicker must map to a FIM
-            # user who is eligible per the agent's
-            # confirmation_approver_scope.  Anyone else in the chat gets
-            # a toast, and the card stays pending.
-            allowed, approver_user_id, deny_reason = (
-                await _authorize_feishu_click(
-                    db,
-                    confirmation_id=str(confirmation_id),
-                    open_id=open_id,
-                )
+    carrier_decision = (
+        adapter.parse_decision(parsed) if isinstance(adapter, ApprovalCarrier) else None
+    )
+    if carrier_decision is not None:
+        confirmation_id = carrier_decision.confirmation_id
+        decision = carrier_decision.decision
+        if confirmation_id and decision is not None:
+            open_id = str(carrier_decision.actor) if carrier_decision.actor else None
+            # The clicker must map to a FIM user who may decide this
+            # request. Anyone else in the chat gets a toast, and the card
+            # stays pending.
+            response_body = await _decide_from_click(
+                db,
+                channel=channel,
+                confirmation_id=confirmation_id,
+                decision=decision,
+                open_id=open_id,
             )
-            if not allowed:
-                logger.warning(
-                    "channel_callback: click denied (channel=%s, "
-                    "confirmation=%s, open_id=%s): %s",
-                    channel_id,
-                    confirmation_id,
-                    open_id,
-                    deny_reason,
-                )
-                # Card intentionally NOT replaced — it must stay pending
-                # so an eligible approver can still decide.
-                response_body = {
-                    "toast": {"type": "error", "content": deny_reason}
-                }
-            else:
-                final_status, newly_applied, payload = await _record_decision(
-                    db,
-                    confirmation_id=str(confirmation_id),
-                    decision=str(decision),
-                    open_id=open_id,
-                    approver_user_id=approver_user_id,
-                )
-                if final_status is None:
-                    # Confirmation row gone (deleted / expired sweep).
-                    # Return a benign toast so Feishu doesn't show 200340.
-                    response_body = {
-                        "toast": {
-                            "type": "error",
-                            "content": "Confirmation request not found.",
-                        }
-                    }
-                else:
-                    tool_name: str | None = None
-                    if isinstance(payload, dict):
-                        raw_tool = payload.get("tool_name")
-                        if raw_tool:
-                            tool_name = str(raw_tool)
-                    response_body = _build_card_action_response(
-                        final_status=final_status,
-                        newly_applied=newly_applied,
-                        confirmation_id=str(confirmation_id),
-                        tool_name=tool_name,
-                        decided_by=open_id,
-                    )
         else:
             # Unknown / malformed payload — still return a well-formed
             # toast so Feishu doesn't flash 200340.
@@ -800,117 +766,102 @@ def _build_card_action_response(
     }
 
 
-async def _authorize_feishu_click(
+async def _decide_from_click(
     db: AsyncSession,
     *,
+    channel: Channel,
     confirmation_id: str,
+    decision: Literal["approve", "reject"],
     open_id: str | None,
-) -> tuple[bool, str | None, str]:
-    """Authorize a Feishu card click against the agent's approver scope.
+) -> dict[str, Any]:
+    """Record an Approve / Reject click, or say why it does not count.
 
     The clicker is identified by the app-scoped Feishu ``open_id``; it maps
     to a FIM user via the ``feishu`` OAuth binding (which requires the login
     and channel integrations to share one Feishu app).  Unmappable clickers
-    are denied — chat membership alone must never satisfy the scope, or any
-    member of the target group could approve (the portal path enforces the
-    same rules via ``user_may_decide``).
+    are denied — chat membership alone must never satisfy the rule, or any
+    member of the target group could approve.  Who may decide is read off
+    the row by ``ConfirmationService.may_decide``, the same rule the portal
+    applies.  Only a request this channel carried can be decided here: the
+    signature proves which organization's app is calling, not that the
+    request was theirs.
 
-    Returns ``(allowed, approver_user_id, deny_reason)``.  A missing
-    confirmation row returns ``(True, None, "")`` so the caller's existing
-    not-found handling produces the benign toast.
+    Returns the Feishu response body: a toast and, once the row is in a
+    terminal state, the replacement card.
     """
-    from fim_one.db.models.agent import Agent
-    from fim_one.db.models.oauth_binding import UserOAuthBinding
-    from fim_one.web.api.confirmations import user_may_decide
-
-    row = (
-        await db.execute(
-            select(ConfirmationRequest).where(
-                ConfirmationRequest.id == confirmation_id
-            )
-        )
-    ).scalar_one_or_none()
-    if row is None:
-        return (True, None, "")
-
-    if not row.agent_id:
-        return (False, None, "Cannot resolve the approver scope for this request.")
-
-    agent = (
-        await db.execute(select(Agent).where(Agent.id == row.agent_id))
-    ).scalar_one_or_none()
-    if agent is None:
-        return (False, None, "Cannot resolve the approver scope for this request.")
-
     if not open_id:
-        return (False, None, "Unable to identify who clicked this card.")
+        return _denied("Unable to identify who clicked this card.")
 
-    binding = (
-        await db.execute(
-            select(UserOAuthBinding).where(
-                UserOAuthBinding.provider == "feishu",
-                UserOAuthBinding.oauth_id == open_id,
-            )
+    try:
+        actor: Principal | None = await resolve_external_actor(
+            db, provider="feishu", subject=open_id
         )
-    ).scalar_one_or_none()
-    if binding is None:
-        return (
-            False,
-            None,
+    except AssemblyRefusal:
+        return _denied("Your linked FIM One account is disabled.")
+    if actor is None:
+        return _denied(
             "Your Feishu account is not linked to FIM One — link it "
-            "(or decide in the portal) to respond to approvals.",
+            "(or decide in the portal) to respond to approvals."
         )
 
-    user = (
-        await db.execute(select(User).where(User.id == binding.user_id))
-    ).scalar_one_or_none()
-    if user is None:
-        return (False, None, "Your linked FIM One account no longer exists.")
+    try:
+        row = await _confirmation_service().decide(
+            db,
+            confirmation_id=confirmation_id,
+            actor=actor,
+            decision=decision,
+            via_channel_id=channel.id,
+            external_actor=open_id,
+        )
+    except AssemblyRefusal as refusal:
+        if refusal.error_code == "confirmation_already_decided":
+            # Duplicate or stale click: the card is replaced all the same
+            # (the client may hold an old copy) and the toast says so.
+            final_status = str((refusal.detail_args or {}).get("status") or "expired")
+            return _build_card_action_response(
+                final_status=final_status,
+                newly_applied=False,
+                confirmation_id=confirmation_id,
+                tool_name=await _tool_name_of(db, confirmation_id),
+                decided_by=open_id,
+            )
+        if refusal.error_code == "confirmation_not_found":
+            # Row gone (deleted / swept). A benign toast keeps Feishu from
+            # showing error 200340.
+            return _denied("Confirmation request not found.")
+        logger.warning(
+            "channel_callback: click denied (channel=%s, confirmation=%s, open_id=%s): %s",
+            channel.id,
+            confirmation_id,
+            open_id,
+            refusal.detail,
+        )
+        return _denied(refusal.detail)
 
-    if await user_may_decide(db, request=row, agent=agent, user=user):
-        return (True, user.id, "")
-    return (
-        False,
-        None,
-        "You are not authorised to respond to this confirmation.",
-    )
-
-
-async def _record_decision(
-    db: AsyncSession,
-    *,
-    confirmation_id: str,
-    decision: str,
-    open_id: str | None,
-    approver_user_id: str | None = None,
-) -> tuple[str | None, bool, dict[str, Any] | None]:
-    """Flip the ConfirmationRequest status via the shared helper.
-
-    Delegates to :func:`fim_one.web.api.confirmations.apply_confirmation_decision`
-    so both the Feishu callback path and the frontend respond endpoint
-    stamp the same fields (``status`` / ``responded_at`` / optionally
-    ``approver_user_id`` / ``responded_by_open_id``) consistently.
-
-    ``approver_user_id`` is the FIM user resolved by
-    :func:`_authorize_feishu_click`, so Feishu decisions carry the same
-    audit identity as portal decisions.
-
-    Returns ``(final_status, newly_applied, payload)`` — see helper.
-    """
-    # Narrow to the two decisions the helper's Literal accepts.  Anything
-    # else is a programming error (the caller already filtered).
-    if decision not in ("approve", "reject"):  # pragma: no cover - defensive
-        return (None, False, None)
-
-    from fim_one.web.api.confirmations import apply_confirmation_decision
-
-    return await apply_confirmation_decision(
-        db,
+    payload = row.payload if isinstance(row.payload, dict) else {}
+    raw_tool = payload.get("tool_name")
+    return _build_card_action_response(
+        final_status=str(row.status),
+        newly_applied=True,
         confirmation_id=confirmation_id,
-        decision=decision,  # type: ignore[arg-type]
-        approver_user_id=approver_user_id,
-        responded_by_open_id=open_id,
+        tool_name=str(raw_tool) if raw_tool else None,
+        decided_by=open_id,
     )
+
+
+def _denied(reason: str) -> dict[str, Any]:
+    """A toast only: the card stays as it is so an eligible approver can still decide."""
+    return {"toast": {"type": "error", "content": reason}}
+
+
+async def _tool_name_of(db: AsyncSession, confirmation_id: str) -> str | None:
+    payload = (
+        await db.execute(
+            select(ConfirmationRequest.payload).where(ConfirmationRequest.id == confirmation_id)
+        )
+    ).scalar_one_or_none()
+    raw_tool = payload.get("tool_name") if isinstance(payload, dict) else None
+    return str(raw_tool) if raw_tool else None
 
 
 __all__ = ["router"]

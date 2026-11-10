@@ -579,7 +579,7 @@ class ReActAgent:
         # tools payload with tool_choice="none" — some providers reject a
         # history containing tool_use blocks when no tools are defined.
         self._finish_stream_tools: list[dict[str, Any]] | None = None
-        # Identity — forwarded into HookContext so hooks (e.g. FeishuGateHook)
+        # Identity — forwarded into HookContext so hooks (e.g. ApprovalGateHook)
         # can look up org-scoped resources and persist audit rows.
         self._agent_id = agent_id
         self._org_id = org_id
@@ -685,10 +685,10 @@ class ReActAgent:
         raw ``HookContext`` fields don't cover:
 
         - ``requires_confirmation`` — derived from the connector action
-          row.  Read by :class:`FeishuGateHook` to decide whether to
+          row.  Read by :class:`ApprovalGateHook` to decide whether to
           prompt for human approval.  Always ``False`` for built-in
           tools (workspace, web_search, etc.).
-        - ``org_id`` — needed by :class:`FeishuGateHook` to locate the
+        - ``org_id`` — needed by :class:`ApprovalGateHook` to locate the
           active Feishu channel for the owning organization.
         - ``tool_call_id`` — surfaced for audit / traceability when the
           underlying LLM assigned one (native function-calling mode).

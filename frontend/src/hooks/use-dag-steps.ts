@@ -5,6 +5,7 @@ import type {
   DagStepProgressEvent,
   DagDoneEvent,
   AnswerEvent,
+  AwaitingConfirmationEvent,
   GuardrailTripwiredEvent,
 } from "@/types/api"
 
@@ -71,6 +72,12 @@ export interface DagStepsResult {
    * normal answer card.
    */
   guardrailEvent: GuardrailTripwiredEvent | null
+  /**
+   * Approval requests raised by tool calls in this turn, in arrival
+   * order, one per request (a resumed stream replays events). They stay
+   * after the turn is done so the decision remains in the transcript.
+   */
+  confirmationEvents: AwaitingConfirmationEvent[]
 }
 
 export function useDagSteps(messages: SSEMessage[], isRunning: boolean): DagStepsResult {
@@ -89,6 +96,7 @@ export function useDagSteps(messages: SSEMessage[], isRunning: boolean): DagStep
     let title: string | null = null
     let isPostProcessing = false
     let guardrailEvent: GuardrailTripwiredEvent | null = null
+    const confirmationEvents: AwaitingConfirmationEvent[] = []
 
     for (const msg of messages) {
       // Handle answer events (streamed before done)
@@ -135,6 +143,15 @@ export function useDagSteps(messages: SSEMessage[], isRunning: boolean): DagStep
       // would-be answer card. Frozen payload shape (Guardrails v0 spec).
       if (msg.event === "guardrail_tripwired") {
         guardrailEvent = msg.data as GuardrailTripwiredEvent
+        continue
+      }
+      // awaiting_confirmation arrives while a step's tool call waits for a
+      // human; the payload is the frozen shape ReAct turns use.
+      if (msg.event === "awaiting_confirmation") {
+        const ev = msg.data as AwaitingConfirmationEvent
+        if (!confirmationEvents.some((c) => c.confirmation_id === ev.confirmation_id)) {
+          confirmationEvents.push(ev)
+        }
         continue
       }
       if (msg.event === "phase") {
@@ -368,6 +385,7 @@ export function useDagSteps(messages: SSEMessage[], isRunning: boolean): DagStep
       title,
       isPostProcessing,
       guardrailEvent,
+      confirmationEvents,
     }
   }, [messages, isRunning])
 }

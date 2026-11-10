@@ -161,7 +161,7 @@ async def _validate_binding_ownership(
 
     # An approval channel posts tool arguments into its chat, so it may only
     # come from an organization the user belongs to.  At run time it must also
-    # belong to the agent's own organization (``FeishuGateHook``).
+    # belong to the agent's own organization (``ApprovalGateHook``).
     if approval_channel_id:
         from fim_one.db.models.channel import Channel
 

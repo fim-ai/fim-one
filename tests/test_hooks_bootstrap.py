@@ -152,7 +152,8 @@ class TestBuildHookRegistryForAgent:
         assert len(registry) == 1
         pre_hooks = registry.list_hooks(HookPoint.PRE_TOOL_USE)
         assert len(pre_hooks) == 1
-        assert pre_hooks[0].name == "feishu_gate"
+        # The former key resolves to the gate, which is attached once.
+        assert pre_hooks[0].name == "approval_gate"
 
     @pytest.mark.asyncio
     async def test_unknown_hook_is_skipped_with_warning(
@@ -235,6 +236,24 @@ class TestBuildHookRegistryForAgent:
 
     def test_factory_registry_exposes_feishu_gate(self) -> None:
         assert "feishu_gate" in HOOK_FACTORIES
+
+    def test_the_gate_is_registered_under_both_keys(self) -> None:
+        assert HOOK_FACTORIES["approval_gate"] is HOOK_FACTORIES["feishu_gate"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("key", ["approval_gate", "feishu_gate"])
+    async def test_listing_the_gate_does_not_attach_it_twice(
+        self,
+        key: str,
+        session_factory: async_sessionmaker[AsyncSession],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        agent = SimpleNamespace(model_config_json={"hooks": {"class_hooks": [key]}})
+        with caplog.at_level(logging.WARNING):
+            registry = await build_hook_registry_for_agent(agent, session_factory)
+
+        assert [h.name for h in registry.list_hooks(HookPoint.PRE_TOOL_USE)] == ["approval_gate"]
+        assert "Unknown hook name" not in caplog.text
 
 
 # ---------------------------------------------------------------------------

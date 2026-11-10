@@ -4,7 +4,7 @@ icon: "comment-dots"
 description: "Wire FIM One to a Feishu app for outbound messages and interactive approval cards."
 ---
 
-A Feishu Channel gives agents in one org a single hotline into a Feishu group: outbound notifications and interactive Approve / Reject cards (via the `feishu_gate` hook).
+A Feishu Channel gives agents in one org a single hotline into a Feishu group: outbound notifications and interactive Approve / Reject cards (via the `approval_gate` hook).
 
 This guide walks through the end-to-end setup. It assumes FIM One is reachable at a stable HTTPS origin — call this `API_BASE_URL` (e.g. `https://one.yourdomain.com`).
 
@@ -139,4 +139,4 @@ The webhook now returns a replacement card on the first decision — the buttons
 
 ### One org, two Feishu channels
 
-`feishu_gate` picks the first **active** channel it finds. If you need multiple Feishu endpoints in the same org (e.g. staging vs. production groups), disable all but one, or write a custom hook that selects by agent tag.
+An approval goes to the channel chosen as the agent's **Approval channel**, and to no other. Several Feishu channels in one org (staging and production groups, say) coexist; bind each agent to the one it should use. A click counts only on the channel that delivered the card.

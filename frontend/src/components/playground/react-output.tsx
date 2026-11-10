@@ -33,23 +33,7 @@ import { QuestionCard } from "@/components/chat/question-card"
 import { GuardrailBlockedCard } from "@/components/chat/guardrail-blocked-card"
 import type { UserQuestion } from "@/lib/api/confirmations"
 import { CopyButton } from "@/components/ui/copy-button"
-import type { GuardrailTripwiredEvent } from "@/types/api"
-
-/**
- * Wire shape emitted by the backend for `awaiting_confirmation` SSE events.
- * FROZEN — see Phase 1 Task #3. Keep in sync with `confirmation_sse.py::_request_to_event_payload`.
- */
-interface AwaitingConfirmationEvent {
-  type: "awaiting_confirmation"
-  confirmation_id: string
-  tool_name: string
-  arguments: Record<string, unknown>
-  mode?: "inline" | "channel"
-  channel_label?: string
-  approver_scope?: "initiator" | "agent_owner" | "org_members" | ""
-  timeout_at: string
-  agent_id: string
-}
+import type { AwaitingConfirmationEvent, GuardrailTripwiredEvent } from "@/types/api"
 
 /**
  * Wire shape emitted by the backend for `awaiting_user_question` SSE events

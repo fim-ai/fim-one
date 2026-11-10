@@ -43,6 +43,7 @@ import httpx
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from fim_one.core.assembly.errors import AssemblyRefusal
 from fim_one.core.security.encryption import encrypt_credential, encrypt_db_config
 from fim_one.db.models.agent import Agent
 from fim_one.db.models.connector import Connector, ConnectorAction
@@ -539,8 +540,7 @@ class _FakeEngine:
 @contextmanager
 def outside_world(factory: async_sessionmaker[AsyncSession]) -> Iterator[Outside]:
     """Patch the database factory, HTTP, MCP, the model loop and the gates."""
-    from fim_one.core.agent.hooks import HookResult
-    from fim_one.core.hooks.feishu_gate_hook import FeishuGateHook
+    from fim_one.core.assembly.confirmation import ConfirmationService
     from fim_one.core.mcp.adapter import MCPToolAdapter
     from fim_one.core.workflow import run_service as rs
 
@@ -604,9 +604,12 @@ def outside_world(factory: async_sessionmaker[AsyncSession]) -> Iterator[Outside
         async def run(self, _query: str) -> Any:
             return SimpleNamespace(answer="done", iterations=1, usage=None)
 
-    async def _asked(self: Any, *, context: Any, **_kwargs: Any) -> HookResult:
-        out.gate_asked.append(str(context.tool_name))
-        return HookResult(allow=True)
+    async def _asked(_self: Any, spec: Any) -> Any:
+        out.gate_asked.append(str(spec.payload.get("tool_name")))
+        return SimpleNamespace(id="asked", mode="inline")
+
+    async def _approved(_self: Any, _confirmation_id: str, **_kwargs: Any) -> str:
+        return "approve"
 
     with ExitStack() as stack:
         for target, value in (
@@ -630,8 +633,8 @@ def outside_world(factory: async_sessionmaker[AsyncSession]) -> Iterator[Outside
             ("fim_one.web.deps._cached_registry_version", -1),
         ):
             stack.enter_context(patch(target, value))
-        stack.enter_context(patch.object(FeishuGateHook, "_run_inline_flow", _asked))
-        stack.enter_context(patch.object(FeishuGateHook, "_run_channel_flow", _asked))
+        stack.enter_context(patch.object(ConfirmationService, "request", _asked))
+        stack.enter_context(patch.object(ConfirmationService, "wait", _approved))
         stack.enter_context(
             patch.object(rs, "_default_service", rs.WorkflowRunService(engine_factory=_FakeEngine))
         )
@@ -875,10 +878,15 @@ async def probe_chat_agent(
         results["workflow"] = Outcome(
             exposed=scene.ids["workflow"] in await chat._resolve_user_workflow_ids(scene.actor)
         )
-        # An agent chat cannot enter falls back to chat without an agent,
-        # with no error: nothing is surfaced.
-        entered = await chat._resolve_agent_config(scene.ids["agent"], None, scene.actor)
-        results["agent"] = Outcome(exposed=entered is not None)
+        # Entering the agent under test, as the chat endpoints do.
+        try:
+            entered = await chat._resolve_agent_config(
+                scene.ids["agent"], None, scene.actor, refuse_unavailable=True
+            )
+        except AssemblyRefusal as refusal:
+            results["agent"] = Outcome(exposed=False, refusal_code=refusal.error_code)
+        else:
+            results["agent"] = Outcome(exposed=entered is not None)
     return results
 
 
@@ -1219,18 +1227,6 @@ KNOWN_DEVIATIONS: tuple[Deviation, ...] = (
         today=_runner_is_subject,
     ),
     Deviation(
-        name="chat-agent-entry-unchecked",
-        entries=("chat_agent",),
-        resources=("agent",),
-        what=(
-            "A switched-off agent still answers. An agent the caller cannot see is "
-            "not refused: the chat silently continues with no agent."
-        ),
-        ref="N3; design §1.1 row 1; B10; 待拍板 1",
-        removed_in="C1 phase 3",
-        today=_agent_entry_unchecked,
-    ),
-    Deviation(
         name="workflow-agent-node-unchecked",
         entries=("wf_agent_node",),
         resources=("agent",),
@@ -1242,15 +1238,6 @@ KNOWN_DEVIATIONS: tuple[Deviation, ...] = (
         ref="N6; design §1.1 row 3; B16",
         removed_in="C1 phase 4",
         today=_agent_entry_unchecked,
-    ),
-    Deviation(
-        name="noagent-no-confirmation",
-        entries=("chat_noagent",),
-        resources=API_CONNECTORS,
-        what="An action flagged 'requires confirmation' runs without asking anyone.",
-        ref="N2; design §1.3 row 'chat-0'; B9; 待拍板 4",
-        removed_in="C1 phase 3",
-        today=_not_confirmed,
     ),
     Deviation(
         name="connector-node-cannot-confirm",

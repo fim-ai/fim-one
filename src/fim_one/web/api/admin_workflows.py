@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.assembly.confirmation import close_requests_of_runs
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_admin
 from fim_one.web.exceptions import AppError
@@ -221,6 +222,9 @@ async def admin_delete_workflow(
         raise AppError("workflow_not_found", status_code=404)
 
     workflow_name = workflow.name
+    await close_requests_of_runs(
+        db, select(WorkflowRun.id).where(WorkflowRun.workflow_id == workflow_id)
+    )
     await db.delete(workflow)
     await db.commit()
 
@@ -251,6 +255,10 @@ async def batch_delete_workflows(
     )
     workflows = result.scalars().all()
 
+    await close_requests_of_runs(
+        db,
+        select(WorkflowRun.id).where(WorkflowRun.workflow_id.in_([wf.id for wf in workflows])),
+    )
     count = 0
     deleted_names: list[str] = []
     for wf in workflows:

@@ -97,9 +97,9 @@ The `HookResult` returned controls the outcome:
 - `modified_result: str | None` — if set (PostToolUse), replaces the observation before it returns to the LLM
 - `side_effects: list[str]` — notes on what the hook did, collected by the registry (not surfaced in the agent's trace today)
 
-## Case study: `FeishuGateHook`
+## Case study: `ApprovalGateHook`
 
-The first hook shipped on top of this system is `FeishuGateHook` — a `PreToolUse` hook that turns any tool call needing confirmation (the action's `requires_confirmation` flag, or the agent's confirm-all setting) into a human approval. The approval is delivered as a card in the portal chat or as a Feishu card in the approval channel bound to the agent, according to the agent's confirmation mode (Auto / Inline only / Channel only); Auto uses the in-portal card when no channel is bound.
+The first hook shipped on top of this system is `ApprovalGateHook` (`fim_one.core.assembly.confirmation`; registry key `approval_gate`, formerly `feishu_gate` / `FeishuGateHook`) — a `PreToolUse` hook that turns any tool call needing confirmation (the action's `requires_confirmation` flag, or the agent's confirm-all setting) into a human approval. The hook builds a `ConfirmationSpec` and hands it to `ConfirmationService`, which records the request, delivers it as a card in the portal chat or as a Feishu card in the approval channel bound to the agent, according to the agent's confirmation mode (Auto / Inline only / Channel only), and waits for the decision; Auto uses the in-portal card when no channel is bound. In a chat with no agent the tool's own flag alone decides, and the person chatting approves inline. Who may decide is written on the request when it is created and read back by the portal and the channel callback alike.
 
 This hook exercises the full lifecycle:
 
@@ -107,7 +107,7 @@ This hook exercises the full lifecycle:
 sequenceDiagram
     autonumber
     participant ReAct as ReAct loop
-    participant Hook as FeishuGateHook
+    participant Hook as ApprovalGateHook
     participant DB as ConfirmationRequest
     participant Feishu as Feishu group
     participant Op as Operator
@@ -133,7 +133,7 @@ What this design is buying:
 - **The decision is audited.** `ConfirmationRequest` keeps `payload`, `responded_at`, `responded_by_open_id`, and the final status — an auditable record of who approved what and when.
 - **No LLM in the decision loop.** The model produces the tool call. Humans produce the verdict. The hook is the deterministic bridge.
 
-The channel path of `FeishuGateHook` depends on a [Feishu Channel](/configuration/channels/feishu) bound as the agent's approval channel — the hook sends the card through the channel's `send_interactive_card()` method and listens for callback events the channel parsed. The separation is deliberate: the hook owns "approval state machine", the channel owns "IM platform mechanics". The same hook could target Slack or WeCom tomorrow without changing its logic — only the channel implementation.
+The channel path depends on a [Feishu Channel](/configuration/channels/feishu) bound as the agent's approval channel. The service asks only whether the channel implements `ApprovalCarrier` (`send_approval`, `parse_decision`, `approval_target`), never which platform it is; the Feishu channel is the first implementation. The separation is deliberate: the service owns the approval state machine, the channel owns the IM platform mechanics. A Slack or WeCom channel that implements the carrier protocol would carry approvals without a change to the gate. A callback can decide only requests its own channel delivered.
 
 ## Candidate hooks (not planned)
 
@@ -154,7 +154,7 @@ The two abstractions solve orthogonal problems:
 
 | Concept | What it models | Lifetime | Example |
 |---|---|---|---|
-| **Hook** | A point in the agent's execution where platform code runs | Per tool call | `FeishuGateHook`, `AuditLogHook` |
+| **Hook** | A point in the agent's execution where platform code runs | Per tool call | `ApprovalGateHook`, `AuditLogHook` |
 | **Channel** | A pluggable adapter to an external messaging platform | Long-lived per org | `FeishuChannel`, planned `SlackChannel` |
 
 Hooks consume Channels — a hook that needs to talk to the outside world (send a card, post an alert, escalate to a group) calls into the org's Channel. A channel without any hook using it is still useful (e.g. agents can proactively send notifications via a tool), but the approval-gate pattern specifically requires both halves to be in place.
@@ -167,7 +167,7 @@ Snapshot of what shipped and what is still ahead:
 
 - ✅ `HookRegistry`, `HookContext`, `HookResult` primitives wired into both ReAct and DAG
 - ✅ `PreToolUseHook` / `PostToolUseHook` abstract bases
-- ✅ `FeishuGateHook` — complete, including `ConfirmationRequest` table, polling loop, timeout/expire, and callback-driven state flips
+- ✅ `ApprovalGateHook` and `ConfirmationService` — complete, including the `ConfirmationRequest` table, polling loop, timeout/expire, and callback-driven state flips; workflow approval steps use the same service
 - ✅ Feishu channel callback endpoint that decodes `card.action.trigger` and updates the pending row
 - ✅ Agent-level hook declarations: `agent.model_config_json.hooks.class_hooks` resolves to an instantiated `HookRegistry` on every ReAct/DAG session
 - ✅ **Hooks fire on every execution surface**: the main chat path (Portal, API, DAG), delegated sub-agents (`CallAgentTool`), and Workflow `AGENT` nodes. Eval Center runs intentionally **bypass** hooks (automated evaluation must not block on human approval).
@@ -176,4 +176,4 @@ Snapshot of what shipped and what is still ahead:
 - ❌ `AuditLogHook`, `ReadOnlyGuard`, `ResultTruncateHook`, `ConnectorRateLimitHook` (not planned)
 - ❌ User-defined YAML hook declarations (not planned)
 
-The Hook System is a **load-bearing foundation** for production hardening. Its first user (`FeishuGateHook`) is also a production feature in its own right, which is why the skeleton shipped early for the 2026-04-24 roadshow rather than waiting for the full hook catalog.
+The Hook System is a **load-bearing foundation** for production hardening. Its first user (`ApprovalGateHook`) is also a production feature in its own right, which is why the skeleton shipped early for the 2026-04-24 roadshow rather than waiting for the full hook catalog.

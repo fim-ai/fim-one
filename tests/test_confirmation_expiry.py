@@ -208,3 +208,51 @@ class TestSweep:
             second = await expirer.sweep(db)
         assert first == 1
         assert second == 0
+
+
+class TestSweepByDeadline:
+    """A row that says when it expires is swept at that moment, not by age."""
+
+    @pytest.mark.asyncio
+    async def test_expires_at_wins_over_age(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        seed: dict[str, str],
+    ) -> None:
+        now = datetime.now(UTC)
+        young_but_due = str(uuid.uuid4())
+        old_but_not_due = str(uuid.uuid4())
+        async with session_factory() as db:
+            # A chat confirmation: two minutes old, its 120 s window over.
+            db.add(
+                ConfirmationRequest(
+                    id=young_but_due,
+                    org_id=seed["org_id"],
+                    status="pending",
+                    created_at=now - timedelta(minutes=2),
+                    expires_at=now - timedelta(seconds=1),
+                )
+            )
+            # A workflow approval with a 72 h window, 30 h in.
+            db.add(
+                ConfirmationRequest(
+                    id=old_but_not_due,
+                    org_id=seed["org_id"],
+                    kind="workflow_approval",
+                    status="pending",
+                    created_at=now - timedelta(hours=30),
+                    expires_at=now + timedelta(hours=42),
+                )
+            )
+            await db.commit()
+
+        async with session_factory() as db:
+            assert await ConfirmationRequestExpirer(max_age_minutes=60 * 24).sweep(db) == 1
+
+        async with session_factory() as db:
+            statuses = {
+                r.id: r.status
+                for r in (await db.execute(select(ConfirmationRequest))).scalars().all()
+            }
+        assert statuses[young_but_due] == "expired"
+        assert statuses[old_but_not_due] == "pending"

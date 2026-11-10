@@ -32,10 +32,11 @@ from fim_one.core.tool.builtin.run_workflow import RunWorkflowTool
 from fim_one.core.workflow import run_service as rs
 from fim_one.core.workflow.scheduler import WorkflowScheduler
 from fim_one.db.base import Base
+from fim_one.db.models.channel import ConfirmationRequest
 from fim_one.db.models.organization import Organization, OrgMembership
 from fim_one.db.models.resource_subscription import ResourceSubscription
 from fim_one.db.models.user import User
-from fim_one.db.models.workflow import Workflow, WorkflowApproval, WorkflowRun
+from fim_one.db.models.workflow import Workflow, WorkflowRun
 from fim_one.web.api import workflows as wf_api
 from fim_one.web.exceptions import AppError
 from fim_one.web.schemas.workflow import (
@@ -349,7 +350,17 @@ async def test_approval_step(entry: str, world: World, real_engine: None) -> Non
     result = await asyncio.wait_for(_drive(entry, world), timeout=30)
 
     async with world.factory() as s:
-        approvals = list((await s.execute(select(WorkflowApproval))).scalars().all())
+        approvals = list(
+            (
+                await s.execute(
+                    select(ConfirmationRequest).where(
+                        ConfirmationRequest.kind == "workflow_approval"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
     if entry == "tool":
         assert result.refused == "workflow_has_approval_step"
         assert approvals == []
@@ -363,6 +374,11 @@ async def test_approval_step(entry: str, world: World, real_engine: None) -> Non
         (run,) = await _runs(world)
         assert run.id == approvals[0].workflow_run_id
         assert run.user_id == _expected_principal(entry, world)
+        # Unassigned: the run's user decides, whoever authored the workflow.
+        assert (approvals[0].eligible_scope, approvals[0].eligible_user_id) == (
+            "initiator",
+            run.user_id,
+        )
         assert run.status == "failed"
 
 
@@ -384,7 +400,7 @@ async def test_approval_step_refused_while_switched_off(
 
     assert result.refused == "human_intervention_disabled"
     async with world.factory() as s:
-        assert list((await s.execute(select(WorkflowApproval))).scalars().all()) == []
+        assert list((await s.execute(select(ConfirmationRequest))).scalars().all()) == []
     runs = await _runs(world)
     if entry == "schedule":
         # Nobody to tell: the refusal is recorded for the author.

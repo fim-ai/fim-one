@@ -354,23 +354,26 @@ class TestGateFlow:
             assert row2.channel_id is None
 
     @pytest.mark.asyncio
-    async def test_missing_agent_id_skips_gate(
+    async def test_missing_agent_id_gates_only_flagged_tools(
         self,
         session_factory: async_sessionmaker[AsyncSession],
+        seed: dict[str, Any],
     ) -> None:
-        # Bound-agent-less sessions (pure model chat, quick tasks) have no
-        # per-agent confirmation policy to enforce, so the gate must let
-        # the tool through instead of hard-blocking with a cryptic error.
+        # A chat with no agent has no per-agent policy: a tool that is not
+        # flagged passes without a request, and a flagged one is confirmed
+        # inline by the user chatting (tests/test_noagent_confirmation.py).
         hook = create_feishu_gate_hook(session_factory=session_factory)
         ctx = HookContext(
             hook_point=HookPoint.PRE_TOOL_USE,
             tool_name="x__y",
-            metadata={"requires_confirmation": True},
+            user_id=seed["user_id"],
+            metadata={"requires_confirmation": False},
         )
         result = await hook.execute(ctx)
         assert result.allow is True
         assert result.error is None
-        assert any("no agent context" in s for s in result.side_effects)
+        async with session_factory() as db:
+            assert (await db.execute(select(ConfirmationRequest))).scalars().all() == []
 
     @pytest.mark.asyncio
     async def test_send_failure_blocks(
@@ -540,7 +543,8 @@ class TestInlineMode:
         result = await hook.execute(ctx)
 
         assert result.allow is False
-        assert "channel_only" in (result.error or "").lower()
+        assert '"Channel only"' in (result.error or "")
+        assert "channel_only" not in (result.error or "")
         # No row should have been created for a pre-flight failure.
         async with session_factory() as db:
             rows = (await db.execute(select(ConfirmationRequest))).all()
@@ -663,8 +667,19 @@ class TestAsHook:
 
         assert len(registry) == 1
         listed = registry.list_hooks(HookPoint.PRE_TOOL_USE)
-        assert listed[0].name == "feishu_gate"
+        assert listed[0].name == "approval_gate"
         assert listed[0].priority == 10
+
+    def test_the_former_names_are_the_same_objects(self) -> None:
+        from fim_one.core.assembly.confirmation import (
+            ApprovalGateHook,
+            create_approval_gate_hook,
+        )
+        from fim_one.core.hooks import feishu_gate_hook
+
+        assert FeishuGateHook is ApprovalGateHook
+        assert create_feishu_gate_hook is create_approval_gate_hook
+        assert feishu_gate_hook.FeishuGateHook is ApprovalGateHook
 
 
 class TestChannelOrgBoundary:
@@ -798,3 +813,52 @@ class TestApprovalChannelBinding:
                         outsider.id, db, approval_channel_id=channel_id
                     )
                 assert exc.value.error_code == "approval_channel_denied"
+
+
+class TestPersonalAgentWithForeignKeysEnforced:
+    """The row of a personal agent's request names no organization.
+
+    PostgreSQL always enforces foreign keys and the application's SQLite
+    engine switches them on; the in-memory engines of the tests above do
+    not, which hid an empty-string ``org_id`` that no database in use
+    would accept.
+    """
+
+    @pytest.mark.asyncio
+    async def test_inline_request_is_recorded_and_decided(self) -> None:
+        from sqlalchemy import event
+
+        eng = create_async_engine("sqlite+aiosqlite:///:memory:")
+
+        @event.listens_for(eng.sync_engine, "connect")
+        def _enforce_foreign_keys(dbapi_conn: Any, _record: Any) -> None:
+            dbapi_conn.execute("PRAGMA foreign_keys=ON")
+
+        async with eng.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        factory = async_sessionmaker(eng, expire_on_commit=False)
+        user_id = str(uuid.uuid4())
+        async with factory() as db:
+            db.add(User(id=user_id, username="erin", email="erin@test.com"))
+            await db.commit()
+        await _seed_agent(
+            factory,
+            user_id=user_id,
+            org_id=None,
+            agent_id="agent-personal-fk",
+            confirmation_mode="inline_only",
+        )
+
+        hook = create_feishu_gate_hook(
+            session_factory=factory, timeout_seconds=5, poll_interval_seconds=0.02
+        )
+        ctx = _make_context(org_id=None, user_id=user_id, agent_id="agent-personal-fk")
+        with _decide_on_create(factory, "approved"):
+            result = await hook.execute(ctx)
+
+        assert result.allow is True
+        async with factory() as db:
+            row = (await db.execute(select(ConfirmationRequest))).scalar_one()
+            assert row.org_id is None
+            assert row.status == "approved"
+        await eng.dispose()

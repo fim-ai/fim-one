@@ -34,10 +34,11 @@ import os
 import shutil
 from pathlib import Path
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from fim_one.core.assembly.confirmation import close_requests_of_runs
 from fim_one.db.models.api_key import ApiKey
 from fim_one.db.models.audit_log import AuditLog
 from fim_one.db.models.connector import Connector
@@ -51,7 +52,7 @@ from fim_one.db.models.login_history import LoginHistory
 from fim_one.db.models.organization import Organization, OrgMembership
 from fim_one.db.models.resource_subscription import ResourceSubscription
 from fim_one.db.models.user import User
-from fim_one.db.models.workflow import WorkflowRun, WorkflowVersion
+from fim_one.db.models.workflow import Workflow, WorkflowRun, WorkflowVersion
 from fim_one.web.exceptions import AppError
 
 logger = logging.getLogger(__name__)
@@ -200,8 +201,19 @@ async def purge_user_data(db: AsyncSession, user_id: str) -> dict[str, int]:
     await db.execute(delete(EmailVerification).where(EmailVerification.email == user_email))
 
     # Workflow runs this user triggered (incl. on *shared* workflows owned by
-    # others — those won't be caught by the owned-workflow cascade).  Approvals
-    # cascade off the run at the DB level (ondelete=CASCADE).
+    # others — those won't be caught by the owned-workflow cascade).  An
+    # approval names its run without a foreign key, so the open ones are
+    # closed here, for these runs and for the runs of the user's own
+    # workflows (which go with the workflow in step 5).
+    await close_requests_of_runs(
+        db,
+        select(WorkflowRun.id).where(
+            or_(
+                WorkflowRun.user_id == user_id,
+                WorkflowRun.workflow_id.in_(select(Workflow.id).where(Workflow.user_id == user_id)),
+            )
+        ),
+    )
     await db.execute(delete(WorkflowRun).where(WorkflowRun.user_id == user_id))
     # Versions this user authored on *others'* workflows: keep the row, drop the
     # actor reference (versions on the user's own workflows cascade-delete).

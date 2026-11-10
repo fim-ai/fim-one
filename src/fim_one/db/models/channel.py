@@ -6,9 +6,10 @@ encrypt_key) are encrypted at-rest via ``EncryptedJSON`` so the raw values
 never sit on disk in plaintext.
 
 A **ConfirmationRequest** is a pending human-in-the-loop gate record created
-by ``FeishuGateHook`` when a tool marked ``requires_confirmation=True`` is
-about to run.  The hook blocks until the callback endpoint flips the status
-to ``approved`` or ``rejected``.
+by the confirmation service (``fim_one.core.assembly.confirmation``) when a
+tool marked ``requires_confirmation=True`` is about to run.  The approval
+gate blocks until the callback endpoint flips the status to ``approved`` or
+``rejected``.
 """
 
 from __future__ import annotations
@@ -65,10 +66,11 @@ class Channel(UUIDPKMixin, TimestampMixin, Base):
 class ConfirmationRequest(UUIDPKMixin, TimestampMixin, Base):
     """A pending human-in-the-loop approval for a tool call.
 
-    Created by ``FeishuGateHook`` before a sensitive tool is invoked.  The
-    callback endpoint (``/api/channels/{id}/callback``) flips ``status`` to
-    ``approved`` or ``rejected`` when the card button is clicked; the hook
-    polls until the terminal state is reached (or ``expired`` by timeout).
+    Created by the confirmation service before a sensitive tool is invoked.
+    The callback endpoint (``/api/channels/{id}/callback``) flips ``status``
+    to ``approved`` or ``rejected`` when the card button is clicked; the
+    approval gate polls until the terminal state is reached (or ``expired``
+    by timeout).
     """
 
     __tablename__ = "confirmation_requests"
@@ -146,3 +148,27 @@ class ConfirmationRequest(UUIDPKMixin, TimestampMixin, Base):
     responded_by_open_id: Mapped[str | None] = mapped_column(
         String(128), nullable=True
     )
+    # Who may decide, fixed when the request is created: "initiator",
+    # "agent_owner" or "assignee" (compared with ``eligible_user_id``) or
+    # "org_members" (any member of ``org_id``). NULL on rows written before
+    # these columns existed; those fall back to the agent's current setting.
+    eligible_scope: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    eligible_user_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # Who decided, and the note they left. Not foreign keys: a decision
+    # record outlives the account that made it.
+    decided_by_user_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    decision_note: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # When the request stops being answerable.
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Where the request came from: the chat it was raised in, or the workflow
+    # run and node that is waiting on it (kind="workflow_approval").
+    conversation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    workflow_run_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True, index=True
+    )
+    node_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # What an approver is shown for a workflow approval.
+    title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    description: Mapped[str | None] = mapped_column(sa.Text, nullable=True)

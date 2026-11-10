@@ -1,7 +1,7 @@
 """Inline confirmation respond endpoint.
 
 When an agent hits a tool flagged ``requires_confirmation=True``, the
-``FeishuGateHook`` creates a ``ConfirmationRequest(mode='inline')`` row
+approval gate creates a ``ConfirmationRequest`` row with ``mode='inline'``
 (or ``mode='channel'`` if routed to Feishu) and blocks its poll until
 someone flips the status.
 
@@ -10,10 +10,10 @@ This router exposes the frontend-facing counterpart to Feishu's
 Reject in the portal → POST ``/api/confirmations/{id}/respond`` → the row
 flips, the hook wakes up, the tool proceeds or aborts.
 
-Scope enforcement follows the agent's ``confirmation_approver_scope``
-column (initiator / agent_owner / org_members).  The request body also
-accepts an optional ``reason`` string — currently only logged, but kept
-so the frontend can wire a textarea without a second API bump later.
+Who may decide was fixed when the request was created and is read off the
+row by ``ConfirmationService.may_decide`` (the Feishu callback applies the
+same rule).  The request body also accepts an optional ``reason`` string,
+stored as the decision note.
 """
 
 from __future__ import annotations
@@ -28,11 +28,13 @@ from sqlalchemy import CursorResult, select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import cast as _cast
 
+from fim_one.core.assembly.confirmation import ConfirmationService, record_decision
+from fim_one.core.assembly.errors import AssemblyRefusal
+from fim_one.core.assembly.principal import AuthMethod, Principal, resolve_principal
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_user
-from fim_one.db.models.agent import Agent
+from fim_one.web.exceptions import AppError
 from fim_one.db.models.channel import ConfirmationRequest
-from fim_one.db.models.organization import OrgMembership
 from fim_one.db.models.user import User
 
 logger = logging.getLogger(__name__)
@@ -98,10 +100,19 @@ class QuestionAnswerResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Shared update helper — also imported by the Feishu callback path so both
-# surfaces stamp ``approver_user_id`` / ``decided_at`` / ``responded_at``
-# consistently.
+# The service, and the former name of its write
 # ---------------------------------------------------------------------------
+
+def _service() -> ConfirmationService:
+    # Resolved per call: the session factory is the module attribute, which
+    # tests point at their own engine.
+    from fim_one.db import create_session
+
+    return ConfirmationService(create_session)
+
+
+async def _actor(db: AsyncSession, user: User) -> Principal:
+    return await resolve_principal(db, user_id=user.id, auth=AuthMethod.SESSION)
 
 
 async def apply_confirmation_decision(
@@ -112,142 +123,17 @@ async def apply_confirmation_decision(
     approver_user_id: str | None = None,
     responded_by_open_id: str | None = None,
 ) -> tuple[str | None, bool, dict[str, Any] | None]:
-    """Atomically flip a ``ConfirmationRequest`` to ``approved`` / ``rejected``.
+    """Former name of :func:`fim_one.core.assembly.confirmation.record_decision`.
 
-    Uses a conditional ``UPDATE ... WHERE status='pending'`` so concurrent
-    responders race cleanly — exactly one UPDATE changes a row, the rest
-    see rowcount=0 and fall into the "already decided" branch.  Works on
-    both SQLite (serialised writes) and Postgres (MVCC row locks).
-
-    Returns ``(final_status, newly_applied, payload)``:
-
-    * ``(None, False, None)`` — row not found.
-    * ``(status, True, payload)`` — this call flipped the row.
-    * ``(status, False, payload)`` — already terminal on arrival.
+    Kept for one release. It writes without checking who may decide; new
+    callers go through ``ConfirmationService.decide``.
     """
-    new_status = "approved" if decision == "approve" else "rejected"
-    now = datetime.now(timezone.utc)
-
-    values: dict[str, Any] = {
-        "status": new_status,
-        "responded_at": now,
-    }
-    if approver_user_id is not None:
-        values["approver_user_id"] = approver_user_id
-    if responded_by_open_id is not None:
-        values["responded_by_open_id"] = responded_by_open_id
-
-    stmt = (
-        sa_update(ConfirmationRequest)
-        .where(
-            ConfirmationRequest.id == confirmation_id,
-            ConfirmationRequest.status == "pending",
-        )
-        .values(**values)
-    )
-    result = _cast(CursorResult[Any], await db.execute(stmt))
-    await db.commit()
-    newly_applied = (result.rowcount or 0) == 1
-
-    row = (
-        await db.execute(
-            select(ConfirmationRequest).where(
-                ConfirmationRequest.id == confirmation_id
-            )
-        )
-    ).scalar_one_or_none()
-    if row is None:
-        return (None, False, None)
-
-    payload_snapshot: dict[str, Any] | None = (
-        dict(row.payload) if isinstance(row.payload, dict) else None
-    )
-    return (row.status, newly_applied, payload_snapshot)
-
-
-# ---------------------------------------------------------------------------
-# Scope enforcement
-# ---------------------------------------------------------------------------
-
-
-async def _user_in_org(
-    db: AsyncSession, *, user_id: str, org_id: str
-) -> bool:
-    if not org_id:
-        return False
-    stmt = (
-        select(OrgMembership.id)
-        .where(
-            OrgMembership.user_id == user_id,
-            OrgMembership.org_id == org_id,
-        )
-        .limit(1)
-    )
-    return (await db.execute(stmt)).scalar_one_or_none() is not None
-
-
-async def user_may_decide(
-    db: AsyncSession,
-    *,
-    request: ConfirmationRequest,
-    agent: Agent,
-    user: User,
-) -> bool:
-    """Return True if *user* may decide this confirmation.
-
-    Rules driven by ``agent.confirmation_approver_scope``:
-
-    * ``initiator``    — only ``request.user_id``.
-    * ``agent_owner``  — only ``agent.user_id``.
-    * ``org_members``  — any member of ``agent.org_id``.
-
-    Platform admins (``User.is_admin``) bypass the scope check; they can
-    always approve (helps on-call break glass).
-
-    Shared by the portal respond endpoint and the Feishu callback path so
-    both surfaces enforce the same eligibility.
-    """
-    if getattr(user, "is_admin", False):
-        return True
-
-    scope = str(
-        getattr(agent, "confirmation_approver_scope", "initiator")
-        or "initiator"
-    ).lower()
-
-    if scope == "initiator":
-        return user.id == request.user_id
-    if scope == "agent_owner":
-        return user.id == agent.user_id
-    if scope == "org_members":
-        org_id = agent.org_id
-        if not org_id:
-            return False
-        return await _user_in_org(db, user_id=user.id, org_id=org_id)
-
-    # Unknown scope — log and deny.  A strict default is safer than
-    # silently granting access when config drifts.
-    logger.warning(
-        "confirmations: unknown approver scope %r on agent %s",
-        scope,
-        agent.id,
-    )
-    return False
-
-
-async def _check_scope_or_403(
-    db: AsyncSession,
-    *,
-    request: ConfirmationRequest,
-    agent: Agent,
-    current_user: User,
-) -> None:
-    """Raise 403 if *current_user* may not decide this confirmation."""
-    if await user_may_decide(db, request=request, agent=agent, user=current_user):
-        return
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="You are not authorised to respond to this confirmation.",
+    return await record_decision(
+        db,
+        confirmation_id=confirmation_id,
+        decision=decision,
+        decided_by=approver_user_id,
+        external_actor=responded_by_open_id,
     )
 
 
@@ -269,53 +155,10 @@ async def respond_to_confirmation(
     """Approve or reject a pending inline confirmation.
 
     * ``404`` — confirmation not found.
-    * ``403`` — caller not in scope (per agent.confirmation_approver_scope).
+    * ``403`` — caller may not decide it (``confirmation_forbidden``).
     * ``409`` — already decided / expired.
     * ``200`` — flipped successfully.
     """
-    row = (
-        await db.execute(
-            select(ConfirmationRequest).where(
-                ConfirmationRequest.id == confirmation_id
-            )
-        )
-    ).scalar_one_or_none()
-    if row is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Confirmation request not found.",
-        )
-
-    if row.status != "pending":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Confirmation is already {row.status}.",
-        )
-
-    if not row.agent_id:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "Confirmation has no agent binding — cannot resolve "
-                "approver scope."
-            ),
-        )
-
-    agent = (
-        await db.execute(
-            select(Agent).where(Agent.id == row.agent_id)
-        )
-    ).scalar_one_or_none()
-    if agent is None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Agent referenced by confirmation no longer exists.",
-        )
-
-    await _check_scope_or_403(
-        db, request=row, agent=agent, current_user=current_user
-    )
-
     if body.reason:
         logger.info(
             "confirmations.respond: user=%s decision=%s reason=%r",
@@ -323,44 +166,23 @@ async def respond_to_confirmation(
             body.decision,
             body.reason[:200],
         )
-
-    final_status, newly_applied, _payload = await apply_confirmation_decision(
-        db,
-        confirmation_id=confirmation_id,
-        decision=body.decision,
-        approver_user_id=current_user.id,
-    )
-
-    if final_status is None:
-        # Deleted between our SELECT and UPDATE — treat as not-found.
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Confirmation request not found.",
+    try:
+        row = await _service().decide(
+            db,
+            confirmation_id=confirmation_id,
+            actor=await _actor(db, current_user),
+            decision=body.decision,
+            note=body.reason,
         )
+    except AssemblyRefusal as refusal:
+        raise AppError.from_refusal(refusal) from None
 
-    if not newly_applied:
-        # Raced with another approver — surface the actual state.
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Confirmation is already {final_status}.",
-        )
-
-    # Reload to get the canonical timestamp stamped by the UPDATE.
-    refreshed = (
-        await db.execute(
-            select(ConfirmationRequest).where(
-                ConfirmationRequest.id == confirmation_id
-            )
-        )
-    ).scalar_one_or_none()
-    decided_at_dt = (
-        refreshed.responded_at if refreshed else None
-    ) or datetime.now(timezone.utc)
+    decided_at_dt = row.responded_at or datetime.now(timezone.utc)
     if decided_at_dt.tzinfo is None:
         decided_at_dt = decided_at_dt.replace(tzinfo=timezone.utc)
 
     return ConfirmationRespondResponse(
-        status=final_status,
+        status=row.status,
         confirmation_id=confirmation_id,
         decided_at=decided_at_dt.astimezone(timezone.utc).isoformat(),
     )
@@ -405,10 +227,8 @@ async def answer_user_question(
             detail=f"Question is already {row.status}.",
         )
 
-    # Only the user who initiated the run may answer their own question.
-    if row.user_id != current_user.id and not getattr(
-        current_user, "is_admin", False
-    ):
+    # Only the user who asked for the run may answer their own question.
+    if not await _service().may_decide(db, row, await _actor(db, current_user)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You are not authorised to answer this question.",
@@ -512,8 +332,7 @@ async def get_confirmation(
     ``useState`` loses the prior approve/reject decision and the buttons
     reappear.
 
-    Scope check mirrors the respond endpoint — only users who could have
-    legitimately responded may observe the request.
+    Only users who may decide the request may observe it.
     """
     stmt = select(ConfirmationRequest).where(
         ConfirmationRequest.id == confirmation_id
@@ -526,14 +345,10 @@ async def get_confirmation(
     kind = str(getattr(request, "kind", "") or "confirmation")
     payload: dict[str, Any] = request.payload or {}
 
+    if not await _service().may_decide(db, request, await _actor(db, current_user)):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+
     if kind == "user_question":
-        # Question requests may come from agent-less playground runs —
-        # there is no agent scope to resolve; only the initiator (or an
-        # admin) may observe them.
-        if request.user_id != current_user.id and not getattr(
-            current_user, "is_admin", False
-        ):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
         response_payload: dict[str, Any] = (
             request.response_payload
             if isinstance(request.response_payload, dict)
@@ -558,17 +373,6 @@ async def get_confirmation(
             notes=response_payload.get("notes"),
         )
 
-    agent_stmt = select(Agent).where(Agent.id == request.agent_id)
-    agent_res = await db.execute(agent_stmt)
-    agent_row = agent_res.scalar_one_or_none()
-    if agent_row is None:
-        # Orphaned confirmation — treat as not found.
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
-
-    await _check_scope_or_403(
-        db, request=request, agent=agent_row, current_user=current_user
-    )
-
     return ConfirmationStatusResponse(
         confirmation_id=request.id,
         status=request.status,
@@ -584,4 +388,4 @@ async def get_confirmation(
     )
 
 
-__all__ = ["router", "apply_confirmation_decision", "user_may_decide"]
+__all__ = ["router", "apply_confirmation_decision"]

@@ -12,7 +12,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import Any, Literal, cast
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -25,7 +25,15 @@ from fim_one.core.security import get_safe_async_client, is_private_ip
 from fim_one.web.exceptions import AppError
 from fim_one.web.auth import get_current_user, get_user_org_ids
 from fim_one.web.platform import MARKET_ORG_ID, is_market_org
-from fim_one.db.models import User, Workflow, WorkflowApproval, WorkflowRun, WorkflowVersion
+from fim_one.core.assembly.confirmation import (
+    ConfirmationService,
+    close_requests_of_runs,
+    validate_assignee,
+)
+from fim_one.core.assembly.errors import AssemblyRefusal
+from fim_one.core.assembly.principal import AuthMethod, Principal, resolve_principal
+from fim_one.db.models import User, Workflow, WorkflowRun, WorkflowVersion
+from fim_one.db.models.channel import ConfirmationRequest
 from fim_one.db.models.resource_subscription import ResourceSubscription
 from fim_one.db.models.workflow import RUN_MODE_TEST_NODE
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse, PublishRequest
@@ -373,6 +381,46 @@ def ensure_nodes_enabled(blueprint: Any) -> None:
         )
 
 
+async def ensure_assignees_valid(
+    db: AsyncSession, blueprint: Any, *, user: User, org_id: str | None
+) -> None:
+    """Refuse a blueprint whose Human Intervention step names an assignee it cannot have.
+
+    Checks the assignees written as literals (a ``{{variable}}`` is checked
+    when the run interpolates it) with the rule the run applies: an active
+    user in the workflow's organization, or, for a workflow in none, one
+    sharing an organization with the saver. Answers 400
+    ``approval_assignee_not_in_org`` naming the step (``error_args.step``)
+    and the assignee.
+    """
+    from fim_one.core.workflow.blueprint_v2 import node_type_of
+    from fim_one.core.workflow.types import NodeType
+
+    if not isinstance(blueprint, dict):
+        return
+    nodes = blueprint.get("nodes")
+    saver: Principal | None = None
+    for node in nodes if isinstance(nodes, list) else []:
+        if node_type_of(node) != NodeType.HUMAN_INTERVENTION:
+            continue
+        data = node.get("data") if isinstance(node.get("data"), dict) else {}
+        assignee = str(data.get("assignee") or "").strip()
+        if not assignee or "{{" in assignee:
+            continue
+        if saver is None:
+            saver = await _principal_of(db, user)
+        try:
+            await validate_assignee(db, assignee=assignee, initiator=saver, org_id=org_id)
+        except AssemblyRefusal as refusal:
+            label = data.get("label") or node.get("id") or ""
+            raise AppError(
+                refusal.error_code,
+                status_code=refusal.status_code,
+                detail=f"Human Intervention step '{label}': {refusal.detail}",
+                detail_args={"step": str(label), "assignee": assignee},
+            ) from None
+
+
 def _disabled_node_items(blueprint: Any) -> list[BlueprintWarningItem]:
     """One validation item per switched-off node in *blueprint*."""
     from fim_one.core.workflow.node_gates import (
@@ -488,6 +536,7 @@ async def create_workflow(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     blueprint = normalize_blueprint(body.blueprint)
+    await ensure_assignees_valid(db, blueprint, user=current_user, org_id=None)
     input_schema, output_schema = _extract_schemas_from_blueprint(blueprint)
     wf = Workflow(
         user_id=current_user.id,
@@ -766,59 +815,93 @@ async def _execute_trigger(
 # ---------------------------------------------------------------------------
 
 
-def _approval_to_response(approval: WorkflowApproval) -> WorkflowApprovalResponse:
+# Workflow approvals are confirmation requests of kind "workflow_approval";
+# these endpoints are a view onto ``ConfirmationService``.
+APPROVAL_KIND = "workflow_approval"
+
+
+def _confirmation_service() -> ConfirmationService:
+    from fim_one.db import create_session
+
+    return ConfirmationService(create_session)
+
+
+async def _principal_of(db: AsyncSession, user: User) -> Principal:
+    return await resolve_principal(db, user_id=user.id, auth=AuthMethod.SESSION)
+
+
+def _iso(moment: datetime | None) -> str | None:
+    return moment.isoformat() if moment else None
+
+
+def _approval_to_response(row: ConfirmationRequest) -> WorkflowApprovalResponse:
+    payload = row.payload if isinstance(row.payload, dict) else {}
     return WorkflowApprovalResponse(
-        id=approval.id,
-        workflow_run_id=approval.workflow_run_id,
-        node_id=approval.node_id,
-        title=approval.title,
-        description=approval.description,
-        status=approval.status,
-        assignee=approval.assignee,
-        decision_by=approval.decision_by,
-        decision_note=approval.decision_note,
-        timeout_hours=approval.timeout_hours,
-        created_at=approval.created_at.isoformat() if approval.created_at else "",
-        resolved_at=(
-            approval.resolved_at.isoformat() if approval.resolved_at else None
-        ),
-        updated_at=(
-            approval.updated_at.isoformat() if approval.updated_at else None
-        ),
+        id=row.id,
+        workflow_run_id=row.workflow_run_id or "",
+        node_id=row.node_id or "",
+        title=row.title or "",
+        description=row.description,
+        status=row.status,
+        assignee=row.eligible_user_id if row.eligible_scope == "assignee" else None,
+        decision_by=row.decided_by_user_id,
+        decision_note=row.decision_note,
+        timeout_hours=float(payload.get("timeout_hours") or 24.0),
+        created_at=_iso(row.created_at) or "",
+        resolved_at=_iso(row.responded_at),
+        updated_at=_iso(row.updated_at),
     )
 
 
-async def _get_decidable_approval(
-    approval_id: str, user_id: str, db: AsyncSession
-) -> WorkflowApproval:
-    """Load an approval the user may decide, or raise.
+async def _decide_approval(
+    approval_id: str,
+    body: ApprovalDecisionRequest,
+    current_user: User,
+    db: AsyncSession,
+    *,
+    decision: Literal["approve", "reject"],
+) -> ApiResponse:
+    """Decide a workflow approval the user may decide, or raise.
 
-    An assigned approval belongs to its assignee.  An unassigned one belongs
-    to the user its run is attributed to (the runner, or the workflow owner
-    for trigger and scheduled runs); nobody else may see or decide it.
+    An assigned approval belongs to its assignee (``approval_not_assigned``
+    to anyone else); an unassigned one to the user its run is attributed
+    to, and to nobody else it does not exist (``approval_not_found``). A
+    platform administrator may decide either.
     """
-    result = await db.execute(
-        select(WorkflowApproval, WorkflowRun.user_id)
-        .outerjoin(WorkflowRun, WorkflowRun.id == WorkflowApproval.workflow_run_id)
-        .where(WorkflowApproval.id == approval_id)
-    )
-    row = result.one_or_none()
+    row = (
+        await db.execute(
+            select(ConfirmationRequest).where(
+                ConfirmationRequest.id == approval_id,
+                ConfirmationRequest.kind == APPROVAL_KIND,
+            )
+        )
+    ).scalar_one_or_none()
     if row is None:
         raise AppError("approval_not_found", status_code=404)
-    approval: WorkflowApproval = row[0]
-    run_user_id: str | None = row[1]
-
-    if approval.assignee:
-        if approval.assignee != user_id:
+    actor = await _principal_of(db, current_user)
+    service = _confirmation_service()
+    if not await service.may_decide(db, row, actor):
+        if row.eligible_scope == "assignee":
             raise AppError(
                 "approval_not_assigned",
                 status_code=403,
                 detail="This approval is assigned to another user",
             )
-    elif run_user_id != user_id:
         # Same response as a missing approval: do not reveal that it exists.
         raise AppError("approval_not_found", status_code=404)
-    return approval
+    try:
+        decided = await service.decide(
+            db, confirmation_id=approval_id, actor=actor, decision=decision, note=body.note
+        )
+    except AssemblyRefusal as refusal:
+        if refusal.error_code == "confirmation_already_decided":
+            raise AppError(
+                "approval_already_resolved",
+                status_code=409,
+                detail="Approval has already been resolved",
+            ) from None
+        raise AppError("approval_not_found", status_code=404) from None
+    return ApiResponse(data=_approval_to_response(decided).model_dump())
 
 
 @router.get("/approvals/pending", response_model=ApiResponse)
@@ -828,25 +911,8 @@ async def list_pending_approvals(
 ) -> ApiResponse:
     """List pending approvals assigned to the current user, plus unassigned
     ones on runs attributed to the current user."""
-    from sqlalchemy import and_, or_
-
-    result = await db.execute(
-        select(WorkflowApproval)
-        .outerjoin(WorkflowRun, WorkflowRun.id == WorkflowApproval.workflow_run_id)
-        .where(
-            WorkflowApproval.status == "pending",
-            or_(
-                WorkflowApproval.assignee == current_user.id,
-                and_(
-                    WorkflowApproval.assignee.is_(None),
-                    WorkflowRun.user_id == current_user.id,
-                ),
-            ),
-        )
-        .order_by(WorkflowApproval.created_at.desc())
-    )
-    approvals = result.scalars().all()
-
+    actor = await _principal_of(db, current_user)
+    approvals = await _confirmation_service().pending_for(db, actor, kind=APPROVAL_KIND)
     return ApiResponse(
         data=[_approval_to_response(a).model_dump() for a in approvals]
     )
@@ -860,34 +926,7 @@ async def approve_approval(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     """Approve a pending workflow approval."""
-    approval = await _get_decidable_approval(approval_id, current_user.id, db)
-
-    # Atomic status transition: WHERE status='pending' prevents race condition
-    now = datetime.now(UTC)
-    update_result = cast(CursorResult[Any], await db.execute(
-        update(WorkflowApproval)
-        .where(
-            WorkflowApproval.id == approval_id,
-            WorkflowApproval.status == "pending",
-        )
-        .values(
-            status="approved",
-            decision_by=current_user.id,
-            decision_note=body.note,
-            resolved_at=now,
-        )
-    ))
-    if update_result.rowcount == 0:
-        raise AppError(
-            "approval_already_resolved",
-            status_code=409,
-            detail="Approval has already been resolved",
-        )
-    await db.commit()
-
-    # Refresh to get updated fields
-    await db.refresh(approval)
-    return ApiResponse(data=_approval_to_response(approval).model_dump())
+    return await _decide_approval(approval_id, body, current_user, db, decision="approve")
 
 
 @router.post("/approvals/{approval_id}/reject", response_model=ApiResponse)
@@ -898,33 +937,7 @@ async def reject_approval(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     """Reject a pending workflow approval."""
-    approval = await _get_decidable_approval(approval_id, current_user.id, db)
-
-    # Atomic status transition: WHERE status='pending' prevents race condition
-    now = datetime.now(UTC)
-    update_result = cast(CursorResult[Any], await db.execute(
-        update(WorkflowApproval)
-        .where(
-            WorkflowApproval.id == approval_id,
-            WorkflowApproval.status == "pending",
-        )
-        .values(
-            status="rejected",
-            decision_by=current_user.id,
-            decision_note=body.note,
-            resolved_at=now,
-        )
-    ))
-    if update_result.rowcount == 0:
-        raise AppError(
-            "approval_already_resolved",
-            status_code=409,
-            detail="Approval has already been resolved",
-        )
-    await db.commit()
-
-    await db.refresh(approval)
-    return ApiResponse(data=_approval_to_response(approval).model_dump())
+    return await _decide_approval(approval_id, body, current_user, db, decision="reject")
 
 
 # ---------------------------------------------------------------------------
@@ -962,6 +975,9 @@ async def update_workflow(
     old_blueprint: dict[str, Any] | None = None
     if "blueprint" in update_data and update_data["blueprint"] is not None:
         update_data["blueprint"] = normalize_blueprint(update_data["blueprint"])
+        await ensure_assignees_valid(
+            db, update_data["blueprint"], user=current_user, org_id=wf.org_id
+        )
         old_blueprint = wf.blueprint or {"nodes": [], "edges": [], "viewport": {}}
 
     for field, value in update_data.items():
@@ -1086,6 +1102,10 @@ async def delete_workflow(
     await purge_resource_subscriptions(
         db, resource_type="workflow", resource_id=workflow_id
     )
+    # The runs go with the workflow; their open approvals are closed.
+    await close_requests_of_runs(
+        db, select(WorkflowRun.id).where(WorkflowRun.workflow_id == workflow_id)
+    )
     await db.delete(wf)
     await db.commit()
     return ApiResponse(data={"deleted": workflow_id})
@@ -1112,6 +1132,10 @@ async def publish_workflow(
         from fim_one.web.auth import require_org_member
         if not is_market_org(body.org_id):
             await require_org_member(body.org_id, current_user, db)
+        # The blueprint was saved against the organization the workflow was
+        # in then (or none); its literal assignees must fit the one it is
+        # published to, the rule a run there applies.
+        await ensure_assignees_valid(db, wf.blueprint, user=current_user, org_id=body.org_id)
         wf.visibility = "org"
         wf.org_id = body.org_id
         from fim_one.web.publish_review import apply_publish_status
@@ -2649,12 +2673,18 @@ async def list_run_approvals(
     if run is None:
         raise AppError("workflow_run_not_found", status_code=404)
 
-    # Same rule as _get_decidable_approval: someone else's run shows only the
-    # approvals assigned to the current user.
-    stmt = select(WorkflowApproval).where(WorkflowApproval.workflow_run_id == run_id)
+    # Same rule as deciding: someone else's run shows only the approvals
+    # assigned to the current user.
+    stmt = select(ConfirmationRequest).where(
+        ConfirmationRequest.workflow_run_id == run_id,
+        ConfirmationRequest.kind == APPROVAL_KIND,
+    )
     if run.user_id != current_user.id:
-        stmt = stmt.where(WorkflowApproval.assignee == current_user.id)
-    result = await db.execute(stmt.order_by(WorkflowApproval.created_at.desc()))
+        stmt = stmt.where(
+            ConfirmationRequest.eligible_scope == "assignee",
+            ConfirmationRequest.eligible_user_id == current_user.id,
+        )
+    result = await db.execute(stmt.order_by(ConfirmationRequest.created_at.desc()))
     approvals = result.scalars().all()
 
     return ApiResponse(
@@ -2690,6 +2720,7 @@ async def delete_workflow_run(
     if run.status in ("pending", "running"):
         raise AppError("cannot_delete_active_run", status_code=409)
 
+    await close_requests_of_runs(db, [run.id])
     await db.delete(run)
     await db.commit()
     return ApiResponse(data={"deleted": run_id})
@@ -2707,13 +2738,13 @@ async def clear_workflow_runs(
     """
     await _get_owned_workflow(workflow_id, current_user.id, db)
 
-    del_result = cast(CursorResult[Any], await db.execute(
-        delete(WorkflowRun).where(
-            WorkflowRun.workflow_id == workflow_id,
-            _own_runs_clause(current_user.id),
-            WorkflowRun.status.in_(["completed", "failed", "cancelled"]),
-        )
-    ))
+    finished = (
+        WorkflowRun.workflow_id == workflow_id,
+        _own_runs_clause(current_user.id),
+        WorkflowRun.status.in_(["completed", "failed", "cancelled"]),
+    )
+    await close_requests_of_runs(db, select(WorkflowRun.id).where(*finished))
+    del_result = cast(CursorResult[Any], await db.execute(delete(WorkflowRun).where(*finished)))
     await db.commit()
     return ApiResponse(data={"deleted_count": del_result.rowcount})
 
@@ -2798,6 +2829,7 @@ async def import_workflow(
     if not (data.blueprint or {}).get("nodes"):
         raise AppError("import_invalid_blueprint", status_code=400)
     raw_blueprint = normalize_blueprint(data.blueprint)
+    await ensure_assignees_valid(db, raw_blueprint, user=current_user, org_id=None)
 
     # Parse the blueprint so the resolver can work with typed node definitions
     try:

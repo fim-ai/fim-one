@@ -145,6 +145,23 @@ export interface GuardrailTripwiredEvent {
   output_info: Record<string, unknown>
 }
 
+/**
+ * Wire shape emitted by the backend for `awaiting_confirmation` SSE events,
+ * in ReAct and DAG turns alike. FROZEN — keep in sync with
+ * `confirmation_sse.py::_request_to_event_payload`.
+ */
+export interface AwaitingConfirmationEvent {
+  type: "awaiting_confirmation"
+  confirmation_id: string
+  tool_name: string
+  arguments: Record<string, unknown>
+  mode?: "inline" | "channel"
+  channel_label?: string
+  approver_scope?: "initiator" | "agent_owner" | "org_members" | ""
+  timeout_at: string
+  agent_id: string
+}
+
 export interface DagDoneEvent {
   answer: string
   achieved: boolean
