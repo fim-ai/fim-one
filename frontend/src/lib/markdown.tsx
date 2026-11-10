@@ -1,5 +1,6 @@
 "use client"
 
+import { csvCell } from "@/lib/csv"
 import React, { useEffect, useMemo, useRef, useState } from "react"
 import { Code2, Download, Eye } from "lucide-react"
 import {
@@ -631,9 +632,7 @@ function toMarkdownTable({ header, rows }: TableData): string {
 }
 
 function toCsv({ header, rows }: TableData): string {
-  const escape = (cell: string) =>
-    /[",\n]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell
-  return [header, ...rows].map((row) => row.map(escape).join(",")).join("\n")
+  return [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\n")
 }
 
 /** Hover-revealed export actions, positioned by the table wrapper */

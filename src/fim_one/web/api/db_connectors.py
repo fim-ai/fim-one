@@ -11,7 +11,7 @@ import logging
 import math
 import uuid
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
@@ -24,7 +24,11 @@ from fim_one.core.utils import get_language_directive, spawn_background
 from fim_one.core.security.encryption import decrypt_db_config, same_connection_target
 from fim_one.core.tool.connector.database.pool import ConnectionPoolManager
 from fim_one.core.tool.connector.database.safety import SqlSafetyError, validate_sql
+from fim_one.core.audit import actions
+from fim_one.core.audit import writer as audit
+from fim_one.core.audit.resources import note_fence, record_fences
 from fim_one.db import create_session, get_session
+from fim_one.web.audit_events import record_resource
 from fim_one.web.auth import get_current_user
 from fim_one.web.services.quota_enforcer import get_quota_checked_user
 from fim_one.web.exceptions import AppError
@@ -56,6 +60,40 @@ router = APIRouter(prefix="/api/connectors", tags=["db-connectors"])
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+async def _record_fences(
+    db: AsyncSession, user: User, connector: Connector, fences: dict[str, dict[str, Any]]
+) -> None:
+    """Record the fence switches a save changed; nothing when it changed none."""
+    await record_fences(db, audit.actor_of(user), connector, fences)
+
+
+async def _record_query(
+    user: User,
+    connector: Connector,
+    *,
+    outcome: Literal["success", "denied", "failed"],
+    read_only: bool,
+    rows: int | None = None,
+) -> None:
+    """The owner ran SQL against the connector's database from the portal.
+
+    Who, which connector, under which fence and how it ended. The statement
+    and what it returned are not recorded: they are the database's data.
+    Written on its own; it cannot fail or delay the query's answer.
+    """
+    detail = f"read_only={read_only}" + (f"; rows={rows}" if rows is not None else "")
+    await audit.record(
+        actions.DATABASE_QUERY,
+        actor=audit.actor_of(user),
+        org_id=connector.org_id,
+        target_type="connector",
+        target_id=connector.id,
+        target_label=connector.name,
+        outcome=outcome,
+        detail=detail,
+    )
 
 
 async def _get_db_connector(
@@ -348,7 +386,8 @@ async def bulk_update_schemas(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     """Bulk update annotations for tables and columns."""
-    await _get_db_connector(connector_id, current_user.id, db)
+    connector = await _get_db_connector(connector_id, current_user.id, db)
+    fences: dict[str, dict[str, Any]] = {}
 
     # Load all schemas for this connector
     result = await db.execute(
@@ -370,6 +409,7 @@ async def bulk_update_schemas(
         # Update table-level fields
         for field in ("display_name", "description", "is_visible"):
             if field in table_update:
+                note_fence(fences, table_name, field, getattr(schema_obj, field), table_update[field])
                 setattr(schema_obj, field, table_update[field])
                 updated_count += 1
 
@@ -384,9 +424,17 @@ async def bulk_update_schemas(
                 col_obj = col_lookup[col_name]
                 for field in ("display_name", "description", "is_visible", "is_pii"):
                     if field in cu:
+                        note_fence(
+                            fences,
+                            f"{table_name}.{col_name}",
+                            field,
+                            getattr(col_obj, field),
+                            cu[field],
+                        )
                         setattr(col_obj, field, cu[field])
                         updated_count += 1
 
+    await _record_fences(db, current_user, connector, fences)
     await db.commit()
     return ApiResponse(data={"updated_count": updated_count})
 
@@ -400,7 +448,8 @@ async def update_schema_table(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     """Update annotations for a table schema."""
-    await _get_db_connector(connector_id, current_user.id, db)
+    connector = await _get_db_connector(connector_id, current_user.id, db)
+    fences: dict[str, dict[str, Any]] = {}
 
     result = await db.execute(
         select(DatabaseSchema)
@@ -416,8 +465,10 @@ async def update_schema_table(
 
     update_data = body.model_dump(exclude_unset=True)
     for field, value in update_data.items():
+        note_fence(fences, schema_obj.table_name, field, getattr(schema_obj, field), value)
         setattr(schema_obj, field, value)
 
+    await _record_fences(db, current_user, connector, fences)
     await db.commit()
 
     # Reload
@@ -443,7 +494,8 @@ async def update_schema_column(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     """Update annotations for a schema column."""
-    await _get_db_connector(connector_id, current_user.id, db)
+    connector = await _get_db_connector(connector_id, current_user.id, db)
+    fences: dict[str, dict[str, Any]] = {}
 
     result = await db.execute(
         select(SchemaColumn).where(
@@ -456,9 +508,13 @@ async def update_schema_column(
         raise AppError("column_not_found", status_code=404)
 
     update_data = body.model_dump(exclude_unset=True)
+    table = await db.get(DatabaseSchema, schema_id)
+    owner_name = f"{table.table_name}.{col_obj.column_name}" if table else col_obj.column_name
     for field, value in update_data.items():
+        note_fence(fences, owner_name, field, getattr(col_obj, field), value)
         setattr(col_obj, field, value)
 
+    await _record_fences(db, current_user, connector, fences)
     await db.commit()
 
     result = await db.execute(
@@ -507,6 +563,7 @@ async def execute_query(
             body.sql, allow_write=not read_only, dialect=sql_dialect_of(config)
         )
     except SqlSafetyError as exc:
+        await _record_query(current_user, connector, outcome="denied", read_only=bool(read_only))
         resp = QueryResponse(error=str(exc))
         return ApiResponse(data=resp.model_dump())
 
@@ -523,8 +580,16 @@ async def execute_query(
             truncated=result.truncated,
             execution_time_ms=result.execution_time_ms,
         )
+        await _record_query(
+            current_user,
+            connector,
+            outcome="success",
+            read_only=bool(read_only),
+            rows=result.row_count,
+        )
         return ApiResponse(data=resp.model_dump())
     except Exception as exc:
+        await _record_query(current_user, connector, outcome="failed", read_only=bool(read_only))
         resp = QueryResponse(error=str(exc))
         return ApiResponse(data=resp.model_dump())
 

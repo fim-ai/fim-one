@@ -432,6 +432,9 @@ def create_app() -> FastAPI:
         path_is_exempt,
     )
 
+    from fim_one.core.audit import actions as audit_actions
+    from fim_one.core.audit.refusals import record_refusal, safe_path
+
     _ip_rule_cache = RuleCache()
 
     @app.middleware("http")
@@ -443,6 +446,14 @@ def create_app() -> FastAPI:
         allow, deny = await _ip_rule_cache.get()
         client_ip = request.client.host if request.client else None
         if not is_client_allowed(client_ip, allow, deny):
+            # One record per address and ten minutes: a scan must not fill
+            # the audit table. The address itself is on the record from the
+            # request context.
+            await record_refusal(
+                audit_actions.SECURITY_IP_BLOCKED,
+                source=client_ip,
+                detail=f"{request.method} {safe_path(request.url.path)}",
+            )
             return JSONResponse(
                 status_code=403,
                 content={
@@ -452,6 +463,13 @@ def create_app() -> FastAPI:
                 },
             )
         return await call_next(request)
+
+    # -- Where the request came from, for the audit writer -------------------
+    # Added last, so it is outermost: every other middleware and every
+    # endpoint runs with the request's address already set.
+    from fim_one.web.request_meta import RequestMetaMiddleware
+
+    app.add_middleware(RequestMetaMiddleware)
 
     # -- Exception handlers -------------------------------------------------
     @app.exception_handler(AppError)
@@ -542,6 +560,8 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        # Read by the admin page after an export, to say when it was cut short.
+        expose_headers=["X-Export-Truncated", "X-Export-Rows", "X-Export-Total"],
     )
 
     # -- Routers ------------------------------------------------------------

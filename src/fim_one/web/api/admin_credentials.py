@@ -18,7 +18,7 @@ from fim_one.db.models.connector_credential import ConnectorCredential
 from fim_one.db.models.mcp_server_credential import MCPServerCredential
 from fim_one.web.schemas.common import PaginatedResponse
 
-from fim_one.web.api.admin_utils import write_audit
+from fim_one.web.api.admin_utils import stage_audit
 
 logger = logging.getLogger(__name__)
 
@@ -192,9 +192,7 @@ async def revoke_connector_credential(
     cred_id = cred.id
     connector_id = cred.connector_id
     await db.delete(cred)
-    await db.commit()
-
-    await write_audit(
+    await stage_audit(
         db,
         current_user,
         "credential.admin_revoke",
@@ -202,6 +200,8 @@ async def revoke_connector_credential(
         target_id=cred_id,
         detail=f"connector_id={connector_id}",
     )
+    await db.commit()
+
 
 
 @router.delete("/credentials/mcp/{credential_id}", status_code=204)
@@ -221,9 +221,7 @@ async def revoke_mcp_credential(
     cred_id = cred.id
     server_id = cred.server_id
     await db.delete(cred)
-    await db.commit()
-
-    await write_audit(
+    await stage_audit(
         db,
         current_user,
         "credential.admin_revoke",
@@ -231,6 +229,8 @@ async def revoke_mcp_credential(
         target_id=cred_id,
         detail=f"server_id={server_id}",
     )
+    await db.commit()
+
 
 
 @router.get("/credentials/stats", response_model=CredentialStatsResponse)

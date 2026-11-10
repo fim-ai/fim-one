@@ -6,7 +6,9 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.audit import actions
 from fim_one.db import get_session
+from fim_one.web.audit_events import record_resource
 from fim_one.web.auth import get_current_user
 from fim_one.web.exceptions import AppError
 from fim_one.db.models import User
@@ -48,6 +50,14 @@ async def create_skill_from_template(
         is_active=True,
     )
     db.add(skill)
+    await record_resource(
+        db,
+        current_user,
+        actions.SKILL_CREATE,
+        "skill",
+        skill,
+        detail=f"from template {template_id}",
+    )
     await db.commit()
     result = await db.execute(select(Skill).where(Skill.id == skill.id))
     skill = result.scalar_one()

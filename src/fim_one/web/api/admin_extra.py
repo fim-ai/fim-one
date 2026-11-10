@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import csv
 import io
 import json
 import os
@@ -15,6 +14,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.audit import actions
+from fim_one.core.audit import writer as audit
+from fim_one.web.csv_safe import safe_writer
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_admin
 from fim_one.web.exceptions import AppError
@@ -261,7 +263,7 @@ async def export_users(
     result = await db.execute(query)
 
     buf = io.StringIO()
-    writer = csv.writer(buf)
+    writer = safe_writer(buf)
     writer.writerow([
         "id", "username", "email", "display_name", "is_admin",
         "is_active", "created_at", "monthly_tokens", "token_quota",
@@ -326,7 +328,7 @@ async def export_conversations(
     result = await db.execute(query)
 
     buf = io.StringIO()
-    writer = csv.writer(buf)
+    writer = safe_writer(buf)
     writer.writerow([
         "id", "user_id", "username", "title", "mode",
         "model_name", "total_tokens", "message_count", "created_at",
@@ -630,4 +632,10 @@ async def system_logs(
 
     # Reverse back to chronological order
     entries.reverse()
+    # The application log names users, connectors and key prefixes.
+    await audit.record(
+        actions.SYSTEM_LOGS_READ,
+        actor=audit.actor_of(current_user),
+        detail=f"{len(entries)} line(s)" + (f"; level={level}" if level else ""),
+    )
     return SystemLogsResponse(entries=entries)

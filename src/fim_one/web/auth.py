@@ -23,6 +23,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.assembly.principal import AuthMethod
+from fim_one.core.audit.context import request_auth
 from fim_one.db import create_session, get_session
 
 from fim_one.db.models.api_key import ApiKey
@@ -353,6 +355,10 @@ async def _authenticate_api_key(
     finally:
         await stats_session.close()
 
+    # For the audit record of whatever this request goes on to do: the key
+    # is named by its row id, never by its value.
+    request_auth.set((AuthMethod.API_KEY.value, api_key.id))
+
     # None = unrestricted key
     return user, parse_scopes(api_key.scopes)
 
@@ -429,6 +435,7 @@ async def get_current_user(
             )
     # JWT users are unrestricted (no scope limitations)
     request.state.api_key_scopes = None
+    request_auth.set((AuthMethod.SESSION.value, None))
     return user
 
 

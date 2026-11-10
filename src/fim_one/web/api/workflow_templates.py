@@ -16,7 +16,9 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.audit import actions
 from fim_one.db import get_session
+from fim_one.web.audit_events import record_resource
 from fim_one.web.auth import get_current_admin, get_current_user
 from fim_one.web.exceptions import AppError
 from fim_one.db.models import User, Workflow, WorkflowTemplate
@@ -233,6 +235,14 @@ async def create_workflow_from_template(
         is_active=True,
     )
     db.add(wf)
+    await record_resource(
+        db,
+        current_user,
+        actions.WORKFLOW_CREATE,
+        "workflow",
+        wf,
+        detail=f"from template {template_id}",
+    )
     await db.commit()
 
     # Re-fetch to get server-generated fields

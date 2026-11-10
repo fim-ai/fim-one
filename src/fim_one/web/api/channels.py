@@ -38,7 +38,11 @@ from fim_one.core.channels.feishu import (
     base_url_allowed,
     build_decided_card,
 )
+from fim_one.core.audit import actions
+from fim_one.core.audit import writer as audit
+from fim_one.core.audit.redact import diff_changes
 from fim_one.db import get_session
+from fim_one.web.audit_events import record_resource
 from fim_one.web.exceptions import AppError
 from fim_one.web.auth import (
     get_current_user,
@@ -106,6 +110,31 @@ def _require_valid_config(channel_type: str, config: dict[str, Any]) -> None:
         raise AppError(error_code, status_code=status.HTTP_400_BAD_REQUEST, detail=error_code)
 
 
+def _channel_state(channel: Channel) -> dict[str, Any]:
+    """What an audit record compares of a channel: its fields, config keys flattened."""
+    state: dict[str, Any] = {
+        "name": channel.name,
+        "type": channel.type,
+        "is_active": channel.is_active,
+    }
+    state.update({f"config.{key}": value for key, value in (channel.config or {}).items()})
+    return state
+
+
+def _channel_changes(
+    before: dict[str, Any] | None, after: dict[str, Any]
+) -> dict[str, dict[str, Any]] | None:
+    """The change to a channel, safe to store.
+
+    A channel's config is where its credentials are (an app secret, a
+    webhook URL with its token) next to values that are personal data (an
+    email channel's recipients). No config value is recorded: the record
+    says which keys were set or changed.
+    """
+    config_keys = [key for key in {**(before or {}), **after} if key.startswith("config.")]
+    return diff_changes(before, after, secret_fields=config_keys)
+
+
 async def _load_channel_or_404(
     db: AsyncSession, channel_id: str
 ) -> Channel:
@@ -145,6 +174,14 @@ async def create_channel(
         created_by=user.id,
     )
     db.add(ch)
+    await record_resource(
+        db,
+        user,
+        actions.CHANNEL_CREATE,
+        "channel",
+        ch,
+        changes=_channel_changes(None, _channel_state(ch)),
+    )
     await db.commit()
     await db.refresh(ch)
 
@@ -204,6 +241,7 @@ async def update_channel(
     """Update channel fields.  Requires org admin."""
     channel = await _load_channel_or_404(db, channel_id)
     await require_org_admin(channel.org_id, user, db)
+    before = _channel_state(channel)
 
     if body.name is not None:
         channel.name = body.name
@@ -217,6 +255,14 @@ async def update_channel(
         _require_valid_config(channel.type, merged)
         channel.config = merged
 
+    await record_resource(
+        db,
+        user,
+        actions.CHANNEL_UPDATE,
+        "channel",
+        channel,
+        changes=_channel_changes(before, _channel_state(channel)),
+    )
     await db.commit()
     await db.refresh(channel)
     return ChannelResponse.from_orm_masked(
@@ -235,6 +281,9 @@ async def delete_channel(
     """
     channel = await _load_channel_or_404(db, channel_id)
     await require_org_admin(channel.org_id, user, db)
+    await record_resource(
+        db, user, actions.CHANNEL_DELETE, "channel", channel, detail=f"type={channel.type}"
+    )
     await db.delete(channel)
     await db.commit()
 
@@ -263,6 +312,13 @@ async def test_channel(
             ok=False,
             error=f"Unsupported channel type: {channel.type}",
         )
+    # Read now: the session may not be asked for the row again after the send.
+    recorded = {
+        "org_id": channel.org_id,
+        "id": channel.id,
+        "name": channel.name,
+        "type": channel.type,
+    }
 
     # Send a plain notice — no interactive buttons.
     # The Approval Playground covers the rich-card round-trip; this
@@ -273,6 +329,19 @@ async def test_channel(
     result = await adapter.send_notice(
         "FIM One test message",
         f"Sent by {sender} to check that this channel can deliver.",
+    )
+    # A message left the platform through the organization's channel. Nothing
+    # was changed, so the record is written on its own and cannot fail the
+    # test; the provider's error text is not kept (it can quote the webhook).
+    await audit.record(
+        actions.CHANNEL_TEST,
+        actor=audit.actor_of(user),
+        org_id=recorded["org_id"],
+        target_type="channel",
+        target_id=recorded["id"],
+        target_label=recorded["name"],
+        outcome="success" if result.ok else "failed",
+        detail=f"type={recorded['type']}",
     )
     return ChannelTestResponse(ok=result.ok, error=result.error)
 
@@ -339,6 +408,7 @@ async def test_approval(
             ),
         )
 
+    recorded = {"org_id": channel.org_id, "id": channel.id, "name": channel.name}
     tool_name = (body.tool_name or _DEFAULT_TEST_TOOL_NAME).strip()
     tool_args = body.tool_args if body.tool_args is not None else _DEFAULT_TEST_TOOL_ARGS
     title = (body.title or _DEFAULT_TEST_TITLE).strip()
@@ -370,13 +440,34 @@ async def test_approval(
         confirmation_id = (refusal.detail_args or {}).get("confirmation_id")
         if confirmation_id:
             await _expire_now(db, str(confirmation_id))
+        await _record_test_approval(user, recorded, sent=False)
         return TestApprovalResponse(
             ok=False,
             confirmation_id=str(confirmation_id) if confirmation_id else None,
             error=refusal.detail,
         )
 
+    await _record_test_approval(user, recorded, sent=True)
     return TestApprovalResponse(ok=True, confirmation_id=str(row.id))
+
+
+async def _record_test_approval(user: User, channel: dict[str, Any], *, sent: bool) -> None:
+    """A test approval card was sent (or could not be) through the channel.
+
+    The simulated tool name and arguments are whatever the tester typed and
+    are not recorded. How the card is answered is recorded by the
+    confirmation service, also as a test. Written on its own.
+    """
+    await audit.record(
+        actions.CHANNEL_TEST_APPROVAL,
+        actor=audit.actor_of(user),
+        org_id=channel["org_id"],
+        target_type="channel",
+        target_id=channel["id"],
+        target_label=channel["name"],
+        outcome="success" if sent else "failed",
+        detail="test card sent" if sent else "test card could not be sent",
+    )
 
 
 def _confirmation_service() -> ConfirmationService:
@@ -824,8 +915,10 @@ async def _decide_from_click(
             db, provider="feishu", subject=open_id
         )
     except AssemblyRefusal:
+        await _record_denied_click(channel, confirmation_id, "linked account is disabled")
         return _denied("Your linked FIM One account is disabled.")
     if actor is None:
+        await _record_denied_click(channel, confirmation_id, "account is not linked")
         return _denied(
             "Your Feishu account is not linked to FIM One — link it "
             "(or decide in the portal) to respond to approvals."
@@ -873,6 +966,27 @@ async def _decide_from_click(
         confirmation_id=confirmation_id,
         tool_name=str(raw_tool) if raw_tool else None,
         decided_by=open_id,
+    )
+
+
+async def _record_denied_click(channel: Channel, confirmation_id: str, why: str) -> None:
+    """A click on an approval card by someone who has no usable account here.
+
+    Known only to the outside system: the record names the channel and the
+    request, not the person's id there. One per channel and request in ten
+    minutes.
+    """
+    from fim_one.core.audit.events import Actor
+    from fim_one.core.audit.refusals import record_refusal
+
+    await record_refusal(
+        actions.CONFIRMATION_DECISION_DENIED,
+        source=f"{channel.id}|{confirmation_id}",
+        actor=Actor(user_id=None, label=None, kind="external", auth="channel"),
+        org_id=channel.org_id,
+        target_type="confirmation",
+        target_id=confirmation_id,
+        detail=f"card click; {why}; via=channel",
     )
 
 

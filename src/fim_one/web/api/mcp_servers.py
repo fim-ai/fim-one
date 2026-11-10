@@ -16,8 +16,15 @@ from fim_one.core.assembly.credentials import address_is_private, personal_crede
 from fim_one.core.assembly.errors import MCP_SERVER_ADDRESS_PRIVATE
 from fim_one.core.assembly.mcp_address import address_secret_reasons, error_without_url_secrets
 from fim_one.core.security import is_stdio_allowed, validate_stdio_command, validate_url
+from fim_one.core.audit import actions
 from fim_one.db import get_session
 from fim_one.web.exceptions import AppError
+from fim_one.web.audit_events import (
+    record_resource,
+    record_resource_change,
+    record_unpublish_by_other,
+    snapshot,
+)
 from fim_one.web.auth import get_current_user, get_user_org_ids
 from fim_one.web.platform import MARKET_ORG_ID, is_market_org
 from fim_one.db.models.mcp_server import MCPServer
@@ -111,6 +118,22 @@ def _to_response(
         created_at=srv.created_at.isoformat() if srv.created_at else "",
         updated_at=srv.updated_at.isoformat() if srv.updated_at else None,
     )
+
+
+# What an audit record compares of an MCP server: whether it is on, how and
+# where it is reached, and whether others may borrow the owner's credential.
+# The launch arguments, the environment and the headers can hold the
+# credential: each is recorded as changed, never by value.
+MCP_SERVER_SECRET_FIELDS = ("args", "env", "headers")
+MCP_SERVER_AUDITED_FIELDS = (
+    "is_active",
+    "allow_fallback",
+    "transport",
+    "url",
+    "command",
+    "working_dir",
+    *MCP_SERVER_SECRET_FIELDS,
+)
 
 
 async def _bound_to_shared(db: AsyncSession, owner_id: str, servers: list[MCPServer]) -> set[str]:
@@ -248,6 +271,15 @@ async def create_mcp_server(
         allow_fallback=body.allow_fallback,
     )
     db.add(server)
+    await record_resource_change(
+        db,
+        current_user,
+        actions.MCP_SERVER_CREATE,
+        "mcp_server",
+        server,
+        dict.fromkeys(MCP_SERVER_AUDITED_FIELDS),
+        secret_fields=MCP_SERVER_SECRET_FIELDS,
+    )
     await db.commit()
 
     result = await db.execute(select(MCPServer).where(MCPServer.id == server.id))
@@ -391,6 +423,7 @@ async def update_mcp_server(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     server = await _get_owned_server(server_id, current_user.id, db)
+    before = snapshot(server, MCP_SERVER_AUDITED_FIELDS)
 
     update_data = body.model_dump(exclude_unset=True)
 
@@ -423,6 +456,15 @@ async def update_mcp_server(
     else:
         reverted = False
 
+    await record_resource_change(
+        db,
+        current_user,
+        actions.MCP_SERVER_UPDATE,
+        "mcp_server",
+        server,
+        before,
+        secret_fields=MCP_SERVER_SECRET_FIELDS,
+    )
     await db.commit()
 
     result = await db.execute(select(MCPServer).where(MCPServer.id == server.id))
@@ -590,6 +632,9 @@ async def unpublish_mcp_server(
         raise AppError("unpublish_denied", status_code=403)
 
     # Log BEFORE clearing org_id
+    await record_unpublish_by_other(
+        db, current_user, actions.MCP_SERVER_UNPUBLISH_BY_ADMIN, "mcp_server", server
+    )
     _org_id = getattr(server, "org_id", None)
     if _org_id:
         from fim_one.web.api.reviews import log_review_event
@@ -631,6 +676,7 @@ async def delete_mcp_server(
     await purge_resource_subscriptions(
         db, resource_type="mcp_server", resource_id=server_id
     )
+    await record_resource(db, current_user, actions.MCP_SERVER_DELETE, "mcp_server", server)
     await db.delete(server)
     await db.commit()
     return ApiResponse(data={"deleted": server_id})
@@ -680,6 +726,17 @@ async def fork_mcp_server(
         allow_fallback=source.allow_fallback,
     )
     db.add(forked)
+    await db.flush()
+    await record_resource_change(
+        db,
+        current_user,
+        actions.MCP_SERVER_CREATE,
+        "mcp_server",
+        forked,
+        dict.fromkeys(MCP_SERVER_AUDITED_FIELDS),
+        secret_fields=MCP_SERVER_SECRET_FIELDS,
+        detail=f"fork of {source.id}",
+    )
     await db.commit()
 
     result = await db.execute(
@@ -791,12 +848,16 @@ async def upsert_my_mcp_credentials(
     if not env_data and not headers_data:
         if row:
             await db.delete(row)
+            await record_resource(
+                db, current_user, actions.MCP_SERVER_CREDENTIAL_DELETE, "mcp_server", server
+            )
             await db.commit()
         return ApiResponse(data={"saved": True, "cleared": True})
 
     env_blob = env_data or None
     headers_blob = headers_data or None
 
+    replaced = row is not None
     if row:
         setattr(row, "env_blob", env_blob)
         setattr(row, "headers_blob", headers_blob)
@@ -809,5 +870,16 @@ async def upsert_my_mcp_credentials(
         )
         db.add(row)
 
+    # Which part was supplied and whether one was there before; no name or
+    # value of a variable or header.
+    supplied = "+".join(part for part, data in (("env", env_data), ("headers", headers_data)) if data)
+    await record_resource(
+        db,
+        current_user,
+        actions.MCP_SERVER_CREDENTIAL_SET,
+        "mcp_server",
+        server,
+        detail=f"{supplied}; {'replaced' if replaced else 'new'}",
+    )
     await db.commit()
     return ApiResponse(data={"saved": True})

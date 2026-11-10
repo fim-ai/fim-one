@@ -17,6 +17,8 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.core.assembly.visibility import is_shared_clause
+from fim_one.core.audit import actions
+from fim_one.core.audit import writer as audit
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_user
 from fim_one.web.dependency_analyzer import resolve_solution_dependencies
@@ -419,6 +421,16 @@ async def subscribe_resource(
             source="direct",
         )
         db.add(sub)
+        # One record for what the user chose; what a solution pulls in with
+        # it is not recorded again.
+        await audit.record(
+            actions.MARKET_SUBSCRIBE,
+            actor=audit.actor_of(current_user),
+            org_id=body.org_id,
+            target_type=body.resource_type,
+            target_id=body.resource_id,
+            db=db,
+        )
         await db.commit()
     elif existing_sub.source != "direct":
         # Arrived as a dependency, now chosen on its own: it outlives the
@@ -546,6 +558,14 @@ async def unsubscribe_resource(
             db=db,
         )
 
+    await audit.record(
+        actions.MARKET_UNSUBSCRIBE,
+        actor=audit.actor_of(current_user),
+        org_id=sub.org_id,
+        target_type=body.resource_type,
+        target_id=body.resource_id,
+        db=db,
+    )
     await db.commit()
     return ApiResponse(data={"unsubscribed": True})
 

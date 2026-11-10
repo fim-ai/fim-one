@@ -582,7 +582,9 @@ class TestCreateWorkflowFromTemplate:
 
         assert result.success is True
         assert result.data["status"] == "draft"
-        db.add.assert_called_once()
+        # The workflow, and the audit record of its creation.
+        added = [type(call.args[0]).__name__ for call in db.add.call_args_list]
+        assert added == ["Workflow", "AuditLog"]
 
     @pytest.mark.asyncio
     async def test_creates_with_custom_name(self) -> None:
@@ -644,7 +646,7 @@ class TestCreateWorkflowFromTemplate:
 
         assert result.success is True
         # Verify the Workflow was constructed with the custom name
-        call_args = db.add.call_args[0][0]
+        call_args = db.add.call_args_list[0][0][0]
         assert call_args.name == "My Custom Name"
 
     @pytest.mark.asyncio

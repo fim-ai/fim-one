@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.audit.writer import PENDING_SECOND_FACTOR
 from fim_one.db import get_session
 from fim_one.db.models import (
     AuditLog,
@@ -228,6 +229,11 @@ async def list_system_events(
         )
         .where(
             LoginHistory.success == False,  # noqa: E712
+            # A first step waiting for its second factor is not a failure.
+            or_(
+                LoginHistory.failure_reason.is_(None),
+                LoginHistory.failure_reason != PENDING_SECOND_FACTOR,
+            ),
             LoginHistory.created_at >= cutoff,
         )
         .group_by(LoginHistory.ip_address)
@@ -254,6 +260,9 @@ async def list_system_events(
         select(AuditLog)
         .where(
             AuditLog.created_at >= cutoff,
+            # Administrators' actions only, as this panel has always shown:
+            # the table now also holds what users do with their own things.
+            or_(AuditLog.actor_kind.is_(None), AuditLog.actor_kind == "admin"),
             or_(
                 AuditLog.action.like("%delete%"),
                 AuditLog.action.like("%security%"),
@@ -267,7 +276,7 @@ async def list_system_events(
         events.append(
             SystemEvent(
                 event_type="admin_action",
-                description=f"Admin {log.admin_username}: {log.action}",
+                description=f"Admin {log.actor_label}: {log.action}",
                 severity="info",
                 created_at=log.created_at.isoformat() if log.created_at else "",
                 details={

@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import re
 import secrets
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
@@ -12,7 +13,11 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from fim_one.core.audit import actions
+from fim_one.core.audit import writer as audit
+from fim_one.core.audit.redact import diff_changes
 from fim_one.db import get_session
+from fim_one.web.audit_events import label_of
 from fim_one.web.auth import (
     get_current_admin,
     get_current_user,
@@ -207,6 +212,69 @@ async def _ensure_unique_slug(slug: str, db: AsyncSession, exclude_id: str | Non
 
 
 # ---------------------------------------------------------------------------
+# Audit records
+# ---------------------------------------------------------------------------
+
+
+# Fields of an organization whose change is recorded without the value: a
+# description is free text, an icon is an address that can carry a signed
+# query, and the settings are a structure.
+ORG_UNQUOTED_FIELDS = ("description", "icon", "settings")
+
+
+async def _record_org(
+    db: AsyncSession,
+    actor: User,
+    action: str,
+    org: Organization,
+    *,
+    changes: dict[str, dict[str, Any]] | None = None,
+    detail: str | None = None,
+) -> None:
+    """*actor* created, changed or deleted *org*; committed with the change."""
+    await audit.record(
+        action,
+        actor=audit.actor_of(actor),
+        org_id=org.id,
+        target_type="organization",
+        target_id=org.id,
+        target_label=org.name,
+        changes=changes,
+        detail=detail,
+        db=db,
+    )
+
+
+async def _record_member(
+    db: AsyncSession,
+    actor: User,
+    action: str,
+    org_id: str,
+    member: User | None,
+    *,
+    user_id: str | None = None,
+    role_from: str | None = None,
+    role_to: str | None = None,
+    detail: str | None = None,
+) -> None:
+    """A membership of *org_id* was added, changed or removed.
+
+    The target is the member; the role before and after is the change.
+    """
+    await audit.record(
+        action,
+        actor=audit.actor_of(actor),
+        org_id=org_id,
+        target_type="user",
+        target_id=member.id if member is not None else user_id,
+        target_label=label_of(member) if member is not None else None,
+        changes=diff_changes({"role": role_from}, {"role": role_to}),
+        detail=detail,
+        db=db,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Organization CRUD
 # ---------------------------------------------------------------------------
 
@@ -238,6 +306,7 @@ async def create_org(
         role="owner",
     )
     db.add(membership)
+    await _record_org(db, current_user, actions.ORG_CREATE, org)
     await db.commit()
 
     return ApiResponse(data=_org_with_role(org, "owner", member_count=1).model_dump())
@@ -348,9 +417,13 @@ async def update_org(
             update_data["slug"], db, exclude_id=org_id
         )
 
+    before = {field: getattr(org, field) for field in update_data}
     for field, value in update_data.items():
         setattr(org, field, value)
 
+    await _record_org(
+        db, current_user, actions.ORG_UPDATE, org, changes=diff_changes(before, update_data, secret_fields=ORG_UNQUOTED_FIELDS)
+    )
     await db.commit()
 
     # Re-fetch for fresh timestamps
@@ -429,6 +502,9 @@ async def delete_org(
         raise AppError("org_not_found", status_code=404)
 
     await _dissolve_org_sharing(db, org_id)
+    await _record_org(
+        db, current_user, actions.ORG_DELETE, org, detail=f"members={len(org.memberships)}"
+    )
     await db.delete(org)
     await db.commit()
     return ApiResponse(data={"deleted": org_id})
@@ -522,6 +598,9 @@ async def add_member(
         invited_by=current_user.id,
     )
     db.add(membership)
+    await _record_member(
+        db, current_user, actions.ORG_MEMBER_ADD, org_id, target_user, role_to=body.role
+    )
     await db.commit()
 
     # Re-fetch for created_at
@@ -569,7 +648,18 @@ async def update_member_role(
             detail="Cannot change the owner's role. Use ownership transfer instead.",
         )
 
+    previous_role = membership.role
     membership.role = body.role
+    await _record_member(
+        db,
+        current_user,
+        actions.ORG_MEMBER_ROLE_CHANGE,
+        org_id,
+        await db.get(User, user_id),
+        user_id=user_id,
+        role_from=previous_role,
+        role_to=body.role,
+    )
     await db.commit()
 
     result = await db.execute(
@@ -638,6 +728,16 @@ async def remove_member(
     # resources (D4 — this org only; Market-published subs are left intact).
     await reclaim_org_subscriptions(db, user_id=user_id, org_id=org_id)
 
+    await _record_member(
+        db,
+        current_user,
+        actions.ORG_MEMBER_REMOVE,
+        org_id,
+        current_user if is_self else await db.get(User, user_id),
+        user_id=user_id,
+        role_from=target_membership.role,
+        detail="left" if is_self else None,
+    )
     await db.delete(target_membership)
     await db.commit()
     return ApiResponse(data={"removed": user_id, "org_id": org_id})
@@ -745,9 +845,13 @@ async def admin_update_org(
             update_data["slug"], db, exclude_id=org_id
         )
 
+    before = {field: getattr(org, field) for field in update_data}
     for field, value in update_data.items():
         setattr(org, field, value)
 
+    await _record_org(
+        db, _admin, actions.ORG_ADMIN_UPDATE, org, changes=diff_changes(before, update_data, secret_fields=ORG_UNQUOTED_FIELDS)
+    )
     await db.commit()
     await db.refresh(org)
 
@@ -780,6 +884,13 @@ async def admin_delete_org(
         raise AppError("org_not_found", status_code=404)
 
     await _dissolve_org_sharing(db, org_id)
+    await _record_org(
+        db,
+        _admin,
+        actions.ORG_ADMIN_DELETE,
+        org,
+        detail=f"owner={org.owner_id}; members={len(org.memberships)}",
+    )
     await db.delete(org)
     await db.commit()
     return ApiResponse(data={"deleted": org_id})

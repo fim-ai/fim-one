@@ -7,16 +7,17 @@ import math
 from datetime import UTC, date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query, Request
-from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import and_, func, select
+from pydantic import BaseModel, Field, computed_field, field_validator
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.audit.writer import PENDING_SECOND_FACTOR, login_outcome
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_admin
 from fim_one.web.exceptions import AppError
 from fim_one.db.models import IpRule, LoginHistory, User
 
-from fim_one.web.api.admin_utils import write_audit  # noqa: E402
+from fim_one.web.api.admin_utils import stage_audit  # noqa: E402
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -24,6 +25,17 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 # ---------------------------------------------------------------------------
 # Schemas
 # ---------------------------------------------------------------------------
+
+
+# A first step that still owes the second factor is neither a sign-in nor a
+# failure. Rows written before it had an outcome of its own carry
+# ``success=True`` with the pending reason; they are left out of both too.
+_NOT_PENDING = or_(
+    LoginHistory.failure_reason.is_(None),
+    LoginHistory.failure_reason != PENDING_SECOND_FACTOR,
+)
+_SIGNED_IN = and_(LoginHistory.success == True, _NOT_PENDING)  # noqa: E712
+_FAILED = and_(LoginHistory.success == False, _NOT_PENDING)  # noqa: E712
 
 
 class LoginHistoryItem(BaseModel):
@@ -35,9 +47,18 @@ class LoginHistoryItem(BaseModel):
     user_agent: str | None = None
     success: bool
     failure_reason: str | None = None
+    # ``password``, ``email_code`` or ``oauth:<provider>``; empty on rows
+    # written before the method was recorded.
+    method: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def outcome(self) -> str:
+        """``success``, ``pending_second_factor`` or ``failed``."""
+        return login_outcome(self.success, self.failure_reason)
 
 
 class LoginHistoryPaginatedResponse(BaseModel):
@@ -124,8 +145,10 @@ async def list_login_history(
     conditions = []
     if user_id is not None:
         conditions.append(LoginHistory.user_id == user_id)
-    if success is not None:
-        conditions.append(LoginHistory.success == success)
+    if success is True:
+        conditions.append(_SIGNED_IN)
+    elif success is False:
+        conditions.append(_FAILED)
     if date_from is not None:
         conditions.append(
             LoginHistory.created_at >= datetime(date_from.year, date_from.month, date_from.day, tzinfo=timezone.utc)
@@ -175,10 +198,11 @@ async def login_stats(
     total_q = select(func.count()).select_from(LoginHistory)
     total_attempts = (await db.execute(total_q)).scalar_one()
 
-    success_q = select(func.count()).select_from(LoginHistory).where(LoginHistory.success == True)  # noqa: E712
+    success_q = select(func.count()).select_from(LoginHistory).where(_SIGNED_IN)
     successful = (await db.execute(success_q)).scalar_one()
 
-    failed = total_attempts - successful
+    failed_q = select(func.count()).select_from(LoginHistory).where(_FAILED)
+    failed = (await db.execute(failed_q)).scalar_one()
 
     unique_ips_q = select(func.count(func.distinct(LoginHistory.ip_address))).select_from(LoginHistory)
     unique_ips = (await db.execute(unique_ips_q)).scalar_one()
@@ -191,7 +215,7 @@ async def login_stats(
     recent_q = (
         select(func.count())
         .select_from(LoginHistory)
-        .where(and_(LoginHistory.success == False, LoginHistory.created_at >= cutoff))  # noqa: E712
+        .where(and_(_FAILED, LoginHistory.created_at >= cutoff))
     )
     recent_failures = (await db.execute(recent_q)).scalar_one()
 
@@ -278,10 +302,8 @@ async def create_ip_rule(
         created_by_id=current_user.id,
     )
     db.add(rule)
-    await _commit_unless_self_lockout(db, request)
-    await db.refresh(rule)
-
-    await write_audit(
+    await db.flush()
+    await stage_audit(
         db,
         current_user,
         "ip_rule.create",
@@ -289,6 +311,8 @@ async def create_ip_rule(
         target_id=rule.id,
         detail=f"{body.rule_type} {body.ip_address}",
     )
+    await _commit_unless_self_lockout(db, request)
+    await db.refresh(rule)
 
     return IpRuleResponse.model_validate(rule)
 
@@ -308,10 +332,8 @@ async def toggle_ip_rule(
         raise AppError("ip_rule_not_found", status_code=404)
 
     rule.is_active = body.is_active
-    await _commit_unless_self_lockout(db, request)
-
     action = "ip_rule.enable" if body.is_active else "ip_rule.disable"
-    await write_audit(
+    await stage_audit(
         db,
         current_user,
         action,
@@ -319,6 +341,7 @@ async def toggle_ip_rule(
         target_id=rule_id,
         detail=f"{rule.rule_type} {rule.ip_address}",
     )
+    await _commit_unless_self_lockout(db, request)
 
     return IpRuleResponse.model_validate(rule)
 
@@ -338,9 +361,8 @@ async def delete_ip_rule(
 
     detail = f"{rule.rule_type} {rule.ip_address}"
     await db.delete(rule)
-    await _commit_unless_self_lockout(db, request)
-
-    await write_audit(
+    await db.flush()
+    await stage_audit(
         db,
         current_user,
         "ip_rule.delete",
@@ -348,6 +370,7 @@ async def delete_ip_rule(
         target_id=rule_id,
         detail=detail,
     )
+    await _commit_unless_self_lockout(db, request)
 
 
 # ---------------------------------------------------------------------------
@@ -458,15 +481,13 @@ async def batch_import_ip_rules(
         existing_pairs.add(pair)  # Prevent duplicates within the same batch
         added += 1
 
-    if added > 0:
-        await _commit_unless_self_lockout(db, request)
-
-    await write_audit(
+    await stage_audit(
         db,
         current_user,
         "ip_rule.batch_import",
         detail=f"Imported {added} IP rule(s), skipped {skipped}",
     )
+    await _commit_unless_self_lockout(db, request)
 
     return IpRuleBatchImportResponse(
         added=added,

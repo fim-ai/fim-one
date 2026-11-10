@@ -20,7 +20,9 @@ from datetime import UTC, datetime
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.audit import actions
 from fim_one.db.models import Subscription, User
+from fim_one.web.audit_events import record_plan_change
 from fim_one.web.services.billing_flag import (
     ACCESS_MODEL_FREEMIUM,
     ACCESS_MODEL_PAID_ONLY,
@@ -92,6 +94,15 @@ async def downgrade_expired_canceled_subscriptions(db: AsyncSession) -> int:
             continue
         if user.plan_id == target_plan_id:
             continue
+        await record_plan_change(
+            db,
+            user,
+            actions.BILLING_PLAN_CHANGE,
+            plan_from=user.plan_id,
+            plan_to=target_plan_id,
+            source="subscription lifecycle",
+            detail=f"canceled subscription reached its period end; access model {model}",
+        )
         user.plan_id = target_plan_id
         downgraded += 1
         logger.info(

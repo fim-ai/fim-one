@@ -15,7 +15,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from fim_one.core.audit import actions
 from fim_one.db import get_session
+from fim_one.web.audit_events import record_resource
+from fim_one.core.audit.resources import connector_created_changes
 from fim_one.web.auth import get_current_user
 from fim_one.web.exceptions import AppError
 from fim_one.db.models.connector import Connector, ConnectorAction
@@ -80,6 +83,15 @@ async def create_connector_from_template(
         )
         db.add(action)
 
+    await record_resource(
+        db,
+        current_user,
+        actions.CONNECTOR_CREATE,
+        "connector",
+        connector,
+        changes=await connector_created_changes(db, connector),
+        detail=f"from template {template_id}",
+    )
     await db.commit()
 
     # Re-fetch with actions eagerly loaded

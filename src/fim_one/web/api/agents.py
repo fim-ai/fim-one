@@ -10,8 +10,20 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.audit import actions
+from fim_one.core.audit.resources import (
+    AGENT_AUDITED_FIELDS,
+    agent_state,
+    completion_channel_id,
+)
 from fim_one.db import get_session
 from fim_one.web.exceptions import AppError
+from fim_one.web.audit_events import (
+    record_resource,
+    record_resource_change,
+    record_unpublish_by_other,
+    snapshot,
+)
 from fim_one.web.auth import get_current_user, get_user_org_ids
 from fim_one.web.platform import MARKET_ORG_ID, is_market_org
 from fim_one.db.models import Agent, User
@@ -335,14 +347,8 @@ def _binding_changed(new: list[str] | None, stored: Any) -> bool:
     return set(new or []) != set(stored or [])
 
 
-def _completion_channel_id(model_config_json: Any) -> str | None:
-    """The channel an agent config sends completion notifications to, if enabled."""
-    try:
-        on_complete = model_config_json["notifications"]["on_complete"]
-        channel_id = on_complete["channel_id"] if on_complete.get("enabled") else None
-    except (KeyError, TypeError, AttributeError):
-        return None
-    return channel_id if isinstance(channel_id, str) and channel_id else None
+# The former name, still imported elsewhere.
+_completion_channel_id = completion_channel_id
 
 
 @router.post("", response_model=ApiResponse)
@@ -357,7 +363,7 @@ async def create_agent(
         kb_ids=body.kb_ids,
         mcp_server_ids=body.mcp_server_ids,
         approval_channel_id=body.approval_channel_id,
-        completion_channel_id=_completion_channel_id(body.model_config_json),
+        completion_channel_id=completion_channel_id(body.model_config_json),
     )
     await _validate_distinct_tool_names(
         db, connector_ids=body.connector_ids, mcp_server_ids=body.mcp_server_ids
@@ -386,6 +392,7 @@ async def create_agent(
         status="draft",
     )
     db.add(agent)
+    await record_resource(db, current_user, actions.AGENT_CREATE, "agent", agent)
     await db.commit()
     result = await db.execute(select(Agent).where(Agent.id == agent.id))
     agent = result.scalar_one()
@@ -474,21 +481,22 @@ async def update_agent(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     agent = await _get_owned_agent(agent_id, current_user.id, db)
+    before = agent_state(agent)
 
     update_data = body.model_dump(exclude_unset=True)
     # Checked when it changes: the settings form sends the whole model config
     # with every save, and a channel that was deleted since must not block
     # saving something else (it is skipped at send time).
-    completion_channel_id = _completion_channel_id(update_data.get("model_config_json"))
-    if completion_channel_id == _completion_channel_id(agent.model_config_json):
-        completion_channel_id = None
+    new_completion_channel = completion_channel_id(update_data.get("model_config_json"))
+    if new_completion_channel == completion_channel_id(agent.model_config_json):
+        new_completion_channel = None
     await _validate_binding_ownership(
         current_user.id, db,
         connector_ids=update_data.get("connector_ids"),
         kb_ids=update_data.get("kb_ids"),
         mcp_server_ids=update_data.get("mcp_server_ids"),
         approval_channel_id=update_data.get("approval_channel_id"),
-        completion_channel_id=completion_channel_id,
+        completion_channel_id=new_completion_channel,
         approval_channel_changed=(
             update_data.get("approval_channel_id") != agent.approval_channel_id
         ),
@@ -523,6 +531,9 @@ async def update_agent(
     else:
         reverted = False
 
+    await record_resource_change(
+        db, current_user, actions.AGENT_UPDATE, "agent", agent, before, after=agent_state(agent)
+    )
     await db.commit()
     result = await db.execute(select(Agent).where(Agent.id == agent.id))
     agent = result.scalar_one()
@@ -544,6 +555,7 @@ async def delete_agent(
     await purge_resource_subscriptions(
         db, resource_type="agent", resource_id=agent_id
     )
+    await record_resource(db, current_user, actions.AGENT_DELETE, "agent", agent)
     await db.delete(agent)
     await db.commit()
     return ApiResponse(data={"deleted": agent_id})
@@ -677,6 +689,9 @@ async def unpublish_agent(
         raise AppError("unpublish_denied", status_code=403)
 
     # Log BEFORE clearing org_id so we capture which org it was unpublished from
+    await record_unpublish_by_other(
+        db, current_user, actions.AGENT_UNPUBLISH_BY_ADMIN, "agent", agent
+    )
     if agent.org_id:
         from fim_one.web.api.reviews import log_review_event
         await log_review_event(
@@ -750,6 +765,9 @@ async def fork_agent(
         status="draft",
     )
     db.add(forked)
+    await record_resource(
+        db, current_user, actions.AGENT_CREATE, "agent", forked, detail=f"fork of {source.id}"
+    )
     await db.commit()
 
     result = await db.execute(

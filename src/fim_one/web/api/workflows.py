@@ -20,9 +20,21 @@ from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import CursorResult, and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.audit import actions
+from fim_one.core.audit.redact import diff_changes
+from fim_one.core.audit import writer as audit
+from fim_one.core.audit.context import current_request_meta
+from fim_one.core.audit.redact import hint as redact_hint
+from fim_one.core.audit.refusals import record_refusal
 from fim_one.db import get_session
 from fim_one.core.security import get_safe_async_client, is_private_ip
 from fim_one.web.exceptions import AppError
+from fim_one.web.audit_events import (
+    record_resource,
+    record_resource_change,
+    record_unpublish_by_other,
+    snapshot,
+)
 from fim_one.web.auth import get_current_user, get_user_org_ids
 from fim_one.web.platform import MARKET_ORG_ID, is_market_org
 from fim_one.core.assembly.confirmation import (
@@ -288,6 +300,12 @@ def _version_to_response(v: WorkflowVersion) -> WorkflowVersionResponse:
         created_by=v.created_by,
         created_at=v.created_at.isoformat() if v.created_at else "",
     )
+
+
+# What an audit record compares of a workflow: whether it may run, and
+# whether the address its completion webhook posts to changed (the address
+# itself is not recorded). Its steps are content.
+WORKFLOW_AUDITED_FIELDS = ("is_active", "status", "webhook_url")
 
 
 async def _get_owned_workflow(
@@ -583,6 +601,7 @@ async def create_workflow(
         is_active=body.is_active,
     )
     db.add(wf)
+    await record_resource(db, current_user, actions.WORKFLOW_CREATE, "workflow", wf)
     await db.commit()
     result = await db.execute(select(Workflow).where(Workflow.id == wf.id))
     wf = result.scalar_one()
@@ -728,6 +747,14 @@ async def create_workflow_from_template(
         is_active=True,
     )
     db.add(wf)
+    await record_resource(
+        db,
+        current_user,
+        actions.WORKFLOW_CREATE,
+        "workflow",
+        wf,
+        detail="from a built-in template",
+    )
     await db.commit()
     result = await db.execute(select(Workflow).where(Workflow.id == wf.id))
     wf = result.scalar_one()
@@ -782,6 +809,23 @@ _TRIGGER_INVALID_BLUEPRINT = (
 )
 
 
+def _presented_key_hint(raw_key: str | None) -> str:
+    """What is recorded of a key that matched no workflow.
+
+    Anything can be sent as the key: a password, another service's token.
+    The start is kept only of a value that has the shape of a trigger key
+    (the display prefix, never more than a third of it), which is enough
+    to tell a mistyped key from a guess; of anything else only its length.
+    """
+    from fim_one.web.services.workflow_trigger_keys import DISPLAY_PREFIX_LEN, TRIGGER_KEY_PREFIX
+
+    if not raw_key:
+        return "(none)"
+    if raw_key.startswith(TRIGGER_KEY_PREFIX) and len(raw_key) >= 3 * DISPLAY_PREFIX_LEN:
+        return f"{redact_hint(raw_key, keep=DISPLAY_PREFIX_LEN)}"
+    return f"(not a trigger key; {len(raw_key)} characters)"
+
+
 async def _resolve_trigger_workflow(raw_key: str | None, db: AsyncSession) -> Workflow:
     from fim_one.web.services.workflow_trigger_keys import (
         TriggerKeyRejectedError,
@@ -791,6 +835,16 @@ async def _resolve_trigger_workflow(raw_key: str | None, db: AsyncSession) -> Wo
     try:
         return await resolve_trigger_key(raw_key, db)
     except TriggerKeyRejectedError as exc:
+        if exc.error_code == "invalid_api_key":
+            # Nobody is authenticated: counted by the caller's address, one
+            # record per address and ten minutes. Of the key, only enough
+            # to tell a typo from a guess.
+            meta = current_request_meta()
+            await record_refusal(
+                actions.WORKFLOW_TRIGGER_KEY_INVALID,
+                source=meta.ip if meta else None,
+                detail=f"key={_presented_key_hint(raw_key)}",
+            )
         raise AppError(exc.error_code, status_code=401, detail=exc.detail) from None
 
 
@@ -1218,6 +1272,7 @@ async def update_workflow(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     wf = await _get_owned_workflow(workflow_id, current_user.id, db)
+    before = snapshot(wf, WORKFLOW_AUDITED_FIELDS)
 
     update_data = body.model_dump(exclude_unset=True)
 
@@ -1295,6 +1350,16 @@ async def update_workflow(
     else:
         reverted = False
 
+    await record_resource_change(
+        db,
+        current_user,
+        actions.WORKFLOW_UPDATE,
+        "workflow",
+        wf,
+        before,
+        # A webhook address carries the token that lets anyone post to it.
+        secret_fields=("webhook_url",),
+    )
     await db.commit()
     result = await db.execute(select(Workflow).where(Workflow.id == wf.id))
     wf = result.scalar_one()
@@ -1348,6 +1413,14 @@ async def fork_workflow(
         forked_from=source.id,
     )
     db.add(forked)
+    await record_resource(
+        db,
+        current_user,
+        actions.WORKFLOW_CREATE,
+        "workflow",
+        forked,
+        detail=f"fork of {source.id}",
+    )
     await db.commit()
     result = await db.execute(select(Workflow).where(Workflow.id == forked.id))
     forked = result.scalar_one()
@@ -1370,6 +1443,7 @@ async def delete_workflow(
     await close_requests_of_runs(
         db, select(WorkflowRun.id).where(WorkflowRun.workflow_id == workflow_id)
     )
+    await record_resource(db, current_user, actions.WORKFLOW_DELETE, "workflow", wf)
     await db.delete(wf)
     await db.commit()
     return ApiResponse(data={"deleted": workflow_id})
@@ -1485,6 +1559,9 @@ async def unpublish_workflow(
         raise AppError("unpublish_denied", status_code=403)
 
     # Log BEFORE clearing org_id
+    await record_unpublish_by_other(
+        db, current_user, actions.WORKFLOW_UNPUBLISH_BY_ADMIN, "workflow", wf
+    )
     if wf.org_id:
         from fim_one.web.api.reviews import log_review_event
         await log_review_event(
@@ -1952,6 +2029,26 @@ async def test_webhook(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     """Send a test payload to the workflow's configured webhook URL."""
+    wf = await _get_owned_workflow(workflow_id, current_user.id, db)
+    recorded = {"id": wf.id, "name": wf.name, "org_id": wf.org_id}
+    response = await _send_test_webhook(workflow_id, current_user, db)
+    # A message left the platform for an address the author chose. Which
+    # workflow and whether it was accepted; not the address (it carries the
+    # token) and not the answer. Written on its own, after the send.
+    await audit.record(
+        actions.WORKFLOW_WEBHOOK_TEST,
+        actor=audit.actor_of(current_user),
+        org_id=recorded["org_id"],
+        target_type="workflow",
+        target_id=recorded["id"],
+        target_label=recorded["name"],
+        outcome="success" if (response.data or {}).get("success") else "failed",
+    )
+    return response
+
+
+async def _send_test_webhook(workflow_id: str, current_user: User, db: AsyncSession) -> ApiResponse:
+    """The test delivery itself: what it answers is the endpoint's response."""
     import httpx
 
     wf = await _get_owned_workflow(workflow_id, current_user.id, db)
@@ -2179,6 +2276,20 @@ async def get_workflow_schedule(
     )
 
 
+def _schedule_state(wf: Workflow) -> dict[str, Any]:
+    """What an audit record compares of a workflow's schedule.
+
+    The inputs a scheduled run starts with are the author's data: the
+    record says that they changed, not what they are.
+    """
+    return {
+        "cron": wf.schedule_cron,
+        "enabled": bool(wf.schedule_enabled),
+        "timezone": wf.schedule_timezone or "UTC",
+        "inputs": wf.schedule_inputs or None,
+    }
+
+
 @router.put("/{workflow_id}/schedule", response_model=ApiResponse)
 async def update_workflow_schedule(
     workflow_id: str,
@@ -2197,11 +2308,20 @@ async def update_workflow_schedule(
             detail="A cron expression is required when enabling a schedule.",
         )
 
+    before = _schedule_state(wf)
     wf.schedule_cron = body.cron
     wf.schedule_enabled = body.enabled
     wf.schedule_inputs = body.inputs
     wf.schedule_timezone = body.timezone
 
+    await record_resource(
+        db,
+        current_user,
+        actions.WORKFLOW_SCHEDULE_UPDATE,
+        "workflow",
+        wf,
+        changes=diff_changes(before, _schedule_state(wf)),
+    )
     await db.commit()
     await db.refresh(wf)
 
@@ -2230,11 +2350,20 @@ async def delete_workflow_schedule(
     """Clear the schedule configuration for a workflow."""
     wf = await _get_owned_workflow(workflow_id, current_user.id, db)
 
+    before = _schedule_state(wf)
     wf.schedule_cron = None
     wf.schedule_enabled = False
     wf.schedule_inputs = None
     wf.schedule_timezone = "UTC"
 
+    await record_resource(
+        db,
+        current_user,
+        actions.WORKFLOW_SCHEDULE_DELETE,
+        "workflow",
+        wf,
+        changes=diff_changes(before, _schedule_state(wf)),
+    )
     await db.commit()
 
     return ApiResponse(
@@ -2898,6 +3027,16 @@ async def export_workflow_runs(
         "runs": export_runs,
     }
 
+    await audit.record(
+        actions.EXPORT_WORKFLOW_RUNS,
+        actor=audit.actor_of(current_user),
+        org_id=wf.org_id,
+        target_type="workflow",
+        target_id=wf.id,
+        target_label=wf.name,
+        detail=f"{len(export_runs)} run(s)",
+    )
+
     return Response(
         content=json.dumps(payload, ensure_ascii=False, indent=2),
         media_type="application/json",
@@ -3026,7 +3165,7 @@ async def delete_workflow_run(
     Only completed, failed, or cancelled runs can be deleted.
     Running/pending runs must be cancelled first.
     """
-    await _get_owned_workflow(workflow_id, current_user.id, db)
+    wf = await _get_owned_workflow(workflow_id, current_user.id, db)
 
     result = await db.execute(
         select(WorkflowRun).where(
@@ -3043,6 +3182,15 @@ async def delete_workflow_run(
         raise AppError("cannot_delete_active_run", status_code=409)
 
     await close_requests_of_runs(db, [run.id])
+    # A run record is what shows that the workflow ran and how it ended.
+    await record_resource(
+        db,
+        current_user,
+        actions.WORKFLOW_RUN_DELETE,
+        "workflow",
+        wf,
+        detail=f"run={run.id}; status={run.status}; mode={run.mode}",
+    )
     await db.delete(run)
     await db.commit()
     return ApiResponse(data={"deleted": run_id})
@@ -3058,7 +3206,7 @@ async def clear_workflow_runs(
 
     Active (pending/running) runs are preserved.
     """
-    await _get_owned_workflow(workflow_id, current_user.id, db)
+    wf = await _get_owned_workflow(workflow_id, current_user.id, db)
 
     finished = (
         WorkflowRun.workflow_id == workflow_id,
@@ -3067,6 +3215,15 @@ async def clear_workflow_runs(
     )
     await close_requests_of_runs(db, select(WorkflowRun.id).where(*finished))
     del_result = cast(CursorResult[Any], await db.execute(delete(WorkflowRun).where(*finished)))
+    if del_result.rowcount:
+        await record_resource(
+            db,
+            current_user,
+            actions.WORKFLOW_RUNS_CLEAR,
+            "workflow",
+            wf,
+            detail=f"deleted {del_result.rowcount} finished run(s)",
+        )
     await db.commit()
     return ApiResponse(data={"deleted_count": del_result.rowcount})
 
@@ -3185,6 +3342,9 @@ async def import_workflow(
         status="draft",
     )
     db.add(wf)
+    await record_resource(
+        db, current_user, actions.WORKFLOW_CREATE, "workflow", wf, detail="imported"
+    )
     await db.commit()
     result = await db.execute(select(Workflow).where(Workflow.id == wf.id))
     wf = result.scalar_one()
@@ -3238,12 +3398,27 @@ async def update_workflow_env(
     wf = await _get_owned_workflow(workflow_id, current_user.id, db)
 
     from fim_one.core.security.encryption import encrypt_credential
+    from fim_one.core.workflow.run_service import decrypt_workflow_env
 
+    names_before = sorted(decrypt_workflow_env(wf))
     if body.env_vars:
         wf.env_vars_blob = encrypt_credential(body.env_vars)
     else:
         wf.env_vars_blob = None
 
+    # The names of the variables before and after; never a value. Replacing
+    # a value under the same name shows as an event with no change of names.
+    await record_resource(
+        db,
+        current_user,
+        actions.WORKFLOW_ENV_UPDATE,
+        "workflow",
+        wf,
+        changes=diff_changes(
+            {"variables": names_before}, {"variables": sorted(body.env_vars or {})}
+        ),
+        detail=f"{len(body.env_vars or {})} variable(s) stored",
+    )
     await db.commit()
 
     # Return keys only (not values) for security
@@ -3275,15 +3450,21 @@ async def generate_workflow_api_key(
     # wf_ prefix + 43-char token. Only the hash and a display prefix are
     # stored; the plain key is returned this once.
     new_key, key_hash, key_prefix = generate_trigger_key()
+    replaced_prefix = wf.api_key_prefix if wf.api_key_hash else None
     wf.api_key_hash = key_hash
     wf.api_key_prefix = key_prefix
-    await db.commit()
-    logger.info(
-        "Workflow %s trigger key %s generated by user %s",
-        wf.id,
-        key_prefix,
-        current_user.id,
+    # The key is named by its display prefix; generating one over an existing
+    # key replaces it, and the record says which.
+    await record_resource(
+        db,
+        current_user,
+        actions.WORKFLOW_TRIGGER_KEY_GENERATE,
+        "workflow",
+        wf,
+        detail=f"prefix={key_prefix}"
+        + (f"; replaces prefix={replaced_prefix}" if replaced_prefix else ""),
     )
+    await db.commit()
 
     response = WorkflowApiKeyResponse(
         api_key=new_key,
@@ -3307,12 +3488,14 @@ async def revoke_workflow_api_key(
     revoked_prefix = wf.api_key_prefix
     wf.api_key_hash = None
     wf.api_key_prefix = None
-    await db.commit()
-    logger.info(
-        "Workflow %s trigger key %s revoked by user %s",
-        wf.id,
-        revoked_prefix,
-        current_user.id,
+    await record_resource(
+        db,
+        current_user,
+        actions.WORKFLOW_TRIGGER_KEY_REVOKE,
+        "workflow",
+        wf,
+        detail=f"prefix={revoked_prefix}",
     )
+    await db.commit()
 
     return ApiResponse(data={"revoked": True, "workflow_id": wf.id})

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import csv
 import io
 import json
 import math
@@ -27,6 +26,8 @@ from sqlalchemy import func, literal_column, or_, select, text, update as sa_upd
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from fim_one.core.audit import writer as audit
+from fim_one.web.csv_safe import safe_writer
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_admin, hash_password, hash_password_async
 from fim_one.db.models import Agent, AuditLog, Connector, ConnectorCallLog, Conversation, InviteCode, KnowledgeBase, MCPServer as MCPServerModel, Message, ModelConfig, Organization, SystemSetting, User
@@ -48,7 +49,14 @@ from fim_one.web.services.user_deletion import purge_user_data
 # Settings helpers (delegated to admin_utils, re-exported for compatibility)
 # ---------------------------------------------------------------------------
 
-from fim_one.web.api.admin_utils import get_setting, set_setting, write_audit  # noqa: F811,E402
+from fim_one.core.audit.redact import diff_changes
+from fim_one.core.audit.redact import hint as redact_hint
+from fim_one.web.api.admin_utils import (  # noqa: F811,E402
+    get_setting,
+    set_setting,
+    stage_audit,
+    write_audit,
+)
 from fim_one.web.api.files import _load_index, _user_dir
 from fim_one.web.services.billing_flag import (
     ACCESS_MODEL_OFF,
@@ -689,14 +697,15 @@ async def create_user(
         is_admin=body.is_admin,
     )
     db.add(user)
+    await db.flush()
+    await stage_audit(
+        db, current_user, "user.create",
+        target_type="user", target_id=user.id, target_label=user.username or user.email,
+    )
     await db.commit()
 
     result = await db.execute(select(User).where(User.id == user.id))
     user = result.scalar_one()
-    await write_audit(
-        db, current_user, "user.create",
-        target_type="user", target_id=user.id, target_label=user.username or user.email,
-    )
     return _user_to_info(user)
 
 
@@ -712,6 +721,7 @@ async def update_user(
     target_user = result.scalar_one_or_none()
     if target_user is None:
         raise AppError("user_not_found", status_code=404)
+    before = {"email": target_user.email, "display_name": target_user.display_name}
 
     if body.display_name is not None:
         target_user.display_name = body.display_name or None
@@ -725,6 +735,21 @@ async def update_user(
                 raise AppError("email_already_registered", status_code=409)
         target_user.email = body.email or None  # type: ignore[assignment]
 
+    # Committed with the change: the address is what the account signs in and
+    # recovers its password with.
+    changes = diff_changes(
+        before, {"email": target_user.email, "display_name": target_user.display_name}
+    )
+    if changes:
+        await audit.record(
+            "user.update",
+            actor=audit.actor_of(current_user),
+            target_type="user",
+            target_id=user_id,
+            target_label=target_user.username or before["email"] or target_user.email,
+            changes=changes,
+            db=db,
+        )
     await db.commit()
     result = await db.execute(select(User).where(User.id == user_id))
     target_user = result.scalar_one()
@@ -752,15 +777,16 @@ async def update_user_admin(
         raise AppError("user_not_found", status_code=404)
 
     target_user.is_admin = body.is_admin
-    await db.commit()
-
-    result = await db.execute(select(User).where(User.id == user_id))
-    target_user = result.scalar_one()
-    await write_audit(
+    await db.flush()
+    await stage_audit(
         db, current_user,
         "user.grant_admin" if body.is_admin else "user.revoke_admin",
         target_type="user", target_id=user_id, target_label=target_user.username or target_user.email,
     )
+    await db.commit()
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    target_user = result.scalar_one()
     return _user_to_info(target_user)
 
 
@@ -781,14 +807,15 @@ async def reset_password(
     target_user.refresh_token = None
     target_user.refresh_token_expires_at = None
     target_user.tokens_invalidated_at = datetime.now(timezone.utc)
+    await db.flush()
+    await stage_audit(
+        db, current_user, "user.reset_password",
+        target_type="user", target_id=user_id, target_label=target_user.username or target_user.email,
+    )
     await db.commit()
 
     result = await db.execute(select(User).where(User.id == user_id))
     target_user = result.scalar_one()
-    await write_audit(
-        db, current_user, "user.reset_password",
-        target_type="user", target_id=user_id, target_label=target_user.username or target_user.email,
-    )
     return _user_to_info(target_user)
 
 
@@ -813,15 +840,16 @@ async def toggle_user_active(
         # Invalidate refresh token to kick the user offline
         target_user.refresh_token = None
         target_user.refresh_token_expires_at = None
-    await db.commit()
-
-    result = await db.execute(select(User).where(User.id == user_id))
-    target_user = result.scalar_one()
-    await write_audit(
+    await db.flush()
+    await stage_audit(
         db, current_user,
         "user.enable" if body.is_active else "user.disable",
         target_type="user", target_id=user_id, target_label=target_user.username or target_user.email,
     )
+    await db.commit()
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    target_user = result.scalar_one()
     return _user_to_info(target_user)
 
 
@@ -973,7 +1001,7 @@ async def update_system_settings(
     """Update one or more system settings. Requires admin privileges."""
     changed: list[str] = []
     if body.registration_enabled is not None:
-        await set_setting(db, SETTING_REGISTRATION_ENABLED, "true" if body.registration_enabled else "false")
+        await set_setting(db, SETTING_REGISTRATION_ENABLED, "true" if body.registration_enabled else "false", commit=False)
         changed.append(f"registration_enabled={body.registration_enabled}")
     if body.registration_mode is not None:
         if body.registration_mode not in ("open", "invite", "disabled"):
@@ -982,10 +1010,10 @@ async def update_system_settings(
                 detail=f"Invalid registration mode: {body.registration_mode}",
                 detail_args={"mode": body.registration_mode},
             )
-        await set_setting(db, SETTING_REGISTRATION_MODE, body.registration_mode)
+        await set_setting(db, SETTING_REGISTRATION_MODE, body.registration_mode, commit=False)
         changed.append(f"registration_mode={body.registration_mode}")
     if body.default_token_quota is not None:
-        await set_setting(db, SETTING_DEFAULT_TOKEN_QUOTA, str(body.default_token_quota))
+        await set_setting(db, SETTING_DEFAULT_TOKEN_QUOTA, str(body.default_token_quota), commit=False)
         # Scheme A: the Free plan IS the canonical "default" for
         # unsubscribed users — keep its monthly_token_quota in sync so
         # changing this knob propagates to the Free tier without a
@@ -995,24 +1023,23 @@ async def update_system_settings(
             .where(BillingPlan.slug == "free")
             .values(monthly_token_quota=int(body.default_token_quota))
         )
-        await db.commit()
         changed.append(f"default_token_quota={body.default_token_quota}")
     if body.maintenance_mode is not None:
-        await set_setting(db, SETTING_MAINTENANCE_MODE, "true" if body.maintenance_mode else "false")
+        await set_setting(db, SETTING_MAINTENANCE_MODE, "true" if body.maintenance_mode else "false", commit=False)
         changed.append(f"maintenance_mode={body.maintenance_mode}")
     if body.announcement_enabled is not None:
-        await set_setting(db, SETTING_ANNOUNCEMENT_ENABLED, "true" if body.announcement_enabled else "false")
+        await set_setting(db, SETTING_ANNOUNCEMENT_ENABLED, "true" if body.announcement_enabled else "false", commit=False)
         changed.append(f"announcement_enabled={body.announcement_enabled}")
     if body.announcement_text is not None:
-        await set_setting(db, SETTING_ANNOUNCEMENT_TEXT, body.announcement_text)
+        await set_setting(db, SETTING_ANNOUNCEMENT_TEXT, body.announcement_text, commit=False)
         changed.append("announcement_text updated")
     if body.email_verification_enabled is not None:
         if body.email_verification_enabled and not _smtp_configured():
             raise AppError("smtp_not_configured", detail="Cannot enable email verification without SMTP")
-        await set_setting(db, SETTING_EMAIL_VERIFICATION_ENABLED, "true" if body.email_verification_enabled else "false")
+        await set_setting(db, SETTING_EMAIL_VERIFICATION_ENABLED, "true" if body.email_verification_enabled else "false", commit=False)
         changed.append(f"email_verification_enabled={body.email_verification_enabled}")
     if body.disabled_builtin_tools is not None:
-        await set_setting(db, SETTING_DISABLED_BUILTIN_TOOLS, json.dumps(body.disabled_builtin_tools))
+        await set_setting(db, SETTING_DISABLED_BUILTIN_TOOLS, json.dumps(body.disabled_builtin_tools), commit=False)
         changed.append(f"disabled_builtin_tools={body.disabled_builtin_tools}")
     if body.modules is not None:
         from fim_one.web.services.feature_flags import (
@@ -1032,10 +1059,14 @@ async def update_system_settings(
                     detail=f"Unknown module: {_mod_name}",
                     detail_args={"module": _mod_name},
                 )
-            await set_setting(db, _setting_key, "true" if _enabled else "false")
+            await set_setting(db, _setting_key, "true" if _enabled else "false", commit=False)
             changed.append(f"module.{_mod_name}={_enabled}")
     if changed:
-        await write_audit(db, current_user, "settings.update", detail="; ".join(changed))
+        # One commit for every setting of this save and its record: a save
+        # that is refused part-way, or whose record cannot be written,
+        # changes nothing.
+        await stage_audit(db, current_user, "settings.update", detail="; ".join(changed))
+        await db.commit()
     return await _load_all_settings(db)
 
 
@@ -1161,8 +1192,8 @@ async def delete_user(
     # Unified deletion: file cleanup + FK-safe row removal + ORM cascade.
     # Raises cannot_delete_org_owner if the user still owns any organization.
     summary = await purge_user_data(db, user_id)
-    await db.commit()
-    await write_audit(
+    await db.flush()
+    await stage_audit(
         db, current_user, "user.delete",
         target_type="user", target_id=user_id, target_label=label,
         detail=(
@@ -1170,6 +1201,7 @@ async def delete_user(
             f"{summary['knowledge_bases']} knowledge bases, sandbox & upload dirs"
         ),
     )
+    await db.commit()
     return info
 
 
@@ -1193,8 +1225,9 @@ async def force_logout_all(
         u.refresh_token = None
         u.refresh_token_expires_at = None
         u.tokens_invalidated_at = now
+    await db.flush()
+    await stage_audit(db, current_user, "auth.force_logout_all", detail=f"invalidated {count} sessions")
     await db.commit()
-    await write_audit(db, current_user, "auth.force_logout_all", detail=f"invalidated {count} sessions")
     return {"invalidated": count}
 
 
@@ -1213,6 +1246,16 @@ class AuditLogEntry(BaseModel):
     target_label: str | None
     detail: str | None
     created_at: str
+    # Empty on rows written before these columns existed; such a row is an
+    # administrator's successful action.
+    actor_kind: str | None = None
+    org_id: str | None = None
+    outcome: str = "success"
+    changes: dict[str, Any] | None = None
+    ip_address: str | None = None
+
+
+_AUDIT_EXPORT_LIMIT = 10_000
 
 
 def _build_audit_filters(
@@ -1226,7 +1269,7 @@ def _build_audit_filters(
     if action:
         filters.append(AuditLog.action == action)
     if admin_id:
-        filters.append(AuditLog.admin_id == admin_id)
+        filters.append(AuditLog.actor_id == admin_id)
     if date_from:
         try:
             dt_from = datetime.strptime(date_from, "%Y-%m-%d").replace(
@@ -1246,6 +1289,28 @@ def _build_audit_filters(
     return filters
 
 
+class AuditActionGroup(BaseModel):
+    domain: str
+    actions: list[str]
+
+
+@router.get("/audit-log/actions", response_model=list[AuditActionGroup])
+async def list_audit_actions(
+    current_user: User = Depends(get_current_admin),  # noqa: B008
+) -> list[AuditActionGroup]:
+    """Every registered audit action, grouped by its domain.
+
+    What the audit page offers in its action filter: read from the
+    registry, so an action that can be recorded can be filtered for.
+    """
+    from fim_one.core.audit.actions import ACTIONS
+
+    groups: dict[str, list[str]] = {}
+    for name in sorted(ACTIONS):
+        groups.setdefault(name.partition(".")[0], []).append(name)
+    return [AuditActionGroup(domain=domain, actions=names) for domain, names in groups.items()]
+
+
 @router.get("/audit-log/export")
 async def export_audit_log(
     action: str | None = None,
@@ -1255,35 +1320,78 @@ async def export_audit_log(
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> StreamingResponse:
-    """Export filtered audit log entries as CSV. Limited to 10 000 rows."""
+    """Export filtered audit log entries as CSV: the newest 10 000 that match.
+
+    When more match, the file ends with a line that says so and the
+    response says it in ``X-Export-Truncated`` / ``X-Export-Total``.
+    """
     filters = _build_audit_filters(action, admin_id, date_from, date_to)
     query = select(AuditLog).order_by(AuditLog.created_at.desc())
     for f in filters:
         query = query.where(f)
-    query = query.limit(10_000)
+    query = query.limit(_AUDIT_EXPORT_LIMIT)
 
     result = await db.execute(query)
     rows = result.scalars().all()
+    total = len(rows)
+    if total >= _AUDIT_EXPORT_LIMIT:
+        count_query = select(func.count()).select_from(AuditLog)
+        for f in filters:
+            count_query = count_query.where(f)
+        total = (await db.execute(count_query)).scalar_one()
+    truncated = total > len(rows)
 
     buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow(["timestamp", "admin", "action", "target_type", "target_label", "detail"])
+    writer = safe_writer(buf)
+    writer.writerow(
+        [
+            "timestamp", "admin", "action", "target_type", "target_label", "detail",
+            "actor_kind", "org_id", "outcome", "changes", "ip_address",
+        ]
+    )  # fmt: skip
     for r in rows:
         writer.writerow([
             r.created_at.isoformat() if r.created_at else "",
-            r.admin_username or "",
+            r.actor_label or "",
             r.action,
             r.target_type or "",
             r.target_label or "",
             r.detail or "",
+            r.actor_kind or "",
+            r.org_id or "",
+            r.outcome or "success",
+            json.dumps(r.changes, ensure_ascii=False, sort_keys=True) if r.changes else "",
+            r.ip_address or "",
         ])
+
+    # The audit log leaving the system is itself an event; it is written
+    # after the rows were read, so an export does not contain its own record.
+    await audit.record(
+        "export.audit_log",
+        actor=audit.actor_of(current_user),
+        detail=f"{len(rows)} row(s)" + (f" of {total}; truncated" if truncated else ""),
+    )
+
+    if truncated:
+        # Said in the file itself, where whoever reads it later will see it.
+        writer.writerow(
+            [
+                f"# truncated: the newest {len(rows)} of {total} entries that match; "
+                "narrow the date range to export the rest"
+            ]
+        )
 
     buf.seek(0)
     today = date.today().isoformat()
     return StreamingResponse(
         iter([buf.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="audit-log-{today}.csv"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="audit-log-{today}.csv"',
+            "X-Export-Truncated": "true" if truncated else "false",
+            "X-Export-Rows": str(len(rows)),
+            "X-Export-Total": str(total),
+        },
     )
 
 
@@ -1322,14 +1430,19 @@ async def list_audit_log(
     items = [
         AuditLogEntry(
             id=r.id,
-            admin_id=r.admin_id or "",
-            admin_username=r.admin_username,
+            admin_id=r.actor_id or "",
+            admin_username=r.actor_label,
             action=r.action,
             target_type=r.target_type,
             target_id=r.target_id,
             target_label=r.target_label,
             detail=r.detail,
             created_at=r.created_at.isoformat() if r.created_at else "",
+            actor_kind=r.actor_kind,
+            org_id=r.org_id,
+            outcome=r.outcome or "success",
+            changes=r.changes,
+            ip_address=r.ip_address,
         ).model_dump()
         for r in rows
     ]
@@ -1364,11 +1477,12 @@ async def force_logout_user(
     user.refresh_token = None
     user.refresh_token_expires_at = None
     user.tokens_invalidated_at = datetime.now(timezone.utc)
-    await db.commit()
-    await write_audit(
+    await db.flush()
+    await stage_audit(
         db, current_user, "user.force_logout",
         target_type="user", target_id=user_id, target_label=user.username or user.email,
     )
+    await db.commit()
     return {"ok": True}
 
 
@@ -1390,12 +1504,13 @@ async def set_user_quota(
     if user is None:
         raise AppError("user_not_found", status_code=404)
     user.token_quota = body.token_quota
-    await db.commit()
-    await write_audit(
+    await db.flush()
+    await stage_audit(
         db, current_user, "user.set_quota",
         target_type="user", target_id=user_id, target_label=user.username or user.email,
         detail=f"quota={body.token_quota}",
     )
+    await db.commit()
     return {"ok": True}
 
 
@@ -1867,12 +1982,15 @@ async def create_invite_code(
         expires_at=body.expires_at,
     )
     db.add(code)
+    await db.flush()
+    await stage_audit(
+        db, current_user, "invite_code.create",
+        target_type="invite_code", target_id=code.id,
+        # Enough to tell which code it was; the code itself admits whoever holds it.
+        detail=f"code={redact_hint(code_str)}",
+    )
     await db.commit()
     await db.refresh(code)
-    await write_audit(
-        db, current_user, "invite_code.create",
-        detail=f"code={code_str}",
-    )
     return InviteCodeInfo(
         id=code.id, code=code.code, note=code.note,
         max_uses=code.max_uses, use_count=code.use_count,
@@ -1894,11 +2012,13 @@ async def revoke_invite_code(
     if code is None:
         raise AppError("invite_code_not_found", status_code=404)
     code.is_active = False
-    await db.commit()
-    await write_audit(
+    await db.flush()
+    await stage_audit(
         db, current_user, "invite_code.revoke",
-        detail=f"code_id={code_id}",
+        target_type="invite_code", target_id=code_id,
+        detail=f"code_id={code_id}, code={redact_hint(code.code)}",
     )
+    await db.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -3701,10 +3821,8 @@ async def create_billing_plan(
         is_active=body.is_active,
     )
     db.add(plan)
-    await db.commit()
-    await db.refresh(plan)
-
-    await write_audit(
+    await db.flush()
+    await stage_audit(
         db,
         current_user,
         "billing_plan.create",
@@ -3712,6 +3830,9 @@ async def create_billing_plan(
         target_id=str(plan.id),
         target_label=plan.slug,
     )
+    await db.commit()
+    await db.refresh(plan)
+
     return _plan_to_read(plan, active_count=0)
 
 
@@ -3828,10 +3949,8 @@ async def update_billing_plan(
         features_json["price_cents"] = int(payload["price_cents"])
     plan.features_json = features_json
 
-    await db.commit()
-    await db.refresh(plan)
-
-    await write_audit(
+    await db.flush()
+    await stage_audit(
         db,
         current_user,
         "billing_plan.update",
@@ -3839,6 +3958,9 @@ async def update_billing_plan(
         target_id=str(plan.id),
         target_label=plan.slug,
     )
+    await db.commit()
+    await db.refresh(plan)
+
     count = await _count_active_subs_for_plan(db, plan_id)
     return _plan_to_read(plan, active_count=count, is_default=is_default)
 
@@ -3877,10 +3999,8 @@ async def delete_billing_plan(
         )
 
     plan.is_active = False
-    await db.commit()
-    await db.refresh(plan)
-
-    await write_audit(
+    await db.flush()
+    await stage_audit(
         db,
         current_user,
         "billing_plan.delete",
@@ -3888,6 +4008,9 @@ async def delete_billing_plan(
         target_id=str(plan.id),
         target_label=plan.slug,
     )
+    await db.commit()
+    await db.refresh(plan)
+
     return _plan_to_read(plan, active_count=0)
 
 

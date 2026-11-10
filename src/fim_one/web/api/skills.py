@@ -9,8 +9,15 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.audit import actions
 from fim_one.db import get_session
 from fim_one.web.exceptions import AppError
+from fim_one.web.audit_events import (
+    record_resource,
+    record_resource_change,
+    record_unpublish_by_other,
+    snapshot,
+)
 from fim_one.web.auth import get_current_user, get_user_org_ids
 from fim_one.web.platform import MARKET_ORG_ID, is_market_org
 from fim_one.db.models import User
@@ -113,6 +120,11 @@ async def _get_accessible_skill(
 # ---------------------------------------------------------------------------
 
 
+# What an audit record compares of a skill: whether it is on. Its text and
+# script are content.
+SKILL_AUDITED_FIELDS = ("is_active",)
+
+
 @router.post("", response_model=ApiResponse)
 async def create_skill(
     body: SkillCreate,
@@ -131,6 +143,7 @@ async def create_skill(
         status="draft",
     )
     db.add(skill)
+    await record_resource(db, current_user, actions.SKILL_CREATE, "skill", skill)
     await db.commit()
     result = await db.execute(select(Skill).where(Skill.id == skill.id))
     skill = result.scalar_one()
@@ -217,6 +230,7 @@ async def update_skill(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     skill = await _get_owned_skill(skill_id, current_user.id, db)
+    before = snapshot(skill, SKILL_AUDITED_FIELDS)
 
     update_data = body.model_dump(exclude_unset=True)
     for field, value in update_data.items():
@@ -230,6 +244,9 @@ async def update_skill(
     else:
         reverted = False
 
+    await record_resource_change(
+        db, current_user, actions.SKILL_UPDATE, "skill", skill, before
+    )
     await db.commit()
     result = await db.execute(select(Skill).where(Skill.id == skill.id))
     skill = result.scalar_one()
@@ -251,6 +268,7 @@ async def delete_skill(
     await purge_resource_subscriptions(
         db, resource_type="skill", resource_id=skill_id
     )
+    await record_resource(db, current_user, actions.SKILL_DELETE, "skill", skill)
     await db.delete(skill)
     await db.commit()
     return ApiResponse(data={"deleted": skill_id})
@@ -296,6 +314,9 @@ async def fork_skill(
         publish_status=None,
     )
     db.add(forked)
+    await record_resource(
+        db, current_user, actions.SKILL_CREATE, "skill", forked, detail=f"fork of {source.id}"
+    )
     await db.commit()
 
     result = await db.execute(
@@ -416,6 +437,9 @@ async def unpublish_skill(
         raise AppError("unpublish_denied", status_code=403)
 
     # Log BEFORE clearing org_id
+    await record_unpublish_by_other(
+        db, current_user, actions.SKILL_UNPUBLISH_BY_ADMIN, "skill", skill
+    )
     if skill.org_id:
         from fim_one.web.api.reviews import log_review_event
 
@@ -448,7 +472,9 @@ async def toggle_skill(
 ) -> ApiResponse:
     """Toggle skill is_active status."""
     skill = await _get_owned_skill(skill_id, current_user.id, db)
+    before = snapshot(skill, SKILL_AUDITED_FIELDS)
     skill.is_active = not skill.is_active
+    await record_resource_change(db, current_user, actions.SKILL_UPDATE, "skill", skill, before)
     await db.commit()
     await db.refresh(skill)
     return ApiResponse(data=_skill_to_response(skill, is_owner=True).model_dump())

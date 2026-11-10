@@ -278,6 +278,7 @@
     "sessionsStatus": "Status",
     "sessionsSuccess": "Success",
     "sessionsFailed": "Failed",
+    "sessionsPendingSecondFactor": "Awaiting second factor",
     "sessionsNoData": "No login history available",
     "sessionsRevokeAll": "Sign Out All Other Devices",
     "sessionsRevokeAllConfirmTitle": "Sign out all other devices?",

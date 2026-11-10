@@ -27,7 +27,9 @@ from stripe import SignatureVerificationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.audit import actions
 from fim_one.db import get_session
+from fim_one.web.audit_events import record_plan_change
 from fim_one.web.config import settings
 from fim_one.db.models import (
     BillingPlan,
@@ -178,6 +180,15 @@ async def _handle_checkout_completed(
         sub_row.canceled_at = _from_stripe_ts(sub.get("canceled_at"))
         sub_row.updated_at = _utcnow()
 
+    await record_plan_change(
+        db,
+        user,
+        actions.BILLING_PLAN_CHANGE,
+        plan_from=user.plan_id,
+        plan_to=plan_row.id,
+        source="stripe webhook",
+        detail=f"checkout completed; plan={plan_row.slug}",
+    )
     user.plan_id = plan_row.id
     user.quota_reset_at = period_end
 
@@ -239,6 +250,15 @@ async def _handle_subscription_updated(
             sub_row.plan_id = plan_row.id
             user = await db.get(User, sub_row.user_id)
             if user is not None:
+                await record_plan_change(
+                    db,
+                    user,
+                    actions.BILLING_PLAN_CHANGE,
+                    plan_from=user.plan_id,
+                    plan_to=plan_row.id,
+                    source="stripe webhook",
+                    detail=f"subscription updated; plan={plan_row.slug}",
+                )
                 user.plan_id = plan_row.id
                 if period_end is not None:
                     user.quota_reset_at = period_end

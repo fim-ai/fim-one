@@ -234,7 +234,7 @@ async def purge_user_data(db: AsyncSession, user_id: str) -> dict[str, int]:
 
     # Preserve audit history but remove the actor reference.
     await db.execute(
-        update(AuditLog).where(AuditLog.admin_id == user_id).values(admin_id=None)
+        update(AuditLog).where(AuditLog.actor_id == user_id).values(actor_id=None)
     )
 
     # 5. Delete the user — ORM cascade removes the owned-resource tree

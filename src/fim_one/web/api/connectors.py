@@ -19,7 +19,20 @@ from fim_one.core.tool.connector.circuit_breaker import get_circuit_breaker_regi
 from fim_one.core.tool.connector.openapi_parser import parse_openapi_spec
 from fim_one.core.tool.connector.semantic_tags import get_all_semantic_tags
 from fim_one.web.exceptions import AppError
+from fim_one.core.audit import actions
+from fim_one.core.audit.resources import (
+    ACTION_AUDITED_FIELDS,
+    CONNECTOR_AUDITED_FIELDS,
+    action_deleted_detail,
+    connector_created_changes,
+)
 from fim_one.db import get_session
+from fim_one.web.audit_events import (
+    record_resource,
+    record_resource_change,
+    record_unpublish_by_other,
+    snapshot,
+)
 from fim_one.web.auth import get_current_user, get_user_org_ids
 from fim_one.web.platform import MARKET_ORG_ID, is_market_org
 from fim_one.db.models.connector import Connector, ConnectorAction
@@ -292,6 +305,14 @@ async def create_connector(
     if cred_blob:
         await _upsert_default_credential(connector.id, cred_blob, db)
 
+    await record_resource(
+        db,
+        current_user,
+        actions.CONNECTOR_CREATE,
+        "connector",
+        connector,
+        changes=await connector_created_changes(db, connector),
+    )
     await db.commit()
 
     # Reload with actions relationship for response serialization
@@ -430,6 +451,10 @@ async def update_connector(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     connector = await _get_owned_connector(connector_id, current_user.id, db)
+    before = snapshot(connector, CONNECTOR_AUDITED_FIELDS)
+    db_config_before = dict(connector.db_config or {})
+    # Secrets replaced by this update; recorded as changed, never by value.
+    secrets_replaced: list[str] = []
 
     update_data = body.model_dump(exclude_unset=True)
 
@@ -474,6 +499,7 @@ async def update_connector(
         # Only update credential if blob is non-empty; otherwise keep existing
         if cred_blob:
             await _upsert_default_credential(connector_id, cred_blob, db)
+            secrets_replaced.append("default_credential")
 
     # Handle allow_fallback separately (it's a direct column, not JSON)
     allow_fallback = update_data.pop("allow_fallback", None)
@@ -488,6 +514,11 @@ async def update_connector(
     if "db_config" in update_data:
         from sqlalchemy.orm.attributes import flag_modified
         flag_modified(connector, "db_config")
+        # Where the database is and how it is signed in to. The form sends
+        # the whole configuration with every save: recorded only when
+        # something in it is different (a re-entered password counts).
+        if dict(connector.db_config or {}) != db_config_before:
+            secrets_replaced.append("db_config")
     if "auth_config" in update_data:
         from sqlalchemy.orm.attributes import flag_modified
         flag_modified(connector, "auth_config")
@@ -500,6 +531,15 @@ async def update_connector(
     else:
         reverted = False
 
+    await record_resource_change(
+        db,
+        current_user,
+        actions.CONNECTOR_UPDATE,
+        "connector",
+        connector,
+        before,
+        also_changed=secrets_replaced,
+    )
     await db.commit()
 
     # Reload with actions relationship for response serialization
@@ -528,6 +568,7 @@ async def delete_connector(
     await purge_resource_subscriptions(
         db, resource_type="connector", resource_id=connector_id
     )
+    await record_resource(db, current_user, actions.CONNECTOR_DELETE, "connector", connector)
     await db.delete(connector)
     await db.commit()
     return ApiResponse(data={"deleted": connector_id})
@@ -595,6 +636,15 @@ async def fork_connector(
         )
         db.add(cloned_action)
 
+    await record_resource(
+        db,
+        current_user,
+        actions.CONNECTOR_CREATE,
+        "connector",
+        forked,
+        changes=await connector_created_changes(db, forked),
+        detail=f"fork of {source.id}",
+    )
     await db.commit()
 
     # Reload with actions for response
@@ -716,6 +766,7 @@ async def upsert_my_credentials(
         )
     )
     row = existing.scalar_one_or_none()
+    replaced = row is not None
     if row:
         row.credentials_blob = encrypted
     else:
@@ -726,6 +777,15 @@ async def upsert_my_credentials(
         )
         db.add(row)
 
+    # Which kind of credential and whether one was there before; no value.
+    await record_resource(
+        db,
+        current_user,
+        actions.CONNECTOR_CREDENTIAL_SET,
+        "connector",
+        connector,
+        detail=f"auth_type={connector.auth_type}; {'replaced' if replaced else 'new'}",
+    )
     await db.commit()
     return ApiResponse(data={"saved": True})
 
@@ -737,7 +797,7 @@ async def delete_my_credentials(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     """Delete the current user's personal credentials for this connector."""
-    await _get_visible_connector(connector_id, current_user.id, db)
+    connector = await _get_visible_connector(connector_id, current_user.id, db)
     result = await db.execute(
         select(ConnectorCredential).where(
             ConnectorCredential.connector_id == connector_id,
@@ -747,6 +807,9 @@ async def delete_my_credentials(
     row = result.scalar_one_or_none()
     if row:
         await db.delete(row)
+        await record_resource(
+            db, current_user, actions.CONNECTOR_CREDENTIAL_DELETE, "connector", connector
+        )
         await db.commit()
     return ApiResponse(data={"deleted": True})
 
@@ -850,6 +913,9 @@ async def unpublish_connector(
         raise AppError("unpublish_denied", status_code=403)
 
     # Log BEFORE clearing org_id
+    await record_unpublish_by_other(
+        db, current_user, actions.CONNECTOR_UNPUBLISH_BY_ADMIN, "connector", connector
+    )
     if getattr(connector, "org_id", None):
         from fim_one.web.api.reviews import log_review_event
         await log_review_event(
@@ -974,6 +1040,15 @@ async def import_openapi(
         )
         db.add(action)
 
+    await record_resource(
+        db,
+        current_user,
+        actions.CONNECTOR_CREATE,
+        "connector",
+        connector,
+        changes=await connector_created_changes(db, connector),
+        detail=f"from an OpenAPI document; {len(action_dicts)} action(s)",
+    )
     await db.commit()
 
     # Reload with actions
@@ -1015,6 +1090,17 @@ async def import_openapi_actions(
         )
         db.add(action)
 
+    await record_resource(
+        db,
+        current_user,
+        actions.CONNECTOR_ACTIONS_IMPORT,
+        "connector",
+        connector,
+        detail=(
+            f"{len(action_dicts)} action(s) from an OpenAPI document"
+            + ("; replaced the existing ones" if body.replace_existing else "")
+        ),
+    )
     await db.commit()
 
     # Reload with updated actions
@@ -1127,6 +1213,15 @@ async def import_connector(
         )
         db.add(action)
 
+    await record_resource(
+        db,
+        current_user,
+        actions.CONNECTOR_CREATE,
+        "connector",
+        connector,
+        changes=await connector_created_changes(db, connector),
+        detail=f"imported; {len(body.actions)} action(s)",
+    )
     await db.commit()
 
     # Reload with actions relationship for response serialization
@@ -1166,7 +1261,7 @@ async def create_action(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     # Verify connector ownership
-    await _get_owned_connector(connector_id, current_user.id, db)
+    connector = await _get_owned_connector(connector_id, current_user.id, db)
 
     action = ConnectorAction(
         connector_id=connector_id,
@@ -1180,6 +1275,17 @@ async def create_action(
         requires_confirmation=body.requires_confirmation,
     )
     db.add(action)
+    await db.flush()
+    await record_resource_change(
+        db,
+        current_user,
+        actions.CONNECTOR_ACTION_CREATE,
+        "connector_action",
+        action,
+        dict.fromkeys(ACTION_AUDITED_FIELDS),
+        org_id=connector.org_id,
+        detail=f"connector={connector_id}",
+    )
     await db.commit()
     result = await db.execute(
         select(ConnectorAction).where(ConnectorAction.id == action.id)
@@ -1197,7 +1303,7 @@ async def update_action(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     # Verify connector ownership
-    await _get_owned_connector(connector_id, current_user.id, db)
+    connector = await _get_owned_connector(connector_id, current_user.id, db)
 
     result = await db.execute(
         select(ConnectorAction).where(
@@ -1209,10 +1315,21 @@ async def update_action(
     if action is None:
         raise AppError("action_not_found", status_code=404)
 
+    before = snapshot(action, ACTION_AUDITED_FIELDS)
     update_data = body.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(action, field, value)
 
+    await record_resource_change(
+        db,
+        current_user,
+        actions.CONNECTOR_ACTION_UPDATE,
+        "connector_action",
+        action,
+        before,
+        org_id=connector.org_id,
+        detail=f"connector={connector_id}",
+    )
     await db.commit()
     result = await db.execute(
         select(ConnectorAction).where(ConnectorAction.id == action.id)
@@ -1229,7 +1346,7 @@ async def delete_action(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     # Verify connector ownership
-    await _get_owned_connector(connector_id, current_user.id, db)
+    connector = await _get_owned_connector(connector_id, current_user.id, db)
 
     result = await db.execute(
         select(ConnectorAction).where(
@@ -1241,6 +1358,15 @@ async def delete_action(
     if action is None:
         raise AppError("action_not_found", status_code=404)
 
+    await record_resource(
+        db,
+        current_user,
+        actions.CONNECTOR_ACTION_DELETE,
+        "connector_action",
+        action,
+        org_id=connector.org_id,
+        detail=action_deleted_detail(connector_id, action),
+    )
     await db.delete(action)
     await db.commit()
     return ApiResponse(data={"deleted": action_id})
@@ -1260,7 +1386,11 @@ async def toggle_connector(
     if connector.user_id != current_user.id:
         raise AppError("permission_denied", status_code=403)
 
+    before = snapshot(connector, CONNECTOR_AUDITED_FIELDS)
     connector.is_active = not connector.is_active
+    await record_resource_change(
+        db, current_user, actions.CONNECTOR_UPDATE, "connector", connector, before
+    )
     await db.commit()
     return ApiResponse(data={"id": connector_id, "is_active": connector.is_active})
 
@@ -1293,11 +1423,20 @@ async def create_connector_from_config(
             detail_args={"errors": exc.errors},
         ) from exc
 
-    connector, actions = config_to_connector(config, user_id=current_user.id)
+    connector, actions_ = config_to_connector(config, user_id=current_user.id)
     db.add(connector)
-    for action in actions:
+    for action in actions_:
         db.add(action)
 
+    await record_resource(
+        db,
+        current_user,
+        actions.CONNECTOR_CREATE,
+        "connector",
+        connector,
+        changes=await connector_created_changes(db, connector),
+        detail=f"from a config document; {len(actions_)} action(s)",
+    )
     await db.commit()
 
     # Reload with actions relationship for response serialization

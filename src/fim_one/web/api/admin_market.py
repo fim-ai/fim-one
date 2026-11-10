@@ -10,6 +10,8 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.audit import actions
+from fim_one.core.audit import writer as audit
 from fim_one.db import get_session
 from fim_one.web.api.admin_utils import write_audit
 from fim_one.web.auth import get_current_admin
@@ -109,6 +111,15 @@ async def import_market_templates(
     market_org_id = await ensure_market_org(db, owner_id=admin.id)
     result = await import_solution_templates(
         db, market_org_id=market_org_id, owner_id=admin.id
+    )
+    await audit.record(
+        actions.MARKET_IMPORT_TEMPLATES,
+        actor=audit.actor_of(admin),
+        org_id=market_org_id,
+        target_type="organization",
+        target_id=market_org_id,
+        detail=f"created {result['created']}, updated {result['updated']}",
+        db=db,
     )
     await db.commit()
     return {

@@ -16,6 +16,8 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from fim_one.core.audit import actions as audit_actions
+from fim_one.core.audit import resources as audited
 from fim_one.core.security import get_safe_async_client
 
 from ..base import BaseTool
@@ -188,6 +190,17 @@ class ConnectorCreateActionTool(_ConnectorBuilderBase):
                 requires_confirmation=kwargs.get("requires_confirmation", False),
             )
             db.add(action)
+            await db.flush()
+            await audited.record_resource_change(
+                db,
+                await audited.builder_actor(db, self.user_id),
+                audit_actions.CONNECTOR_ACTION_CREATE,
+                "connector_action",
+                action,
+                dict.fromkeys(audited.ACTION_AUDITED_FIELDS),
+                org_id=connector.org_id,
+                detail=f"connector={self.connector_id}; {audited.THROUGH_THE_BUILDER}",
+            )
             await db.commit()
 
             return json.dumps(
@@ -263,10 +276,21 @@ class ConnectorUpdateActionTool(_ConnectorBuilderBase):
                 "parameters_schema", "request_body_template",
                 "response_extract", "requires_confirmation",
             }
+            before = audited.snapshot(action, audited.ACTION_AUDITED_FIELDS)
             for field, value in kwargs.items():
                 if field in _updatable:
                     setattr(action, field, value)
 
+            await audited.record_resource_change(
+                db,
+                await audited.builder_actor(db, self.user_id),
+                audit_actions.CONNECTOR_ACTION_UPDATE,
+                "connector_action",
+                action,
+                before,
+                org_id=connector.org_id,
+                detail=f"connector={self.connector_id}; {audited.THROUGH_THE_BUILDER}",
+            )
             await db.commit()
             return json.dumps(
                 {"updated": True, "action_id": action_id},
@@ -324,6 +348,18 @@ class ConnectorDeleteActionTool(_ConnectorBuilderBase):
             if action is None:
                 return f"[Error] Action {action_id} not found."
 
+            await audited.record_resource(
+                db,
+                await audited.builder_actor(db, self.user_id),
+                audit_actions.CONNECTOR_ACTION_DELETE,
+                "connector_action",
+                action,
+                org_id=connector.org_id,
+                detail=(
+                    f"{audited.action_deleted_detail(self.connector_id, action)}; "
+                    f"{audited.THROUGH_THE_BUILDER}"
+                ),
+            )
             await db.delete(action)
             await db.commit()
             return json.dumps(
@@ -395,9 +431,21 @@ class ConnectorUpdateSettingsTool(_ConnectorBuilderBase):
             if connector is None:
                 return "[Error] Connector not found or access denied."
 
+            before = audited.snapshot(connector, audited.CONNECTOR_AUDITED_FIELDS)
             for field, value in updates.items():
                 setattr(connector, field, value)
 
+            await audited.record_resource_change(
+                db,
+                await audited.builder_actor(db, self.user_id),
+                audit_actions.CONNECTOR_UPDATE,
+                "connector",
+                connector,
+                before,
+                # How the connector signs in was replaced: changed, never what to.
+                also_changed=["auth_config"] if "auth_config" in updates else (),
+                detail=audited.THROUGH_THE_BUILDER,
+            )
             await db.commit()
             return json.dumps(
                 {"updated": True, "fields": list(updates.keys())},
@@ -938,6 +986,18 @@ class ConnectorImportOpenAPITool(_ConnectorBuilderBase):
                 db.add(action)
                 created_names.append(c["name"])
 
+            if created_names:
+                await audited.record_resource(
+                    db,
+                    await audited.builder_actor(db, self.user_id),
+                    audit_actions.CONNECTOR_ACTIONS_IMPORT,
+                    "connector",
+                    connector,
+                    detail=(
+                        f"{len(created_names)} action(s) from an OpenAPI document; "
+                        f"{audited.THROUGH_THE_BUILDER}"
+                    ),
+                )
             await db.commit()
 
         return json.dumps(

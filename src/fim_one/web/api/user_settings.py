@@ -15,8 +15,11 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.audit import actions
+from fim_one.core.audit import writer as audit
 from fim_one.db import get_session
 from fim_one.web.api_key_scopes import check_delegation
+from fim_one.web.audit_events import record_account
 from fim_one.web.auth import get_current_user
 from fim_one.web.exceptions import AppError
 from fim_one.db.models import (
@@ -117,6 +120,25 @@ async def list_my_api_keys(
     )
 
 
+async def _record_own_key(
+    db: AsyncSession, user: User, action: str, api_key: ApiKey, *, detail: str | None = None
+) -> None:
+    """A user created, switched or deleted one of their own API keys.
+
+    The same action names the platform administration endpoints use for any
+    user's key. The key is named by its id and its display prefix.
+    """
+    await audit.record(
+        action,
+        actor=audit.actor_of(user),
+        target_type="api_key",
+        target_id=api_key.id,
+        target_label=api_key.name,
+        detail=", ".join(filter(None, [f"prefix={api_key.key_prefix}", detail])),
+        db=db,
+    )
+
+
 @router.post("/api-keys", response_model=UserApiKeyCreateResponse, status_code=201)
 async def create_my_api_key(
     body: UserApiKeyCreateRequest,
@@ -142,6 +164,10 @@ async def create_my_api_key(
         expires_at=body.expires_at,
     )
     db.add(api_key)
+    await db.flush()
+    await _record_own_key(
+        db, current_user, "api_key.create", api_key, detail=f"scopes={body.scopes or 'all'}"
+    )
     await db.commit()
     await db.refresh(api_key)
 
@@ -172,6 +198,9 @@ async def toggle_my_api_key_active(
         raise AppError("api_key_not_found", status_code=404)
 
     api_key.is_active = body.is_active
+    await _record_own_key(
+        db, current_user, "api_key.enable" if body.is_active else "api_key.disable", api_key
+    )
     await db.commit()
     await db.refresh(api_key)
 
@@ -202,6 +231,7 @@ async def delete_my_api_key(
     if api_key is None:
         raise AppError("api_key_not_found", status_code=404)
 
+    await _record_own_key(db, current_user, "api_key.delete", api_key)
     await db.delete(api_key)
     await db.commit()
 
@@ -233,6 +263,8 @@ async def list_my_sessions(
             user_agent=row.user_agent,
             success=row.success,
             failure_reason=row.failure_reason,
+            method=row.method,
+            outcome=audit.login_outcome(row.success, row.failure_reason),
             created_at=row.created_at.isoformat() if row.created_at else "",
         )
         for row in rows
@@ -249,6 +281,7 @@ async def revoke_all_sessions(
     result = await db.execute(select(User).where(User.id == current_user.id))
     user = result.scalar_one()
     user.tokens_invalidated_at = datetime.now(UTC)
+    await record_account(db, user, actions.AUTH_SESSIONS_REVOKE)
     await db.commit()
     return {"message": "All sessions revoked"}
 

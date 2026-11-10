@@ -261,9 +261,9 @@ async def test_purge_fully_loaded_user_removes_everything(db: AsyncSession) -> N
     # --- OrgMembership: user is a MEMBER of the OTHER user's org ---
     membership = OrgMembership(id=_uid(), org_id=org_id, user_id=user_id, role="member")
 
-    # --- AuditLog with admin_id == this user ---
+    # --- AuditLog whose actor is this user ---
     audit = AuditLog(
-        id=_uid(), admin_id=user_id, admin_username="u", action="something"
+        id=_uid(), actor_id=user_id, actor_label="u", action="something"
     )
 
     db.add_all(
@@ -318,7 +318,7 @@ async def test_purge_fully_loaded_user_removes_everything(db: AsyncSession) -> N
     surviving_audit = (
         await db.execute(select(AuditLog).where(AuditLog.id == audit.id))
     ).scalar_one()
-    assert surviving_audit.admin_id is None
+    assert surviving_audit.actor_id is None
 
 
 # ---------------------------------------------------------------------------

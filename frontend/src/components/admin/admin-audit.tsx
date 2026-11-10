@@ -28,7 +28,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
@@ -49,6 +51,19 @@ interface AuditEntry {
   target_label: string | null
   detail: string | null
   created_at: string
+  // Empty on entries written before these were recorded.
+  actor_kind?: string | null
+  org_id?: string | null
+  outcome?: string
+  changes?: Record<string, { from?: unknown; to?: unknown; changed?: boolean }> | null
+  ip_address?: string | null
+}
+
+/** One changed field as text: "member → admin", or "changed" for a secret. */
+function formatChange(change: { from?: unknown; to?: unknown; changed?: boolean }, changedLabel: string): string {
+  if (change.changed) return changedLabel
+  const show = (value: unknown) => (value === null || value === undefined ? "\u2014" : typeof value === "string" ? value : JSON.stringify(value))
+  return `${show(change.from)} \u2192 ${show(change.to)}`
 }
 
 interface AuditPage {
@@ -59,34 +74,11 @@ interface AuditPage {
   pages: number
 }
 
-const KNOWN_ACTIONS = [
-  "user.create",
-  "user.delete",
-  "user.disable",
-  "user.enable",
-  "user.grant_admin",
-  "user.revoke_admin",
-  "user.reset_password",
-  "user.force_logout",
-  "user.set_quota",
-  "auth.force_logout_all",
-  "settings.update",
-  "conversation.delete",
-  "conversation.viewed",
-  "invite_code.create",
-  "invite_code.revoke",
-  "storage.clear_user",
-  "storage.cleanup_orphaned",
-  "mcp_server.create_global",
-  "mcp_server.delete_global",
-  "model.create",
-  "model.update",
-  "model.delete",
-  "model.enable",
-  "model.disable",
-  "model.set_role",
-  "account.self_delete",
-]
+/** The registered audit actions, grouped by domain (GET /api/admin/audit-log/actions). */
+interface ActionGroup {
+  domain: string
+  actions: string[]
+}
 
 const ACTION_COLORS: Record<string, string> = {
   "user.create": "bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30",
@@ -380,6 +372,22 @@ export function AdminAudit() {
   const [isExporting, setIsExporting] = useState(false)
   const [selected, setSelected] = useState<AuditEntry | null>(null)
   const [activeTab, setActiveTab] = useState<"system" | "review">("system")
+  // What can be filtered for is what can be recorded: read from the server's registry.
+  const [actionGroups, setActionGroups] = useState<ActionGroup[]>([])
+  const tGroups = useTranslations("admin.audit.actionGroups")
+  const getGroupLabel = (domain: string) => {
+    try {
+      return tGroups(domain as Parameters<typeof tGroups>[0])
+    } catch {
+      return domain
+    }
+  }
+
+  useEffect(() => {
+    apiFetch<ActionGroup[]>("/api/admin/audit-log/actions")
+      .then(setActionGroups)
+      .catch(() => setActionGroups([]))
+  }, [])
 
   // Filters
   const [actionFilter, setActionFilter] = useState("__all__")
@@ -438,6 +446,14 @@ export function AdminAudit() {
       const res = await fetch(`${getApiBaseUrl()}/api/admin/audit-log/export?${params}`, { headers })
       if (!res.ok) {
         throw new Error(res.statusText)
+      }
+      if (res.headers.get("X-Export-Truncated") === "true") {
+        toast.warning(
+          t("exportTruncated", {
+            rows: Number(res.headers.get("X-Export-Rows") ?? 0),
+            total: Number(res.headers.get("X-Export-Total") ?? 0),
+          }),
+        )
       }
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
@@ -511,10 +527,15 @@ export function AdminAudit() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">{t("filterActionAll")}</SelectItem>
-              {KNOWN_ACTIONS.map((a) => (
-                <SelectItem key={a} value={a}>
-                  {getActionLabel(a)}
-                </SelectItem>
+              {actionGroups.map((group) => (
+                <SelectGroup key={group.domain}>
+                  <SelectLabel>{getGroupLabel(group.domain)}</SelectLabel>
+                  {group.actions.map((a) => (
+                    <SelectItem key={a} value={a}>
+                      {getActionLabel(a)}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               ))}
             </SelectContent>
           </Select>
@@ -618,6 +639,11 @@ export function AdminAudit() {
                       {entry.admin_username}
                     </td>
                     <td className="px-4 py-2.5">
+                      {entry.outcome && entry.outcome !== "success" && (
+                        <span className="mr-1.5 inline-flex items-center rounded-md border border-red-500/30 bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-400">
+                          {entry.outcome === "denied" ? t("outcomeDenied") : entry.outcome === "failed" ? t("outcomeFailed") : entry.outcome}
+                        </span>
+                      )}
                       <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${actionColor(entry.action)}`}>
                         {getActionLabel(entry.action)}
                       </span>
@@ -704,6 +730,43 @@ export function AdminAudit() {
               <span className="whitespace-pre-wrap break-words">
                 {selected.detail || "\u2014"}
               </span>
+
+              {selected.changes && Object.keys(selected.changes).length > 0 && (
+                <>
+                  <span className="text-muted-foreground">{t("changesColumn")}</span>
+                  <span className="space-y-1">
+                    {Object.entries(selected.changes).map(([field, change]) => (
+                      <span key={field} className="block break-words">
+                        <span className="font-mono text-xs text-muted-foreground">{field}</span>{" "}
+                        {formatChange(change, t("changedValue"))}
+                      </span>
+                    ))}
+                  </span>
+                </>
+              )}
+
+              {selected.outcome && selected.outcome !== "success" && (
+                <>
+                  <span className="text-muted-foreground">{t("outcomeColumn")}</span>
+                  <span className="font-medium">
+                    {selected.outcome === "denied" ? t("outcomeDenied") : selected.outcome === "failed" ? t("outcomeFailed") : selected.outcome}
+                  </span>
+                </>
+              )}
+
+              {selected.org_id && (
+                <>
+                  <span className="text-muted-foreground">{t("colOrg")}</span>
+                  <span className="font-mono text-xs text-muted-foreground break-all">{selected.org_id}</span>
+                </>
+              )}
+
+              {selected.ip_address && (
+                <>
+                  <span className="text-muted-foreground">{t("ipColumn")}</span>
+                  <span className="font-mono text-xs">{selected.ip_address}</span>
+                </>
+              )}
             </div>
           )}
         </DialogContent>

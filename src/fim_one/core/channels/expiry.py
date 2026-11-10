@@ -32,10 +32,8 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
 
 import sqlalchemy as sa
-from sqlalchemy import CursorResult
 from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -84,10 +82,20 @@ class ConfirmationRequestExpirer:
                 ),
             )
             .values(status="expired", responded_at=now)
+            # Exactly the rows this statement closed: a request decided
+            # between a read and the update is not among them.
+            .returning(ConfirmationRequest.id)
+            .execution_options(synchronize_session=False)
         )
-        result = cast(CursorResult[Any], await db.execute(stmt))
+        closed = [row[0] for row in (await db.execute(stmt)).all()]
+        if closed:
+            # In the same transaction: the audit record of a request that
+            # nobody decided in time, which outlives the request row.
+            from fim_one.core.assembly.confirmation import record_expired
+
+            await record_expired(db, closed)
         await db.commit()
-        expired = int(result.rowcount or 0)
+        expired = len(closed)
         if expired > 0:
             logger.info(
                 "ConfirmationRequestExpirer: expired %d stale pending row(s) "

@@ -54,3 +54,8 @@ class ConnectorCallLog(UUIDPKMixin, TimestampMixin, Base):
     # credential it went out with (``core.assembly.credentials.CredentialSource``).
     entry: Mapped[str | None] = mapped_column(String(20), nullable=True)
     credential_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # The organization of the agent or workflow the call was made through
+    # (``CallContext.binding.org_id``); empty for a call with no binding or
+    # through a personal one. A plain id: the record outlives the
+    # organization too.
+    org_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)

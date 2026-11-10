@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 import os
@@ -16,6 +17,7 @@ from sqlalchemy import func, select, update
 
 from fim_one.core.utils import spawn_background
 from fim_one.web.admin_notify import notify_admins
+from fim_one.web.audit_events import record_account
 from fim_one.web.email import _smtp_configured, send_verification_email
 from fim_one.web.exceptions import AppError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,7 +31,6 @@ from fim_one.web.api.admin import (
 )
 from fim_one.web.api.admin_utils import get_setting
 from fim_one.web.services.default_plan import get_default_plan_id
-from fim_one.db.models.audit_log import AuditLog
 from fim_one.db.models.email_verification import EmailVerification
 from fim_one.db.models.invite_code import InviteCode
 from fim_one.web.auth import (
@@ -46,6 +47,11 @@ from fim_one.web.auth import (
     verify_password_async,
 )
 from fim_one.db.models import LoginHistory, User
+from fim_one.core.audit import actions
+from fim_one.core.audit import writer as audit
+from fim_one.core.audit.redact import diff_changes
+from fim_one.core.audit.refusals import admit_refusal
+from fim_one.core.audit.events import RequestMeta
 from fim_one.db.models.agent import Agent
 from fim_one.db.models.api_key import ApiKey
 from fim_one.db.models.connector import Connector
@@ -136,30 +142,51 @@ def _build_token_response(user: User, access: str, refresh: str) -> TokenRespons
     )
 
 
+# Enough for the administrators' failed-sign-in panel, which looks for five
+# or more failures from one address.
+_UNKNOWN_ACCOUNT_ROWS_PER_WINDOW = 10
+
+
 async def _record_login(
     db: AsyncSession,
     request: Request,
     user: User | None,
     *,
     success: bool,
+    method: str,
     failure_reason: str | None = None,
     email: str | None = None,
 ) -> None:
-    """Record a login attempt in login_history for security auditing."""
-    ip_address = request.client.host if request.client else None
+    """Record a login attempt in login_history for security auditing.
 
-    user_agent = request.headers.get("User-Agent", "") or None
+    *method* is how it was attempted (``password``, ``email_code``,
+    ``oauth:<provider>``); the 2FA step records the method of the sign-in
+    it completes.
 
-    record = LoginHistory(
+    A failed attempt for an account that does not exist needs no account to
+    produce: at most :data:`_UNKNOWN_ACCOUNT_ROWS_PER_WINDOW` per address
+    and ten minutes are written (and no more than the refusal budget
+    overall); the rest are counted and reported in a summary audit record.
+    """
+    ip = request.client.host if request.client else None
+    if user is None and not admit_refusal(
+        actions.AUTH_LOGIN_UNKNOWN_ACCOUNT, ip, per_source=_UNKNOWN_ACCOUNT_ROWS_PER_WINDOW
+    ):
+        return
+    await audit.record_login(
         user_id=user.id if user else None,
         username=user.username if user else None,
         email=user.email if user else email,
-        ip_address=ip_address,
-        user_agent=user_agent,
         success=success,
+        method=method,
         failure_reason=failure_reason,
+        request=RequestMeta(
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("User-Agent", "") or None,
+            request_id=None,
+        ),
+        db=db,
     )
-    db.add(record)
     await db.commit()
 
 
@@ -358,6 +385,12 @@ async def register(
     user.refresh_token_expires_at = datetime.now(UTC) + timedelta(
         days=REFRESH_TOKEN_EXPIRE_DAYS
     )
+    await record_account(
+        db,
+        user,
+        actions.AUTH_REGISTER,
+        detail="first account, made administrator" if is_first_user_check else None,
+    )
     await db.commit()
 
     # Notify admins of new registration (fire-and-forget, skip for first user)
@@ -392,21 +425,21 @@ async def login(
         select(User).options(selectinload(User.oauth_bindings)).where(User.email == body.email)
     )
     if user is None:
-        await _record_login(db, request, None, success=False, failure_reason="user_not_found", email=body.email)
+        await _record_login(db, request, None, method="password", success=False, failure_reason="user_not_found", email=body.email)
         raise AppError("invalid_credentials", status_code=401)
 
     if user.password_hash is None or not await verify_password_async(body.password, user.password_hash):
-        await _record_login(db, request, user, success=False, failure_reason="wrong_password")
+        await _record_login(db, request, user, method="password", success=False, failure_reason="wrong_password")
         raise AppError("invalid_credentials", status_code=401)
 
     if not user.is_active:
-        await _record_login(db, request, user, success=False, failure_reason="account_disabled")
+        await _record_login(db, request, user, method="password", success=False, failure_reason="account_disabled")
         raise AppError("account_disabled", status_code=403)
 
     # 2FA check: if TOTP is enabled, return a temp token instead of full auth
     if user.totp_enabled:
-        temp_token = _create_2fa_temp_token(user.id)
-        await _record_login(db, request, user, success=True, failure_reason="2fa_pending")
+        temp_token = _create_2fa_temp_token(user.id, method="password")
+        await _record_login(db, request, user, method="password", success=False, failure_reason=audit.PENDING_SECOND_FACTOR)
         return JSONResponse(content={"requires_2fa": True, "temp_token": temp_token})
 
     access = create_access_token(user.id, user.email)
@@ -418,7 +451,7 @@ async def login(
     )
     await db.commit()
 
-    await _record_login(db, request, user, success=True)
+    await _record_login(db, request, user, method="password", success=True)
 
     # Reload with oauth_bindings (commit expires loaded attributes)
     result = await db.execute(
@@ -489,11 +522,11 @@ async def login_with_code(
         select(User).options(selectinload(User.oauth_bindings)).where(User.email == body.email)
     )
     if user is None:
-        await _record_login(db, request, None, success=False, failure_reason="email_not_registered", email=body.email)
+        await _record_login(db, request, None, method="email_code", success=False, failure_reason="email_not_registered", email=body.email)
         raise AppError("email_not_registered", status_code=404)
 
     if not user.is_active:
-        await _record_login(db, request, user, success=False, failure_reason="account_disabled")
+        await _record_login(db, request, user, method="email_code", success=False, failure_reason="account_disabled")
         raise AppError("account_disabled", status_code=403)
 
     # Find the latest unexpired, unverified code for this email+purpose
@@ -510,21 +543,21 @@ async def login_with_code(
     verif = verif_result.scalar_one_or_none()
 
     if verif is None:
-        await _record_login(db, request, user, success=False, failure_reason="verification_code_expired")
+        await _record_login(db, request, user, method="email_code", success=False, failure_reason="verification_code_expired")
         raise AppError("verification_code_expired")
 
     if verif.expires_at.replace(tzinfo=UTC) < datetime.now(UTC):
-        await _record_login(db, request, user, success=False, failure_reason="verification_code_expired")
+        await _record_login(db, request, user, method="email_code", success=False, failure_reason="verification_code_expired")
         raise AppError("verification_code_expired")
 
     if verif.attempts >= VERIFICATION_MAX_ATTEMPTS:
-        await _record_login(db, request, user, success=False, failure_reason="verification_code_too_many_attempts")
+        await _record_login(db, request, user, method="email_code", success=False, failure_reason="verification_code_too_many_attempts")
         raise AppError("verification_code_too_many_attempts")
 
     if verif.code != body.code:
         verif.attempts += 1
         await db.commit()
-        await _record_login(db, request, user, success=False, failure_reason="verification_code_invalid")
+        await _record_login(db, request, user, method="email_code", success=False, failure_reason="verification_code_invalid")
         raise AppError("verification_code_invalid")
 
     # Mark as verified
@@ -535,8 +568,8 @@ async def login_with_code(
     # the second factor.
     if user.totp_enabled:
         await db.commit()
-        temp_token = _create_2fa_temp_token(user.id)
-        await _record_login(db, request, user, success=True, failure_reason="2fa_pending")
+        temp_token = _create_2fa_temp_token(user.id, method="email_code")
+        await _record_login(db, request, user, method="email_code", success=False, failure_reason=audit.PENDING_SECOND_FACTOR)
         return JSONResponse(content={"requires_2fa": True, "temp_token": temp_token})
 
     # Issue tokens (same pattern as /login)
@@ -549,7 +582,7 @@ async def login_with_code(
     )
     await db.commit()
 
-    await _record_login(db, request, user, success=True)
+    await _record_login(db, request, user, method="email_code", success=True)
 
     # Reload with oauth_bindings (commit expires loaded attributes)
     result = await db.execute(
@@ -923,6 +956,16 @@ async def export_my_data(
         "eval_runs": eval_runs,
     }
 
+    # Written on its own: the export changed nothing, and its record must
+    # not be able to fail it.
+    await audit.record(
+        actions.EXPORT_OWN_DATA,
+        actor=audit.actor_of(current_user),
+        target_type="user",
+        target_id=current_user.id,
+        target_label=current_user.username or current_user.email,
+    )
+
     today = datetime.now(UTC).strftime("%Y-%m-%d")
     return JSONResponse(
         content=export_data,
@@ -985,8 +1028,20 @@ async def update_profile(
             )
             if username_result.scalar_one_or_none() is not None:
                 raise AppError("username_taken", status_code=409)
+            previous_username = user.username
             user.username = new_username
             user.username_changed_at = datetime.now(UTC).replace(tzinfo=None)
+            # The username is what later records call this person: the
+            # change is recorded, under the old name, with both.
+            await audit.record(
+                actions.AUTH_USERNAME_CHANGE,
+                actor=replace(audit.actor_of(user), label=previous_username or user.email),
+                target_type="user",
+                target_id=user.id,
+                target_label=new_username,
+                changes=diff_changes({"username": previous_username}, {"username": new_username}),
+                db=db,
+            )
     await db.commit()
 
     # Reload with oauth_bindings for response serialization
@@ -1109,6 +1164,7 @@ async def change_password(
     if not await verify_password_async(body.current_password, user.password_hash):
         raise AppError("current_password_incorrect")
     user.password_hash = await hash_password_async(body.new_password)
+    await record_account(db, user, actions.AUTH_PASSWORD_CHANGE)
     await db.commit()
     return ApiResponse(data={"message": "Password changed successfully"})
 
@@ -1125,6 +1181,7 @@ async def set_password(
     if user.password_hash is not None:
         raise AppError("password_already_set")
     user.password_hash = await hash_password_async(body.new_password)
+    await record_account(db, user, actions.AUTH_PASSWORD_SET)
     await db.commit()
 
     # Reload with oauth_bindings for response serialization
@@ -1225,6 +1282,7 @@ async def reset_password(
     result = await db.execute(select(User).where(User.id == current_user.id))
     user = result.scalar_one()
     user.password_hash = await hash_password_async(body.new_password)
+    await record_account(db, user, actions.AUTH_PASSWORD_RESET, detail="emailed code, signed in")
     await db.commit()
 
     return ApiResponse(data={"message": "Password reset successfully"})
@@ -1367,6 +1425,10 @@ async def forgot_password(
     user.password_hash = await hash_password_async(body.new_password)
     # Clear the reset token so it can't be reused
     verif.reset_token = None
+    # Nobody is signed in here: the emailed code is what proved the account.
+    await record_account(
+        db, user, actions.AUTH_PASSWORD_RESET, detail="emailed code", auth="email_code"
+    )
     await db.commit()
 
     return ApiResponse(data={"message": "Password reset successfully"})
@@ -1418,6 +1480,7 @@ async def unbind_oauth(
         user.oauth_provider = None
         user.oauth_id = None
 
+    await record_account(db, user, actions.AUTH_OAUTH_UNBIND, detail=f"provider={provider}")
     await db.commit()
 
     # Reload with oauth_bindings for response serialization
@@ -1469,6 +1532,7 @@ async def setup(
     user.refresh_token_expires_at = datetime.now(UTC) + timedelta(
         days=REFRESH_TOKEN_EXPIRE_DAYS
     )
+    await record_account(db, user, actions.AUTH_SETUP_ADMIN)
     await db.commit()
 
     # Reload with oauth_bindings for response serialization
@@ -1505,22 +1569,22 @@ async def delete_own_account(
     """Permanently delete the current user's own account and all associated data."""
     user_id = current_user.id
     label = current_user.username or current_user.email
+    # Built before the account is removed: who, and how they were signed in.
+    actor = audit.actor_of(current_user)
 
     # --- Audit trail (must happen before DB delete since user is the actor) ---
     summary = await purge_user_data(db, user_id)
-    db.add(
-        AuditLog(
-            admin_id=user_id,
-            admin_username=label,
-            action="account.self_delete",
-            target_type="user",
-            target_id=user_id,
-            target_label=label,
-            detail=(
-                f"user self-deleted; cleaned {summary['conversations']} conversations, "
-                f"{summary['knowledge_bases']} knowledge bases, sandbox & upload dirs"
-            ),
-        )
+    await audit.record(
+        "account.self_delete",
+        actor=actor,
+        target_type="user",
+        target_id=user_id,
+        target_label=label,
+        detail=(
+            f"user self-deleted; cleaned {summary['conversations']} conversations, "
+            f"{summary['knowledge_bases']} knowledge bases, sandbox & upload dirs"
+        ),
+        db=db,
     )
     await db.commit()
 
@@ -1554,14 +1618,19 @@ _2FA_MAX_FAILURES = 5
 _2FA_FAILURE_WINDOW_MINUTES = 15
 
 
-def _create_2fa_temp_token(user_id: str) -> str:
-    """Create a short-lived JWT for 2FA verification step."""
+def _create_2fa_temp_token(user_id: str, *, method: str | None = None) -> str:
+    """Create a short-lived JWT for 2FA verification step.
+
+    *method* is how the first step was passed (``password``, ``email_code``,
+    ``oauth:<provider>``); the sign-in record of the second step repeats it.
+    """
     from fim_one.web.auth import ALGORITHM, SECRET_KEY
 
     now = datetime.now(UTC)
     payload = {
         "sub": user_id,
         "purpose": "2fa_verify",
+        **({"method": method} if method else {}),
         "exp": now + timedelta(minutes=_2FA_TEMP_TOKEN_EXPIRE_MINUTES),
         "iat": now,
     }
@@ -1585,6 +1654,16 @@ def _decode_2fa_temp_token(token: str) -> str:
     if not user_id:
         raise AppError("2fa_token_invalid", status_code=401)
     return str(user_id)
+
+
+def _2fa_token_method(token: str) -> str:
+    """How the sign-in a (verified) 2FA temp token belongs to was started.
+
+    A token issued before the claim existed says nothing; such a sign-in is
+    recorded as ``unknown``.
+    """
+    claims = _jwt.decode(token, options={"verify_signature": False})
+    return str(claims.get("method") or "unknown")
 
 
 def _generate_backup_codes(count: int = 10) -> list[str]:
@@ -1647,6 +1726,7 @@ async def enable_2fa(
 
     user.totp_enabled = True
     user.totp_backup_codes = json.dumps(hashed_codes)
+    await record_account(db, user, actions.AUTH_TWO_FACTOR_ENABLE)
     await db.commit()
 
     return TwoFactorEnableResponse(backup_codes=plain_codes)
@@ -1671,6 +1751,7 @@ async def disable_2fa(
     user.totp_secret = None
     user.totp_enabled = False
     user.totp_backup_codes = None
+    await record_account(db, user, actions.AUTH_TWO_FACTOR_DISABLE)
     await db.commit()
 
     return ApiResponse(data={"message": "2FA disabled successfully"})
@@ -1695,6 +1776,7 @@ async def regenerate_backup_codes(
     plain_codes = _generate_backup_codes(10)
     hashed_codes = [_hash_backup_code(c) for c in plain_codes]
     user.totp_backup_codes = json.dumps(hashed_codes)
+    await record_account(db, user, actions.AUTH_BACKUP_CODES_REGENERATE)
     await db.commit()
 
     return TwoFactorBackupCodesResponse(backup_codes=plain_codes)
@@ -1708,6 +1790,8 @@ async def verify_2fa_login(
 ) -> TokenResponse:
     """Complete login with 2FA verification using TOTP code or backup code."""
     user_id = _decode_2fa_temp_token(body.temp_token)
+    # The record of this step names the sign-in it completes.
+    method = _2fa_token_method(body.temp_token)
 
     result = await db.execute(
         select(User).options(selectinload(User.oauth_bindings)).where(User.id == user_id)
@@ -1757,7 +1841,7 @@ async def verify_2fa_login(
             user.totp_backup_codes = json.dumps(stored_codes)
 
     if not code_valid:
-        await _record_login(db, request, user, success=False, failure_reason="2fa_code_invalid")
+        await _record_login(db, request, user, method=method, success=False, failure_reason="2fa_code_invalid")
         raise AppError("2fa_code_invalid", status_code=401)
 
     # Issue tokens (same as normal login)
@@ -1770,7 +1854,7 @@ async def verify_2fa_login(
     )
     await db.commit()
 
-    await _record_login(db, request, user, success=True)
+    await _record_login(db, request, user, method=method, success=True)
 
     # Reload with oauth_bindings (commit expires loaded attributes)
     result = await db.execute(
@@ -1895,9 +1979,16 @@ async def confirm_email_change(
     # Update the user's email
     result = await db.execute(select(User).where(User.id == current_user.id))
     user = result.scalar_one()
+    previous_email = user.email
     user.email = body.new_email
     # Reached only past the OTP check above, so the new address is proven.
     user.email_verified = True
+    await record_account(
+        db,
+        user,
+        actions.AUTH_EMAIL_CHANGE,
+        changes=diff_changes({"email": previous_email}, {"email": user.email}),
+    )
     await db.commit()
 
     return ApiResponse(data={"message": "Email changed successfully"})
