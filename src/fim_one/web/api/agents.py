@@ -123,6 +123,7 @@ async def _validate_binding_ownership(
     approval_channel_id: str | None = None,
     completion_channel_id: str | None = None,
     approval_channel_changed: bool = True,
+    agent_org_id: str | None = None,
 ) -> None:
     """Verify the user can *access* every referenced connector / KB / MCP server.
 
@@ -133,14 +134,19 @@ async def _validate_binding_ownership(
     "not owned". A knowledge base cannot be shared, so it must be the user's
     own; one that is not would be dropped from the agent on every run.
 
-    The approval channel must also be of a type that can carry approvals.
-    *approval_channel_changed* is ``False`` when an update keeps the stored
-    approval channel: the form sends it with every save, and a binding
-    stored before that check existed must not block saving something else
-    (it is treated as unbound when used).
+    A channel is judged the way it is resolved when it is used
+    (``resolve_org_channel``): once the agent has an organization
+    (*agent_org_id*), the channel must belong to that one; being in another
+    organization of the user is not enough. The approval channel must also
+    be of a type that can carry approvals. *approval_channel_changed* is
+    ``False`` when an update keeps the stored approval channel: the form
+    sends it with every save, and a binding stored before these checks
+    existed must not block saving something else (it is treated as unbound
+    when used).
 
-    Raises HTTP 403 if any referenced resource is not accessible to the user,
-    HTTP 400 if the approval channel cannot carry approvals.
+    Raises HTTP 403 if any referenced resource is not accessible to the user
+    or a channel lies outside the agent's organization, HTTP 400 if the
+    approval channel cannot carry approvals.
     """
     from fim_one.core.assembly.visibility import ResourceKind, use_clause_for
 
@@ -170,8 +176,10 @@ async def _validate_binding_ownership(
 
     # An approval channel posts tool arguments into its chat, and a completion
     # channel the user's message and the answer, so either may only come from
-    # an organization the user belongs to.  At run time it must also belong to
-    # the agent's own organization (``resolve_org_channel``).
+    # an organization the user belongs to, and from the agent's own once it
+    # has one: that is the only place ``resolve_org_channel`` looks at run
+    # time, so a channel from another of the user's organizations would be
+    # saved and then never used.
     from fim_one.core.channels import ApprovalCarrier, get_channel_class
     from fim_one.db.models.channel import Channel
 
@@ -186,8 +194,14 @@ async def _validate_binding_ownership(
             raise AppError(denied, status_code=403)
         return row
 
+    def _in_agent_org(row: Any, err_code: str) -> None:
+        if agent_org_id and row.org_id != agent_org_id:
+            raise AppError(err_code, status_code=403)
+
     if approval_channel_id:
         approval = await _channel(approval_channel_id, "approval_channel_denied")
+        if approval_channel_changed:
+            _in_agent_org(approval, "approval_channel_not_in_agent_org")
         channel_class = get_channel_class(approval.type)
         carries = channel_class is not None and issubclass(channel_class, ApprovalCarrier)
         if approval_channel_changed and not carries:
@@ -195,7 +209,9 @@ async def _validate_binding_ownership(
             # at run time such a binding is treated as no channel at all.
             raise AppError("approval_channel_type_unsupported", status_code=400)
     if completion_channel_id:
-        await _channel(completion_channel_id, "completion_channel_denied")
+        # Passed by an update only when it changes (see ``update_agent``).
+        completion = await _channel(completion_channel_id, "completion_channel_denied")
+        _in_agent_org(completion, "completion_channel_not_in_agent_org")
 
 
 def _completion_channel_id(model_config_json: Any) -> str | None:
@@ -352,6 +368,7 @@ async def update_agent(
         approval_channel_changed=(
             update_data.get("approval_channel_id") != agent.approval_channel_id
         ),
+        agent_org_id=agent.org_id,
     )
     for field, value in update_data.items():
         setattr(agent, field, value)

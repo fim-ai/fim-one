@@ -390,3 +390,145 @@ class TestApprovalChannelType:
                     db=db,
                 )
                 assert updated.data["approval_channel_id"] == channel_id
+
+
+class TestSaveTimeAgentOrganization:
+    """An agent that has an organization may only be bound to that organization's channels."""
+
+    async def _two_org_member(
+        self, session_factory: async_sessionmaker[AsyncSession], seed: dict[str, str]
+    ) -> None:
+        """The member of org A joins org B as well."""
+        async with session_factory() as db:
+            db.add(OrgMembership(org_id=seed["org_b"], user_id=seed["member"], role="member"))
+            await db.commit()
+
+    async def _org_agent(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        seed: dict[str, str],
+        **fields: Any,
+    ) -> str:
+        agent_id = str(uuid.uuid4())
+        async with session_factory() as db:
+            db.add(
+                Agent(
+                    id=agent_id,
+                    user_id=seed["member"],
+                    org_id=seed["org_a"],
+                    name="org agent",
+                    status="published",
+                    **fields,
+                )
+            )
+            await db.commit()
+        return agent_id
+
+    @pytest.mark.asyncio
+    async def test_completion_channel_of_another_of_the_savers_organizations_is_refused(
+        self, session_factory: async_sessionmaker[AsyncSession], seed: dict[str, str]
+    ) -> None:
+        """Send time looks only in the agent's organization; save time now does too."""
+        await self._two_org_member(session_factory, seed)
+        agent_id = await self._org_agent(session_factory, seed)
+        async with session_factory() as db:
+            member = await db.get(User, seed["member"])
+            assert member is not None
+            with pytest.raises(AppError) as exc:
+                await update_agent(
+                    agent_id,
+                    AgentUpdate(model_config_json=_config(seed["channel_b"])),
+                    current_user=member,
+                    db=db,
+                )
+            assert exc.value.error_code == "completion_channel_not_in_agent_org"
+            assert exc.value.status_code == 403
+
+            updated = await update_agent(
+                agent_id,
+                AgentUpdate(model_config_json=_config(seed["channel_a"])),
+                current_user=member,
+                db=db,
+            )
+            assert _completion_channel_id(updated.data["model_config_json"]) == seed["channel_a"]
+
+    @pytest.mark.asyncio
+    async def test_what_is_saved_is_what_is_sent(
+        self, session_factory: async_sessionmaker[AsyncSession], seed: dict[str, str]
+    ) -> None:
+        """The channel save time accepts for an organization agent is delivered to."""
+        await self._two_org_member(session_factory, seed)
+        for channel, delivered in (("channel_a", True), ("channel_b", False)):
+            async with session_factory() as db:
+                try:
+                    await _validate_binding_ownership(
+                        seed["member"],
+                        db,
+                        completion_channel_id=seed[channel],
+                        agent_org_id=seed["org_a"],
+                    )
+                    accepted = True
+                except AppError:
+                    accepted = False
+            agent = _agent(org_id=seed["org_a"], owner_id=seed["member"], channel_id=seed[channel])
+            client = await _notify(agent, session_factory)
+            assert accepted is delivered
+            assert (client.post.await_count == 2) is delivered
+
+    @pytest.mark.asyncio
+    async def test_an_agent_with_no_organization_keeps_the_savers_memberships(
+        self, session_factory: async_sessionmaker[AsyncSession], seed: dict[str, str]
+    ) -> None:
+        await self._two_org_member(session_factory, seed)
+        async with session_factory() as db:
+            for channel in ("channel_a", "channel_b"):
+                await _validate_binding_ownership(
+                    seed["member"], db, completion_channel_id=seed[channel], agent_org_id=None
+                )
+
+    @pytest.mark.asyncio
+    async def test_approval_channel_follows_the_same_rule_when_it_changes(
+        self, session_factory: async_sessionmaker[AsyncSession], seed: dict[str, str]
+    ) -> None:
+        await self._two_org_member(session_factory, seed)
+        # A binding saved before the check existed, to the other organization.
+        agent_id = await self._org_agent(
+            session_factory, seed, approval_channel_id=seed["channel_b"]
+        )
+        other_b = str(uuid.uuid4())
+        async with session_factory() as db:
+            db.add(
+                Channel(
+                    id=other_b,
+                    name="other b",
+                    type="feishu",
+                    org_id=seed["org_b"],
+                    created_by=seed["outsider"],
+                    is_active=True,
+                    config={},
+                )
+            )
+            await db.commit()
+            member = await db.get(User, seed["member"])
+            assert member is not None
+            await update_agent(
+                agent_id,
+                AgentUpdate(name="renamed", approval_channel_id=seed["channel_b"]),
+                current_user=member,
+                db=db,
+            )
+            with pytest.raises(AppError) as exc:
+                await update_agent(
+                    agent_id,
+                    AgentUpdate(approval_channel_id=other_b),
+                    current_user=member,
+                    db=db,
+                )
+            assert exc.value.error_code == "approval_channel_not_in_agent_org"
+            updated = await update_agent(
+                agent_id,
+                AgentUpdate(approval_channel_id=seed["channel_a"]),
+                current_user=member,
+                db=db,
+            )
+            assert updated.data["approval_channel_id"] == seed["channel_a"]
