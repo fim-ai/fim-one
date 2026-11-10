@@ -156,3 +156,8 @@ class ExecutionContext:
     # needs a decision fails (or, for an approval step with no database,
     # approves itself).
     can_suspend: bool = False
+    # Asked before every step: is this run still this process's to
+    # execute? False once someone else closed its record (cancelled from
+    # another process, or taken for dead). The step is then not run.
+    # ``None`` for a context built by hand: always ours.
+    still_owned: Callable[[], Any] | None = None

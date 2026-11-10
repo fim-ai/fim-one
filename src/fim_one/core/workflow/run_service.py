@@ -85,6 +85,33 @@ UNFINISHED_STATUSES = ("pending", "running", "waiting")
 # record so that someone who opens it sees progress (seconds).
 PROGRESS_SAVE_INTERVAL = 1.0
 
+def db_now(dialect: str) -> Any:
+    """The database's clock, as an SQL expression.
+
+    Heartbeats are stamped and judged by it alone, so the clocks of the
+    hosts the server processes run on do not have to agree.
+    """
+    from sqlalchemy import func
+
+    if dialect == "sqlite":
+        # With milliseconds; CURRENT_TIMESTAMP has whole seconds only.
+        return func.strftime("%Y-%m-%d %H:%M:%f", "now")
+    return func.now()
+
+
+def db_seconds_ago(dialect: str, seconds: float) -> Any:
+    """The database's clock *seconds* ago, as an SQL expression."""
+    from sqlalchemy import func
+
+    if dialect == "sqlite":
+        return func.strftime("%Y-%m-%d %H:%M:%f", "now", f"-{seconds:.3f} seconds")
+    return func.now() - func.make_interval(0, 0, 0, 0, 0, 0, seconds)
+
+
+def _dialect_of(db: Any) -> str:
+    return str(db.get_bind().dialect.name)
+
+
 RUN_INTERRUPTED_ERROR = (
     "The server stopped while this run was in progress, so it could not finish. "
     "Start the run again."
@@ -104,7 +131,7 @@ def suspend_state_max_bytes() -> int:
     return int(os.getenv("WORKFLOW_SUSPEND_STATE_MAX_BYTES", str(5 * 1024 * 1024)))
 
 
-class SuspendStateTooLarge(Exception):
+class SuspendStateTooLargeError(Exception):
     def __init__(self, size: int, limit: int) -> None:
         super().__init__(
             f"The run cannot wait here: what it would have to keep to go on later "
@@ -122,7 +149,7 @@ def seal_state(state: dict[str, Any]) -> dict[str, Any]:
     read without the key: which request each waiting step waits on.
     Through JSON first, so what is stored is what a later read gives back;
     values JSON has no form for become text. Raises
-    :class:`SuspendStateTooLarge` over the limit. CPU-bound: call it off the
+    :class:`SuspendStateTooLargeError` over the limit. CPU-bound: call it off the
     event loop.
     """
     from fim_one.core.security.encryption import encrypt_credential
@@ -130,7 +157,7 @@ def seal_state(state: dict[str, Any]) -> dict[str, Any]:
     text = json.dumps(state, default=str, ensure_ascii=False)
     size, limit = len(text.encode("utf-8")), suspend_state_max_bytes()
     if size > limit:
-        raise SuspendStateTooLarge(size, limit)
+        raise SuspendStateTooLargeError(size, limit)
     plain = json.loads(text)
     return {
         "version": plain.get("version"),
@@ -482,7 +509,7 @@ class StartedRun:
                             self._suspend_state = await asyncio.to_thread(
                                 seal_state, data.get("state") or {}
                             )
-                        except SuspendStateTooLarge as too_large:
+                        except SuspendStateTooLargeError as too_large:
                             cannot_wait = (RUN_STATE_TOO_LARGE, str(too_large))
                     if cannot_wait is not None:
                         # Not stored: the run ends here instead of waiting.
@@ -575,6 +602,7 @@ class StartedRun:
                         # same id (a decision made the moment it was stored).
                         if self._service._active_runs.get(self.run_id) is self:
                             del self._service._active_runs[self.run_id]
+                            self._service._closed_elsewhere.discard(self.run_id)
                         if suspended:
                             # The run is not over: its files stay, no webhook
                             # yet. A decision made while other branches were
@@ -648,6 +676,9 @@ class WorkflowRunService:
         # Runs executing in this process, by run id, so any entry point's run
         # can be cancelled (the engine stops; the run is persisted cancelled).
         self._active_runs: dict[str, StartedRun] = {}
+        # Runs of this process whose record someone else closed; emptied
+        # as each run's driver ends.
+        self._closed_elsewhere: set[str] = set()
         # One lock per workflow with a single-flight start in progress; an
         # entry goes away once nobody holds or waits for its lock.
         self._single_flight_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = (
@@ -688,6 +719,43 @@ class WorkflowRunService:
             ).scalar_one()
         return int(waiting) >= limit
 
+    def note_closed_elsewhere(self, run_id: str) -> None:
+        """Remember that *run_id*'s record was closed by someone else.
+
+        Called by the heartbeat (from its own thread: a set insert is
+        atomic) so the engine stops before its next step without asking
+        the database again.
+        """
+        self._closed_elsewhere.add(run_id)
+
+    async def owns(self, run_id: str) -> bool:
+        """Whether *run_id* is still this process's to execute.
+
+        Its record must be ``running`` under this process's name. Asked by
+        the engine before every step: a run cancelled from another process,
+        or declared dead while this process could not stamp it, does not
+        run another step here.
+        """
+        from sqlalchemy import select
+
+        from fim_one.db import create_session
+        from fim_one.db.models import WorkflowRun
+
+        if run_id in self._closed_elsewhere:
+            return False
+        async with create_session() as db:
+            row = (
+                await db.execute(
+                    select(WorkflowRun.status, WorkflowRun.worker_id).where(
+                        WorkflowRun.id == run_id
+                    )
+                )
+            ).first()
+        if row is None or row[0] != "running" or row[1] != WORKER_ID:
+            self._closed_elsewhere.add(run_id)
+            return False
+        return True
+
     def active_run_ids(self) -> list[str]:
         """Runs executing in this process right now."""
         return list(self._active_runs)
@@ -713,7 +781,7 @@ class WorkflowRunService:
         status: str,
         error: str,
         *,
-        stale_before: datetime | None = None,
+        stale_seconds: float | None = None,
     ) -> str | None:
         """Close a run on its record alone; the status it had, or ``None``.
 
@@ -726,8 +794,8 @@ class WorkflowRunService:
         means the run was in none of *from_statuses*: it has ended, or does
         not exist.
 
-        With *stale_before* only a run whose heartbeat is older than that
-        is closed. The run's open confirmation requests are closed in the
+        With *stale_seconds* only a run whose heartbeat is older than that,
+        by the database's clock, is closed. The run's open confirmation requests are closed in the
         same transaction. A run that was waiting loses its sandbox here; a
         run that was executing somewhere keeps it until that process, or
         the sweep's later pass over unused directories, removes it.
@@ -745,16 +813,16 @@ class WorkflowRunService:
         for _ in range(2):
             for candidate in from_statuses:
                 conditions = [WorkflowRun.id == run_id, WorkflowRun.status == candidate]
-                if stale_before is not None:
-                    conditions.append(
-                        func.coalesce(
-                            WorkflowRun.heartbeat_at,
-                            WorkflowRun.started_at,
-                            WorkflowRun.created_at,
-                        )
-                        < stale_before
-                    )
                 async with create_session() as db:
+                    if stale_seconds is not None:
+                        conditions.append(
+                            func.coalesce(
+                                WorkflowRun.heartbeat_at,
+                                WorkflowRun.started_at,
+                                WorkflowRun.created_at,
+                            )
+                            < db_seconds_ago(_dialect_of(db), stale_seconds)
+                        )
                     result = await db.execute(
                         update(WorkflowRun)
                         .where(*conditions)
@@ -979,6 +1047,7 @@ class WorkflowRunService:
                 # An agent calling the workflow as a tool waits for its
                 # result and has nobody to ask.
                 can_suspend=mode not in NO_APPROVAL_MODES,
+                still_owned=lambda: self.owns(run_id),
             )
             engine = self._make_engine(
                 max_concurrency=5,
@@ -1057,7 +1126,9 @@ class WorkflowRunService:
             result = await db.execute(
                 update(WorkflowRun)
                 .where(WorkflowRun.id == run_id, WorkflowRun.status == "waiting")
-                .values(status="running", worker_id=WORKER_ID, heartbeat_at=datetime.now(UTC))
+                .values(
+                    status="running", worker_id=WORKER_ID, heartbeat_at=db_now(_dialect_of(db))
+                )
                 .execution_options(synchronize_session=False)
             )
             await db.commit()
@@ -1145,6 +1216,7 @@ class WorkflowRunService:
             call_context=dataclasses.replace(ctx, workflow_run_id=run.id),
             sandbox_id=workflow_run_sandbox_id(run.id),
             can_suspend=True,
+            still_owned=lambda: self.owns(run.id),
         )
         engine = self._make_engine(
             max_concurrency=5,
@@ -1327,8 +1399,16 @@ class WorkflowRunService:
         from fim_one.db.models import WorkflowRun
 
         async with create_session() as db:
-            db.add(WorkflowRun(**fields))
+            db.add(WorkflowRun(**self._stamped(fields, db)))
             await db.commit()
+
+    @staticmethod
+    def _stamped(fields: dict[str, Any], db: Any) -> dict[str, Any]:
+        """*fields* with the first heartbeat of a run that starts running,
+        taken from the database's clock like every later one."""
+        if fields.get("status") == "running" and fields.get("worker_id"):
+            return {**fields, "heartbeat_at": db_now(_dialect_of(db))}
+        return fields
 
     @staticmethod
     def _run_fields(
@@ -1349,7 +1429,6 @@ class WorkflowRunService:
             "mode": mode.value,
             "started_at": datetime.now(UTC),
             "worker_id": WORKER_ID,
-            "heartbeat_at": datetime.now(UTC),
         }
 
     async def _acquire_slot(self, user_id: str, run_id: str, mode: RunMode) -> None:
@@ -1406,7 +1485,7 @@ class WorkflowRunService:
             await self._refuse_if_running(workflow_id, db)
             if take_slot is not None:
                 await take_slot()
-            db.add(WorkflowRun(**fields))
+            db.add(WorkflowRun(**self._stamped(fields, db)))
             await db.commit()
 
     async def _mark_failed(self, run_id: str, error: str) -> None:
@@ -1536,7 +1615,9 @@ class WorkflowRunService:
                 await db.execute(
                     update(WorkflowRun)
                     .where(WorkflowRun.id == run_id, WorkflowRun.status == "running")
-                    .values(node_results=dict(node_results), heartbeat_at=datetime.now(UTC))
+                    .values(
+                        node_results=dict(node_results), heartbeat_at=db_now(_dialect_of(db))
+                    )
                     .execution_options(synchronize_session=False)
                 )
                 await db.commit()

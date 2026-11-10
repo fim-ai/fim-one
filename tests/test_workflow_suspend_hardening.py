@@ -225,7 +225,7 @@ class TestClosingARunOnItsRecord:
             ("pending", "running"),
             "failed",
             rs.RUN_INTERRUPTED_ERROR,
-            stale_before=datetime.now(UTC) - timedelta(seconds=90),
+            stale_seconds=90,
         )
 
         assert closed is None
@@ -680,3 +680,364 @@ class TestWaitingRunsAreCapped:
         assert await rig.service._waiting_limit_reached(rig.admin.id) is True
         monkeypatch.setenv("WORKFLOW_MAX_WAITING_RUNS_PER_USER", "0")  # no limit
         assert await rig.service._waiting_limit_reached(rig.owner.id) is False
+
+
+# ---------------------------------------------------------------------------
+# M3. A live run is not taken for dead, and a run closed under its process
+#     does nothing more
+# ---------------------------------------------------------------------------
+
+# A server process of its own. It runs start -> end, where the End step
+# blocks the event loop for three seconds (time.sleep): no task on that loop
+# can stamp the run meanwhile. With "thread" the supervisor stamps from its
+# heartbeat thread, as a server does; with "loop" from the loop, as before.
+_BLOCKED_SERVER = """
+import asyncio, sys, time
+from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock, patch
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+import fim_one.db.models  # noqa: F401
+from fim_one.core.workflow import run_service as rs
+from fim_one.core.workflow.run_recovery import WorkflowRunSupervisor, sync_engine_for
+from fim_one.core.workflow.types import NodeResult, NodeStatus
+from fim_one.db.models.workflow import Workflow
+from fim_one.web.services.assembly_ports import register_assembly_ports
+
+db_file, workflow_id, user_id, heartbeat, marker = sys.argv[1:6]
+register_assembly_ports()
+url = f"sqlite+aiosqlite:///{db_file}"
+
+
+async def blocking_end(node, store, ctx):
+    time.sleep(3)  # the whole event loop stands still
+    open(marker, "w").write("the step ran to its end")
+    return NodeResult(node_id=node.id, status=NodeStatus.COMPLETED, output={})
+
+
+async def main():
+    engine = create_async_engine(url, connect_args={"timeout": 30})
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    @asynccontextmanager
+    async def create_session():
+        async with factory() as session:
+            yield session
+
+    with (
+        patch("fim_one.db.create_session", create_session),
+        patch("fim_one.web.services.quota_backend.usage_and_cap", new=AsyncMock(return_value=(0, 0))),
+        patch("fim_one.web.services.quota_enforcer.is_user_unentitled", new=AsyncMock(return_value=False)),
+        patch("fim_one.core.workflow.nodes.EndExecutor.execute", side_effect=blocking_end),
+    ):
+        service = rs.WorkflowRunService()
+        supervisor = WorkflowRunSupervisor(
+            service,
+            heartbeat_seconds=0.2,
+            sync_engine=sync_engine_for(url) if heartbeat == "thread" else None,
+        )
+        watching = asyncio.create_task(supervisor.run_loop())
+        await asyncio.sleep(0.5)
+        async with factory() as session:
+            workflow = await session.get(Workflow, workflow_id)
+        outcome = await service.run_to_completion(
+            workflow, caller_id=user_id, inputs={}, mode=rs.RunMode.INTERACTIVE
+        )
+        print(outcome.run_id, outcome.status, flush=True)
+        watching.cancel()
+
+
+asyncio.run(main())
+"""
+
+_START_END = {
+    "schema_version": 2,
+    "nodes": [_node("start_1", "start", "START"), _node("end_1", "end", "END")],
+    "edges": [_edge("start_1", "end_1")],
+    "viewport": {"x": 0, "y": 0, "zoom": 1},
+}
+
+
+async def _blocked_server(rig: Rig, tmp_path: Any, heartbeat: str) -> tuple[Any, Any]:
+    import os
+    import sys
+
+    await rig.workflow(_START_END)
+    marker = tmp_path / "side-effect.txt"
+    child = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "-c",
+        _BLOCKED_SERVER,
+        str(tmp_path / "suspend.db"),
+        rig.wf.id,
+        rig.owner.id,
+        heartbeat,
+        str(marker),
+        env=dict(os.environ),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    return child, marker
+
+
+async def _the_run(rig: Rig, timeout: float = 30.0) -> WorkflowRun:
+    end = time.monotonic() + timeout
+    while True:
+        async with rig.factory() as s:
+            run = (await s.execute(select(WorkflowRun))).scalars().first()
+        if run is not None:
+            return run
+        assert time.monotonic() < end, "the other process started no run"
+        await asyncio.sleep(0.05)
+
+
+class TestALiveRunIsNotTakenForDead:
+    async def test_a_process_whose_event_loop_is_blocked_keeps_its_run_alive(
+        self, rig: Rig, tmp_path: Any
+    ) -> None:
+        """Two real processes. One executes a step that blocks its event
+        loop for 3 s; the other sweeps meanwhile with a 0.6 s staleness
+        limit. The heartbeat thread keeps stamping, so nothing is closed."""
+        if rig.backend != "sqlite":
+            pytest.skip("the child process opens the SQLite file")
+        child, marker = await _blocked_server(rig, tmp_path, "thread")
+        run = await _the_run(rig)
+        other = WorkflowRunSupervisor(_new_service(), heartbeat_seconds=0.2, stale_seconds=0.6)
+
+        closed: list[str] = []
+        for _ in range(4):  # 2 s into the 3 s the loop is blocked
+            await asyncio.sleep(0.5)
+            closed += (await other.sweep()).closed
+
+        out, err = await asyncio.wait_for(child.communicate(), timeout=60)
+        assert child.returncode == 0, err.decode()[-2000:]
+        assert closed == []
+        assert out.decode().split() == [run.id, "completed"]
+        assert (await rig.run(run.id)).status == "completed"
+
+    async def test_without_the_thread_the_same_run_is_closed_and_never_reported_as_done(
+        self, rig: Rig, tmp_path: Any
+    ) -> None:
+        """The control: stamping from the blocked loop itself, the run goes
+        stale and the other process closes it. The step that was in flight
+        finishes, but the run is not recorded or reported as completed."""
+        if rig.backend != "sqlite":
+            pytest.skip("the child process opens the SQLite file")
+        child, marker = await _blocked_server(rig, tmp_path, "loop")
+        run = await _the_run(rig)
+        other = WorkflowRunSupervisor(_new_service(), heartbeat_seconds=0.2, stale_seconds=0.6)
+
+        closed: list[str] = []
+        for _ in range(4):
+            await asyncio.sleep(0.5)
+            closed += (await other.sweep()).closed
+
+        out, err = await asyncio.wait_for(child.communicate(), timeout=60)
+        assert child.returncode == 0, err.decode()[-2000:]
+        assert closed == [run.id]
+        assert marker.exists()  # the step in flight could not be recalled
+        assert out.decode().split() == [run.id, "failed"]
+        stored = await rig.run(run.id)
+        assert (stored.status, stored.error) == ("failed", rs.RUN_INTERRUPTED_ERROR)
+
+    async def test_the_heartbeat_thread_stamps_and_notices_a_run_closed_elsewhere(
+        self, rig: Rig, tmp_path: Any
+    ) -> None:
+        from fim_one.core.workflow.run_recovery import HeartbeatThread, sync_engine_for
+
+        if rig.backend != "sqlite":
+            pytest.skip("uses the SQLite file")
+        release = asyncio.Event()
+
+        class _Held(_CountingEngine):
+            async def execute_streaming(self, *args: Any, **kwargs: Any) -> Any:
+                await release.wait()
+                yield "run_completed", {"status": "completed", "outputs": {}}
+
+        service = rs.WorkflowRunService(engine_factory=_Held)
+        started = await service.start_run(
+            await rig.workflow(), caller_id=rig.owner.id, inputs={}, mode=rs.RunMode.INTERACTIVE
+        )
+        async with rig.factory() as s:
+            await s.execute(
+                update(WorkflowRun)
+                .where(WorkflowRun.id == started.run_id)
+                .values(heartbeat_at=datetime.now(UTC) - timedelta(hours=1))
+            )
+            await s.commit()
+        thread = HeartbeatThread(
+            sync_engine_for(f"sqlite+aiosqlite:///{tmp_path / 'suspend.db'}"),
+            service,
+            asyncio.get_running_loop(),
+            0.05,
+        )
+
+        await asyncio.to_thread(thread.beat)
+        stamped = (await rig.run(started.run_id)).heartbeat_at
+        assert stamped is not None
+        assert stamped.replace(tzinfo=UTC) > datetime.now(UTC) - timedelta(minutes=1)
+        assert await service.owns(started.run_id) is True
+
+        assert await _new_service().cancel_stored_run(started.run_id) is True
+        await asyncio.to_thread(thread.beat)
+        await asyncio.sleep(0)  # the cancel handed to the loop runs
+        assert started.cancel_event.is_set()
+        assert await service.owns(started.run_id) is False
+        release.set()
+        assert (await started.wait()).status == "cancelled"
+
+    async def test_staleness_is_judged_by_the_databases_clock(self, rig: Rig) -> None:
+        """This host's clock is a day ahead of the database's: a run stamped
+        a moment ago is not stale for that, and one not stamped for 200 s is."""
+        import datetime as real
+
+        async def run_stamped(seconds_ago: float) -> str:
+            run_id = str(uuid.uuid4())
+            async with rig.factory() as s:
+                s.add(
+                    WorkflowRun(
+                        id=run_id,
+                        workflow_id=rig.wf.id,
+                        user_id=rig.owner.id,
+                        blueprint_snapshot=BLUEPRINT,
+                        status="running",
+                        worker_id="another-process",
+                        heartbeat_at=rs.db_seconds_ago(rig.backend, seconds_ago),
+                    )
+                )
+                await s.commit()
+            return run_id
+
+        fresh, stale = await run_stamped(1), await run_stamped(200)
+
+        class _AheadByADay(real.datetime):
+            @classmethod
+            def now(cls, tz: Any = None) -> Any:
+                return real.datetime.now(tz) + real.timedelta(days=1)
+
+        with (
+            patch.object(rs, "datetime", _AheadByADay),
+            patch("fim_one.core.workflow.run_recovery.time.time", lambda: time.time() + 86400),
+        ):
+            report = await WorkflowRunSupervisor(rig.service, stale_seconds=90).sweep()
+
+        assert report.closed == [stale]
+        assert (await rig.run(fresh)).status == "running"
+
+
+class TestARunClosedUnderItsProcessDoesNothingMore:
+    async def test_the_next_step_is_not_run_and_nothing_reports_success(self, rig: Rig) -> None:
+        """Process A is alive but its run was declared dead (it could not
+        stamp for longer than the limit). The step in flight cannot be
+        recalled; the step after it is not started, the record stays as the
+        other process left it, A reports that and calls no webhook, and the
+        run's files are still there for the moment."""
+        from fim_one.core.workflow.types import NodeResult, NodeStatus
+
+        a, b = _new_service(), _new_service()
+        release = asyncio.Event()
+        ran: list[str] = []
+
+        async def in_flight(node: Any, store: Any, ctx: Any) -> Any:
+            await release.wait()
+            ran.append("first step")
+            return NodeResult(node_id=node.id, status=NodeStatus.COMPLETED, output="ok")
+
+        async def side_effect(node: Any, store: Any, ctx: Any) -> Any:
+            ran.append("second step")
+            return NodeResult(node_id=node.id, status=NodeStatus.COMPLETED, output={"done": True})
+
+        await rig.workflow(
+            {
+                "schema_version": 2,
+                "nodes": [
+                    _node("start_1", "start", "START"),
+                    _node("first", "connector", "CONNECTOR"),
+                    _node("end_1", "end", "END"),
+                ],
+                "edges": [_edge("start_1", "first"), _edge("first", "end_1")],
+                "viewport": {"x": 0, "y": 0, "zoom": 1},
+            }
+        )
+        with (
+            patch("fim_one.core.workflow.nodes.ConnectorExecutor.execute", side_effect=in_flight),
+            patch("fim_one.core.workflow.nodes.EndExecutor.execute", side_effect=side_effect),
+            patch.object(a, "_fire_webhook") as webhook,
+        ):
+            started = await a.start_run(
+                await rig.workflow(), caller_id=rig.owner.id, inputs={}, mode=rs.RunMode.INTERACTIVE
+            )
+            await asyncio.sleep(0.2)
+            sandbox = rig.sandboxes / f"wfrun-{started.run_id}"
+            sandbox.mkdir(exist_ok=True)
+            (sandbox / "work.txt").write_text("x")
+            async with rig.factory() as s:
+                await s.execute(
+                    update(WorkflowRun)
+                    .where(WorkflowRun.id == started.run_id)
+                    .values(heartbeat_at=rs.db_seconds_ago(rig.backend, 200))
+                )
+                await s.commit()
+
+            report = await WorkflowRunSupervisor(b, stale_seconds=90).sweep()
+            assert report.closed == [started.run_id]
+            assert sandbox.exists()  # not pulled from under a process that may be alive
+
+            release.set()
+            outcome = await started.wait()
+
+        assert ran == ["first step"]  # the second step was never started
+        run = await rig.run(started.run_id)
+        assert (run.status, run.error) == ("failed", rs.RUN_INTERRUPTED_ERROR)
+        assert (outcome.status, outcome.error, outcome.outputs) == (
+            "failed",
+            rs.RUN_INTERRUPTED_ERROR,
+            {},
+        )
+        webhook.assert_not_called()
+
+    async def test_a_run_cancelled_from_another_process_stops_before_its_next_step(
+        self, rig: Rig
+    ) -> None:
+        """L3: no waiting for the next heartbeat for a step not yet started."""
+        from fim_one.core.workflow.types import NodeResult, NodeStatus
+
+        here, elsewhere = _new_service(), _new_service()
+        release = asyncio.Event()
+        ran: list[str] = []
+
+        async def first(node: Any, store: Any, ctx: Any) -> Any:
+            await release.wait()
+            return NodeResult(node_id=node.id, status=NodeStatus.COMPLETED, output="ok")
+
+        async def second(node: Any, store: Any, ctx: Any) -> Any:
+            ran.append("second step")
+            return NodeResult(node_id=node.id, status=NodeStatus.COMPLETED, output={})
+
+        await rig.workflow(
+            {
+                "schema_version": 2,
+                "nodes": [
+                    _node("start_1", "start", "START"),
+                    _node("first", "connector", "CONNECTOR"),
+                    _node("end_1", "end", "END"),
+                ],
+                "edges": [_edge("start_1", "first"), _edge("first", "end_1")],
+                "viewport": {"x": 0, "y": 0, "zoom": 1},
+            }
+        )
+        with (
+            patch("fim_one.core.workflow.nodes.ConnectorExecutor.execute", side_effect=first),
+            patch("fim_one.core.workflow.nodes.EndExecutor.execute", side_effect=second),
+        ):
+            started = await here.start_run(
+                await rig.workflow(), caller_id=rig.owner.id, inputs={}, mode=rs.RunMode.INTERACTIVE
+            )
+            await asyncio.sleep(0.2)
+            assert await elsewhere.cancel_stored_run(started.run_id) is True
+            release.set()  # no heartbeat has run in between
+            outcome = await started.wait()
+
+        assert ran == []
+        assert outcome.status == "cancelled"
+        assert (await rig.run(started.run_id)).status == "cancelled"

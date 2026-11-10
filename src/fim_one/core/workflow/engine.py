@@ -257,6 +257,9 @@ class WorkflowEngine:
                         return True
             return False
 
+        # Set once the run's record turned out to be closed by someone else.
+        abandoned = {"run": False}
+
         # Failed nodes whose error strategy (CONTINUE / FAIL_BRANCH) says the
         # run should carry on.  They don't fail the run by themselves.
         tolerated_failures: set[str] = set(resumed.get("tolerated_failures") or [])
@@ -410,10 +413,37 @@ class WorkflowEngine:
             async with semaphore:
                 await _run_node_inner(nid)
 
+        async def _still_ours() -> bool:
+            """Whether the run's record is still this process's to write.
+
+            Asked before each step and each retry, so a run closed by
+            someone else stops before its next side effect, not at the
+            next heartbeat.
+            """
+            if ctx.still_owned is None or abandoned["run"]:
+                return not abandoned["run"]
+            try:
+                owned = bool(await ctx.still_owned())
+            except Exception:
+                # Not knowing is not a reason to stop a run.
+                logger.exception("Could not check whether run %s is still ours", self._run_id)
+                return True
+            if not owned:
+                abandoned["run"] = True
+            return owned
+
         async def _run_node_inner(nid: str) -> None:
             """Inner node execution logic (retry, timeout, event emission)."""
             node = node_index[nid]
             executor = get_executor(node.type)
+
+            if not await _still_ours():
+                node_status[nid] = NodeStatus.SKIPPED
+                await _emit(
+                    "node_skipped",
+                    {"node_id": nid, "reason": "The run was closed while it was in progress"},
+                )
+                return
 
             # Retry config from node data (default: no retry)
             retry_count = max(int(node.data.get("retry_count", 0)), 0)
@@ -468,6 +498,9 @@ class WorkflowEngine:
                     await asyncio.sleep(delay_sec)
 
                     if self._cancel_event and self._cancel_event.is_set():
+                        break
+
+                    if not await _still_ours():
                         break
 
                     # A new attempt asks again; it does not reuse a
@@ -606,8 +639,9 @@ class WorkflowEngine:
                             _workflow_timed_out = True
                             break
 
-                    # Check for cancellation
-                    if self._cancel_event and self._cancel_event.is_set():
+                    # Check for cancellation (asked for here, or the run's
+                    # record was closed from elsewhere)
+                    if abandoned["run"] or (self._cancel_event and self._cancel_event.is_set()):
                         for nid in sorted(pending):
                             node_status[nid] = NodeStatus.SKIPPED
                             await _emit(

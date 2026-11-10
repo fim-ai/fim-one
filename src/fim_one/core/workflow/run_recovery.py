@@ -7,18 +7,24 @@ Three jobs, all on top of :class:`~.run_service.WorkflowRunService`:
   workflow run is decided, the run is continued in a background task of the
   deciding process.
 - **Heartbeat.** Every run executing in this process has its record
-  stamped every ``heartbeat_seconds``. A record marked cancelled by another
-  process is noticed on the same pass and the run is stopped here.
+  stamped every ``heartbeat_seconds``, with the database's clock. In a
+  server the stamping is done by a thread of its own with its own
+  database connection (:class:`HeartbeatThread`): the event loop that runs
+  the steps can be blocked for a long time by one of them, and a run must
+  not look dead because of that. A record closed by another process
+  (cancelled, or taken for dead) is noticed on the same pass and the run
+  is stopped here; the engine also asks before every step.
 - **Sweep**, at startup and every ``sweep_seconds``:
 
   * a ``waiting`` run whose request is decided, expired or gone is
     continued (the deciding process died before it could, a request ran
     out of time, the service was down when the decision came in);
-  * a ``running`` run whose heartbeat is older than ``stale_seconds`` was
-    being executed by a process that no longer exists: it is closed as
-    failed, its open requests are closed and its sandbox removed. That
+  * a ``running`` run whose heartbeat is older than ``stale_seconds``, by
+    the database's clock, was being executed by a process that no longer
+    exists: it is closed as failed and its open requests are closed. That
     also frees the trigger key's single-flight, which looks at unfinished
-    runs;
+    runs. Its sandbox is left for the pass over unused directories, a
+    grace period later;
   * a run sandbox directory (``wfrun-*``, ``subagent-*``, ``evalrun-*``)
     nobody is using is removed.
 
@@ -38,10 +44,10 @@ import logging
 import os
 import re
 import shutil
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -59,7 +65,13 @@ from .run_service import (
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["SweepReport", "WorkflowRunSupervisor", "install_resume_on_decision"]
+__all__ = [
+    "HeartbeatThread",
+    "SweepReport",
+    "WorkflowRunSupervisor",
+    "install_resume_on_decision",
+    "sync_engine_for",
+]
 
 _WORKFLOW_RUN_DIR = re.compile(
     r"wfrun-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
@@ -83,6 +95,103 @@ def install_resume_on_decision(
             (service or get_run_service()).schedule_resume(str(run_id))
 
     return ConfirmationService.on_decided(continue_run)
+
+
+def sync_engine_for(database_url: str) -> Any:
+    """A synchronous engine on the application's database, for the heartbeat thread.
+
+    One connection, used by that thread alone. ``None`` for an in-memory
+    SQLite database, which a second connection cannot see.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.engine import make_url
+
+    url = make_url(database_url)
+    backend = url.get_backend_name()
+    if backend == "sqlite":
+        if not url.database or url.database == ":memory:":
+            return None
+        return create_engine(
+            url.set(drivername="sqlite"), connect_args={"timeout": 30}, pool_size=1, max_overflow=0
+        )
+    if backend == "postgresql":
+        return create_engine(
+            url.set(drivername="postgresql+psycopg2"),
+            pool_size=1,
+            max_overflow=0,
+            pool_pre_ping=True,
+        )
+    return create_engine(url, pool_size=1, max_overflow=0, pool_pre_ping=True)
+
+
+class HeartbeatThread(threading.Thread):
+    """Stamps this process's running runs from outside the event loop.
+
+    A daemon thread with a synchronous connection of its own. Every
+    *interval* seconds it sets ``heartbeat_at`` of the runs the service is
+    executing to the database's clock, then looks for those whose record
+    is no longer ``running``: someone else closed them. Those are noted on
+    the service at once (the engine reads that before its next step) and
+    their cancel is handed to the event loop.
+
+    A step that blocks the event loop for minutes does not stop this
+    thread, so the run it belongs to keeps its heartbeat.
+    """
+
+    def __init__(
+        self,
+        engine: Any,
+        service: WorkflowRunService,
+        loop: asyncio.AbstractEventLoop,
+        interval: float,
+    ) -> None:
+        super().__init__(name="workflow-run-heartbeat", daemon=True)
+        self._engine = engine
+        self._service = service
+        self._loop = loop
+        self._interval = interval
+        self._halt = threading.Event()
+
+    def stop(self) -> None:
+        self._halt.set()
+
+    def run(self) -> None:
+        while not self._halt.wait(self._interval):
+            try:
+                self.beat()
+            except Exception:
+                logger.exception("Workflow run heartbeat failed")
+        self._engine.dispose()
+
+    def beat(self) -> None:
+        from sqlalchemy import select, update
+
+        from fim_one.db.models import WorkflowRun
+
+        from .run_service import db_now
+
+        ids = self._service.active_run_ids()
+        if not ids:
+            return
+        with self._engine.begin() as conn:
+            conn.execute(
+                update(WorkflowRun)
+                .where(WorkflowRun.id.in_(ids), WorkflowRun.status == "running")
+                .values(heartbeat_at=db_now(conn.dialect.name))
+            )
+            closed_elsewhere = list(
+                conn.execute(
+                    select(WorkflowRun.id).where(
+                        WorkflowRun.id.in_(ids), WorkflowRun.status != "running"
+                    )
+                ).scalars()
+            )
+        for run_id in closed_elsewhere:
+            self._service.note_closed_elsewhere(run_id)
+            try:
+                self._loop.call_soon_threadsafe(self._service.cancel_run, run_id)
+            except RuntimeError:
+                return  # the loop is closed: the process is going down
 
 
 @dataclass
@@ -132,8 +241,13 @@ class WorkflowRunSupervisor:
         sandbox_grace_seconds: float = 600.0,
         sandbox_orphan_seconds: float = 24 * 3600.0,
         legacy_grace_seconds: float = 1800.0,
+        sync_engine: Any = None,
     ) -> None:
         self._service = service
+        # With one, heartbeats come from a thread (see HeartbeatThread);
+        # without, from this supervisor's loop task.
+        self._sync_engine = sync_engine
+        self._heartbeat: HeartbeatThread | None = None
         self.legacy_grace_seconds = legacy_grace_seconds
         self._born = time.monotonic()
         self.heartbeat_seconds = heartbeat_seconds
@@ -144,7 +258,18 @@ class WorkflowRunSupervisor:
 
     @classmethod
     def from_env(cls) -> WorkflowRunSupervisor:
+        from fim_one.db.engine import _get_database_url
+
+        try:
+            sync_engine = sync_engine_for(_get_database_url())
+        except Exception:
+            logger.exception(
+                "No synchronous database connection for the heartbeat thread; "
+                "heartbeats will come from the event loop"
+            )
+            sync_engine = None
         return cls(
+            sync_engine=sync_engine,
             heartbeat_seconds=float(os.getenv("WORKFLOW_RUN_HEARTBEAT_SECONDS", "10")),
             stale_seconds=float(os.getenv("WORKFLOW_RUN_STALE_SECONDS", "90")),
             sweep_seconds=float(os.getenv("WORKFLOW_RUN_SWEEP_SECONDS", "30")),
@@ -165,6 +290,8 @@ class WorkflowRunSupervisor:
         from fim_one.db import create_session
         from fim_one.db.models import WorkflowRun
 
+        from .run_service import _dialect_of, db_now
+
         ids = self.service.active_run_ids()
         if not ids:
             return
@@ -172,7 +299,7 @@ class WorkflowRunSupervisor:
             await db.execute(
                 update(WorkflowRun)
                 .where(WorkflowRun.id.in_(ids), WorkflowRun.status == "running")
-                .values(heartbeat_at=datetime.now(UTC))
+                .values(heartbeat_at=db_now(_dialect_of(db)))
                 .execution_options(synchronize_session=False)
             )
             await db.commit()
@@ -189,6 +316,7 @@ class WorkflowRunSupervisor:
             )
         for run_id in closed_elsewhere:
             # Its record already says how it ended; the engine just stops.
+            self.service.note_closed_elsewhere(run_id)
             if self.service.cancel_run(run_id):
                 logger.info("Workflow run %s was closed from elsewhere; stopping it", run_id)
 
@@ -218,9 +346,13 @@ class WorkflowRunSupervisor:
         from fim_one.db import create_session
         from fim_one.db.models import WorkflowRun
 
-        cutoff = datetime.now(UTC) - timedelta(seconds=self.stale_seconds)
+        from .run_service import _dialect_of, db_seconds_ago
+
         mine = set(self.service.active_run_ids())
         async with create_session() as db:
+            # The database's clock on both sides: the stamp was taken from
+            # it, and so is "how long ago is too long".
+            cutoff = db_seconds_ago(_dialect_of(db), self.stale_seconds)
             candidates = (
                 (
                     await db.execute(
@@ -255,7 +387,7 @@ class WorkflowRunSupervisor:
                 ("pending", "running"),
                 "failed",
                 RUN_INTERRUPTED_ERROR,
-                stale_before=cutoff,
+                stale_seconds=self.stale_seconds,
             )
             if closed is not None:
                 report.closed.append(run_id)
@@ -374,15 +506,26 @@ class WorkflowRunSupervisor:
             raise
         except Exception:  # pragma: no cover - sweep() already catches
             logger.exception("Workflow run startup sweep failed")
+        if self._sync_engine is not None:
+            self._heartbeat = HeartbeatThread(
+                self._sync_engine,
+                self.service,
+                asyncio.get_running_loop(),
+                self.heartbeat_seconds,
+            )
+            self._heartbeat.start()
         last_sweep = time.monotonic()
         while True:
             try:
                 await asyncio.sleep(self.heartbeat_seconds)
-                await self.beat()
+                if self._heartbeat is None or not self._heartbeat.is_alive():
+                    await self.beat()
                 if time.monotonic() - last_sweep >= self.sweep_seconds:
                     last_sweep = time.monotonic()
                     await self.sweep()
             except asyncio.CancelledError:
+                if self._heartbeat is not None:
+                    self._heartbeat.stop()
                 logger.info("Workflow run supervisor stopped")
                 break
             except Exception:
