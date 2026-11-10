@@ -332,6 +332,29 @@ class TestWait:
         stored = await _row(factory, row.id)
         assert stored.status == "expired" and stored.responded_at is not None
 
+    async def test_a_decision_landing_as_the_deadline_passes_is_honoured(
+        self, factory: async_sessionmaker[AsyncSession], world: dict[str, Any]
+    ) -> None:
+        """The waiter saw the row pending past its deadline; before it could
+        mark it expired, someone's decision was recorded. The mark changes
+        nothing then, and the answer is the decision, not "expired"."""
+        service = ConfirmationService(factory)
+        row = await service.request(_spec(world, timeout_seconds=0.01))
+        await asyncio.sleep(0.05)
+        mark = service._mark_expired
+
+        async def decided_just_before(confirmation_id: str) -> None:
+            async with factory() as db:
+                stored = await db.get(ConfirmationRequest, confirmation_id)
+                assert stored is not None and stored.status == "pending"
+                stored.status = "approved"
+                await db.commit()
+            await mark(confirmation_id)
+
+        with patch.object(service, "_mark_expired", decided_just_before):
+            assert await service.wait(row.id, poll_seconds=0) == "approve"
+        assert (await _row(factory, row.id)).status == "approved"
+
     async def test_a_deleted_row_counts_as_expired(
         self, factory: async_sessionmaker[AsyncSession]
     ) -> None:

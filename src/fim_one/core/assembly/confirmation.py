@@ -335,6 +335,13 @@ class ConfirmationService:
                 return "expired"
             if datetime.now(UTC) >= _aware(row.expires_at or row.created_at):
                 await self._mark_expired(confirmation_id)
+                # Marking only touches a row still pending. A decision that
+                # landed in that instant stands: read what the row says now.
+                row = await self.get(confirmation_id)
+                if row is not None and row.status in ("approved", "approve"):
+                    return "approve"
+                if row is not None and row.status in ("rejected", "reject"):
+                    return "reject"
                 return "expired"
             await asyncio.sleep(poll_seconds)
 
