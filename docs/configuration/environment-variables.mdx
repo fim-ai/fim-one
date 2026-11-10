@@ -489,11 +489,22 @@ Used for login codes and email notifications. The `email_send` built-in tool is 
 
 ## Workflow Human Intervention Steps
 
-A Human Intervention (approval) step waits for its decision inside the server process, so a restart loses the wait and the run with it. The step is therefore off unless you enable it.
+A Human Intervention (approval) step stops the run until someone decides. The run is stored as `waiting` and continued when the approval is decided, also after a restart and with several server processes. The step is off unless you enable it.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `WORKFLOW_HUMAN_INTERVENTION_ENABLED` | No | `false` | Accept Human Intervention steps in workflows. While `false`, the editor does not offer the step, saving or importing a workflow that contains one is refused with `human_intervention_disabled` naming the steps, and a workflow that already contains one still opens for editing but is refused at run start. Enable only on a single-process instance where a lost approval wait is acceptable |
+| `WORKFLOW_HUMAN_INTERVENTION_ENABLED` | No | `false` | Accept Human Intervention steps in workflows. While `false`, the editor does not offer the step, saving or importing a workflow that contains one is refused with `human_intervention_disabled` naming the steps, and a workflow that already contains one still opens for editing but is refused at run start |
+
+## Workflow Run Recovery
+
+Every server process stamps the runs it is executing. A run still `running` whose stamp is stale was being executed by a process that no longer exists: it is closed as failed, its open approval requests are closed and its working directory is removed. The same sweep, which also runs at startup, continues waiting runs whose approval was decided or expired while no process was listening.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `WORKFLOW_RUN_HEARTBEAT_SECONDS` | No | `10` | How often a process stamps the runs it is executing. A run cancelled from another process is noticed on the same pass |
+| `WORKFLOW_RUN_STALE_SECONDS` | No | `90` | A `running` run with no stamp for this long is taken for dead and closed as failed. Never less than three heartbeats. Raise it if the server can be unresponsive for longer than this (a long blocking call), or live runs will be closed |
+| `WORKFLOW_RUN_SWEEP_SECONDS` | No | `30` | How often the recovery sweep runs after the one at startup |
+| `SANDBOX_ORPHAN_MAX_AGE_HOURS` | No | `24` | A run working directory under `data/sandbox` that belongs to no workflow run record (a single-step test, a delegated agent, an evaluation run) is removed once nothing in it has changed for this many hours. Directories of workflow runs are removed when the run has ended |
 
 ## Workflow Run Retention
 

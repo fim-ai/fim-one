@@ -351,6 +351,8 @@ note.
 - [x] One credential rule and one call record for chat, delegated agents and workflow steps; MCP calls recorded
 - [x] Read-only database connectors enforced by a read-only transaction (PostgreSQL family, MySQL), not by keyword check alone
 - [x] Workflow database steps bind `{{variable}}` values as query parameters; trigger responses carry an error code, not step details
+- [x] Workflow approvals suspend the run and resume it on decision, across restarts; approval inbox; crash recovery for interrupted runs
+- [x] Workflow Start step input types checked before a run starts; connector actions that require confirmation usable in workflows
 - [ ] Verify Responses-bridge streaming usage numbers on the next LiteLLM upgrade (upstream mis-mapping suspected)
 - [ ] Retire the LiteLLM chat→responses bridge once the native GPT-5.x path has run a full release
 - [ ] Stripe billing go-live — nightly reconcile against Stripe for missed webhooks, full-stack regression tests, live price ID
