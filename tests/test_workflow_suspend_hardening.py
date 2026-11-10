@@ -1038,3 +1038,61 @@ class TestARunClosedUnderItsProcessDoesNothingMore:
         assert ran == []
         assert outcome.status == "cancelled"
         assert (await rig.run(started.run_id)).status == "cancelled"
+
+
+# ---------------------------------------------------------------------------
+# Round 2, A. An answer counts even if nobody would be asked today
+# ---------------------------------------------------------------------------
+
+
+class TestTheFlagRemovedWhileARequestWaits:
+    @staticmethod
+    async def _unflag(rig: Rig) -> None:
+        from fim_one.db.models.connector import ConnectorAction
+
+        async with rig.factory() as db:
+            await db.execute(
+                update(ConnectorAction)
+                .where(ConnectorAction.id == "wipe-1")
+                .values(requires_confirmation=False)
+            )
+            await db.commit()
+
+    async def test_a_rejection_still_stops_the_action(
+        self, rig: Rig, flagged: _Adapter, hooked: Any
+    ) -> None:
+        outcome = await rig.start()
+        request = await rig.request_of(outcome.run_id)
+        await self._unflag(rig)
+
+        await rig.decide(request.id, "reject", note="no")
+
+        run = await rig.ended(outcome.run_id)
+        assert run.status == "failed" and flagged.calls == []
+        assert "the confirmation was rejected (no)" in run.node_results["connector_1"]["error"]
+
+    async def test_an_expiry_still_stops_the_action(self, rig: Rig, flagged: _Adapter) -> None:
+        outcome = await rig.start()
+        request = await rig.request_of(outcome.run_id)
+        await self._unflag(rig)
+        await rig.flip(request.id, expires_at=datetime.now(UTC) - timedelta(seconds=1))
+
+        await WorkflowRunSupervisor(rig.service).sweep()
+
+        run = await rig.ended(outcome.run_id)
+        assert run.status == "failed" and flagged.calls == []
+
+    async def test_an_approval_of_the_flagged_action_does_not_cover_the_unflagged_one(
+        self, rig: Rig, flagged: _Adapter, hooked: Any
+    ) -> None:
+        outcome = await rig.start()
+        request = await rig.request_of(outcome.run_id)
+        await self._unflag(rig)
+
+        await rig.decide(request.id, "approve")
+
+        run = await rig.ended(outcome.run_id)
+        assert run.status == "failed" and flagged.calls == []
+        assert "changed after the confirmation was requested" in (
+            run.node_results["connector_1"]["error"]
+        )

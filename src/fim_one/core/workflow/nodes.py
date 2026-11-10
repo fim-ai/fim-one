@@ -1266,6 +1266,7 @@ def _call_fingerprint(connector: Any, action: Any) -> str:
         "parameters_schema": action.parameters_schema,
         "request_body_template": action.request_body_template,
         "response_extract": action.response_extract,
+        "requires_confirmation": bool(action.requires_confirmation),
     }
     text = json.dumps(definition, sort_keys=True, default=str, ensure_ascii=False)
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -1664,7 +1665,13 @@ class ConnectorExecutor:
                     )
                 connector = _usable[0]
 
-            if action is not None and action.requires_confirmation:
+            # Also when the flag was taken off the action while a request
+            # was waiting: a request that was made is answered, and its
+            # answer counts (a rejection does not become a go-ahead because
+            # nobody would be asked today).
+            if action is not None and (
+                action.requires_confirmation or node.id in context.suspensions
+            ):
                 # Asked after the checks above, so nobody is asked to
                 # confirm a call that would be refused anyway.
                 confirmed = await _confirmed(
