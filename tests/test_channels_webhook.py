@@ -265,6 +265,35 @@ class TestEmailSend:
         assert result.raw["to"] == "user@example.com"
         assert server.sendmail.call_args.args[1] == ["user@example.com"]
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("title", "subject"),
+        [
+            ("Line one\nLine two", "Line one Line two"),
+            ("Weekly report\r\nBcc: x@evil.example", "Weekly report Bcc: x@evil.example"),
+            ("  tabs\tand \x0b\x0c  spaces\u2028here ", "tabs and spaces here"),
+            ("nul\x00byte", "nul byte"),
+        ],
+    )
+    async def test_a_title_with_line_breaks_is_sent_as_a_one_line_subject(
+        self, title: str, subject: str
+    ) -> None:
+        """A line break in the title made the mail library refuse the message."""
+        import email as email_lib
+
+        channel = EmailChannel({"to": "user@example.com"})
+        with patch.dict(os.environ, {**_SMTP, "EMAIL_TOOL_ENABLED": "true"}):
+            with patch("fim_one.core.channels.email.smtplib.SMTP_SSL") as mock_smtp:
+                server = MagicMock()
+                mock_smtp.return_value.__enter__ = MagicMock(return_value=server)
+                mock_smtp.return_value.__exit__ = MagicMock(return_value=False)
+                result = await channel.send_notice(title, "Hello")
+        assert result.ok is True, result.error
+        message = email_lib.message_from_string(server.sendmail.call_args.args[2])
+        assert message["Subject"] == subject
+        assert message["Bcc"] is None
+        assert server.sendmail.call_args.args[1] == ["user@example.com"]
+
     def test_recipients_are_required(self) -> None:
         with patch.dict(os.environ, {**_SMTP, "EMAIL_TOOL_ENABLED": "true"}):
             assert EmailChannel.config_error({}) == "channel_email_recipients_required"

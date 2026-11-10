@@ -173,3 +173,37 @@ class TestAllowlist:
             )
         assert result.startswith("[Error] Not a valid email address")
         secure.assert_not_called()
+
+
+class TestSubject:
+    def test_a_subject_with_line_breaks_is_sent_on_one_line(self) -> None:
+        """A line break in the subject made the send fail with a header error."""
+        import asyncio
+        import email as email_lib
+
+        server = MagicMock()
+        with (
+            patch.dict(os.environ, _SMTP),
+            patch("fim_one.core.tool.builtin.email_send.smtplib.SMTP_SSL") as secure,
+        ):
+            secure.return_value.__enter__ = MagicMock(return_value=server)
+            secure.return_value.__exit__ = MagicMock(return_value=False)
+            result = asyncio.run(
+                EmailSendTool().run(
+                    to="a@allowed.com", subject="Weekly\r\nBcc: x@evil.com\n", body="b"
+                )
+            )
+        assert result == "Email sent to a@allowed.com."
+        message = email_lib.message_from_string(server.sendmail.call_args.args[2])
+        assert message["Subject"] == "Weekly Bcc: x@evil.com"
+        assert message["Bcc"] is None
+        assert server.sendmail.call_args.args[1] == ["a@allowed.com"]
+
+    def test_a_subject_of_only_line_breaks_is_missing(self) -> None:
+        import asyncio
+
+        with patch.dict(os.environ, _SMTP):
+            result = asyncio.run(
+                EmailSendTool().run(to="a@allowed.com", subject="\r\n \n", body="b")
+            )
+        assert result == "[Error] 'subject' is required."

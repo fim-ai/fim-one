@@ -25,6 +25,19 @@ _MAX_ADDRESS_CHARS = 254
 _MAX_ECHO_CHARS = 80
 
 
+_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]+")
+
+
+def single_line(text: str) -> str:
+    """*text* on one line: line breaks and control characters become one space.
+
+    A mail subject (and a notification title) is a single line; a line
+    break in one makes the mail library refuse the message, or reads as the
+    start of another header.
+    """
+    return " ".join(_CONTROL_RE.sub(" ", text).split())
+
+
 def parse_recipients(*values: object) -> tuple[list[str], list[str]]:
     """The addresses in *values* and the items that are not one address.
 
@@ -203,7 +216,7 @@ class EmailSendTool(BaseTool):
         to_raw = kwargs.get("to")
         cc_raw = kwargs.get("cc")
         bcc_raw = kwargs.get("bcc")
-        subject: str = str(kwargs.get("subject") or "").strip()
+        subject: str = single_line(str(kwargs.get("subject") or ""))
         body: str = str(kwargs.get("body") or "")
         is_html: bool = bool(kwargs.get("html", False))
 

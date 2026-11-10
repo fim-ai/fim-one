@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..base import BaseTool
+from .email_send import single_line
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +148,8 @@ class SendNotificationTool(BaseTool):
         return "Available channels:\n" + "\n".join(lines)
 
     async def run(self, **kwargs: Any) -> str:
-        title = str(kwargs.get("title") or "").strip()
+        # A title is one line on every channel type, and a mail subject must be.
+        title = single_line(str(kwargs.get("title") or ""))
         body = str(kwargs.get("body") or "").strip()
         wanted = str(kwargs.get("channel") or "").strip()
         # The interface before channels were per organization named a

@@ -109,7 +109,7 @@ class EmailChannel(BaseChannel):
         )
 
     async def send_notice(self, title: str, body: str) -> ChannelSendResult:
-        from fim_one.core.tool.builtin.email_send import parse_recipients
+        from fim_one.core.tool.builtin.email_send import parse_recipients, single_line
 
         # Checked on every send, whoever the caller is: a row saved before
         # recipients were validated may hold text the SMTP layer would read
@@ -134,7 +134,9 @@ class EmailChannel(BaseChannel):
         if refused is not None:
             return ChannelSendResult(ok=False, error=refused)
         try:
-            await asyncio.to_thread(self._send_sync, to=recipient, subject=title, body=body)
+            await asyncio.to_thread(
+                self._send_sync, to=recipient, subject=single_line(title), body=body
+            )
         except Exception as exc:
             logger.exception("Email notification failed")
             return ChannelSendResult(ok=False, error=f"{type(exc).__name__}: {exc}")

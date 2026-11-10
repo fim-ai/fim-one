@@ -278,6 +278,76 @@ class TestOrganizationChannels:
         assert "No channels are available" in result
 
 
+class TestTitle:
+    @pytest.mark.asyncio
+    async def test_a_title_with_line_breaks_reaches_an_email_channel_as_one_line(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        seed: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Mail delivery raised on a title with a line break in it."""
+        import email as email_lib
+        from unittest.mock import MagicMock
+
+        for name, value in {
+            "SMTP_HOST": "smtp.example.com",
+            "SMTP_PORT": "465",
+            "SMTP_USER": "bot@example.com",
+            "SMTP_PASS": "secret",
+            "SMTP_SSL": "ssl",
+            "SMTP_ALLOWED_DOMAINS": "a.test",
+            "SMTP_ALLOWED_ADDRESSES": "",
+        }.items():
+            monkeypatch.setenv(name, value)
+        async with session_factory() as db:
+            db.add(
+                Channel(
+                    id=str(uuid.uuid4()),
+                    name="Mail",
+                    type="email",
+                    org_id=seed["org_a"],
+                    created_by=seed["alice"],
+                    config={"to": "ops@a.test"},
+                    is_active=True,
+                )
+            )
+            await db.commit()
+
+        server = MagicMock()
+        with patch("fim_one.core.channels.email.smtplib.SMTP_SSL") as secure:
+            secure.return_value.__enter__ = MagicMock(return_value=server)
+            secure.return_value.__exit__ = MagicMock(return_value=False)
+            result = await _tool(session_factory, seed["alice"]).run(
+                channel="Mail", title="Build failed\nBcc: x@evil.test\r\n", body="details"
+            )
+        assert result == "Notification sent to channel 'Mail'."
+        message = email_lib.message_from_string(server.sendmail.call_args.args[2])
+        assert message["Subject"] == "Build failed Bcc: x@evil.test"
+        assert message["Bcc"] is None
+        assert server.sendmail.call_args.args[1] == ["ops@a.test"]
+
+    @pytest.mark.asyncio
+    async def test_a_webhook_channel_gets_the_title_on_one_line(
+        self, session_factory: async_sessionmaker[AsyncSession], seed: dict[str, str]
+    ) -> None:
+        patcher, calls = _webhook_send()
+        with patcher:
+            await _tool(session_factory, seed["alice"]).run(
+                channel="Ops", title=" Build\n failed ", body="b"
+            )
+        assert calls[0][1]["blocks"][0]["text"]["text"] == "Build failed"
+
+    @pytest.mark.asyncio
+    async def test_a_title_of_only_line_breaks_is_missing(
+        self, session_factory: async_sessionmaker[AsyncSession], seed: dict[str, str]
+    ) -> None:
+        result = await _tool(session_factory, seed["alice"]).run(
+            channel="Ops", title="\n\r\n", body="b"
+        )
+        assert result == "[Error] 'title' is required."
+
+
 class TestInstanceChannels:
     """The webhooks from environment variables, kept for one release."""
 
