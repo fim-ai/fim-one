@@ -1,8 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useMemo } from "react"
 import { useTranslations } from "next-intl"
-import { toast } from "sonner"
 import { Plus, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,22 +9,19 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useAuth } from "@/contexts/auth-context"
 import { connectorApi } from "@/lib/api"
-import { getErrorMessage } from "@/lib/error-utils"
-import type { ConnectorResponse } from "@/types/connector"
 import {
   DATABASE_OPERATIONS,
   actionOptions,
   connectorOptions,
   databaseParameters,
   isDatabaseStep,
-  listAllConnectors,
 } from "./connector-options"
 import { InsertVariableBar, OutputVariableField, SectionHeader } from "./fields"
 import type { NodeFormProps } from "./types"
+import { useResourceList } from "./use-resource-list"
 
 export function ConnectorForm({ data, setField, setFields, otherNodes }: NodeFormProps<"connector">) {
   const t = useTranslations("workflows")
-  const tError = useTranslations("errors")
   const { user } = useAuth()
   const parameters = (data.parameters ?? {}) as Record<string, string>
   const paramEntries = Object.entries(parameters)
@@ -33,20 +29,7 @@ export function ConnectorForm({ data, setField, setFields, otherNodes }: NodeFor
   const actionId = data.action_id ?? ""
 
   // Connectors this user can use, with their actions
-  const [connectors, setConnectors] = useState<ConnectorResponse[]>([])
-  useEffect(() => {
-    let cancelled = false
-    listAllConnectors(connectorApi.list)
-      .then((all) => {
-        if (!cancelled) setConnectors(all)
-      })
-      .catch((err) => {
-        if (!cancelled) toast.error(getErrorMessage(err, tError))
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [tError])
+  const connectors = useResourceList(connectorApi.list)
   const connectorChoices = useMemo(
     () => connectorOptions(connectors, connectorId, user?.id ?? null),
     [connectors, connectorId, user?.id],

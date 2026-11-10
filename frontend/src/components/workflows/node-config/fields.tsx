@@ -3,8 +3,10 @@
 import { useTranslations } from "next-intl"
 import type { Node } from "@xyflow/react"
 import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { VariablePicker } from "../variable-picker"
+import type { SelectOption } from "./resource-options"
 
 /** Reusable section header */
 export function SectionHeader({ label }: { label: string }) {
@@ -59,6 +61,51 @@ export function InsertVariableBar({
     <div className="flex items-center gap-1 text-[10px] text-muted-foreground/60">
       <VariablePicker sourceNodes={otherNodes} onInsert={onInsert} />
       <span>{t("configVariableRefHint")}</span>
+    </div>
+  )
+}
+
+/**
+ * A dropdown over the resources a step can use. `emptyLabel` is the entry
+ * that clears the field, and what the field shows while nothing is chosen.
+ */
+export function ResourceSelect({
+  label,
+  emptyLabel,
+  value,
+  options,
+  onChange,
+  testId,
+}: {
+  label: string
+  emptyLabel: string
+  value: string
+  options: SelectOption[]
+  onChange: (value: string) => void
+  testId?: string
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-xs font-medium">{label}</label>
+      <Select
+        value={value || "__default__"}
+        onValueChange={(v) => {
+          const next = v === "__default__" ? "" : v
+          if (next !== value) onChange(next)
+        }}
+      >
+        <SelectTrigger className="w-full h-7 text-xs" data-testid={testId}>
+          <SelectValue placeholder={emptyLabel} />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__default__">{emptyLabel}</SelectItem>
+          {options.map((o) => (
+            <SelectItem key={o.value} value={o.value}>
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   )
 }

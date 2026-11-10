@@ -19,11 +19,17 @@ const api = vi.hoisted(() => ({
   connectors: [] as Array<Record<string, unknown>>,
 }))
 
-vi.mock("@/lib/api", () => ({
-  connectorApi: {
-    list: vi.fn(() => Promise.resolve({ items: api.connectors, pages: 1 })),
-  },
-}))
+vi.mock("@/lib/api", () => {
+  const none = () => Promise.resolve({ items: [], pages: 1 })
+  return {
+    connectorApi: {
+      list: vi.fn(() => Promise.resolve({ items: api.connectors, pages: 1 })),
+    },
+    agentApi: { list: vi.fn(none) },
+    kbApi: { list: vi.fn(none) },
+    mcpServerApi: { list: vi.fn(none) },
+  }
+})
 
 vi.mock("@/contexts/auth-context", () => ({
   useAuth: () => ({ user: { id: "u1" } }),
@@ -148,29 +154,8 @@ describe("node settings forms", () => {
     expect(String(conditions[0].id)).toMatch(/^cond_\d+$/)
   })
 
-  it("Knowledge Retrieval: the id field writes a one-element kb_ids list", () => {
-    const { setField } = renderForm("knowledgeRetrieval")
-    fireEvent.change(screen.getByPlaceholderText("KB ID"), { target: { value: "kb-1" } })
-    expect(setField).toHaveBeenLastCalledWith("kb_ids", ["kb-1"])
-    cleanup()
-    const filled = renderForm("knowledgeRetrieval", {
-      ...defaultNodeData("knowledgeRetrieval"),
-      kb_ids: ["kb-1"],
-    })
-    fireEvent.change(screen.getByPlaceholderText("KB ID"), { target: { value: "" } })
-    expect(filled.setField).toHaveBeenLastCalledWith("kb_ids", [])
-  })
-
-  it("Agent and MCP write their reference fields", () => {
-    const agent = renderForm("agent")
-    fireEvent.change(screen.getByPlaceholderText("Agent ID"), { target: { value: "agent-1" } })
-    expect(agent.setField).toHaveBeenLastCalledWith("agent_id", "agent-1")
-    cleanup()
+  it("MCP: the tool name field writes tool_name", () => {
     const mcp = renderForm("mcp")
-    fireEvent.change(screen.getByPlaceholderText(workflows.configServerIdPlaceholder), {
-      target: { value: "srv-1" },
-    })
-    expect(mcp.setField).toHaveBeenLastCalledWith("server_id", "srv-1")
     fireEvent.change(screen.getByPlaceholderText(workflows.configToolNamePlaceholder), {
       target: { value: "echo" },
     })

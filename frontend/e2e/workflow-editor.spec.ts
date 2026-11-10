@@ -223,7 +223,8 @@ test("build, save, reload and run a workflow that uses every offered node type",
 
   await test.step("configure Knowledge Retrieval", async () => {
     const panel = await openConfig(page, "knowledgeRetrieval")
-    await panel.getByPlaceholder("KB ID").fill(seeded.kbId)
+    await panel.getByTestId("kb-select").click()
+    await page.getByRole("option", { name: seeded.kbName }).click()
     await panel.getByPlaceholder(PROMPT_HINT).fill("sky colour")
   })
 
@@ -249,7 +250,8 @@ test("build, save, reload and run a workflow that uses every offered node type",
 
   await test.step("configure MCP Tool", async () => {
     const panel = await openConfig(page, "mcp")
-    await panel.getByPlaceholder("Server ID or name").fill(seeded.mcpServerId)
+    await panel.getByTestId("mcp-server-select").click()
+    await page.getByRole("option", { name: seeded.mcpServerName }).click()
     await panel.getByPlaceholder("Tool to execute").fill("echo")
   })
 
@@ -315,6 +317,18 @@ test("build, save, reload and run a workflow that uses every offered node type",
     const connector = await openConfig(page, "connector")
     await expect(connector.getByRole("combobox").nth(0)).toContainText(seeded.connectorName)
     await expect(connector.getByRole("combobox").nth(1)).toContainText(seeded.actionName)
+    // The dropdowns show what was chosen by name, and the stored fields
+    // hold the ids.
+    const agent = await openConfig(page, "agent")
+    await expect(agent.getByTestId("agent-select")).toContainText("No agent")
+    const kb = await openConfig(page, "knowledgeRetrieval")
+    await expect(kb.getByTestId("kb-select")).toContainText(seeded.kbName)
+    expect(saved.nodes.find((n) => n.type === "knowledgeRetrieval")?.data.kb_ids).toEqual([
+      seeded.kbId,
+    ])
+    const mcp = await openConfig(page, "mcp")
+    await expect(mcp.getByTestId("mcp-server-select")).toContainText(seeded.mcpServerName)
+    expect(saved.nodes.find((n) => n.type === "mcp")?.data.server_id).toBe(seeded.mcpServerId)
     const end = await openConfig(page, "end")
     await expect(end.getByPlaceholder("Key")).toHaveCount(5)
 

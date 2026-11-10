@@ -17,7 +17,9 @@ export interface Seed {
   actionId: string
   actionName: string
   mcpServerId: string
+  mcpServerName: string
   kbId: string
+  kbName: string
 }
 
 export const KB_FACT = "the sky over the stub is green"
@@ -73,15 +75,17 @@ export async function seed(request: APIRequestContext): Promise<Seed> {
     },
   )
 
+  const mcpServerName = "Stub MCP"
   const mcp = await api<{ data: { id: string } }>(request, "POST", "/api/mcp-servers", token, {
-    name: "Stub MCP",
+    name: mcpServerName,
     transport: "stdio",
     command: "node",
     args: [MCP_STUB_PATH],
   })
 
+  const kbName = "Stub KB"
   const kb = await api<{ data: { id: string } }>(request, "POST", "/api/knowledge-bases", token, {
-    name: "Stub KB",
+    name: kbName,
     retrieval_mode: "dense",
   })
   await api(request, "POST", `/api/knowledge-bases/${kb.data.id}/documents/create`, token, {
@@ -110,7 +114,9 @@ export async function seed(request: APIRequestContext): Promise<Seed> {
     actionId: action.data.id,
     actionName,
     mcpServerId: mcp.data.id,
+    mcpServerName,
     kbId: kb.data.id,
+    kbName,
   }
 }
 
