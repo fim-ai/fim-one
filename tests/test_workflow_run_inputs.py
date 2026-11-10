@@ -33,6 +33,9 @@ def _one(kind: str, value: Any, **declared: Any) -> Any:
         ("number", "5", 5),
         ("number", " 2.50 ", 2.5),
         ("number", "-1e3", -1000.0),
+        ("number", "+7", 7),
+        ("number", ".5", 0.5),
+        ("number", "5.", 5.0),
         ("boolean", True, True),
         ("boolean", "false", False),
         ("boolean", "Yes", True),
@@ -63,6 +66,14 @@ def test_a_value_that_fits_arrives_in_the_declared_type(kind: str, given: Any, a
         ("number", True, "a number"),
         ("number", "nan", "a number"),
         ("number", "1e999", "a number"),
+        ("number", "1_000", "a number"),
+        ("number", "inf", "a number"),
+        ("number", "-Infinity", "a number"),
+        ("number", "\u0661\u0662", "a number"),  # Arabic-Indic digits
+        ("number", "\uff11\uff12", "a number"),  # full-width digits
+        ("number", "0x10", "a number"),
+        ("number", "1e", "a number"),
+        ("number", ".", "a number"),
         ("number", [1], "a number"),
         ("boolean", "maybe", "true or false"),
         ("boolean", 2, "true or false"),
@@ -108,7 +119,18 @@ def test_a_default_stands_in_and_is_checked_like_any_value() -> None:
 
 def test_an_optional_input_that_is_not_given_is_left_out() -> None:
     assert _one("number", None) == "<left out>"
-    assert _one("string", "") == "<left out>"
+    assert _one("string", None) == "<left out>"
+    # No empty value exists for these types: empty text means "not given".
+    for kind in ("number", "boolean", "object", "array"):
+        assert _one(kind, "") == "<left out>"
+
+
+def test_empty_text_for_an_optional_text_input_is_a_value() -> None:
+    assert _one("string", "") == ""
+    assert _one("string", "", default_value="fallback") == "fallback"
+    with pytest.raises(InputRefusal) as refused:
+        _one("string", "", required=True)
+    assert refused.value.error_code == "workflow_input_required"
 
 
 def test_undeclared_inputs_and_nameless_rows_pass_through() -> None:

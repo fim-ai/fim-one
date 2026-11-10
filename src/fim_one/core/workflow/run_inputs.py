@@ -13,22 +13,28 @@ are passed through untouched, as they always were.
 Types, as stored in ``variables[].type`` (the editor's label in brackets):
 
 - ``string`` (Text): text. A number or boolean is written out as text.
-- ``number`` (Number): a finite number, or text that reads as one.
+- ``number`` (Number): a finite number, or text that is one written plainly:
+  ASCII digits with an optional sign, decimal point and exponent (``12``,
+  ``-0.5``, ``1e3``). ``1_000``, ``nan``, ``inf`` and digits of other
+  scripts are refused.
 - ``boolean`` (Boolean): ``true`` / ``false``, or the texts ``true``,
   ``false``, ``yes``, ``no``, ``1``, ``0``, or the numbers 1 and 0.
 - ``object`` (JSON): any JSON value; text is parsed as JSON.
 - ``array`` (List): a list; text is parsed as JSON and must be a list.
 
 An input that is absent, ``None`` or empty text takes the declared default
-(checked like any other value); with no default it is refused when
-required and left out otherwise. Inputs the Start step does not declare
-are passed through as they are.
+(checked like any other value). With no default: a required input is
+refused; an optional one is left out, except that empty text given for a
+``string`` input is a value and is passed on as ``""`` (for the other
+types there is no empty value, so empty text means "not given"). Inputs
+the Start step does not declare are passed through as they are.
 """
 
 from __future__ import annotations
 
 import json
 import math
+import re
 from typing import Any
 
 from fim_one.core.assembly.errors import AssemblyRefusal
@@ -78,6 +84,10 @@ class _Unfit(Exception):
     pass
 
 
+_INTEGER = re.compile(r"[+-]?[0-9]+")
+_DECIMAL = re.compile(r"[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?")
+
+
 def checked_inputs(blueprint: WorkflowBlueprint, inputs: dict[str, Any] | None) -> dict[str, Any]:
     """*inputs* as the run's steps get them; raises :class:`InputRefusal`.
 
@@ -103,6 +113,11 @@ def checked_inputs(blueprint: WorkflowBlueprint, inputs: dict[str, Any] | None) 
         if _absent(value):
             value = variable.get("default_value")
         if _absent(value):
+            sent = given.get(name)
+            if kind == "string" and isinstance(sent, str) and not variable.get("required"):
+                # Explicitly empty text for an optional text input.
+                given[name] = ""
+                continue
             if variable.get("required"):
                 raise InputRefusal(
                     INPUT_REQUIRED,
@@ -162,17 +177,14 @@ def _number(value: Any) -> int | float:
         return value
     if isinstance(value, str):
         text = value.strip()
-        try:
+        # Decided by the pattern, not by what int() and float() accept:
+        # they also take "1_000", "nan", "Infinity" and non-ASCII digits.
+        if _INTEGER.fullmatch(text):
             return int(text)
-        except ValueError:
-            pass
-        try:
+        if _DECIMAL.fullmatch(text):
             number = float(text)
-        except ValueError:
-            raise _Unfit from None
-        if not math.isfinite(number):
-            raise _Unfit
-        return number
+            if math.isfinite(number):
+                return number
     raise _Unfit
 
 
