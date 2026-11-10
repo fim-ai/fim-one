@@ -87,6 +87,9 @@ ADMIN_ACTIONS: tuple[str, ...] = (
     "export.users",
     "export.conversations",
     "export.full_backup",
+    # Added with the other exports of this section; written by the same
+    # administration module as a literal.
+    "export.audit_log",
     # Resources
     "agent.admin_delete",
     "agent.admin_batch_delete",
@@ -244,6 +247,20 @@ MARKET_UNSUBSCRIBE = "market.unsubscribe"
 # end of its period. The actor is the system; the change is the plan before
 # and after.
 BILLING_PLAN_CHANGE = "billing.plan_change"
+
+# -- Data leaving, and looks at data -------------------------------------------
+# Written on their own: nothing changed, and the record must not be able to
+# fail the export or the view. Administrators' exports of users,
+# conversations, backups and the audit log itself are in ADMIN_ACTIONS.
+# A user downloading everything the platform holds about them.
+EXPORT_OWN_DATA = "export.own_data"
+EXPORT_CONVERSATION = "export.conversation"
+EXPORT_WORKFLOW_RUNS = "export.workflow_runs"
+# An administrator reading the tail of the application log.
+SYSTEM_LOGS_READ = "system_logs.read"
+# The owner running SQL against a database connector from the portal. The
+# statement and its result are not recorded.
+DATABASE_QUERY = "database.query"
 
 ACTIONS: frozenset[str] = frozenset(ADMIN_ACTIONS) | frozenset(
     value

@@ -11,7 +11,7 @@ import logging
 import math
 import uuid
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
@@ -25,6 +25,7 @@ from fim_one.core.security.encryption import decrypt_db_config, same_connection_
 from fim_one.core.tool.connector.database.pool import ConnectionPoolManager
 from fim_one.core.tool.connector.database.safety import SqlSafetyError, validate_sql
 from fim_one.core.audit import actions
+from fim_one.core.audit import writer as audit
 from fim_one.db import create_session, get_session
 from fim_one.web.audit_events import record_resource
 from fim_one.web.auth import get_current_user
@@ -89,6 +90,33 @@ async def _record_fences(
         connector,
         changes=dict(list(fences.items())[:_MAX_RECORDED_FENCES]),
         detail=f"{len(fences)} switch(es) changed",
+    )
+
+
+async def _record_query(
+    user: User,
+    connector: Connector,
+    *,
+    outcome: Literal["success", "denied", "failed"],
+    read_only: bool,
+    rows: int | None = None,
+) -> None:
+    """The owner ran SQL against the connector's database from the portal.
+
+    Who, which connector, under which fence and how it ended. The statement
+    and what it returned are not recorded: they are the database's data.
+    Written on its own; it cannot fail or delay the query's answer.
+    """
+    detail = f"read_only={read_only}" + (f"; rows={rows}" if rows is not None else "")
+    await audit.record(
+        actions.DATABASE_QUERY,
+        actor=audit.actor_of(user),
+        org_id=connector.org_id,
+        target_type="connector",
+        target_id=connector.id,
+        target_label=connector.name,
+        outcome=outcome,
+        detail=detail,
     )
 
 
@@ -559,6 +587,7 @@ async def execute_query(
             body.sql, allow_write=not read_only, dialect=sql_dialect_of(config)
         )
     except SqlSafetyError as exc:
+        await _record_query(current_user, connector, outcome="denied", read_only=bool(read_only))
         resp = QueryResponse(error=str(exc))
         return ApiResponse(data=resp.model_dump())
 
@@ -575,8 +604,16 @@ async def execute_query(
             truncated=result.truncated,
             execution_time_ms=result.execution_time_ms,
         )
+        await _record_query(
+            current_user,
+            connector,
+            outcome="success",
+            read_only=bool(read_only),
+            rows=result.row_count,
+        )
         return ApiResponse(data=resp.model_dump())
     except Exception as exc:
+        await _record_query(current_user, connector, outcome="failed", read_only=bool(read_only))
         resp = QueryResponse(error=str(exc))
         return ApiResponse(data=resp.model_dump())
 

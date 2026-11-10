@@ -19,6 +19,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from fim_one.core.audit import actions
+from fim_one.core.audit import writer as audit
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_user
 from fim_one.web.exceptions import AppError
@@ -2060,6 +2062,14 @@ async def export_conversation(
     ascii_filename = filename.encode("ascii", errors="ignore").decode("ascii") or f"export.{ext}"
     utf8_filename = quote(filename)
     disposition = f"attachment; filename=\"{ascii_filename}\"; filename*=UTF-8''{utf8_filename}"
+
+    await audit.record(
+        actions.EXPORT_CONVERSATION,
+        actor=audit.actor_of(current_user),
+        target_type="conversation",
+        target_id=conv.id,
+        detail=f"format={ext}; detail={detail.value}",
+    )
 
     return StreamingResponse(
         stream,

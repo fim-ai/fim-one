@@ -27,6 +27,7 @@ from sqlalchemy import func, literal_column, or_, select, text, update as sa_upd
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from fim_one.core.audit import writer as audit
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_admin, hash_password, hash_password_async
 from fim_one.db.models import Agent, AuditLog, Connector, ConnectorCallLog, Conversation, InviteCode, KnowledgeBase, MCPServer as MCPServerModel, Message, ModelConfig, Organization, SystemSetting, User
@@ -1295,6 +1296,14 @@ async def export_audit_log(
             json.dumps(r.changes, ensure_ascii=False, sort_keys=True) if r.changes else "",
             r.ip_address or "",
         ])
+
+    # The audit log leaving the system is itself an event; it is written
+    # after the rows were read, so an export does not contain its own record.
+    await audit.record(
+        "export.audit_log",
+        actor=audit.actor_of(current_user),
+        detail=f"{len(rows)} row(s)",
+    )
 
     buf.seek(0)
     today = date.today().isoformat()

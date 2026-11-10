@@ -641,7 +641,13 @@
       "workflow__runs_clear": "Clear Workflow Runs",
       "market__subscribe": "Subscribe to Resource",
       "market__unsubscribe": "Unsubscribe from Resource",
-      "billing__plan_change": "Plan Changed by Billing"
+      "billing__plan_change": "Plan Changed by Billing",
+      "export__own_data": "Export Own Data",
+      "export__conversation": "Export Conversation",
+      "export__workflow_runs": "Export Workflow Runs",
+      "export__audit_log": "Export Audit Log",
+      "system_logs__read": "Read System Logs",
+      "database__query": "Run SQL on Database Connector"
     },
     "detailDialogTitle": "Audit Detail",
     "filterDateFrom": "From",

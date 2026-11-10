@@ -15,6 +15,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.audit import actions
+from fim_one.core.audit import writer as audit
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_admin
 from fim_one.web.exceptions import AppError
@@ -630,4 +632,10 @@ async def system_logs(
 
     # Reverse back to chronological order
     entries.reverse()
+    # The application log names users, connectors and key prefixes.
+    await audit.record(
+        actions.SYSTEM_LOGS_READ,
+        actor=audit.actor_of(current_user),
+        detail=f"{len(entries)} line(s)" + (f"; level={level}" if level else ""),
+    )
     return SystemLogsResponse(entries=entries)

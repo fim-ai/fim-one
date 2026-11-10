@@ -939,6 +939,16 @@ async def export_my_data(
         "eval_runs": eval_runs,
     }
 
+    # Written on its own: the export changed nothing, and its record must
+    # not be able to fail it.
+    await audit.record(
+        actions.EXPORT_OWN_DATA,
+        actor=audit.actor_of(current_user),
+        target_type="user",
+        target_id=current_user.id,
+        target_label=current_user.username or current_user.email,
+    )
+
     today = datetime.now(UTC).strftime("%Y-%m-%d")
     return JSONResponse(
         content=export_data,

@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.core.audit import actions
 from fim_one.core.audit.redact import diff_changes
+from fim_one.core.audit import writer as audit
 from fim_one.db import get_session
 from fim_one.core.security import get_safe_async_client, is_private_ip
 from fim_one.web.exceptions import AppError
@@ -2967,6 +2968,16 @@ async def export_workflow_runs(
         "total_runs": len(export_runs),
         "runs": export_runs,
     }
+
+    await audit.record(
+        actions.EXPORT_WORKFLOW_RUNS,
+        actor=audit.actor_of(current_user),
+        org_id=wf.org_id,
+        target_type="workflow",
+        target_id=wf.id,
+        target_label=wf.name,
+        detail=f"{len(export_runs)} run(s)",
+    )
 
     return Response(
         content=json.dumps(payload, ensure_ascii=False, indent=2),

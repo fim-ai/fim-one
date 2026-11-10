@@ -334,6 +334,7 @@ AUDITED: dict[Route, tuple[str, ...]] = {
         "workflow.unpublish_by_admin",
     ),
     ("POST", "/api/webhooks/stripe"): ("billing.plan_change",),
+    ("POST", "/api/connectors/{connector_id}/query"): ("database.query",),
 }
 
 EXEMPT: dict[Route, str] = {
@@ -407,8 +408,6 @@ EXEMPT: dict[Route, str] = {
 }
 
 KNOWN_GAPS: dict[Route, Gap] = {
-    # 8 exports and views
-    ("POST", "/api/connectors/{connector_id}/query"): Gap("8 exports and views", "database.query"),
     # 10 admin leftovers
     ("PATCH", "/api/admin/agents/{agent_id}/active"): Gap("10 admin leftovers", "agent.admin_enable|agent.admin_disable"),
     ("POST", "/api/admin/market/import-templates"): Gap("10 admin leftovers", "market.import_templates"),
@@ -432,11 +431,16 @@ KNOWN_GAPS: dict[Route, Gap] = {
 
 # GET routes that leave a record: an export, a look at someone else's data.
 AUDITED_READS: dict[Route, tuple[str, ...]] = {
+    ("GET", "/api/admin/audit-log/export"): ("export.audit_log",),
     ("GET", "/api/admin/conversations/{conv_id}/messages"): ("conversation.viewed",),
     ("GET", "/api/admin/export/conversations"): ("export.conversations",),
     ("GET", "/api/admin/export/full-backup"): ("export.full_backup",),
     ("GET", "/api/admin/export/users"): ("export.users",),
     ("GET", "/api/admin/model-config/export"): ("model_config.export",),
+    ("GET", "/api/admin/system-logs"): ("system_logs.read",),
+    ("GET", "/api/auth/me/export"): ("export.own_data",),
+    ("GET", "/api/conversations/{conversation_id}/export"): ("export.conversation",),
+    ("GET", "/api/workflows/{workflow_id}/runs/export"): ("export.workflow_runs",),
     # A sign-in through a provider's redirect, the account it may create,
     # and the linking of a provider to a signed-in account.
     ("GET", "/api/auth/oauth/{provider_name}/callback"): (
@@ -448,12 +452,6 @@ AUDITED_READS: dict[Route, tuple[str, ...]] = {
 
 # Read routes and other entry points that should leave a record and do not yet.
 KNOWN_NON_ROUTE_GAPS: dict[str, Gap] = {
-    "export of one's own data, a conversation, a workflow's runs": Gap(
-        "8 exports and views", "export.own_data / export.conversation / export.workflow_runs"
-    ),
-    "an administrator exporting the audit log or reading the system logs": Gap(
-        "8 exports and views", "export.audit_log / system_logs.read"
-    ),
     "a request refused by the IP rules": Gap("9 refusals", "security.ip_blocked"),
     "a trigger call with an unknown key": Gap("9 refusals", "workflow.trigger_key_invalid"),
     "a request nobody decided in time": Gap("11 confirmation decisions", "confirmation.expire"),

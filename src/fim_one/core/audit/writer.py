@@ -95,6 +95,13 @@ def system_actor(name: str) -> Actor:
 # ---------------------------------------------------------------------------
 
 
+def _own_session() -> Any:
+    """A session for a record written outside the caller's transaction."""
+    from fim_one.db import create_session
+
+    return create_session()
+
+
 def _strict_actions() -> bool:
     """Whether an unregistered action name is an error (it is under test)."""
     return bool(os.environ.get("PYTEST_CURRENT_TEST"))
@@ -192,9 +199,7 @@ async def record(
         db.add(row)
         return
     try:
-        from fim_one.db import create_session
-
-        async with create_session() as session:
+        async with _own_session() as session:
             session.add(row)
             await session.commit()
     except Exception as exc:
@@ -244,9 +249,7 @@ async def record_login(
         db.add(row)
         return
     try:
-        from fim_one.db import create_session
-
-        async with create_session() as session:
+        async with _own_session() as session:
             session.add(row)
             await session.commit()
     except Exception as exc:
