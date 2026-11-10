@@ -18,7 +18,10 @@ from .types import ExecutionContext, NodeResult, NodeStatus, NodeType, WorkflowN
 from .variable_store import VariableStore
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
     from fim_one.core.assembly.principal import CallContext
+    from fim_one.core.tool.base import BaseTool
     from fim_one.core.tool.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -856,6 +859,74 @@ def _step_call_context(node: WorkflowNodeDef, context: ExecutionContext) -> Call
     )
 
 
+async def _interpolated_parameters(
+    store: VariableStore, template: dict[str, Any]
+) -> dict[str, Any]:
+    """The step's parameters with ``{{variable}}`` references filled in.
+
+    Only string values are templates; anything else is passed as it is.
+    """
+    params: dict[str, Any] = {}
+    for key, val in template.items():
+        if isinstance(val, str) and "{{" in val:
+            params[key] = await store.interpolate(val)
+        else:
+            params[key] = val
+    return params
+
+
+class _StepFailed(Exception):
+    """A step cannot go on; ``detail`` is the text of its failure."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+        self.detail = detail
+
+
+async def _action_tool(
+    db: AsyncSession, call_context: CallContext, connector: Any, action_id: str
+) -> BaseTool:
+    """The tool that runs one action of *connector* for this step.
+
+    The runner's credential, the refusal when they have none, and the call
+    record all come from core/assembly: the same rule and the same record as
+    a call made from chat.
+    """
+    from fim_one.core.assembly.errors import AssemblyRefusal
+    from fim_one.core.assembly.toolset import connector_tools
+
+    action = next((a for a in connector.actions or [] if a.id == action_id), None)
+    if not action:
+        raise _StepFailed(f"Action '{action_id}' not found")
+
+    # Fail closed on confirmation-required actions (audit P0#3b).
+    # A workflow has no per-call interactive confirmation channel,
+    # so an action flagged requires_confirmation must not run
+    # unattended (the previous behavior silently bypassed the gate).
+    # The workflow-native way to gate a sensitive step is to place a
+    # Human Intervention node before it.
+    if action.requires_confirmation:
+        raise _StepFailed(
+            f"Action '{action.name}' requires confirmation and "
+            "cannot run unattended in a workflow. Add a Human "
+            "Intervention node before this step to gate it, or "
+            "use an action that does not require confirmation."
+        )
+
+    try:
+        (adapter,) = await connector_tools(
+            db,
+            call_context,
+            [connector],
+            mode="legacy",
+            strict=True,
+            action_ids=[action_id],
+        )
+    except AssemblyRefusal as refused:
+        raise _StepFailed(refused.detail) from None
+    return adapter
+
+
 class KnowledgeRetrievalExecutor:
     """Query the RAG pipeline for relevant knowledge."""
 
@@ -1002,24 +1073,15 @@ class ConnectorExecutor:
                     duration_ms=_ms_since(t0),
                 )
 
-            # Interpolate parameters
-            params: dict[str, Any] = {}
-            for key, val in params_template.items():
-                if isinstance(val, str) and "{{" in val:
-                    params[key] = await store.interpolate(val)
-                else:
-                    params[key] = val
+            params = await _interpolated_parameters(store, params_template)
 
-            # Load connector and action from DB
             async with create_session() as db:
                 from sqlalchemy.orm import selectinload
 
                 # The workflow is the binding: the connector is usable while
                 # the workflow's author can see it (own or subscribed) and it
                 # is switched on, whoever runs the workflow. The credential
-                # below is the runner's.
-                from fim_one.core.assembly.errors import AssemblyRefusal
-                from fim_one.core.assembly.toolset import connector_tools
+                # is the runner's.
                 from fim_one.core.assembly.visibility import (
                     ResourceKind,
                     authorize_use,
@@ -1046,55 +1108,13 @@ class ConnectorExecutor:
                         error=_decision.refused[connector_id].detail,
                         duration_ms=_ms_since(t0),
                     )
-                connector = _usable[0]
-
-                action = next(
-                    (a for a in connector.actions or [] if a.id == action_id), None
-                )
-                if not action:
-                    return NodeResult(
-                        node_id=node.id,
-                        status=NodeStatus.FAILED,
-                        error=f"Action '{action_id}' not found",
-                        duration_ms=_ms_since(t0),
-                    )
-
-                # Fail closed on confirmation-required actions (audit P0#3b).
-                # A workflow has no per-call interactive confirmation channel,
-                # so an action flagged requires_confirmation must not run
-                # unattended (the previous behavior silently bypassed the gate).
-                # The workflow-native way to gate a sensitive step is to place a
-                # Human Intervention node before it.
-                if action.requires_confirmation:
-                    return NodeResult(
-                        node_id=node.id,
-                        status=NodeStatus.FAILED,
-                        error=(
-                            f"Action '{action.name}' requires confirmation and "
-                            "cannot run unattended in a workflow. Add a Human "
-                            "Intervention node before this step to gate it, or "
-                            "use an action that does not require confirmation."
-                        ),
-                        duration_ms=_ms_since(t0),
-                    )
-
-                # The runner's credential, the refusal when they have none,
-                # and the call record all come from core/assembly: the same
-                # rule and the same record as a call made from chat.
                 try:
-                    (adapter,) = await connector_tools(
-                        db,
-                        call_context,
-                        [connector],
-                        mode="legacy",
-                        strict=True,
-                        action_ids=[action_id],
-                    )
-                except AssemblyRefusal as refused:
+                    adapter = await _action_tool(db, call_context, _usable[0], action_id)
+                except _StepFailed as failed_step:
                     return NodeResult(
                         node_id=node.id,
                         status=NodeStatus.FAILED,
-                        error=refused.detail,
+                        error=failed_step.detail,
                         duration_ms=_ms_since(t0),
                     )
 
@@ -1381,13 +1401,7 @@ class MCPExecutor:
                     duration_ms=_ms_since(t0),
                 )
 
-            # Interpolate parameters
-            params: dict[str, Any] = {}
-            for key, val in params_template.items():
-                if isinstance(val, str) and "{{" in val:
-                    params[key] = await store.interpolate(val)
-                else:
-                    params[key] = val
+            params = await _interpolated_parameters(store, params_template)
 
             # Load MCP server config from DB
             from fim_one.db import create_session
