@@ -33,6 +33,8 @@ class NodeStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     SKIPPED = "skipped"
+    # Asked a human for a decision; the run goes on once it is given.
+    WAITING = "waiting"
 
 
 class ErrorStrategy(str, Enum):
@@ -109,6 +111,10 @@ class NodeResult:
     active_handles: list[str] | None = None  # For condition/classifier nodes
     duration_ms: int = 0
     input_preview: str | None = None  # JSON snapshot of inputs (truncated to 500 chars)
+    # With status WAITING: what the step is waiting on, JSON-serialisable
+    # (``confirmation_id``, ``kind``, ``expires_at``). The engine hands it
+    # back in ``ExecutionContext.suspensions`` when the step is run again.
+    suspension: dict[str, Any] | None = None
 
 
 @dataclass
@@ -137,3 +143,12 @@ class ExecutionContext:
     # ``None`` for a context built by hand: its Agent steps get none of
     # those tools.
     sandbox_id: str | None = None
+    # Steps that asked for a decision earlier in this run, by node id: the
+    # ``NodeResult.suspension`` each returned. A step found here is being
+    # run again to pick up the decision instead of asking a second time.
+    suspensions: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # Whether a step may stop the run to wait for a decision: only a run
+    # with a record the run service can continue. Otherwise a step that
+    # needs a decision fails (or, for an approval step with no database,
+    # approves itself).
+    can_suspend: bool = False

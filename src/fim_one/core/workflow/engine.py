@@ -32,9 +32,8 @@ from .variable_store import VariableStore
 
 logger = logging.getLogger(__name__)
 
-# Extra time the engine allows a Human Intervention node past its own
-# ``timeout_hours`` so the node can expire its approval record itself.
-_APPROVAL_EXPIRY_GRACE_SEC = 30.0
+# Version of the state a suspended run is continued from (``run_suspended``).
+SUSPEND_STATE_VERSION = 1
 
 # Maximum size for trace detail values (e.g. HTTP response body)
 _TRACE_MAX_BYTES = 10 * 1024  # 10 KB
@@ -90,6 +89,7 @@ class WorkflowEngine:
         blueprint: WorkflowBlueprint,
         inputs: dict[str, Any] | None = None,
         context: ExecutionContext | None = None,
+        resume_state: dict[str, Any] | None = None,
     ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
         """Execute the workflow and yield SSE events as they occur.
 
@@ -97,27 +97,49 @@ class WorkflowEngine:
 
         Events emitted:
         - ``run_started``    - execution begins
+        - ``run_resumed``    - execution continues from *resume_state*
         - ``node_started``   - a node begins execution
         - ``node_completed`` - a node finishes successfully
         - ``node_skipped``   - a node was skipped (branch not active)
         - ``node_failed``    - a node failed
+        - ``node_waiting``   - a node asked a human for a decision
         - ``run_completed``  - all nodes done, final result
         - ``run_failed``     - execution failed globally
+        - ``run_suspended``  - nothing more can run until a decision is made
+
+        A step that needs a human's decision returns ``NodeStatus.WAITING``
+        with what it waits on. Other branches keep running; once nothing
+        else can, the last event is ``run_suspended``, whose ``state``
+        holds everything needed to go on: pass it back as *resume_state*
+        (with the same blueprint) and the waiting steps are run again to
+        pick up their decisions. Nothing waits in this process.
         """
         start_time = time.time()
         store = VariableStore(env_vars=self._env_vars)
+        resumed: dict[str, Any] = resume_state or {}
+        # Active time and tokens of the part of the run before it waited.
+        base_active_ms = int(resumed.get("active_ms") or 0)
+        base_tokens = int(resumed.get("total_tokens") or 0)
 
-        # Inject inputs into the store under "input." namespace
-        if inputs:
-            for key, value in inputs.items():
-                await store.set(f"input.{key}", value)
+        if resume_state is not None:
+            await store.set_many(dict(resumed.get("variables") or {}))
+            yield "run_resumed", {
+                "run_id": self._run_id,
+                "workflow_id": self._workflow_id,
+                "node_count": len(blueprint.nodes),
+            }
+        else:
+            # Inject inputs into the store under "input." namespace
+            if inputs:
+                for key, value in inputs.items():
+                    await store.set(f"input.{key}", value)
 
-        # Emit run_started event
-        yield "run_started", {
-            "run_id": self._run_id,
-            "workflow_id": self._workflow_id,
-            "node_count": len(blueprint.nodes),
-        }
+            # Emit run_started event
+            yield "run_started", {
+                "run_id": self._run_id,
+                "workflow_id": self._workflow_id,
+                "node_count": len(blueprint.nodes),
+            }
 
         # Build graph structures
         node_index = {n.id: n for n in blueprint.nodes}
@@ -142,28 +164,14 @@ class WorkflowEngine:
         # Semaphore for concurrency control
         semaphore = asyncio.Semaphore(self._max_concurrency)
 
-        # Time spent waiting for a human decision does not count toward the
-        # whole-run limit: an approval may wait for hours, the run limit is
-        # minutes. ``paused`` accumulates every interval during which at
-        # least one Human Intervention node was waiting.
-        approval_clock = {"waiting": 0, "since": 0.0, "paused": 0.0}
-
-        def _approval_wait_started() -> None:
-            if approval_clock["waiting"] == 0:
-                approval_clock["since"] = time.time()
-            approval_clock["waiting"] += 1
-
-        def _approval_wait_ended() -> None:
-            approval_clock["waiting"] -= 1
-            if approval_clock["waiting"] == 0:
-                approval_clock["paused"] += time.time() - approval_clock["since"]
-
         def _active_elapsed_ms() -> int:
-            """Run time so far, excluding time spent waiting for approvals."""
-            paused = approval_clock["paused"]
-            if approval_clock["waiting"] > 0:
-                paused += time.time() - approval_clock["since"]
-            return int((time.time() - start_time - paused) * 1000)
+            """Time the run has spent executing. The time a suspended run
+            spends waiting for a decision is not in it: an approval may wait
+            for hours, the whole-run limit is minutes."""
+            return base_active_ms + int((time.time() - start_time) * 1000)
+
+        def _total_tokens() -> int:
+            return base_tokens + int(self._usage_tracker.get_summary().total_tokens or 0)
 
         # Determine dependencies: for each node, which nodes must complete first
         predecessors: dict[str, set[str]] = defaultdict(set)
@@ -173,6 +181,42 @@ class WorkflowEngine:
         completed: set[str] = set()
         pending: set[str] = set(topo_order)
         running_tasks: dict[asyncio.Task[None], str] = {}
+        # Steps waiting for a decision, by node id: what each waits on.
+        waiting: dict[str, dict[str, Any]] = {}
+        # Steps that were waiting when the run was suspended; run again first.
+        resumed_waiting: dict[str, dict[str, Any]] = {}
+
+        # One context for every step of the run.
+        ctx = context or ExecutionContext(
+            run_id=self._run_id,
+            user_id=self._user_id,
+            workflow_id=self._workflow_id,
+            env_vars=self._env_vars,
+            cancel_event=self._cancel_event,
+        )
+        # Share this run's usage tracker with whatever context is used
+        # (an externally-supplied one, e.g. the webhook path, included) so
+        # token accounting accumulates into a single run total.
+        if ctx.usage_tracker is None:
+            ctx.usage_tracker = self._usage_tracker
+
+        if resume_state is not None:
+            known = set(node_status)
+            for nid, value in (resumed.get("node_status") or {}).items():
+                if nid in known:
+                    node_status[nid] = NodeStatus(value)
+            for nid, saved in (resumed.get("node_results") or {}).items():
+                if nid in known:
+                    node_results[nid] = _result_from_state(nid, saved)
+            active_edges = set(resumed.get("active_edges") or []) & active_edges
+            completed = set(resumed.get("completed") or []) & known
+            resumed_waiting = {
+                nid: dict(record)
+                for nid, record in (resumed.get("waiting") or {}).items()
+                if nid in known
+            }
+            pending = set(topo_order) - completed - set(resumed_waiting)
+            ctx.suspensions = {nid: dict(record) for nid, record in resumed_waiting.items()}
 
         # Event queue for streaming
         event_queue: asyncio.Queue[tuple[str, dict[str, Any]]] = asyncio.Queue()
@@ -215,7 +259,38 @@ class WorkflowEngine:
 
         # Failed nodes whose error strategy (CONTINUE / FAIL_BRANCH) says the
         # run should carry on.  They don't fail the run by themselves.
-        tolerated_failures: set[str] = set()
+        tolerated_failures: set[str] = set(resumed.get("tolerated_failures") or [])
+
+        def _suspend_state() -> dict[str, Any]:
+            """Everything a later ``execute_streaming`` needs to go on.
+
+            The author's env vars are left out: they are secrets, and the
+            run service supplies them again.
+            """
+            return {
+                "version": SUSPEND_STATE_VERSION,
+                "variables": {
+                    k: v for k, v in store.snapshot_sync().items() if not k.startswith("env.")
+                },
+                "node_status": {nid: st.value for nid, st in node_status.items()},
+                "node_results": {
+                    nid: _result_to_state(result) for nid, result in node_results.items()
+                },
+                "active_edges": sorted(active_edges),
+                "completed": sorted(completed),
+                "tolerated_failures": sorted(tolerated_failures),
+                "waiting": {nid: dict(record) for nid, record in waiting.items()},
+                "active_ms": _active_elapsed_ms(),
+                "total_tokens": _total_tokens(),
+            }
+
+        async def _drop_waiting(reason: str) -> None:
+            """The run is ending: steps still waiting for a decision are skipped."""
+            for nid in sorted(waiting):
+                if node_status.get(nid) == NodeStatus.WAITING:
+                    node_status[nid] = NodeStatus.SKIPPED
+                    await _emit("node_skipped", {"node_id": nid, "reason": reason})
+            waiting.clear()
 
         def _branch_cut_off_by(failed_nid: str) -> set[str]:
             """Nodes that lose every active incoming path once *failed_nid*'s
@@ -309,27 +384,10 @@ class WorkflowEngine:
         ) -> NodeResult:
             """Run an executor once, enforcing the per-node timeout.
 
-            For HumanIntervention nodes the effective timeout is derived
-            from ``timeout_hours`` in the node data (converted to
-            seconds) rather than the generic ``timeout_ms``.
+            A step that waits for a human does not wait here: it asks,
+            returns ``WAITING`` and is run again once the answer is in.
             """
-            # C3: HumanIntervention nodes poll for approval over hours,
-            # so use their own timeout_hours instead of the generic
-            # per-node timeout_ms (which defaults to 30s).
-            if node.type == NodeType.HUMAN_INTERVENTION:
-                timeout_hours = float(
-                    node.data.get("timeout_hours", 24)
-                )
-                # Grace beyond the node's own deadline, so the executor marks
-                # its approval record expired before this outer limit fires;
-                # otherwise the record would stay pending after the run ends.
-                timeout_sec = timeout_hours * 3600 + _APPROVAL_EXPIRY_GRACE_SEC
-            else:
-                timeout_sec = node.timeout_ms / 1000
-
-            is_approval = node.type == NodeType.HUMAN_INTERVENTION
-            if is_approval:
-                _approval_wait_started()
+            timeout_sec = node.timeout_ms / 1000
             try:
                 return await asyncio.wait_for(
                     executor.execute(node, store, ctx),
@@ -341,45 +399,16 @@ class WorkflowEngine:
                     status=NodeStatus.FAILED,
                     error=f"Node execution timed out after {timeout_sec:.0f}s",
                 )
-            finally:
-                if is_approval:
-                    _approval_wait_ended()
 
         async def _run_node(nid: str) -> None:
             """Execute a single node with retry, semaphore, and per-node timeout."""
-            # C3: HumanIntervention nodes poll for hours — don't hold the
-            # concurrency semaphore during the long wait.  Acquire it
-            # briefly for setup, then release before executing.
-            is_human_intervention = (
-                node_index[nid].type == NodeType.HUMAN_INTERVENTION
-            )
-            if is_human_intervention:
-                await semaphore.acquire()
-                semaphore.release()
-            else:
-                await semaphore.acquire()
-            try:
+            async with semaphore:
                 await _run_node_inner(nid)
-            finally:
-                if not is_human_intervention:
-                    semaphore.release()
 
         async def _run_node_inner(nid: str) -> None:
             """Inner node execution logic (retry, timeout, event emission)."""
             node = node_index[nid]
             executor = get_executor(node.type)
-            ctx = context or ExecutionContext(
-                run_id=self._run_id,
-                user_id=self._user_id,
-                workflow_id=self._workflow_id,
-                env_vars=self._env_vars,
-                cancel_event=self._cancel_event,
-            )
-            # Share this run's usage tracker with whatever context is used
-            # (an externally-supplied one, e.g. the webhook path, included) so
-            # token accounting accumulates into a single run total.
-            if ctx.usage_tracker is None:
-                ctx.usage_tracker = self._usage_tracker
 
             # Retry config from node data (default: no retry)
             retry_count = max(int(node.data.get("retry_count", 0)), 0)
@@ -390,7 +419,8 @@ class WorkflowEngine:
             input_preview = await _capture_input_preview(store, pred_ids)
 
             await _emit(
-                "node_started",
+                # A step run again after its decision came in has started before.
+                "node_resumed" if nid in resumed_waiting else "node_started",
                 {
                     "node_id": nid,
                     "node_type": node.type.value,
@@ -434,10 +464,33 @@ class WorkflowEngine:
                     if self._cancel_event and self._cancel_event.is_set():
                         break
 
+                    # A new attempt asks again; it does not reuse a
+                    # decision made on the attempt that failed.
+                    ctx.suspensions.pop(nid, None)
                     result = await _execute_once(node, executor, ctx)
 
                 # Attach the input snapshot to the result for persistence
                 result.input_preview = input_preview
+
+                if result.status == NodeStatus.WAITING:
+                    record = dict(result.suspension or {})
+                    node_status[nid] = NodeStatus.WAITING
+                    waiting[nid] = record
+                    ctx.suspensions[nid] = record
+                    await _emit(
+                        "node_waiting",
+                        {
+                            "node_id": nid,
+                            "node_type": node.type.value,
+                            "status": "waiting",
+                            "input_preview": input_preview,
+                            "waiting_for": record,
+                        },
+                    )
+                    return
+
+                waiting.pop(nid, None)
+                ctx.suspensions.pop(nid, None)
                 node_results[nid] = result
 
                 # Build debug trace data if in debug mode
@@ -501,8 +554,16 @@ class WorkflowEngine:
         async def _orchestrator() -> None:
             """Main orchestration loop — runs until all nodes are done."""
             _workflow_timed_out = False
+            _cancelled = False
+            _suspended = False
             try:
-                while pending or running_tasks:
+                # Continuing a suspended run: the steps that were waiting
+                # go first, each to pick up its decision.
+                for nid in sorted(resumed_waiting):
+                    node_status[nid] = NodeStatus.RUNNING
+                    running_tasks[asyncio.create_task(_run_node(nid))] = nid
+
+                while pending or running_tasks or waiting:
                     # Check for workflow-level timeout
                     if self._workflow_timeout_ms > 0:
                         elapsed_ms = _active_elapsed_ms()
@@ -525,6 +586,7 @@ class WorkflowEngine:
                                     *running_tasks, return_exceptions=True
                                 )
                             running_tasks.clear()
+                            await _drop_waiting("Workflow timeout exceeded")
                             await _emit(
                                 "run_failed",
                                 {
@@ -532,6 +594,7 @@ class WorkflowEngine:
                                     "error": f"Workflow execution timed out after {self._workflow_timeout_ms}ms",
                                     "error_code": "workflow_run_timed_out",
                                     "duration_ms": elapsed_ms,
+                                    "total_tokens": _total_tokens(),
                                 },
                             )
                             _workflow_timed_out = True
@@ -554,6 +617,8 @@ class WorkflowEngine:
                                 *running_tasks, return_exceptions=True
                             )
                         running_tasks.clear()
+                        await _drop_waiting("Execution cancelled")
+                        _cancelled = True
                         break
 
                     # M4: Check STOP_WORKFLOW BEFORE launching new nodes to
@@ -615,6 +680,11 @@ class WorkflowEngine:
                         continue
 
                     if not running_tasks:
+                        if waiting and not _has_stop_workflow_failure():
+                            # Everything that can run has; the rest waits
+                            # for a human's decision.
+                            _suspended = True
+                            break
                         if pending:
                             # Deadlock — nodes waiting for predecessors that can't finish
                             for nid in sorted(pending):
@@ -650,7 +720,10 @@ class WorkflowEngine:
 
                     for finished_task in done:
                         nid = running_tasks.pop(finished_task)
-                        completed.add(nid)
+                        if node_status.get(nid) != NodeStatus.WAITING:
+                            # A waiting step is not done: what follows it
+                            # stays pending.
+                            completed.add(nid)
 
                         exc = finished_task.exception()
                         if exc is not None and not isinstance(
@@ -680,10 +753,41 @@ class WorkflowEngine:
 
                 # Determine final status (skip if already handled by timeout)
                 if _workflow_timed_out:
-                    await event_queue.put(("__done__", {}))
                     return
 
-                elapsed_ms = int((time.time() - start_time) * 1000)
+                if _suspended:
+                    await _emit(
+                        "run_suspended",
+                        {
+                            "status": "waiting",
+                            "waiting": [
+                                {"node_id": nid, **record}
+                                for nid, record in sorted(waiting.items())
+                            ],
+                            "state": _suspend_state(),
+                            "duration_ms": _active_elapsed_ms(),
+                            "total_tokens": _total_tokens(),
+                        },
+                    )
+                    return
+
+                elapsed_ms = _active_elapsed_ms()
+                if _cancelled:
+                    await _emit(
+                        "run_completed",
+                        {
+                            "status": "cancelled",
+                            "error": "Execution cancelled",
+                            "error_code": "workflow_run_cancelled",
+                            "duration_ms": elapsed_ms,
+                            "total_tokens": _total_tokens(),
+                        },
+                    )
+                    return
+
+                # The run ends here (a step failed with stop_workflow while
+                # another was waiting): nobody is asked any more.
+                await _drop_waiting("Stopped by upstream node failure (stop_workflow)")
                 failed_nodes = [
                     nid
                     for nid, st in node_status.items()
@@ -719,7 +823,7 @@ class WorkflowEngine:
                             "error": f"Nodes failed: {failed_nodes}",
                             "error_code": "workflow_step_failed",
                             "duration_ms": elapsed_ms,
-                            "total_tokens": self._usage_tracker.get_summary().total_tokens,
+                            "total_tokens": _total_tokens(),
                         },
                     )
                 elif handled_failures and not end_reached:
@@ -735,7 +839,7 @@ class WorkflowEngine:
                             ),
                             "error_code": "workflow_step_failed",
                             "duration_ms": elapsed_ms,
-                            "total_tokens": self._usage_tracker.get_summary().total_tokens,
+                            "total_tokens": _total_tokens(),
                         },
                     )
                 else:
@@ -743,14 +847,14 @@ class WorkflowEngine:
                         "status": "completed",
                         "outputs": outputs,
                         "duration_ms": elapsed_ms,
-                        "total_tokens": self._usage_tracker.get_summary().total_tokens,
+                        "total_tokens": _total_tokens(),
                     }
                     if handled_failures:
                         completed_payload["failed_nodes"] = handled_failures
                     await _emit("run_completed", completed_payload)
 
             except asyncio.CancelledError:
-                elapsed_ms = int((time.time() - start_time) * 1000)
+                elapsed_ms = _active_elapsed_ms()
                 await _emit(
                     "run_completed",
                     {
@@ -758,11 +862,11 @@ class WorkflowEngine:
                         "error": "Execution cancelled",
                         "error_code": "workflow_run_cancelled",
                         "duration_ms": elapsed_ms,
-                        "total_tokens": self._usage_tracker.get_summary().total_tokens,
+                        "total_tokens": _total_tokens(),
                     },
                 )
             except Exception as exc:
-                elapsed_ms = int((time.time() - start_time) * 1000)
+                elapsed_ms = _active_elapsed_ms()
                 logger.exception("Workflow orchestrator failed")
                 await _emit(
                     "run_failed",
@@ -771,7 +875,7 @@ class WorkflowEngine:
                         "error": str(exc),
                         "error_code": "workflow_run_failed",
                         "duration_ms": elapsed_ms,
-                        "total_tokens": self._usage_tracker.get_summary().total_tokens,
+                        "total_tokens": _total_tokens(),
                     },
                 )
             finally:
@@ -794,6 +898,30 @@ class WorkflowEngine:
                     await orchestrator_task
                 except asyncio.CancelledError:
                     pass
+
+
+def _result_to_state(result: NodeResult) -> dict[str, Any]:
+    """A step's result as stored in a suspended run's state."""
+    return {
+        "status": result.status.value,
+        "output": result.output,
+        "error": result.error,
+        "active_handles": result.active_handles,
+        "duration_ms": result.duration_ms,
+        "input_preview": result.input_preview,
+    }
+
+
+def _result_from_state(node_id: str, saved: dict[str, Any]) -> NodeResult:
+    return NodeResult(
+        node_id=node_id,
+        status=NodeStatus(saved.get("status", NodeStatus.COMPLETED.value)),
+        output=saved.get("output"),
+        error=saved.get("error"),
+        active_handles=saved.get("active_handles"),
+        duration_ms=int(saved.get("duration_ms") or 0),
+        input_preview=saved.get("input_preview"),
+    )
 
 
 def _preview(value: Any, max_len: int = 200) -> str:
