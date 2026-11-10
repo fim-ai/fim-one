@@ -495,9 +495,12 @@ class StartedRun:
                         json.dumps((data.get("state") or {}).get("waiting") or {}, default=str)
                     )
                     cannot_wait: tuple[str, str] | None = None
-                    # A run that waited before already has its place.
-                    if self._resume_state is None and await self._service._waiting_limit_reached(
-                        self.principal.user_id
+                    # A run that waited before keeps its place.
+                    if not await self._service._reserve_wait(
+                        self.run_id,
+                        self.principal.user_id,
+                        self._waiting_on,
+                        always=self._resume_state is not None,
                     ):
                         cannot_wait = (
                             RUN_WAITING_LIMIT,
@@ -697,6 +700,9 @@ class WorkflowRunService:
         # Runs of this process whose record someone else closed; emptied
         # as each run's driver ends.
         self._closed_elsewhere: set[str] = set()
+        # Serialises taking a place among a user's waiting runs (SQLite has
+        # no lock a second connection would wait on).
+        self._waiting_lock = asyncio.Lock()
         # One lock per workflow with a single-flight start in progress; an
         # entry goes away once nobody holds or waits for its lock.
         self._single_flight_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = (
@@ -711,31 +717,120 @@ class WorkflowRunService:
         started.cancel()
         return True
 
-    async def _waiting_limit_reached(self, user_id: str) -> bool:
-        """Whether *user_id* already has as many waiting runs as one user may.
+    @staticmethod
+    async def _waiting_count(db: Any, user_id: str, *, besides: str | None = None) -> int:
+        """How many of *user_id*'s runs wait for a decision or are about to.
+
+        A run counts from the moment it has reserved its place
+        (``waiting_on`` set while still ``running``), so two runs that
+        reach their approvals together cannot both take the last place.
+        """
+        from sqlalchemy import Text, and_, func, or_, select
+        from sqlalchemy import cast as sql_cast
+
+        from fim_one.db.models import WorkflowRun
+
+        reserved = and_(
+            WorkflowRun.status == "running",
+            # Longer than JSON "null": something is in it.
+            func.coalesce(func.length(sql_cast(WorkflowRun.waiting_on, Text)), 0) > 4,
+        )
+        query = select(func.count()).where(
+            WorkflowRun.user_id == user_id, or_(WorkflowRun.status == "waiting", reserved)
+        )
+        if besides is not None:
+            query = query.where(WorkflowRun.id != besides)
+        return int((await db.execute(query)).scalar_one())
+
+    async def _reserve_wait(
+        self, run_id: str, user_id: str, waiting_on: dict[str, Any], *, always: bool = False
+    ) -> bool:
+        """Take one of *user_id*'s places for waiting runs; False when none is left.
 
         A waiting run costs nothing to keep, which is why their number is
-        capped: asked at the moment a run would start to wait. A run over
-        the cap fails at that step (its request is closed); runs already
-        waiting are not affected.
+        capped. Counting and taking are one step: under a lock on the user
+        (a PostgreSQL advisory lock for the transaction, across server
+        processes; a lock in this process, which is all SQLite has), the
+        other waiting runs are counted and, if there is room, this run's
+        ``waiting_on`` is written, which makes it count. A run that gets no
+        place fails at the step; runs already waiting are not affected.
         """
-        from sqlalchemy import func, select
+        from sqlalchemy import text, update
 
         from fim_one.db import create_session
         from fim_one.db.models import WorkflowRun
 
         limit = waiting_runs_limit()
-        if limit <= 0:
-            return False
-        async with create_session() as db:
-            waiting = (
-                await db.execute(
-                    select(func.count()).where(
-                        WorkflowRun.user_id == user_id, WorkflowRun.status == "waiting"
+        async with self._waiting_lock, create_session() as db:
+            if limit > 0 and not always:
+                if _dialect_of(db) == "postgresql":
+                    await db.execute(
+                        text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+                        {"key": f"workflow-waiting:{user_id}"},
                     )
-                )
-            ).scalar_one()
-        return int(waiting) >= limit
+                if await self._waiting_count(db, user_id, besides=run_id) >= limit:
+                    await db.rollback()
+                    return False
+            await db.execute(
+                update(WorkflowRun)
+                .where(WorkflowRun.id == run_id, WorkflowRun.status == "running")
+                .values(waiting_on=waiting_on)
+                .execution_options(synchronize_session=False)
+            )
+            await db.commit()
+        return True
+
+    async def waiting_room(self, parsed: Any, user_id: str, mode: RunMode) -> int | None:
+        """How many more of *user_id*'s runs may start to wait; ``None`` = any number.
+
+        ``None`` too for a workflow none of whose steps can wait: no
+        approval step, and no connector step whose action requires
+        confirmation (judged from the blueprint and the actions as they
+        are now).
+        """
+        from sqlalchemy import func, select
+
+        from fim_one.db import create_session
+        from fim_one.db.models.connector import ConnectorAction
+
+        limit = waiting_runs_limit()
+        if limit <= 0 or mode in NO_APPROVAL_MODES:
+            return None
+        can_wait = any(node.type == NodeType.HUMAN_INTERVENTION for node in parsed.nodes)
+        action_ids = [
+            str(node.data.get("action_id"))
+            for node in parsed.nodes
+            if node.type == NodeType.CONNECTOR and node.data.get("action_id")
+        ]
+        async with create_session() as db:
+            if not can_wait and action_ids:
+                flagged = (
+                    await db.execute(
+                        select(func.count()).where(
+                            ConnectorAction.id.in_(action_ids),
+                            ConnectorAction.requires_confirmation.is_(True),
+                        )
+                    )
+                ).scalar_one()
+                can_wait = bool(flagged)
+            if not can_wait:
+                return None
+            return max(0, limit - await self._waiting_count(db, user_id))
+
+    async def refuse_if_cannot_wait(self, parsed: Any, user_id: str, mode: RunMode) -> None:
+        """Refuse a run that would have to wait when its user has no place left.
+
+        At the start, so that the steps before the approval are not run
+        for nothing (and their side effects repeated on the next try).
+        """
+        if await self.waiting_room(parsed, user_id, mode) == 0:
+            raise RunRefusedError(
+                RUN_WAITING_LIMIT,
+                429,
+                f"{waiting_runs_limit()} of this user's runs are already waiting for a "
+                "decision, and this workflow has a step that waits for one. Decide or "
+                "cancel some of them, then run the workflow again.",
+            )
 
     def note_closed_elsewhere(self, run_id: str) -> None:
         """Remember that *run_id*'s record was closed by someone else.
@@ -919,6 +1014,8 @@ class WorkflowRunService:
                 409,
                 "The workflow contains a human-approval step and cannot run here",
             )
+
+        await self.refuse_if_cannot_wait(parsed, ctx.principal.user_id, mode)
 
         if admit_batch:
             allowed, rate_error = await self.rate_limiter.admit_batch(ctx.principal.user_id)

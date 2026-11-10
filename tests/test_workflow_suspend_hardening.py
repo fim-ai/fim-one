@@ -644,31 +644,111 @@ class TestAContinuationTakesASlot:
 
 
 class TestWaitingRunsAreCapped:
-    async def test_a_run_over_the_cap_fails_at_the_step_instead_of_waiting(
+    async def test_at_the_cap_a_workflow_that_waits_is_refused_before_any_step(
         self, rig: Rig, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("WORKFLOW_MAX_WAITING_RUNS_PER_USER", "2")
         first, second = (await rig.start()), (await rig.start())
         assert (first.status, second.status) == ("waiting", "waiting")
+        ran: list[str] = []
 
-        third = await rig.start()
+        async def start_step(node: Any, store: Any, ctx: Any) -> Any:
+            from fim_one.core.workflow.types import NodeResult, NodeStatus
 
-        assert third.status == "failed"
-        assert third.error_code == "workflow_waiting_limit_reached"
-        assert "2 of this user's runs are already waiting" in (third.error or "")
-        assert [r.status for r in await _requests(rig, third.run_id)] == ["expired"]
-        # The ones already waiting are untouched, and once one is decided
-        # there is room again.
-        assert {(await rig.run(o.run_id)).status for o in (first, second)} == {"waiting"}
+            ran.append(node.id)
+            return NodeResult(node_id=node.id, status=NodeStatus.COMPLETED, output={})
+
+        with patch("fim_one.core.workflow.nodes.StartExecutor.execute", side_effect=start_step):
+            with pytest.raises(rs.RunRefusedError) as refused:
+                await rig.start()
+
+        assert (refused.value.error_code, refused.value.status_code) == (
+            "workflow_waiting_limit_reached",
+            429,
+        )
+        assert "2 of this user's runs are already waiting" in refused.value.detail
+        assert ran == []  # no step before the approval ran for nothing
+        async with rig.factory() as s:
+            assert len((await s.execute(select(WorkflowRun))).scalars().all()) == 2
+        # Once one is decided or cancelled there is room again.
         assert await rig.service.cancel_stored_run(first.run_id) is True
         assert (await rig.start()).status == "waiting"
+
+    async def test_a_workflow_that_cannot_wait_is_not_refused(
+        self, rig: Rig, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("WORKFLOW_MAX_WAITING_RUNS_PER_USER", "1")
+        assert (await rig.start()).status == "waiting"
+        await rig.workflow(
+            {
+                "schema_version": 2,
+                "nodes": [_node("start_1", "start", "START"), _node("end_1", "end", "END")],
+                "edges": [_edge("start_1", "end_1")],
+                "viewport": {"x": 0, "y": 0, "zoom": 1},
+            }
+        )
+        assert (await rig.start()).status == "completed"
+
+    async def test_a_connector_step_that_asks_counts_as_a_step_that_waits(
+        self, rig: Rig, flagged: _Adapter, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("WORKFLOW_MAX_WAITING_RUNS_PER_USER", "1")
+        assert (await rig.start()).status == "waiting"
+        with pytest.raises(rs.RunRefusedError) as refused:
+            await rig.start()
+        assert refused.value.error_code == "workflow_waiting_limit_reached"
+
+    async def test_runs_reaching_their_approvals_together_cannot_overshoot(
+        self, rig: Rig, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Six runs start while nothing waits, so all pass the check at the
+        start; they reach the approval together. Two get a place."""
+        monkeypatch.setenv("WORKFLOW_MAX_WAITING_RUNS_PER_USER", "2")
+        workers = [_new_service() for _ in range(6)]
+
+        outcomes = await asyncio.gather(*(rig.start(service=worker) for worker in workers))
+
+        assert sorted(o.status for o in outcomes) == ["failed"] * 4 + ["waiting"] * 2
+        failed = [o for o in outcomes if o.status == "failed"]
+        assert {o.error_code for o in failed} == {"workflow_waiting_limit_reached"}
+        for outcome in failed:
+            assert [r.status for r in await _requests(rig, outcome.run_id)] == ["expired"]
+            assert (await rig.run(outcome.run_id)).waiting_on is None
+        async with rig.factory() as s:
+            waiting = (
+                await s.execute(select(WorkflowRun).where(WorkflowRun.status == "waiting"))
+            ).scalars().all()
+        assert len(waiting) == 2
+
+    async def test_a_batch_starts_only_as_many_items_as_may_wait_and_says_so(
+        self, rig: Rig, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from fim_one.web.api import workflows as wf_api
+        from fim_one.web.schemas.workflow import WorkflowBatchRunRequest
+
+        monkeypatch.setenv("WORKFLOW_MAX_WAITING_RUNS_PER_USER", "3")
+        assert (await rig.start()).status == "waiting"
+
+        async with rig.factory() as db:
+            response = await wf_api.batch_run_workflow(
+                rig.wf.id,
+                WorkflowBatchRunRequest(inputs=[{"q": str(i)} for i in range(5)]),
+                current_user=rig.owner,
+                db=db,
+            )
+
+        results = response.data["results"]
+        assert response.data["not_started"] == 3
+        assert [r["status"] for r in results] == ["waiting", "waiting", "failed", "failed", "failed"]
+        assert all(r["run_id"] == "" for r in results[2:])
+        assert "3 of the 5 items were left out" in results[2]["error"]
+        async with rig.factory() as s:
+            assert len((await s.execute(select(WorkflowRun))).scalars().all()) == 3
 
     async def test_another_users_waiting_runs_do_not_count(
         self, rig: Rig, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("WORKFLOW_MAX_WAITING_RUNS_PER_USER", "1")
-        assert (await rig.start()).status == "waiting"
-        # A trigger run is the owner's too; the administrator's is not.
         async with rig.factory() as s:
             s.add(
                 WorkflowRun(
@@ -679,9 +759,9 @@ class TestWaitingRunsAreCapped:
                 )
             )
             await s.commit()
-        assert await rig.service._waiting_limit_reached(rig.admin.id) is True
+        assert (await rig.start()).status == "waiting"  # the owner's first
         monkeypatch.setenv("WORKFLOW_MAX_WAITING_RUNS_PER_USER", "0")  # no limit
-        assert await rig.service._waiting_limit_reached(rig.owner.id) is False
+        assert (await rig.start()).status == "waiting"
 
 
 # ---------------------------------------------------------------------------
@@ -1397,11 +1477,16 @@ class TestATriggerCallerLearnsWhyARunCouldNotWait:
         # A step before the approval, so the limit is met at the step.
         monkeypatch.setenv("WORKFLOW_MAX_WAITING_RUNS_PER_USER", "1")
         assert (await rig.start()).status == "waiting"
-        with patch.object(rig.service, "_refuse_if_running", return_value=None):
-            with patch.object(rig.service, "refuse_if_cannot_wait", return_value=None, create=True):
-                response = await wf_api._execute_trigger(
-                    await rig.workflow(), WorkflowTriggerRequest(inputs={})
-                )
+        from unittest.mock import AsyncMock
+
+        # Past the check at the start, as when two runs start together.
+        with (
+            patch.object(rig.service, "_refuse_if_running", new=AsyncMock()),
+            patch.object(rig.service, "refuse_if_cannot_wait", new=AsyncMock()),
+        ):
+            response = await wf_api._execute_trigger(
+                await rig.workflow(), WorkflowTriggerRequest(inputs={})
+            )
         assert response.data["status"] == "failed"
         assert response.data["error_code"] == "workflow_waiting_limit_reached"
         assert "too many runs" in response.data["error"]

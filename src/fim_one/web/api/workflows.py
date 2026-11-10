@@ -1841,6 +1841,13 @@ async def batch_run_workflow(
     except RunRefusedError as exc:
         raise _refused(exc) from None
 
+    # A workflow whose runs wait for a decision: only as many items start
+    # as the caller has places left for waiting runs. The rest are not
+    # started at all, so their earlier steps do not run for nothing.
+    room = await service.waiting_room(authorized[1], current_user.id, RunMode.BATCH)
+    startable = len(checked) if room is None else min(len(checked), room)
+    not_started = len(checked) - startable
+
     batch_id = str(uuid.uuid4())
     semaphore = asyncio.Semaphore(body.max_parallel)
 
@@ -1877,7 +1884,7 @@ async def batch_run_workflow(
     # Launch all runs concurrently (bounded by semaphore)
     tasks = [
         asyncio.create_task(_run_single(i, input_set))
-        for i, input_set in enumerate(checked)
+        for i, input_set in enumerate(checked[:startable])
     ]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -1900,10 +1907,26 @@ async def batch_run_workflow(
         else:
             batch_results.append(result)
 
+    for input_set in checked[startable:]:
+        batch_results.append(
+            BatchRunResultItem(
+                run_id="",
+                inputs=input_set,
+                status="failed",
+                error=(
+                    f"Not started: {not_started} of the {len(checked)} items were left out "
+                    "because that many more runs would be waiting for a decision than one "
+                    "user may have (workflow_waiting_limit_reached)."
+                ),
+                duration_ms=0,
+            )
+        )
+
     response = WorkflowBatchRunResponse(
         batch_id=batch_id,
         total=len(body.inputs),
         results=batch_results,
+        not_started=not_started,
     )
     return ApiResponse(data=response.model_dump())
 

@@ -177,6 +177,9 @@ class WorkflowBatchRunResponse(BaseModel):
     batch_id: str
     total: int
     results: list[BatchRunResultItem] = Field(default_factory=list)
+    # Items left out before starting: the caller had no more places for
+    # runs waiting for a decision (``workflow_waiting_limit_reached``).
+    not_started: int = 0
 
 
 # ---------------------------------------------------------------------------
