@@ -915,10 +915,7 @@ class TestALiveRunIsNotTakenForDead:
             def now(cls, tz: Any = None) -> Any:
                 return real.datetime.now(tz) + real.timedelta(days=1)
 
-        with (
-            patch.object(rs, "datetime", _AheadByADay),
-            patch("fim_one.core.workflow.run_recovery.time.time", lambda: time.time() + 86400),
-        ):
+        with patch.object(rs, "datetime", _AheadByADay):
             report = await WorkflowRunSupervisor(rig.service, stale_seconds=90).sweep()
 
         assert report.closed == [stale]
