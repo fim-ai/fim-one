@@ -46,10 +46,9 @@ class TestMySQL:
         cursor.description = None
         conn = MagicMock()
         conn.cursor = MagicMock(return_value=_Acquire(cursor))
-        pool = MagicMock()
-        pool.acquire = MagicMock(return_value=_Acquire(conn))
         driver = MySQLDriver({})
-        driver._pool = pool
+        driver._pool = MagicMock()
+        driver._session = lambda: _Acquire(conn)  # type: ignore[method-assign]
         try:
             sql = "DELETE FROM t" if fails else "SELECT 1"
             await driver.execute_query(sql, read_only=read_only)

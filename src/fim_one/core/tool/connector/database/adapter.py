@@ -19,7 +19,6 @@ from fim_one.core.tool.connector.adapter import connector_tool_prefix
 
 from .binding import (
     SqlBindingError,
-    bound_value,
     has_variables,
     parse_sql_template,
     render_sql,
@@ -400,12 +399,12 @@ class _DatabaseQueryTool(BaseTool):
                     "{{variable}} references are not supported in its SQL."
                 )
             template = parse_sql_template(sql, dialect=driver_cls.sql_dialect)
-            values = [bound_value(await resolve(name)) for name in template.variables]
-            bound_sql = render_sql(template, style)
+            values = [await resolve(name) for name in template.variables]
+            bound_sql, parameters = render_sql(template, style, values)
         except SqlBindingError as exc:
             await self._log_call(start_ms, False, error=str(exc), sql=sql)
             return f"[SQL Safety Error] {exc}"
-        return await self._run_sql(bound_sql, values)
+        return await self._run_sql(bound_sql, parameters)
 
     async def _run_sql(self, sql: str, parameters: list[Any] | None) -> str:
         start_ms = time.monotonic_ns() // 1_000_000

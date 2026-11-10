@@ -15,6 +15,7 @@ from fim_one.core.tool.connector.database.binding import (
     SqlDialect,
     SqlTemplate,
     bound_value,
+    mysql_literal,
     parse_sql_template,
     render_sql,
 )
@@ -22,10 +23,16 @@ from fim_one.core.tool.connector.database.drivers import DRIVER_REGISTRY
 
 
 def _bound(sql: str, driver: str) -> tuple[str, tuple[str, ...]]:
+    """The SQL *driver* is given, each variable bound to its own name."""
     cls = DRIVER_REGISTRY[driver]
     assert cls.placeholder_style is not None
     template = parse_sql_template(sql, dialect=cls.sql_dialect)
-    return render_sql(template, cls.placeholder_style), template.variables
+    bound, _ = render_sql(template, cls.placeholder_style, list(template.variables))
+    return bound, template.variables
+
+
+def _hex(text: str) -> str:
+    return f"_utf8mb4 X'{text.encode().hex().upper()}'"
 
 
 class TestEveryDriverHasItsPlaceholder:
@@ -34,7 +41,7 @@ class TestEveryDriverHasItsPlaceholder:
     def test_every_registered_driver_can_bind(self) -> None:
         assert set(DRIVER_REGISTRY) == {"postgresql", "kingbasees", "highgo", "mysql", "dm8"}
         for cls in DRIVER_REGISTRY.values():
-            assert cls.placeholder_style in ("numeric", "format", "qmark")
+            assert cls.placeholder_style in ("numeric", "qmark", "literal")
 
     @pytest.mark.parametrize("driver", ["postgresql", "kingbasees", "highgo"])
     def test_postgresql_family_numbers_them(self, driver: str) -> None:
@@ -42,12 +49,21 @@ class TestEveryDriverHasItsPlaceholder:
         assert sql == "SELECT a FROM t WHERE id = $1 AND name = $2 LIMIT $3"
         assert names == ("start_1.id", "name", "n")
 
-    def test_mysql_uses_percent_s_and_doubles_literal_percent_signs(self) -> None:
-        sql, names = _bound(
-            "SELECT a FROM t WHERE name LIKE 'a%' AND b % 2 = {{x}} AND c = {{y}}", "mysql"
+    def test_mysql_writes_each_value_as_a_hex_literal_and_sends_no_parameters(self) -> None:
+        template = parse_sql_template(
+            "SELECT a FROM t WHERE name LIKE 'a%' AND b % 2 = {{x}} AND c = {{y}}", dialect="mysql"
         )
-        assert sql == "SELECT a FROM t WHERE name LIKE 'a%%' AND b %% 2 = %s AND c = %s"
-        assert names == ("x", "y")
+        sql, parameters = render_sql(template, "literal", ["x' OR 1=1 -- ", "縗' OR 1=1 -- "])
+        assert parameters is None
+        # Nothing of a value reaches the statement but hex digits; the
+        # statement's own percent signs are left alone.
+        assert sql == (
+            "SELECT a FROM t WHERE name LIKE 'a%' AND b % 2 = "
+            + _hex("x' OR 1=1 -- ")
+            + " AND c = "
+            + _hex("縗' OR 1=1 -- ")
+        )
+        assert "OR 1=1" not in sql
 
     def test_dm8_uses_question_marks(self) -> None:
         sql, names = _bound(self.SQL, "dm8")
@@ -194,26 +210,46 @@ class TestPlaceholdersAlreadyInTheSql:
             "SELECT * FROM t WHERE a = $1 AND b = {{v}}", dialect="postgresql"
         )
         with pytest.raises(SqlBindingError, match="numbered parameter"):
-            render_sql(template, "numeric")
+            render_sql(template, "numeric", list(template.variables))
 
     def test_a_dollar_sign_in_a_string_is_text(self) -> None:
         template = parse_sql_template(
             "SELECT * FROM t WHERE a = 'costs $1' AND b = {{v}}", dialect="postgresql"
         )
-        assert render_sql(template, "numeric") == "SELECT * FROM t WHERE a = 'costs $1' AND b = $1"
+        assert render_sql(template, "numeric", ["x"]) == (
+            "SELECT * FROM t WHERE a = 'costs $1' AND b = $1",
+            ["x"],
+        )
 
     def test_a_question_mark_is_refused_for_dm8(self) -> None:
         template = parse_sql_template(
             "SELECT * FROM t WHERE a = ? AND b = {{v}}", dialect="generic"
         )
         with pytest.raises(SqlBindingError, match=r"'\?'"):
-            render_sql(template, "qmark")
+            render_sql(template, "qmark", list(template.variables))
 
     def test_comments_are_left_out_of_what_is_sent(self) -> None:
         template = parse_sql_template(
             "SELECT * FROM t -- who?\nWHERE a = {{v}} /* $1 */", dialect="generic"
         )
-        assert render_sql(template, "qmark") == "SELECT * FROM t  \nWHERE a = ?  "
+        assert render_sql(template, "qmark", ["x"]) == ("SELECT * FROM t  \nWHERE a = ?  ", ["x"])
+
+
+class TestMySQLLiterals:
+    def test_text_is_hex_whatever_it_holds(self) -> None:
+        assert mysql_literal("alice") == "_utf8mb4 X'616C696365'"
+        assert mysql_literal("") == "_utf8mb4 X''"
+        for text in ("'", "\\", "\\' OR 1=1 -- ", "縗' OR 1=1 -- ", "a\x00b", "%s", "{{x}}", "\n"):
+            literal = mysql_literal(text)
+            assert set(literal[len("_utf8mb4 X'") : -1]) <= set("0123456789ABCDEF")
+            assert bytes.fromhex(literal[len("_utf8mb4 X'") : -1]).decode() == text
+
+    def test_null_is_null(self) -> None:
+        assert mysql_literal(None) == "NULL"
+
+    def test_text_that_is_not_unicode_is_refused(self) -> None:
+        with pytest.raises(SqlBindingError, match="not valid Unicode"):
+            mysql_literal("\udcbf' OR 1=1", name="v")
 
 
 class TestValuesKeepTheirType:

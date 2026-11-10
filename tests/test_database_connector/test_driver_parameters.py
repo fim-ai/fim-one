@@ -7,7 +7,7 @@ import sys
 import types
 from datetime import date, datetime
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -56,39 +56,14 @@ class TestPostgreSQLFitsValuesToTheParameterTypes:
             _fit_parameters(_types("int4"), [])
 
 
-class _Acquire:
-    def __init__(self, value: Any) -> None:
-        self._value = value
-
-    async def __aenter__(self) -> Any:
-        return self._value
-
-    async def __aexit__(self, *exc: object) -> None:
-        return None
-
-
-class TestMySQLPassesValuesToTheCursor:
-    async def _run(self, sql: str, parameters: list[Any] | None) -> list[Any]:
-        cursor = MagicMock()
-        cursor.execute = AsyncMock()
-        cursor.fetchmany = AsyncMock(return_value=[])
-        cursor.description = None
-        conn = MagicMock()
-        conn.cursor = MagicMock(return_value=_Acquire(cursor))
-        pool = MagicMock()
-        pool.acquire = MagicMock(return_value=_Acquire(conn))
+class TestMySQLTakesNoParameters:
+    async def test_values_are_bound_before_the_driver_as_literals(self) -> None:
+        """aiomysql would escape them for a character set the session may not be in."""
         driver = MySQLDriver({})
-        driver._pool = pool
-        await driver.execute_query(sql, parameters=parameters)
-        return [call.args for call in cursor.execute.await_args_list]
-
-    async def test_values_travel_beside_the_sql(self) -> None:
-        calls = await self._run("SELECT 1 FROM t WHERE a = %s", ["x' OR 1=1 --"])
-        assert ("SELECT 1 FROM t WHERE a = %s", ("x' OR 1=1 --",)) in calls
-
-    async def test_sql_with_no_values_is_not_percent_formatted(self) -> None:
-        calls = await self._run("SELECT 1 FROM t WHERE a LIKE 'x%'", None)
-        assert ("SELECT 1 FROM t WHERE a LIKE 'x%'", None) in calls
+        driver._pool = MagicMock()
+        with pytest.raises(RuntimeError, match="takes no parameters"):
+            await driver.execute_query("SELECT 1 FROM t WHERE a = %s", parameters=["x"])
+        assert MySQLDriver.placeholder_style == "literal"
 
 
 class TestDM8PassesValuesToTheCursor:

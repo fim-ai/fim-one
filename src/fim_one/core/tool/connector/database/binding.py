@@ -3,8 +3,10 @@
 A workflow's database query step is written as SQL with ``{{variable}}``
 references. The values come from whoever starts the run or from an earlier
 step, so they are never pasted into the SQL text: each reference is replaced
-by the driver's placeholder (``$1``, ``%s``, ``?``) and the value travels to
-the database separately, where it can only ever be a value.
+by the driver's placeholder (``$1``, ``?``) and the value travels to the
+database separately, where it can only ever be a value. MySQL's driver has
+no such channel: there each value is written as a literal made of hex
+digits (:func:`mysql_literal`).
 
 A reference can therefore stand only where SQL takes a value. One inside a
 quoted string, a quoted identifier or a comment, or where a table name, a
@@ -19,6 +21,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -31,14 +34,17 @@ __all__ = [
     "SqlTemplate",
     "bound_value",
     "has_variables",
+    "mysql_literal",
     "parse_sql_template",
     "render_sql",
     "sql_tokens",
 ]
 
-# ``numeric``: ``$1`` (asyncpg). ``format``: ``%s`` (aiomysql). ``qmark``:
-# ``?`` (dmPython).
-PlaceholderStyle = Literal["numeric", "format", "qmark"]
+# ``numeric``: ``$1`` (asyncpg). ``qmark``: ``?`` (dmPython). ``literal``:
+# no placeholder at all; each value is written into the statement as a
+# literal that cannot be read as anything else (MySQL, whose driver has no
+# server-side parameters).
+PlaceholderStyle = Literal["numeric", "qmark", "literal"]
 # What the scanner needs to know about the SQL it reads: MySQL has ``#``
 # comments, PostgreSQL has dollar-quoted strings.
 
@@ -317,33 +323,72 @@ def _value_may_precede(after: _Token | None) -> bool:
     return not text.startswith(("(", "."))
 
 
-def render_sql(template: SqlTemplate, style: PlaceholderStyle) -> str:
-    """The SQL of *template* with the driver's placeholders in place of the references.
+def render_sql(
+    template: SqlTemplate, style: PlaceholderStyle, values: Sequence[Any]
+) -> tuple[str, list[Any] | None]:
+    """The SQL of *template* for a driver, and the parameters to send with it.
+
+    ``numeric`` and ``qmark``: each reference becomes the driver's
+    placeholder and *values* are returned as the parameters. ``literal``:
+    each value is written into the SQL as a MySQL literal and there are no
+    parameters (``None``).
 
     Raises :class:`SqlBindingError` when the SQL already holds text the
-    driver would read as a placeholder.
+    driver would read as a placeholder, or a value cannot be bound.
     """
+    if len(values) != len(template.variables):
+        raise SqlBindingError("The SQL's references and their values do not match")
     out: list[str] = []
+    parameters: list[Any] = []
     for index, part in enumerate(template.parts):
-        if style == "format":
-            # The driver fills placeholders with ``%``: a literal percent
-            # sign is written doubled.
-            part = part.replace("%", "%%")
-        elif style == "numeric":
+        if style == "numeric":
             if _numbered_placeholder_in_code(part):
                 raise SqlBindingError(
                     "The SQL already has a numbered parameter ($1, $2, ...). "
                     "Use {{variable}} references only."
                 )
-        elif _question_mark_in_code(part):
+        elif style == "qmark" and _question_mark_in_code(part):
             raise SqlBindingError(
                 "The SQL has a '?' outside quotes, which this database reads as "
                 "a parameter. Use {{variable}} references only."
             )
         out.append(part)
-        if index < len(template.variables):
-            out.append({"numeric": f"${index + 1}", "format": "%s", "qmark": "?"}[style])
-    return "".join(out)
+        if index == len(template.variables):
+            break
+        value = bound_value(values[index])
+        if style == "literal":
+            out.append(mysql_literal(value, name=template.variables[index]))
+        else:
+            parameters.append(value)
+            out.append(f"${len(parameters)}" if style == "numeric" else "?")
+    return "".join(out), (None if style == "literal" else parameters)
+
+
+def mysql_literal(value: Any, *, name: str = "value") -> str:
+    """*value* as a MySQL literal that reads the same on any session.
+
+    Text is written as ``_utf8mb4 X'<hex of its UTF-8 bytes>'``: only hex
+    digits reach the statement, so no quote or backslash in the value, no
+    ``sql_mode`` and no client character set can make it anything but that
+    text. (Escaping a quote is only correct for the character set the
+    session is in: with ``SET NAMES gbk`` a two-byte character that ends
+    in 0x5C swallows the escaping backslash.)
+    """
+    if value is None:
+        return "NULL"
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        if value != value or value in (float("inf"), float("-inf")):
+            raise SqlBindingError(f"{{{{{name}}}}} is not a number MySQL can take ({value})")
+        return repr(value)
+    try:
+        encoded = str(value).encode("utf-8")
+    except UnicodeEncodeError:
+        raise SqlBindingError(f"{{{{{name}}}}} holds text that is not valid Unicode") from None
+    return f"_utf8mb4 X'{encoded.hex().upper()}'"
 
 
 def _code_of(part: str) -> str:

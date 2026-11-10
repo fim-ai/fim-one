@@ -49,10 +49,12 @@ class DatabaseDriver(ABC):
     connection management, schema introspection, and query execution.
     """
 
-    # How this driver writes a bound parameter (``$1``, ``%s`` or ``?``).
-    # ``None``: the driver cannot take parameters, and SQL with
-    # ``{{variable}}`` references is refused for it.
-    placeholder_style: ClassVar[Literal["numeric", "format", "qmark"] | None] = None
+    # How a value is bound for this driver: a placeholder (``$1`` or ``?``)
+    # with the value sent beside the SQL, or ``literal`` (the value written
+    # into the SQL as a hex literal; see ``binding.mysql_literal``).
+    # ``None``: the driver cannot bind, and SQL with ``{{variable}}``
+    # references is refused for it.
+    placeholder_style: ClassVar[Literal["numeric", "qmark", "literal"] | None] = None
     # Whether ``execute_query(read_only=True)`` runs the query in a
     # read-only transaction that the database itself enforces.
     enforces_read_only: ClassVar[bool] = False
