@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from fim_one.core.tool.registry import ToolRegistry
 
 __all__ = [
+    "BARE_RUNTIME_EXCLUDED",
     "SANDBOXED_TOOLS",
     "WebAgentRuntimeFactory",
     "bare_runtime",
@@ -180,6 +181,13 @@ async def build_hooks(
     )
 
 
+# Built-in tools a step that names no agent does not get, besides the
+# sandboxed ones: they write files for, or read the knowledge bases of, a
+# user the step has no agent to act for. ``email_send`` and
+# ``send_notification`` stay: the operator opts in to them for the instance.
+BARE_RUNTIME_EXCLUDED = (*SANDBOXED_TOOLS, "generate_image", "kb_list", "kb_retrieve")
+
+
 async def _disabled_builtin_tools() -> list[str]:
     """The built-in tools an administrator switched off for the instance."""
     import json
@@ -200,15 +208,18 @@ async def bare_runtime(ctx: CallContext) -> AgentRuntime:
     The fast model and the built-in tools that need neither a user's
     resources nor a sandbox: no connectors, MCP servers, knowledge bases or
     delegation (the step selected no agent to bind them to), and none of
-    :data:`SANDBOXED_TOOLS`. Tools an administrator disabled are left out,
-    as everywhere else.
+    :data:`BARE_RUNTIME_EXCLUDED` (the sandboxed tools, image generation and
+    the knowledge-base tools). Tools an administrator disabled are left
+    out, as everywhere else.
     """
     from fim_one.db import create_session
     from fim_one.web.deps import get_effective_fast_llm, get_tools
 
     async with create_session() as db:
         llm = await get_effective_fast_llm(db)
-    tools = get_tools().exclude_by_name(*SANDBOXED_TOOLS, *await _disabled_builtin_tools())
+    tools = get_tools().exclude_by_name(
+        *BARE_RUNTIME_EXCLUDED, *await _disabled_builtin_tools()
+    )
     return AgentRuntime(
         ctx=ctx,
         agent=None,

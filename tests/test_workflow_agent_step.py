@@ -238,6 +238,8 @@ class TestAStepWithNoAgent:
         built = out.agents_built[-1]
         names = _names(built["tools"])
         assert not names & {"shell_exec", "python_exec", "node_exec", "file_ops"}
+        # Nor the tools that write files or read knowledge bases for a user.
+        assert not names & {"generate_image", "kb_list", "kb_retrieve"}
         # Nothing of the user's either: no agent was selected to bind it to.
         assert not names & {"connector", "database", "mcp", "call_agent", "run_workflow"}
         assert out.mcp_connects == {}
