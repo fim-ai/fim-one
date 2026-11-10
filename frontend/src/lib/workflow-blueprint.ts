@@ -108,3 +108,14 @@ export function serializeBlueprint(
     viewport: { x: viewport.x, y: viewport.y, zoom: viewport.zoom },
   }
 }
+
+/**
+ * The graph as text: what a save would store of these nodes and edges,
+ * without the viewport. Two canvas states with the same signature differ
+ * only in things that are not part of the workflow (which node is selected
+ * or being dragged, measured sizes, run and validation overlays).
+ */
+export function graphSignature(nodes: CanvasNode[], edges: CanvasEdge[]): string {
+  const { nodes: n, edges: e } = serializeBlueprint(nodes, edges, { x: 0, y: 0, zoom: 1 })
+  return JSON.stringify({ nodes: n, edges: e })
+}
