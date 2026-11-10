@@ -267,7 +267,6 @@ class TestWritesInsideAReadAreBlocked:
             'SELECT "update", `delete` FROM audit',
             "SELECT updated_at, deleted, inserted_by, into_stock FROM users",
             "SELECT REPLACE(name, 'a', 'b'), INSERT(name, 1, 2, 'x') FROM users",
-            "SELECT $$ DELETE FROM users $$ AS body",
             "EXPLAIN SELECT * FROM users",
             "EXPLAIN ANALYZE SELECT * FROM users",
             "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) SELECT * FROM users",
@@ -292,3 +291,55 @@ class TestWritesInsideAReadAreBlocked:
     )
     def test_a_connection_that_allows_writes_is_not_limited(self, sql: str) -> None:
         assert validate_sql(sql, allow_write=True) == sql
+
+
+class TestTheCheckReadsSqlTheWayTheDatabaseDoes:
+    """Where a string or a comment ends depends on the database."""
+
+    # DM8 and MySQL read ``$$`` as a name; PostgreSQL as the start of a string.
+    DOLLARS = "WITH $$ AS (SELECT 1) DELETE FROM users WHERE 1 = 1 /* $$ */"
+    # MySQL reads ``#`` as a comment; PostgreSQL as an operator.
+    HASH = "WITH d AS (SELECT 1 # ) DELETE FROM users\n) SELECT * FROM d"
+    # MySQL reads the backslash as escaping the quote; standard SQL does not.
+    BACKSLASH = (
+        "WITH d AS (SELECT 'a\\' AS x), e AS (DELETE FROM users RETURNING id) "
+        "SELECT * FROM e WHERE 'b' = ' '"
+    )
+
+    @pytest.mark.parametrize("dialect", ["generic", "mysql", None])
+    def test_dollar_signs_hide_nothing_where_they_are_not_quotes(
+        self, dialect: str | None
+    ) -> None:
+        with pytest.raises(SqlSafetyError):
+            validate_sql(self.DOLLARS, dialect=dialect)
+
+    def test_a_dollar_quoted_string_is_a_string_in_postgresql(self) -> None:
+        sql = "SELECT $$ DELETE FROM users $$ AS body"
+        assert validate_sql(sql, dialect="postgresql") == sql
+        # Not known to be PostgreSQL: read as SQL too, and refused.
+        with pytest.raises(SqlSafetyError):
+            validate_sql(sql)
+
+    @pytest.mark.parametrize("dialect", ["postgresql", "generic", None])
+    def test_a_hash_hides_nothing_where_it_is_not_a_comment(self, dialect: str | None) -> None:
+        with pytest.raises(SqlSafetyError):
+            validate_sql(self.HASH, dialect=dialect)
+
+    @pytest.mark.parametrize("dialect", ["postgresql", "mysql", "generic", None])
+    def test_a_backslash_before_a_quote_is_read_both_ways(self, dialect: str | None) -> None:
+        with pytest.raises(SqlSafetyError):
+            validate_sql(self.BACKSLASH, dialect=dialect)
+
+    def test_the_inside_of_a_mysql_executable_comment_is_sql(self) -> None:
+        with pytest.raises(SqlSafetyError):
+            validate_sql("WITH o AS (SELECT 1) /*!50000 DELETE FROM users */", dialect="mysql")
+        with pytest.raises(SqlSafetyError):
+            validate_sql("SELECT id /*! INTO @x */ FROM users", dialect="mysql")
+
+    def test_backslashes_in_ordinary_reads_are_fine(self) -> None:
+        for sql in (
+            r"SELECT * FROM files WHERE path LIKE 'C:\\temp\\%'",
+            r"SELECT 'it\'s' AS quoted, name FROM users",
+            r"SELECT regexp_replace(name, '\\d+', '') FROM users",
+        ):
+            assert validate_sql(sql) == sql

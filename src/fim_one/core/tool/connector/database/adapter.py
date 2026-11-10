@@ -412,7 +412,11 @@ class _DatabaseQueryTool(BaseTool):
 
         try:
             # Validate SQL
-            cleaned_sql = validate_sql(sql, allow_write=not self._read_only)
+            from .drivers import sql_dialect_of
+
+            cleaned_sql = validate_sql(
+                sql, allow_write=not self._read_only, dialect=sql_dialect_of(self._db_config)
+            )
 
             # Execute via pool
             pool = ConnectionPoolManager.get_instance()

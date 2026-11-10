@@ -501,7 +501,11 @@ async def execute_query(
     query_timeout = int(config.get("query_timeout", 30))
 
     try:
-        cleaned_sql = validate_sql(body.sql, allow_write=not read_only)
+        from fim_one.core.tool.connector.database.drivers import sql_dialect_of
+
+        cleaned_sql = validate_sql(
+            body.sql, allow_write=not read_only, dialect=sql_dialect_of(config)
+        )
     except SqlSafetyError as exc:
         resp = QueryResponse(error=str(exc))
         return ApiResponse(data=resp.model_dump())

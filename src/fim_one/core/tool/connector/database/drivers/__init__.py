@@ -62,3 +62,9 @@ def _register_drivers() -> None:
 
 
 _register_drivers()
+
+
+def sql_dialect_of(config: dict[str, object]) -> str | None:
+    """The SQL dialect of the driver *config* names, or ``None`` when it is not registered."""
+    driver_cls = DRIVER_REGISTRY.get(str(config.get("driver", "postgresql")))
+    return driver_cls.sql_dialect if driver_cls else None

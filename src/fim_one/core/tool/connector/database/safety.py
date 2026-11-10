@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import re
 
+from .binding import SqlDialect, sql_tokens
+
 
 class SqlSafetyError(Exception):
     """Raised when a SQL statement fails safety validation."""
@@ -37,7 +39,7 @@ _DANGEROUS_PATTERNS: list[tuple[re.Pattern[str], str]] = [
 _WRITE_KEYWORDS = {"INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE", "TRUNCATE", "REPLACE", "MERGE", "GRANT", "REVOKE"}
 
 
-def validate_sql(sql: str, *, allow_write: bool = False) -> str:
+def validate_sql(sql: str, *, allow_write: bool = False, dialect: str | None = None) -> str:
     """Validate and clean a SQL statement for safe execution.
 
     Parameters
@@ -46,6 +48,12 @@ def validate_sql(sql: str, *, allow_write: bool = False) -> str:
         The raw SQL string to validate.
     allow_write:
         If ``False`` (default), only SELECT and WITH...SELECT are allowed.
+    dialect:
+        Whose rules for comments and quoting the SQL is read by:
+        ``"postgresql"``, ``"mysql"`` or ``"generic"`` (a driver's
+        ``sql_dialect``). ``None`` when the database is not known: the SQL
+        is then read by every one of them, and a write found in any reading
+        is refused.
 
     Returns
     -------
@@ -85,16 +93,19 @@ def validate_sql(sql: str, *, allow_write: bool = False) -> str:
         first_keyword = _get_first_keyword(cleaned)
         if first_keyword == "WITH":
             # CTE — verify it ultimately does a SELECT, not INSERT/UPDATE/DELETE
-            if not _cte_is_select(cleaned):
-                raise SqlSafetyError(
-                    "WITH (CTE) queries must end with SELECT, not a write operation"
-                )
-            _refuse_writes_inside_a_read(cleaned)
+            for code in _readings(cleaned, dialect):
+                if not _cte_is_select(code):
+                    raise SqlSafetyError(
+                        "WITH (CTE) queries must end with SELECT, not a write operation"
+                    )
+                _refuse_writes_inside_a_read(code)
         elif first_keyword == "SELECT":
-            _refuse_writes_inside_a_read(cleaned)
+            for code in _readings(cleaned, dialect):
+                _refuse_writes_inside_a_read(code)
         elif first_keyword == "EXPLAIN":
             # EXPLAIN only plans a statement; EXPLAIN ANALYZE runs it.
-            _refuse_explain_that_writes(cleaned)
+            for code in _readings(cleaned, dialect):
+                _refuse_explain_that_writes(code)
         elif first_keyword == "SHOW":
             pass  # SHOW is read-only (MySQL)
         elif first_keyword == "DESCRIBE" or first_keyword == "DESC":
@@ -151,31 +162,45 @@ _EXPLAIN_OPTION = re.compile(
 _READS = ("SELECT", "WITH", "TABLE", "VALUES")
 
 
-def _code_of(sql: str) -> str:
-    """*sql* without its comments, each quoted string or name replaced by ``''``.
+_DIALECTS: tuple[SqlDialect, ...] = ("postgresql", "mysql", "generic")
 
-    What is left is the statement's own words, so a keyword inside a string
-    or a comment is not mistaken for one, and a comment cannot hide one.
+
+def _readings(sql: str, dialect: str | None) -> list[str]:
+    """The statement's own words, once for each way *sql* can be read.
+
+    Each reading is *sql* without its comments and with every quoted string
+    or name replaced by ``''``: a keyword inside a string or a comment is
+    not mistaken for one, and a comment cannot hide one.
+
+    Databases do not agree on where a string or a comment ends: ``#`` starts
+    a comment in MySQL only, ``$$`` a string in PostgreSQL only, and a
+    backslash before a quote escapes it or not depending on the database
+    and its settings. Text that one reading takes for a string, another
+    takes for SQL. So the check is made on every reading that can apply:
+    both backslash rules, and every dialect when *dialect* is not known.
     """
-    from .binding import sql_tokens
+    dialects = tuple(name for name in _DIALECTS if name == dialect) or _DIALECTS
+    backslash_rules = (True, False) if "\\" in sql else (True,)
+    readings: list[str] = []
+    for name in dialects:
+        for escapes in backslash_rules:
+            out: list[str] = []
+            for token in sql_tokens(sql, dialect=name, backslash_escapes=escapes):
+                if token.kind == "comment":
+                    # MySQL runs the inside of ``/*! ... */`` as SQL.
+                    out.append(f" {token.text[3:-2]} " if token.text.startswith("/*!") else " ")
+                elif token.kind in ("quoted", "variable"):
+                    out.append(" '' ")
+                else:
+                    out.append(token.text)
+            code = "".join(out)
+            if code not in readings:
+                readings.append(code)
+    return readings
 
-    out: list[str] = []
-    # ``#`` is read as PostgreSQL's operator, not MySQL's comment: the
-    # words of a MySQL ``#`` comment are then checked as if they were SQL,
-    # which can refuse a harmless query but cannot hide a keyword.
-    for token in sql_tokens(sql, dialect="postgresql"):
-        if token.kind == "comment":
-            out.append(" ")
-        elif token.kind in ("quoted", "variable"):
-            out.append(" '' ")
-        else:
-            out.append(token.text)
-    return "".join(out)
 
-
-def _refuse_writes_inside_a_read(sql: str) -> None:
-    """Refuse a SELECT or WITH statement that changes data on the way."""
-    code = _code_of(sql)
+def _refuse_writes_inside_a_read(code: str) -> None:
+    """Refuse a SELECT or WITH statement (one reading of it) that changes data on the way."""
     if match := _ROW_CHANGING.search(code):
         raise SqlSafetyError(
             f"Only SELECT queries are allowed: {match.group(0).upper()} inside the "
@@ -188,13 +213,12 @@ def _refuse_writes_inside_a_read(sql: str) -> None:
         )
 
 
-def _refuse_explain_that_writes(sql: str) -> None:
+def _refuse_explain_that_writes(code: str) -> None:
     """Refuse EXPLAIN ANALYZE of anything but a plain read.
 
     Without ANALYZE the explained statement is planned, not run. With it,
     the statement runs: it must be a read, and one that changes nothing.
     """
-    code = _code_of(sql)
     if not _EXPLAIN_RUNS.search(code):
         return
     rest = code.lstrip()[len("EXPLAIN") :]
@@ -215,7 +239,6 @@ def _refuse_explain_that_writes(sql: str) -> None:
 
 def _cte_is_select(sql: str) -> bool:
     """Check whether a WITH (CTE) query ends with SELECT rather than a write op."""
-    sql = _code_of(sql)
     # Find the last top-level statement keyword after the CTE definitions
     # Look for the final SELECT/INSERT/UPDATE/DELETE after the last closing paren
     # of the CTE block. A simplified approach: find the last occurrence of
