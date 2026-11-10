@@ -38,6 +38,7 @@ from __future__ import annotations
 import re
 import traceback
 from collections.abc import Sequence
+from itertools import pairwise
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
@@ -167,6 +168,12 @@ SECRET_NAME_WORDS = (
     "credential",
     "credentials",
     "bearer",
+    "pat",
+    "dsn",
+    "connection",
+    "connstr",
+    "cookie",
+    "session",
     # Written without a separator.
     "apikey",
     "accesskey",
@@ -174,6 +181,7 @@ SECRET_NAME_WORDS = (
     "privatekey",
     "authtoken",
     "accesstoken",
+    "connectionstring",
 )
 # A name that starts with one of these switches something off: ``--no-auth``.
 _NEGATING_WORDS = frozenset({"no", "disable", "disabled", "skip", "without"})
@@ -217,8 +225,15 @@ _SWITCH_VALUES = frozenset({"true", "false", "yes", "no", "on", "off", "none", "
 _NOT_AFTER_TOKEN_CHAR = r"(?<![A-Za-z0-9_\-])"
 _TOKEN_BODY = (
     r"(?:"
-    # OpenAI-style, GitHub and Slack tokens: the prefix and at least eight more characters.
-    r"(?:sk-|ghp_|gho_|github_pat_|xoxb-|xoxp-)[A-Za-z0-9_\-]{8,}"
+    # OpenAI-style, Stripe, GitHub, GitLab and Slack tokens: the prefix and
+    # at least eight more characters.
+    r"(?:sk-|sk_live_|sk_test_|ghp_|gho_|ghs_|ghu_|github_pat_|glpat-"
+    r"|xoxb-|xoxp-|xoxa-|xapp-)[A-Za-z0-9_\-]{8,}"
+    # Prefixes that also begin ordinary words (Notion, Hugging Face, npm,
+    # Tavily, Firecrawl, HubSpot): sixteen more characters.
+    r"|(?:ntn_|secret_|hf_|npm_|tvly-|fc-|pat-)[A-Za-z0-9_\-]{16,}"
+    # A Google API key.
+    r"|AIza[A-Za-z0-9_\-]{20,}"
     # An AWS access key id.
     r"|AKIA[0-9A-Z]{16}"
     # A JWT: base64url parts joined by dots, the first starting with ``{"``.
@@ -237,6 +252,14 @@ _BEARER = re.compile(
 )
 # ``NAME=value``, and ``Name: value`` as a header is written.
 _ASSIGNMENT = re.compile(r"^([A-Za-z_][A-Za-z0-9_.\-]*)\s*[=:]\s*(\S.*)$", re.DOTALL)
+# ``Password=…`` / ``Pwd=…`` inside a connection string, and ``user:pass@``
+# at the start of a DSN written without a scheme.
+_CONNECTION_STRING = re.compile(r"(?i)(?<![A-Za-z])(?:password|pwd)\s*=\s*[^;\s]")
+_DSN_USER_INFO = re.compile(r"^[^\s:@/=]+:[^\s@/]+@\S")
+# An opaque value long enough to be a token whatever it is passed as.
+_OPAQUE_VALUE = re.compile(r"[A-Za-z0-9_\-+=.]{32,}")
+# Docker's way of handing a container its environment.
+_ENV_FLAGS = frozenset({"-e", "--env"})
 _NAME_WORDS = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|[0-9]+")
 
 # Why a URL is taken to carry a secret (:func:`url_secret_reasons`).
@@ -335,6 +358,8 @@ def url_carries_secret(url: str | None) -> bool:
 # (:func:`launch_arg_reasons`); a URL inside an argument gives the URL's own.
 ARG_NAME = "arg_name"
 ARG_TOKEN = "arg_token"
+ARG_ENV = "arg_env"
+ARG_CONNECTION_STRING = "arg_connection_string"
 
 
 def _name_words(name: str) -> list[str]:
@@ -345,7 +370,9 @@ def _name_words(name: str) -> list[str]:
 def _names_a_secret(name: str) -> bool:
     """Whether *name* says its value is a secret (see :data:`SECRET_NAME_WORDS`)."""
     words = _name_words(name)
-    if not words or not any(word in SECRET_NAME_WORDS for word in words):
+    # ``conn-str`` is ``connstr`` in two words.
+    joined = [first + second for first, second in pairwise(words)]
+    if not any(word in SECRET_NAME_WORDS for word in (*words, *joined)):
         return False
     return words[0] not in _NEGATING_WORDS and words[-1] not in _DESCRIBING_WORDS
 
@@ -360,9 +387,30 @@ def _value_reasons(text: str) -> list[str]:
     reasons: list[str] = []
     for match in _URL_IN_TEXT.finditer(text):
         reasons.extend(url_secret_reasons(match.group(0).rstrip(_TRAILING_PUNCTUATION)))
-    if _TOKEN_IN_ARGUMENT.search(_URL_IN_TEXT.sub(" ", text)) or _BEARER.search(text):
+    rest = _URL_IN_TEXT.sub(" ", text)
+    if _TOKEN_IN_ARGUMENT.search(rest) or _BEARER.search(text) or _is_opaque(rest):
         reasons.append(ARG_TOKEN)
+    if _CONNECTION_STRING.search(rest) or _DSN_USER_INFO.match(rest.strip()):
+        reasons.append(ARG_CONNECTION_STRING)
     return reasons
+
+
+def _is_opaque(text: str) -> bool:
+    """Whether *text*, or what it assigns, is a long opaque value or a UUID.
+
+    Thirty-two or more characters with letters and digits mixed in a run of
+    eight (a hex digest, a base64 key), or a UUID: long enough to be a
+    token whatever flag it follows, a one-letter one or none.
+    """
+    for candidate in {text.strip(), re.split(r"[=:]\s*", text.strip(), maxsplit=1)[-1]}:
+        if _UUID.fullmatch(candidate):
+            return True
+        if _OPAQUE_VALUE.fullmatch(candidate) and any(
+            len(run) >= 8 and re.search(r"[A-Za-z]", run) and re.search(r"[0-9]", run)
+            for run in re.split(r"[-_.+=]", candidate)
+        ):
+            return True
+    return False
 
 
 def launch_arg_reasons(args: Sequence[Any] | None) -> list[str]:
@@ -379,10 +427,19 @@ def launch_arg_reasons(args: Sequence[Any] | None) -> list[str]:
       another flag) or with a switch for one (``true``, ``none``) holds
       nothing;
     - ``arg_token``: a value shaped like a known credential, wherever it
-      stands: ``sk-…``, ``ghp_…``, ``gho_…``, ``github_pat_…``, ``xoxb-…``,
-      ``xoxp-…`` (each with at least eight more characters), an AWS access
-      key id (``AKIA`` and sixteen capitals or digits), a JWT (``eyJ…``
-      with a dot), or ``Bearer <token>``;
+      stands: ``sk-…``, ``sk_live_…``, ``sk_test_…``, ``ghp_…``, ``gho_…``,
+      ``ghs_…``, ``ghu_…``, ``github_pat_…``, ``glpat-…``, ``xoxb-…``,
+      ``xoxp-…``, ``xoxa-…``, ``xapp-…`` (each with at least eight more
+      characters), ``ntn_…``, ``secret_…``, ``hf_…``, ``npm_…``,
+      ``tvly-…``, ``fc-…``, ``pat-…`` (sixteen more), ``AIza…``, an AWS
+      access key id (``AKIA`` and sixteen capitals or digits), a JWT
+      (``eyJ…`` with a dot), ``Bearer <token>``; or any value that is a
+      UUID or thirty-two or more characters mixing letters and digits,
+      whatever flag it follows;
+    - ``arg_env``: ``-e NAME=VALUE`` / ``--env NAME=VALUE`` as Docker takes
+      it, whatever the name; ``-e NAME`` alone holds nothing;
+    - ``arg_connection_string``: ``Password=…`` or ``Pwd=…`` inside a
+      value, or a DSN that starts ``user:pass@``;
     - the reasons of :func:`url_secret_reasons` for a URL that is an
       argument or stands inside one (``--endpoint=https://user:pass@host/``).
     """
@@ -392,6 +449,16 @@ def launch_arg_reasons(args: Sequence[Any] | None) -> list[str]:
     items = [str(arg) for arg in args]
     for index, arg in enumerate(items):
         reasons.extend(_value_reasons(arg))
+        flag, _, inline = arg.partition("=")
+        if flag in _ENV_FLAGS:
+            # ``-e NAME=value`` / ``--env=NAME=value``: a value handed to
+            # the container, whatever it is called. ``-e NAME`` alone passes
+            # the variable through from the server's own environment.
+            assigned = inline or (items[index + 1] if index + 1 < len(items) else "")
+            name, has_value, value = assigned.partition("=")
+            if name and has_value and value:
+                reasons.append(ARG_ENV)
+            continue
         if arg.startswith("-"):
             name, has_value, value = arg.lstrip("-").partition("=")
             if len(name) < 2:

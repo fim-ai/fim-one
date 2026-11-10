@@ -92,7 +92,9 @@
     "url_token": "a token-shaped part of its URL",
     "url_unparseable": "its URL, which could not be read",
     "arg_name": "a launch argument named like a credential",
-    "arg_token": "a launch argument shaped like a token"
+    "arg_token": "a launch argument shaped like a token",
+    "arg_env": "an environment variable set in its launch arguments",
+    "arg_connection_string": "a connection string in its launch arguments"
   },
   "addressPrivateOwnerBadge": "Other members cannot use this server",
   "addressPrivateMemberBadge": "Only its owner can use this server",

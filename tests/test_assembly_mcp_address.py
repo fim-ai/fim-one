@@ -196,8 +196,58 @@ class TestLaunchArguments:
         assert launch_args_carry_secret(args) is True
 
     @pytest.mark.parametrize(
+        "args",
+        [
+            # more token prefixes
+            ["glpat-abcdefghij1234567890"],
+            ["AIzaSyA-abcdefghijklmnopqrstuvwxyz12345"],
+            ["xoxa-2-1234567890-abcdef"],
+            ["xapp-1-A0123456789-abcdef"],
+            ["ntn_1234567890abcdefghijkl"],
+            ["secret_abcdefghijklmnop1234"],
+            ["hf_abcdefghijklmnopqrstuv"],
+            ["npm_abcdefghijklmnopqrstuv"],
+            ["tvly-abcdefghijklmnop"],
+            ["fc-0123456789abcdef"],
+            ["sk_live_abcdefgh1234"],
+            ["sk_test_abcdefgh1234"],
+            ["ghs_abcdefgh1234"],
+            ["ghu_abcdefgh1234"],
+            ["pat-na1-0123456789abcdef"],
+            # more names
+            ["--pat", "abc"],
+            ["--dsn", "abc"],
+            ["--connection", "abc"],
+            ["--conn-str", "abc"],
+            ["--connstr=abc"],
+            ["--cookie", "abc"],
+            ["SESSION=abc"],
+            ["--connectionString", "abc"],
+            # Docker's environment, whatever the name
+            ["run", "-i", "--rm", "-e", "NOTION_API=abc", "img"],
+            ["run", "--env", "FOO=bar", "img"],
+            ["run", "--env=FOO=bar", "img"],
+            # connection strings and DSNs
+            ["--db", "Server=db;User Id=sa;Password=Hunter2;"],
+            ["Data Source=db;Uid=sa;Pwd=x"],
+            ["--source", "user:pass@tcp(db:3306)/app"],
+            # an opaque value, whatever it follows
+            ["-k", T32],
+            ["some-mcp", T32],
+            ["--id", "3f9c1c2e-1d2a-4b6f-9a77-0d6f2b1c9e11"],
+            ["X-Zapier-Sig: " + T32],
+            ["--opt=" + T32],
+        ],
+    )
+    def test_the_shapes_added_for_stdio_servers_count(self, args: list[str]) -> None:
+        assert launch_args_carry_secret(args) is True
+
+    @pytest.mark.parametrize(
         ("args", "reasons"),
         [
+            (["run", "-e", "FOO=bar", "img"], ["arg_env"]),
+            (["--db", "Server=db;Password=Hunter2;"], ["arg_connection_string"]),
+            (["-k", T32], ["arg_token"]),
             (["--api-key", "abc"], ["arg_name"]),
             (["API_KEY=abc"], ["arg_name"]),
             (["sk-0123456789abcdef"], ["arg_token"]),
@@ -262,7 +312,18 @@ class TestLaunchArguments:
             # Known misses: nothing in the shape says these are secrets.
             ["-k", "abc123"],
             ["--id", "9f8e7d6c5b4a"],
-            ["9f8e7d6c5b4a39281706f5e4d3c2b1a0"],
+            ["hunter2"],
+            # Docker passing a variable through, or reading a file of them.
+            ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN", "ghcr.io/x/y"],
+            ["run", "--env-file", "/etc/x.env", "img"],
+            # Long, but a name.
+            ["@modelcontextprotocol/server-sequential-thinking"],
+            ["mcp-server-for-something-very-long-v2"],
+            ["--connection-timeout", "30"],
+            ["secret_santa"],
+            ["pat-terns"],
+            ["postgresql://db:5432/app"],
+            ["git@github.com:org/repo.git"],
         ],
     )
     def test_ordinary_arguments_do_not(self, args: list[str] | None) -> None:

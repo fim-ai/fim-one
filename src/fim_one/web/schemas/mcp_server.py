@@ -74,7 +74,7 @@ class MCPServerResponse(BaseModel):
     # With ``warning``: which part of the address counted, never its value.
     # ``url_user_info``, ``url_query``, ``url_fragment``, ``url_path_segment``,
     # ``url_path_parameter``, ``url_token``, ``url_unparseable``, ``arg_name``,
-    # ``arg_token``.
+    # ``arg_token``, ``arg_env``, ``arg_connection_string``.
     warning_reasons: list[str] = []
     forked_from: str | None = None
     my_has_credentials: bool = False

@@ -26,6 +26,8 @@ export const ADDRESS_REASONS = [
   "url_unparseable",
   "arg_name",
   "arg_token",
+  "arg_env",
+  "arg_connection_string",
 ] as const
 export type AddressReason = (typeof ADDRESS_REASONS)[number]
 
