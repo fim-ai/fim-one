@@ -1503,3 +1503,54 @@ class TestATriggerCallerLearnsWhyARunCouldNotWait:
         assert response.data["status"] == "failed"
         assert response.data["error_code"] == "workflow_waiting_limit_reached"
         assert "Too many runs are already waiting" in response.data["error"]
+
+
+class TestARunClosedOnItsRecordIsAnnounced:
+    """Nobody's driver ends these runs, so the owner's run-failed webhook
+    is sent by whoever closed the record: once."""
+
+    async def test_a_run_whose_process_died(self, rig: Rig) -> None:
+        async with rig.factory() as s:
+            dead = WorkflowRun(
+                workflow_id=rig.wf.id,
+                user_id=rig.owner.id,
+                blueprint_snapshot=BLUEPRINT,
+                status="running",
+                mode="trigger",
+                worker_id="a-process-that-died",
+                heartbeat_at=rs.db_seconds_ago(rig.backend, 600),
+            )
+            s.add(dead)
+            await s.commit()
+            run_id = dead.id
+        sent: list[tuple[str, str | None]] = []
+        supervisors = [WorkflowRunSupervisor(_new_service()) for _ in range(4)]
+        for supervisor in supervisors:
+            supervisor.service._fire_webhook = (  # type: ignore[method-assign]
+                lambda wf, out, mode, ctx: sent.append((out.run_id, out.error))
+            )
+
+        await asyncio.gather(*(supervisor.sweep() for supervisor in supervisors))
+
+        assert sent == [(run_id, rs.RUN_INTERRUPTED_ERROR)]
+
+    async def test_a_run_refused_at_its_continuation(self, rig: Rig, hooked: Any) -> None:
+        outcome = await rig.start()
+        request = await rig.request_of(outcome.run_id)
+        async with rig.factory() as s:
+            await s.execute(update(User).where(User.id == rig.owner.id).values(is_active=False))
+            await s.commit()
+
+        with patch.object(rig.service, "_fire_webhook") as webhook:
+            await rig.decide(request.id, "approve", by=rig.admin)
+            await rig.ended(outcome.run_id)
+
+        (call,) = webhook.call_args_list
+        assert call.args[1].status == "failed"
+        assert "could not continue after its approval" in call.args[1].error
+
+    async def test_a_cancelled_run_is_not_announced_as_failed(self, rig: Rig) -> None:
+        outcome = await rig.start()
+        with patch.object(rig.service, "_fire_webhook") as webhook:
+            assert await rig.service.cancel_stored_run(outcome.run_id) is True
+        webhook.assert_not_called()

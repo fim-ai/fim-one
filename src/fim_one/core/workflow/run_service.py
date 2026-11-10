@@ -972,7 +972,54 @@ class WorkflowRunService:
         if previous == "waiting":
             # Nothing was executing it: nobody else will remove its files.
             await release_sandbox(workflow_run_sandbox_id(run_id))
+        if previous is not None and status == "failed":
+            # The one caller that closed the run tells the owner, once.
+            try:
+                await self._announce_closed(run_id, error)
+            except Exception:
+                logger.exception("Could not announce that run %s failed", run_id)
         return previous
+
+    async def _announce_closed(self, run_id: str, error: str) -> None:
+        """The run-failed webhook of a run closed on its record.
+
+        No driver ends such a run (it could not continue after its
+        approval, its state was unreadable, or its process died), so the
+        webhook a driver would send is sent from here.
+        """
+        from sqlalchemy import select
+
+        from fim_one.db import create_session
+        from fim_one.db.models import Workflow, WorkflowRun
+
+        async with create_session() as db:
+            run = (
+                await db.execute(select(WorkflowRun).where(WorkflowRun.id == run_id))
+            ).scalar_one_or_none()
+            workflow = (
+                (
+                    await db.execute(select(Workflow).where(Workflow.id == run.workflow_id))
+                ).scalar_one_or_none()
+                if run is not None
+                else None
+            )
+        if run is None or workflow is None:
+            return
+        mode = RunMode(run.mode) if run.mode else RunMode.INTERACTIVE
+        ctx = CallContext(
+            principal=provisional_principal(run.user_id, auth=_AUTH.get(mode, AuthMethod.SESSION)),
+            binding=workflow_binding(workflow),
+            entry=_ENTRY.get(mode, "workflow_node"),
+        )
+        outcome = RunOutcome(
+            run_id=run_id,
+            status="failed",
+            error=error,
+            error_code="workflow_run_failed",
+            duration_ms=int(run.duration_ms or 0),
+            total_tokens=int(run.total_tokens or 0),
+        )
+        self._fire_webhook(workflow, outcome, mode, ctx)
 
     # -- checks ---------------------------------------------------------------
 
