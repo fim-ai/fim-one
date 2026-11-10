@@ -426,39 +426,6 @@ def test_get_executor() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test: WorkflowApproval ORM model structure
-# ---------------------------------------------------------------------------
-
-
-def test_workflow_approval_model_fields() -> None:
-    """WorkflowApproval model should have all required fields."""
-    from fim_one.db.models.workflow import WorkflowApproval
-
-    # Check the table name
-    assert WorkflowApproval.__tablename__ == "workflow_approvals"
-
-    # Check column names exist in the mapper
-    mapper = WorkflowApproval.__mapper__
-    column_names = {c.key for c in mapper.column_attrs}
-    expected = {
-        "id",
-        "workflow_run_id",
-        "node_id",
-        "title",
-        "description",
-        "assignee",
-        "status",
-        "decision_by",
-        "decision_note",
-        "timeout_hours",
-        "resolved_at",
-        "created_at",
-        "updated_at",
-    }
-    assert expected.issubset(column_names), f"Missing columns: {expected - column_names}"
-
-
-# ---------------------------------------------------------------------------
 # Test: Approval schemas
 # ---------------------------------------------------------------------------
 

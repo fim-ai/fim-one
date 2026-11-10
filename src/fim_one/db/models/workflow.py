@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import sqlalchemy as sa
-from sqlalchemy import JSON, Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from fim_one.db.base import Base, TimestampMixin, UUIDPKMixin
@@ -147,8 +147,10 @@ class WorkflowRun(UUIDPKMixin, TimestampMixin, Base):
     node_results: Any = Column(
         JSON, nullable=True
     )  # { node_id: { status, output, error, started_at, completed_at, duration } }
+    # pending / running / waiting (for a human's decision) / completed /
+    # failed / cancelled.
     status: Mapped[str] = mapped_column(
-        String(20), default="pending", server_default="pending"
+        String(20), default="pending", server_default="pending", index=True
     )
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -170,10 +172,20 @@ class WorkflowRun(UUIDPKMixin, TimestampMixin, Base):
     # existed; readers treat NULL as an ordinary run.
     mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
-    workflow: Mapped[Workflow] = relationship(back_populates="runs", lazy="raise")
-    approvals: Mapped[list[WorkflowApproval]] = relationship(
-        back_populates="run", lazy="raise", passive_deletes=True
+    # What a run waiting for a decision needs to be continued: its
+    # variables (never the author's env vars), each step's state and
+    # result, and the request each waiting step is waiting on. Written
+    # when the run enters ``waiting``, emptied when it ends.
+    suspend_state: Any = Column(JSON, nullable=True)
+    # The server process executing the run and when it last said so. A run
+    # still ``running`` whose heartbeat is old was left by a process that
+    # died (``core/workflow/run_recovery.py``).
+    worker_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
+
+    workflow: Mapped[Workflow] = relationship(back_populates="runs", lazy="raise")
 
 
 # ``WorkflowRun.mode`` of a single-node test: such rows exist only so the
@@ -185,38 +197,6 @@ def history_run_clause() -> Any:
     """WHERE clause excluding single-node test rows from run history, counts,
     rates and recent-run lists. Quota sums deliberately include them."""
     return sa.or_(WorkflowRun.mode.is_(None), WorkflowRun.mode != RUN_MODE_TEST_NODE)
-
-
-class WorkflowApproval(UUIDPKMixin, TimestampMixin, Base):
-    """A pending approval request created by a HumanIntervention node."""
-
-    __tablename__ = "workflow_approvals"
-
-    workflow_run_id: Mapped[str] = mapped_column(
-        String(36),
-        ForeignKey("workflow_runs.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    node_id: Mapped[str] = mapped_column(String(100), nullable=False)
-    title: Mapped[str] = mapped_column(String(500), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    assignee: Mapped[str | None] = mapped_column(
-        String(36), nullable=True, index=True
-    )
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="pending", server_default="pending"
-    )
-    decision_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
-    decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
-    timeout_hours: Mapped[float] = mapped_column(
-        Float, nullable=False, default=24.0, server_default="24"
-    )
-    resolved_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-
-    run: Mapped[WorkflowRun] = relationship(back_populates="approvals", lazy="raise")
 
 
 class WorkflowVersion(UUIDPKMixin, Base):

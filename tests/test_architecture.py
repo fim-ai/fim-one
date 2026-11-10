@@ -343,8 +343,9 @@ CONFIRMATION_GATE: dict[str, frozenset[str]] = {
     "FeishuGateHook": frozenset({"core/hooks/feishu_gate_hook.py", "core/hooks/__init__.py"}),
     # Requests are written by the service alone (the model defines the class).
     "ConfirmationRequest(": frozenset({"core/assembly/confirmation.py", "db/models/channel.py"}),
-    # workflow_approvals is no longer written; the table waits for T10 P5.
-    "WorkflowApproval(": frozenset({"db/models/workflow.py"}),
+    # The second approvals table and its model are gone (T10 P5).
+    "WorkflowApproval(": frozenset(),
+    "workflow_approvals": frozenset(),
     # The two former copies of "who may decide".
     "user_may_decide": frozenset(),
     "_get_decidable_approval": frozenset(),
