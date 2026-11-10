@@ -289,6 +289,86 @@ class TestTheOtherEndpoints:
 
 
 
+class TestCompletionNotificationOfAPersonalAgent:
+    """A personal agent's completion notice is resolved through its owner.
+
+    The agent has no organization, so the channel is looked up among the
+    organizations its owner belongs to. The chat endpoints hand the owner's
+    id to the notifier; without it the channel resolves to nothing and no
+    notice is sent.
+    """
+
+    @pytest.fixture()
+    def app(self) -> FastAPI:
+        return create_app()
+
+    @pytest.mark.parametrize("endpoint", ["/api/react", "/api/dag"])
+    async def test_the_owners_id_reaches_the_notifier_and_the_notice_is_sent(
+        self,
+        endpoint: str,
+        app: FastAPI,
+        world: World,
+        loops: list[dict[str, Any]],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import asyncio
+        from unittest.mock import AsyncMock
+
+        from fim_one.core.channels import ChannelSendResult
+        from fim_one.db.models.channel import Channel
+        from fim_one.web import notifications
+
+        channel_id = str(uuid.uuid4())
+        async with create_session() as db:
+            db.add(
+                Channel(
+                    id=channel_id,
+                    name="Ops",
+                    type="feishu",
+                    org_id=world.org,
+                    created_by=world.user,
+                    is_active=True,
+                    config={"app_id": "cli_x", "app_secret": "s", "chat_id": "oc_ops"},
+                )
+            )
+            agent = await db.get(Agent, world.agent)
+            assert agent is not None and agent.org_id is None
+            agent.model_config_json = {
+                "notifications": {"on_complete": {"enabled": True, "channel_id": channel_id}}
+            }
+            await db.commit()
+
+        shims: list[Any] = []
+        real = notifications.notify_agent_completion
+
+        def _recording(**kwargs: Any) -> Any:
+            shims.append(kwargs["agent"])
+            return real(**kwargs)
+
+        monkeypatch.setattr(notifications, "notify_agent_completion", _recording)
+        send = AsyncMock(return_value=ChannelSendResult(ok=True))
+        monkeypatch.setattr(
+            "fim_one.core.channels.feishu.FeishuChannel.send_completion", send
+        )
+
+        body = await _turn(app, endpoint, world, world.agent)
+        assert "done" in [name for name, _ in _events(body)], body[-2000:]
+
+        # The notice is posted in the background, after "done".
+        for _ in range(100):
+            if send.await_count:
+                break
+            await asyncio.sleep(0.05)
+
+        assert len(shims) == 1
+        assert shims[0].org_id is None
+        assert shims[0].user_id == world.user
+        assert send.await_count == 1, "the completion notice was not sent"
+        summary = send.await_args.args[0]
+        assert summary.agent_name == "Helper"
+        assert summary.user_message == "say pong"
+
+
 class TestAutoIsAdmittedBeforeItClassifies:
     """Auto mode asks a model which way to route. That call is part of the turn."""
 

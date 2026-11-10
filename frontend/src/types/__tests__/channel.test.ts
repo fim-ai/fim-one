@@ -25,6 +25,8 @@ describe("isWebhookUrlFor", () => {
     "http://hooks.slack.com/services/T/B/x",
     "https://hooks.slack.com.evil.io/services/T/B/x",
     "https://user@hooks.slack.com/services/T/B/x",
+    "https://user:pw@hooks.slack.com/services/T/B/x",
+    "https://:pw@hooks.slack.com/services/T/B/x",
     "https://hooks.slack.com:8443/services/T/B/x",
     "https://hooks.slack.com/",
     "https://open.feishu.cn/open-apis/bot/v2/hook/x",

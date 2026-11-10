@@ -55,7 +55,9 @@ class WebhookChannel(BaseChannel):
             parts.scheme == "https"
             and parts.hostname in cls.allowed_hosts
             and port in (None, 443)
-            and not parts.username
+            # No userinfo at all: ``https://:pw@host/`` has an empty user
+            # name and still carries a password.
+            and "@" not in parts.netloc
             and bool(parts.path.strip("/"))
         )
 

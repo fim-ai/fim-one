@@ -225,6 +225,66 @@ class TestCreateChannel:
         assert resp.status_code == 403
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("channel_type", "config"),
+        [
+            (
+                "feishu",
+                {"app_id": "cli_x", "app_secret": "shh", "chat_id": "oc_1", "encrypt_key": "k"},
+            ),
+            ("slack_webhook", {"webhook_url": "https://hooks.slack.com/services/T/B/x"}),
+        ],
+    )
+    async def test_a_plain_member_cannot_create(
+        self,
+        channel_type: str,
+        config: dict[str, Any],
+        client: AsyncClient,
+        seed: dict[str, Any],
+        session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """Belonging to the organization is not enough: channels are its admins'."""
+        async with session_factory() as db:
+            member = User(
+                id=str(uuid.uuid4()), username="member", email="member@test.com", is_admin=False
+            )
+            db.add(member)
+            db.add(
+                OrgMembership(
+                    id=str(uuid.uuid4()), org_id=seed["org_id"], user_id=member.id, role="member"
+                )
+            )
+            await db.commit()
+        headers = {
+            "Authorization": f"Bearer {create_access_token(member.id, member.email or '')}"
+        }
+
+        resp = await client.post(
+            "/api/channels",
+            json={"name": "Mine", "type": channel_type, "org_id": seed["org_id"], "config": config},
+            headers=headers,
+        )
+        assert resp.status_code == 403, resp.text
+        async with session_factory() as db:
+            assert (await db.execute(select(Channel))).scalars().all() == []
+        # The member can still see the organization's channels.
+        listing = await client.get(f"/api/channels?org_id={seed['org_id']}", headers=headers)
+        assert listing.status_code == 200
+        # An admin of the same organization can create it.
+        async with session_factory() as db:
+            row = (
+                await db.execute(select(OrgMembership).where(OrgMembership.user_id == member.id))
+            ).scalar_one()
+            row.role = "admin"
+            await db.commit()
+        resp = await client.post(
+            "/api/channels",
+            json={"name": "Mine", "type": channel_type, "org_id": seed["org_id"], "config": config},
+            headers=headers,
+        )
+        assert resp.status_code == 201, resp.text
+
+    @pytest.mark.asyncio
     async def test_unauthenticated_rejected(
         self, client: AsyncClient, seed: dict[str, Any]
     ) -> None:
@@ -662,6 +722,8 @@ class TestWebhookAndEmailChannels:
             "https://example.com/hook",
             "https://open.feishu.cn/open-apis/bot/v2/hook/abc",  # another platform's host
             "***",
+            "https://user:pw@hooks.slack.com/services/T/B/x",
+            "https://:pw@hooks.slack.com/services/T/B/x",
         ],
     )
     async def test_webhook_url_must_be_on_the_platforms_host(

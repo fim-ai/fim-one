@@ -118,6 +118,13 @@ class TestWebhookUrl:
             "https://open.feishu.cn/hook",
             "http://169.254.169.254/latest/meta-data",
             "https://hooks.slack.com:notaport/x",
+            # userinfo, in every form it can take
+            "https://user:pw@hooks.slack.com/services/T/B/x",
+            "https://user@hooks.slack.com/services/T/B/x",
+            "https://:pw@hooks.slack.com/services/T/B/x",
+            "https://@hooks.slack.com/services/T/B/x",
+            "https://:@hooks.slack.com/services/T/B/x",
+            "https://user:pw@hooks.slack.com:443/services/T/B/x",
         ],
     )
     def test_other_url_refused(self, url: str) -> None:

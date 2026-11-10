@@ -56,6 +56,7 @@ export function isWebhookUrlFor(type: WebhookChannelType, url: string): boolean 
       WEBHOOK_URL_HOSTS[type].includes(parsed.hostname) &&
       parsed.port === "" &&
       parsed.username === "" &&
+      parsed.password === "" &&
       parsed.pathname.replace(/\//g, "") !== ""
     )
   } catch {
