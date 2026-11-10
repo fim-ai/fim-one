@@ -235,6 +235,63 @@ class TestPlaceholdersAlreadyInTheSql:
         assert render_sql(template, "qmark", ["x"]) == ("SELECT * FROM t  \nWHERE a = ?  ", ["x"])
 
 
+class TestAListInAnInList:
+    """``IN ({{ids}})`` with a list: one bound value per item."""
+
+    SQL = "SELECT a FROM t WHERE id IN ({{ids}}) AND b = {{b}}"
+
+    def test_each_driver_gets_a_placeholder_per_item(self) -> None:
+        template = parse_sql_template(self.SQL, dialect="postgresql")
+        assert template.positions == ("list", "value")
+        assert render_sql(template, "numeric", [[1, 2, 3], "x"]) == (
+            "SELECT a FROM t WHERE id IN ($1, $2, $3) AND b = $4",
+            [1, 2, 3, "x"],
+        )
+        assert render_sql(template, "qmark", [["a", "b"], "x"]) == (
+            "SELECT a FROM t WHERE id IN (?, ?) AND b = ?",
+            ["a", "b", "x"],
+        )
+        assert render_sql(template, "literal", [[1, "a'b"], "x"])[0] == (
+            f"SELECT a FROM t WHERE id IN ({_hex('1')}, {_hex(chr(97) + chr(39) + chr(98))}) "
+            f"AND b = {_hex('x')}"
+        )
+
+    def test_an_empty_list_matches_nothing(self) -> None:
+        template = parse_sql_template(self.SQL, dialect="postgresql")
+        assert render_sql(template, "numeric", [[], "x"]) == (
+            "SELECT a FROM t WHERE id IN (NULL) AND b = $1",
+            ["x"],
+        )
+
+    def test_one_value_in_an_in_list_is_one_value(self) -> None:
+        template = parse_sql_template(self.SQL, dialect="postgresql")
+        assert render_sql(template, "numeric", [7, "x"])[1] == [7, "x"]
+
+    def test_items_that_are_lists_or_objects_are_json_text(self) -> None:
+        template = parse_sql_template(self.SQL, dialect="postgresql")
+        assert render_sql(template, "numeric", [[[1], {"k": 2}], "x"])[1] == [
+            "[1]",
+            '{"k": 2}',
+            "x",
+        ]
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT a FROM t WHERE id IN ({{a}}, {{b}})",
+            "SELECT a FROM t WHERE id = ANY({{a}})",
+            "SELECT a FROM t WHERE tags @> {{a}}",
+            "SELECT a FROM t WHERE x.in ({{a}})",
+            "SELECT f({{a}})",
+        ],
+    )
+    def test_anywhere_else_a_list_is_one_json_text(self, sql: str) -> None:
+        template = parse_sql_template(sql, dialect="postgresql")
+        assert "list" not in template.positions
+        values = [[1, 2]] * len(template.variables)
+        assert render_sql(template, "numeric", values)[1] == ["[1, 2]"] * len(values)
+
+
 class TestMySQLLiterals:
     def test_text_is_hex_whatever_it_holds(self) -> None:
         assert mysql_literal("alice") == "_utf8mb4 X'616C696365'"

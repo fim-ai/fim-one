@@ -237,7 +237,9 @@ def _fit_parameters(types: Sequence[Any], values: Sequence[Any]) -> list[Any]:
     column, or the number ``42`` for a text column. A workflow variable is
     often the text form of what the column holds, so text that reads as the
     wanted type is converted, and a number or boolean bound to a text
-    parameter is sent as text. Anything else is left for asyncpg to refuse.
+    parameter is sent as text. A number with a fraction bound to an integer
+    parameter is an error (asyncpg would truncate it). Anything else is
+    left for asyncpg to refuse.
     """
     if len(types) != len(values):
         raise RuntimeError(
@@ -261,8 +263,25 @@ def _fit_parameter(kind: str, value: Any) -> Any:
         return json.dumps(value)
     if isinstance(value, bool):
         return decimal.Decimal(int(value)) if kind == "numeric" else value
-    if isinstance(value, float) and kind in ("int2", "int4", "int8") and value.is_integer():
+    if isinstance(value, float) and kind in ("int2", "int4", "int8"):
+        if not value.is_integer():
+            # asyncpg would drop the fraction: 1.5 would find the row with id 1.
+            raise ValueError(
+                f"{value} is not a whole number, and the query compares it with an "
+                f"integer ({kind})"
+            )
         return int(value)
+    if kind.endswith("[]") and isinstance(value, str):
+        # ``= ANY({{ids}})``: a list arrives as JSON text.
+        import json
+
+        try:
+            items = json.loads(value)
+        except ValueError:
+            return value
+        if isinstance(items, list):
+            return [_fit_parameter(kind[:-2], item) for item in items]
+        return value
     if isinstance(value, (int, float)) and kind == "numeric":
         return decimal.Decimal(str(value))
     if not isinstance(value, str):

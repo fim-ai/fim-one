@@ -83,7 +83,9 @@ class SqlTemplate:
     parts: tuple[str, ...]
     variables: tuple[str, ...]
     # Where each reference stands: ``"count"`` right after LIMIT or OFFSET
-    # (the one place where SQL wants a bare whole number), else ``"value"``.
+    # (the one place where SQL wants a bare whole number), ``"list"`` when
+    # it is all there is between the parentheses of ``IN (...)`` (a list
+    # value is bound there as one value per item), else ``"value"``.
     positions: tuple[str, ...] = ()
 
 
@@ -287,9 +289,19 @@ def parse_sql_template(sql: str, *, dialect: SqlDialect) -> SqlTemplate:
             parts[-1] += " "
         else:
             parts[-1] += token.text
+    for index, position in enumerate(positions):
+        if (
+            position == "value"
+            and _OPENS_IN_LIST.search(parts[index])
+            and parts[index + 1].lstrip().startswith(")")
+        ):
+            positions[index] = "list"
     return SqlTemplate(
         parts=tuple(parts), variables=tuple(variables), positions=tuple(positions)
     )
+
+
+_OPENS_IN_LIST = re.compile(r"(?<![\w$.])IN\s*\(\s*$", re.IGNORECASE)
 
 
 _AFTER_COUNT_KEYWORD = re.compile(r"(?<![\w$.])(?:LIMIT|OFFSET)\s*$", re.IGNORECASE)
@@ -375,16 +387,28 @@ def render_sql(
         out.append(part)
         if index == len(template.variables):
             break
-        value = bound_value(values[index])
-        if style == "literal":
-            name = template.variables[index]
-            position = template.positions[index] if template.positions else "value"
-            out.append(
-                _mysql_count(value, name) if position == "count" else mysql_literal(value, name=name)
-            )
+        name = template.variables[index]
+        position = template.positions[index] if template.positions else "value"
+        raw = values[index]
+        if position == "list" and isinstance(raw, (list, tuple)):
+            # ``IN ({{ids}})``: one bound value per item. An empty list is
+            # ``IN (NULL)``, which matches nothing.
+            items = [bound_value(item) for item in raw]
+            if not items:
+                out.append("NULL")
+                continue
         else:
-            parameters.append(value)
-            out.append(f"${len(parameters)}" if style == "numeric" else "?")
+            items = [bound_value(raw)]
+        written: list[str] = []
+        for item in items:
+            if style == "literal":
+                written.append(
+                    _mysql_count(item, name) if position == "count" else mysql_literal(item, name=name)
+                )
+            else:
+                parameters.append(item)
+                written.append(f"${len(parameters)}" if style == "numeric" else "?")
+        out.append(", ".join(written))
     return "".join(out), (None if style == "literal" else parameters)
 
 

@@ -90,6 +90,18 @@ class _BoundValues:
         text = await _query(live, limited, {"n": 1})
         assert json.loads(text)["rows"] == [[1]]
 
+    async def _check_lists(self, live: LiveDatabase) -> None:
+        in_list = f"SELECT id FROM {live.orders} WHERE id IN ({{{{ids}}}}) ORDER BY id"
+        assert json.loads(await _query(live, in_list, {"ids": [1, 2, 9]}))["rows"] == [[1], [2]]
+        assert json.loads(await _query(live, in_list, {"ids": ["2"]}))["rows"] == [[2]]
+        assert json.loads(await _query(live, in_list, {"ids": []}))["rows"] == []
+        assert json.loads(await _query(live, in_list, {"ids": 1}))["rows"] == [[1]]
+        names = f"SELECT id FROM {live.orders} WHERE customer IN ({{{{names}}}})"
+        payload = ["alice') OR ('1'='1", f"x' UNION SELECT token FROM {live.secrets} --"]
+        text = await _query(live, names, {"names": payload})
+        assert SECRET not in text
+        assert json.loads(text)["rows"] == []
+
     async def _check_number_payload(self, live: LiveDatabase) -> None:
         by_id = f"SELECT customer FROM {live.orders} WHERE id = {{{{id}}}}"
         text = await _query(live, by_id, {"id": f"0 OR 1=1 UNION SELECT token FROM {live.secrets}"})
@@ -111,6 +123,21 @@ class TestPostgreSQL(_BoundValues):
 
     async def test_sql_in_a_number_is_not_run(self, live_pg: LiveDatabase) -> None:
         await self._check_number_payload(live_pg)
+
+    async def test_a_list_in_an_in_list_is_bound_item_by_item(self, live_pg: LiveDatabase) -> None:
+        await self._check_lists(live_pg)
+
+    async def test_a_list_fits_an_array_parameter(self, live_pg: LiveDatabase) -> None:
+        any_of = f"SELECT id FROM {live_pg.orders} WHERE id = ANY({{{{ids}}}}) ORDER BY id"
+        assert json.loads(await _query(live_pg, any_of, {"ids": [2, "1"]}))["rows"] == [[1], [2]]
+
+    async def test_a_number_with_a_fraction_does_not_match_an_integer(
+        self, live_pg: LiveDatabase
+    ) -> None:
+        by_id = f"SELECT customer FROM {live_pg.orders} WHERE id = {{{{id}}}}"
+        text = await _query(live_pg, by_id, {"id": 1.5})
+        assert text.startswith("[Error]") and "not a whole number" in text
+        assert "alice" not in text
 
     async def test_a_list_is_bound_as_json_text(self, live_pg: LiveDatabase) -> None:
         text = await _query(
@@ -144,6 +171,11 @@ class TestMySQL(_BoundValues):
 
     async def test_sql_in_a_number_is_not_run(self, live_mysql: LiveDatabase) -> None:
         await self._check_number_payload(live_mysql)
+
+    async def test_a_list_in_an_in_list_is_bound_item_by_item(
+        self, live_mysql: LiveDatabase
+    ) -> None:
+        await self._check_lists(live_mysql)
 
     @pytest.mark.parametrize("value", [0, False, -0.0, 0.0, 1, True, 7, "0"])
     async def test_a_number_or_boolean_does_not_match_text_that_is_not_that_number(

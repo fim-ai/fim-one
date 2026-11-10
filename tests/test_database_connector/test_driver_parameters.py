@@ -42,6 +42,21 @@ class TestPostgreSQLFitsValuesToTheParameterTypes:
     def test_a_whole_float_fits_an_integer_parameter(self) -> None:
         assert _fit_parameters(_types("int4"), [3.0]) == [3]
 
+    @pytest.mark.parametrize("value", [1.5, -0.5, 1e-9])
+    def test_a_number_with_a_fraction_is_refused_for_an_integer_parameter(
+        self, value: float
+    ) -> None:
+        """asyncpg would truncate it, and 1.5 would find the row with id 1."""
+        with pytest.raises(ValueError, match="not a whole number"):
+            _fit_parameters(_types("int4"), [value])
+
+    def test_json_text_of_a_list_fits_an_array_parameter(self) -> None:
+        assert _fit_parameters(_types("int4[]", "text[]"), ["[1, \"2\"]", '["a"]']) == [
+            [1, 2],
+            ["a"],
+        ]
+        assert _fit_parameters(_types("int4[]"), ["not a list"]) == ["not a list"]
+
     def test_null_stays_null(self) -> None:
         assert _fit_parameters(_types("int4", "text"), [None, None]) == [None, None]
 
