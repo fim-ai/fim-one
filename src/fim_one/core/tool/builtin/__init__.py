@@ -174,7 +174,7 @@ _SKIP_AUTO_DISCOVER: set[type] = {
     GroundedRetrieveTool,  # requires kb_ids — registered by _resolve_tools()
     MarkItDownTool,  # requires vision_llm injection — registered by _resolve_tools()
     EmailSendTool,  # instance SMTP account — allowlist or opt-in, registered below
-    SendNotificationTool,  # posts to instance-wide channels — opt-in, registered below
+    SendNotificationTool,  # operator opt-in, registered below; bound to the acting user per run
     ConnectorListActionsTool,  # builder tools — injected by chat.py for builder agents
     ConnectorCreateActionTool,
     ConnectorUpdateActionTool,
@@ -313,10 +313,10 @@ def discover_builtin_tools(
     if smtp_configured and agent_email_permitted():
         tools.insert(0, EmailSendTool())
 
-    # The notification providers are instance-wide webhooks owned by the
-    # operator, and the tool has no per-user or per-org check.  Offering it by
-    # default would let any user on a shared instance post to those channels,
-    # so the operator has to opt in.
+    # The notification tool posts into an organization's chats and mailboxes
+    # on a model's say-so, so the operator opts in to offering it. A run
+    # binds it to its acting user (``bind_send_notification``); this unbound
+    # instance reaches only the deprecated instance-wide webhooks.
     if _truthy("NOTIFICATION_TOOL_ENABLED"):
         tools.insert(0, SendNotificationTool())
 

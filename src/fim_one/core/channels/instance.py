@@ -29,6 +29,7 @@ __all__ = [
     "available_instance_providers",
     "instance_channel",
     "instance_providers",
+    "instance_webhooks",
 ]
 
 # provider name -> (environment variable, channel type)
@@ -121,3 +122,9 @@ def instance_channel(name: str, *, recipient: str | None = None) -> BaseChannel 
     if name in _WEBHOOKS:
         return _webhook(name)
     return None
+
+
+def instance_webhooks() -> dict[str, WebhookChannel]:
+    """The configured instance-wide webhooks, by provider name."""
+    channels = {name: _webhook(name) for name in _WEBHOOKS}
+    return {name: channel for name, channel in channels.items() if channel is not None}

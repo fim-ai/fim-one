@@ -41,6 +41,10 @@ This constraint applies uniformly: both the approval gate (`ApprovalGateHook`, a
 
 The webhook and email types are outbound only: they carry completion notifications and the messages an agent sends with the `send_notification` tool, and cannot be chosen as an approval channel.
 
+## Sending from an agent: `send_notification`
+
+When the operator sets `NOTIFICATION_TOOL_ENABLED=true`, agents get a `send_notification` tool. It sends a title and a body to one channel, named by its name or id, among the enabled channels of the organizations the **calling user** belongs to. That is the person chatting, or the user a workflow run acts for, whichever agent the tool is used through. Called without a channel it returns the list and sends nothing; it never picks a channel on its own.
+
 ### Webhook channels
 
 Add a custom bot (incoming webhook) to the group on the platform and paste the URL it issues. FIM One posts only to the platform's own host over https: `open.feishu.cn` or `open.larksuite.com` for Lark / Feishu, `hooks.slack.com` for Slack, `qyapi.weixin.qq.com` for WeCom. Any other URL is refused (`channel_webhook_url_invalid`). The URL is the credential for that group, so it is encrypted at rest and never returned by the API; leave the field blank when editing to keep it.

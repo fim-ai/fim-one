@@ -423,12 +423,12 @@ Used for login codes and email notifications. The `email_send` built-in tool is 
 | `SMTP_FROM_NAME` | No | — | Display name shown in From header |
 | `SMTP_REPLY_TO` | No | — | Reply-To address; replies go here instead of `SMTP_FROM` |
 | `SMTP_ALLOWED_DOMAINS` | No | — | Comma-separated domain allowlist (e.g. `example.com,corp.io`); blocks recipients outside listed domains |
-| `SMTP_ALLOWED_ADDRESSES` | No | — | Comma-separated exact-address allowlist; combined with `SMTP_ALLOWED_DOMAINS`. Also applies to email sent through `send_notification` |
-| `EMAIL_TOOL_ENABLED` | No | `false` | Offer `email_send` with no recipient allowlist. Enable only when every user of this instance may mail any address from this account |
-| `NOTIFICATION_TOOL_ENABLED` | No | `false` | Offer the `send_notification` agent tool, which posts to the instance-wide Slack / Lark / WeCom webhooks and the SMTP account. Enable only when every user of this instance may post to those channels |
-| `SLACK_WEBHOOK_URL` | No | — | Slack incoming-webhook URL. Enables the Slack provider for the admin `/api/notifications` endpoints and, when enabled, the `send_notification` tool |
-| `LARK_WEBHOOK_URL` | No | — | Lark (Feishu) group-bot webhook URL for the same notification paths |
-| `WECOM_WEBHOOK_URL` | No | — | WeCom group-bot webhook URL for the same notification paths |
+| `SMTP_ALLOWED_ADDRESSES` | No | — | Comma-separated exact-address allowlist; combined with `SMTP_ALLOWED_DOMAINS`. Also applies to the recipients of an organization's email channel |
+| `EMAIL_TOOL_ENABLED` | No | `false` | Offer `email_send` with no recipient allowlist, and let organizations create email channels to any address. Enable only when every user of this instance may mail any address from this account |
+| `NOTIFICATION_TOOL_ENABLED` | No | `false` | Offer the `send_notification` agent tool, which sends to an enabled [channel](/configuration/channels/overview) of an organization the calling user belongs to |
+| `SLACK_WEBHOOK_URL` | No | — | **Deprecated, removed in the next release.** Instance-wide Slack incoming-webhook URL, used by the admin `/api/notifications` endpoints and offered by `send_notification` to every user as `instance:slack`. Create a Slack webhook channel in the organization instead |
+| `LARK_WEBHOOK_URL` | No | — | **Deprecated, removed in the next release.** Instance-wide Lark (Feishu) group-bot webhook URL, same paths, offered as `instance:lark`. Create a Lark / Feishu webhook channel instead |
+| `WECOM_WEBHOOK_URL` | No | — | **Deprecated, removed in the next release.** Instance-wide WeCom group-bot webhook URL, same paths, offered as `instance:wecom`. Create a WeCom webhook channel instead |
 | `APP_NAME` | No | `FIM One` | Product name used in system emails (login codes, admin notifications) |
 
 ---

@@ -64,7 +64,7 @@ If you are running FIM One on your own infrastructure, follow these recommendati
 | **Limit network access** | Restrict database and application ports to trusted networks. Use firewall rules or security groups. Admin **Security → IP Rules** can also restrict API access by client address; behind a reverse proxy set `FORWARDED_ALLOW_IPS` so the rules see the real client. |
 | **Turn on two-factor authentication** | 2FA applies to password, email-code, and OAuth sign-in alike, and incorrect codes are limited to 5 per 15 minutes per account. |
 | **Scope API keys** | A key with scopes can call only the endpoints those scopes allow. Give integrations the narrowest scope that works. |
-| **Keep operator-channel tools off unless needed** | `send_notification` (`NOTIFICATION_TOOL_ENABLED`) and `email_send` (recipient allowlist or `EMAIL_TOOL_ENABLED`) send through instance-wide channels; enable them only when every user may use those channels. |
+| **Keep outbound-message tools off unless needed** | `send_notification` (`NOTIFICATION_TOOL_ENABLED`) lets a model post to the channels of the calling user's organizations; `email_send` (recipient allowlist or `EMAIL_TOOL_ENABLED`) mails from the instance SMTP account. Move any instance-wide `SLACK_WEBHOOK_URL` / `LARK_WEBHOOK_URL` / `WECOM_WEBHOOK_URL` into an organization's channels: while set, every user of the instance can post to them. |
 
 ## Security Hall of Fame
 

@@ -1626,6 +1626,10 @@ async def _resolve_tools(
         cats = agent_cfg.get("tool_categories") or []
         tools = tools.filter_by_category(*cats)
 
+    # ``send_notification`` acts for the caller, whichever agent it is used
+    # through: it reaches the channels of the caller's organizations.
+    tools = agent_runtime.bind_send_notification(tools, user_id)
+
     # Register the MarkItDown built-in tool with an injected vision LLM
     # resolved from the active workspace. Always registered (not gated by
     # category filter) because `convert_to_markdown` is a general-purpose

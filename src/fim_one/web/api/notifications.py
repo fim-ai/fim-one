@@ -1,7 +1,11 @@
-"""Notification API endpoints.
+"""Notification API endpoints for the instance-wide channels.
 
 Provides routes for listing configured providers, sending test notifications,
 and sending real notifications. Sending (test or real) is admin only.
+
+Deprecated together with the environment variables behind them
+(:mod:`fim_one.core.channels.instance`): channels belong to an organization
+and are managed under ``/api/channels``.
 """
 
 from __future__ import annotations
@@ -9,7 +13,11 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from fim_one.core.channels import ChannelSendResult
-from fim_one.core.channels.instance import instance_channel, instance_providers
+from fim_one.core.channels.instance import (
+    available_instance_providers,
+    instance_channel,
+    instance_providers,
+)
 from fim_one.web.auth import get_current_admin, get_current_user
 from fim_one.db.models.user import User
 from fim_one.web.schemas.notification import (
@@ -18,7 +26,7 @@ from fim_one.web.schemas.notification import (
     NotificationTestRequest,
 )
 
-router = APIRouter(prefix="/api/notifications", tags=["notifications"])
+router = APIRouter(prefix="/api/notifications", tags=["notifications"], deprecated=True)
 
 
 def _outcome(provider: str, result: ChannelSendResult) -> dict[str, object]:
@@ -85,12 +93,11 @@ async def send_notification(
     """Send a notification (admin only)."""
     channel = instance_channel(body.provider, recipient=body.channel)
     if channel is None:
-        available = [p.name for p in instance_providers() if p.configured]
         return {
             "ok": False,
             "error": (
                 f"Notification provider '{body.provider}' is not configured. "
-                f"Available: {', '.join(available) or '(none)'}"
+                f"Available: {', '.join(available_instance_providers()) or '(none)'}"
             ),
         }
     return _outcome(body.provider, await channel.send_notice(body.title, body.body))

@@ -43,6 +43,7 @@ __all__ = [
     "SANDBOXED_TOOLS",
     "WebAgentRuntimeFactory",
     "bare_runtime",
+    "bind_send_notification",
     "build_hooks",
     "call_context",
     "connect_mcp",
@@ -195,6 +196,24 @@ async def build_hooks(
 BARE_RUNTIME_EXCLUDED = (*SANDBOXED_TOOLS, "generate_image", "kb_list", "kb_retrieve")
 
 
+def bind_send_notification(tools: ToolRegistry, user_id: str | None) -> ToolRegistry:
+    """*tools* with ``send_notification`` acting for *user_id*.
+
+    The tool sends to the channels of the organizations its user belongs
+    to, so a run gets an instance bound to the run's acting user (the
+    principal: the person chatting, or whoever a workflow run acts for),
+    not the unbound one from tool discovery. Left alone when the operator
+    has not enabled the tool or the run's tool selection dropped it.
+    """
+    if "send_notification" not in tools:
+        return tools
+    from fim_one.core.tool.builtin.send_notification import SendNotificationTool
+
+    bound = tools.exclude_by_name("send_notification")
+    bound.register(SendNotificationTool(user_id=user_id or None))
+    return bound
+
+
 async def _disabled_builtin_tools() -> list[str]:
     """The built-in tools an administrator switched off for the instance."""
     import json
@@ -227,6 +246,9 @@ async def bare_runtime(ctx: CallContext) -> AgentRuntime:
     tools = get_tools().exclude_by_name(
         *BARE_RUNTIME_EXCLUDED, *await _disabled_builtin_tools()
     )
+    # No agent, so no organization of an agent's: the notification tool
+    # sends to the channels of the run's acting user.
+    tools = bind_send_notification(tools, ctx.principal.user_id)
     return AgentRuntime(
         ctx=ctx,
         agent=None,
