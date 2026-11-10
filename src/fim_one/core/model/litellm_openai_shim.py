@@ -131,10 +131,32 @@ class _Completions:
         # appends /v1/messages to api_base — doubling the /v1 path on
         # OpenAI-compatible relay proxies (e.g. UniAPI) and causing a 404.
         target_model = self._llm._litellm_model
-        return litellm.completion(
+        response = litellm.completion(
             model=target_model,
             messages=messages,
             api_key=self._llm._api_key,
             api_base=self._llm._api_base,
             **kwargs,
         )
+        _meter(self._llm.model_id, response)
+        return response
+
+
+def _meter(model: str | None, response: Any) -> None:
+    """Report the call's usage to the usage meter of the scope it ran in.
+
+    The consumer of this shim calls it from a worker thread
+    (``asyncio.to_thread`` carries the scope there). A response with no
+    usage on it (a stream) reports nothing. Never fails the call.
+    """
+    from .usage import report_usage
+
+    raw = getattr(response, "usage", None)
+    if raw is None:
+        return
+    usage: dict[str, int] = {}
+    for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+        value = getattr(raw, key, None)
+        if isinstance(value, int):
+            usage[key] = value
+    report_usage(model, usage)
