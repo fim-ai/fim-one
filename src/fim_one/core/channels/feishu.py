@@ -22,6 +22,9 @@ from typing import Any, Literal
 import httpx
 
 from .base import (
+    format_duration as _format_duration,
+    format_tools as _format_tools,
+    truncate as _truncate,
     ApprovalRequestSummary,
     BaseChannel,
     CarrierDecision,
@@ -237,6 +240,16 @@ class FeishuChannel(BaseChannel):
                 "msg_type": "text",
                 "content": {"text": text},
             }
+        )
+
+    async def send_notice(self, title: str, body: str) -> ChannelSendResult:
+        """Post *title* and *body* as one plain-text message to the channel's chat."""
+        chat_id = str(self.config.get("chat_id") or "").strip()
+        if not chat_id:
+            return ChannelSendResult(ok=False, error="channel has no chat_id configured")
+        text = f"{title}\n\n{body}" if body else title
+        return await self.send_message(
+            {"chat_id": chat_id, "msg_type": "text", "content": text}
         )
 
     async def send_interactive_card(
@@ -764,57 +777,6 @@ def build_decided_card(
             ],
         },
     }
-
-
-def _format_duration(seconds: float) -> str:
-    """Human-friendly duration string (Feishu card render helper).
-
-    Examples:
-        ``0.4`` -> ``"0.4s"``
-        ``2.345`` -> ``"2.3s"``
-        ``107`` -> ``"1m 47s"``
-        ``3725`` -> ``"1h 2m 5s"``
-    """
-    if seconds < 0:
-        seconds = 0.0
-    if seconds < 60:
-        return f"{seconds:.1f}s"
-    total = int(seconds)
-    hours, rem = divmod(total, 3600)
-    minutes, secs = divmod(rem, 60)
-    if hours > 0:
-        return f"{hours}h {minutes}m {secs}s"
-    return f"{minutes}m {secs}s"
-
-
-def _truncate(text: str, limit: int) -> str:
-    """Truncate ``text`` to ``limit`` chars, appending an ellipsis on overflow."""
-    if not text:
-        return ""
-    if len(text) <= limit:
-        return text
-    # Chop on a line boundary if one is nearby — keeps the preview readable
-    # for answers that begin with a header / first paragraph.
-    head = text[:limit]
-    last_nl = head.rfind("\n")
-    if last_nl >= limit - 80:
-        head = head[:last_nl]
-    return head.rstrip() + "\n\n…"
-
-
-def _format_tools(tools: list[str]) -> str:
-    """Join ``tools`` with commas, truncating to 6 with an ellipsis."""
-    if not tools:
-        return "—"
-    seen: set[str] = set()
-    unique: list[str] = []
-    for t in tools:
-        if t and t not in seen:
-            seen.add(t)
-            unique.append(t)
-    if len(unique) <= 6:
-        return ", ".join(unique)
-    return ", ".join(unique[:6]) + ", …"
 
 
 def _build_completion_card(summary: CompletionSummary) -> dict[str, Any]:

@@ -10,9 +10,9 @@ from ..base import BaseTool
 class SendNotificationTool(BaseTool):
     """Send a push notification via Email, Slack, Lark, or WeCom.
 
-    This tool delegates to the notification registry which auto-discovers
-    configured providers from environment variables.  The providers are
-    instance-wide channels, so the tool is registered only when the operator
+    This tool sends through the instance-wide channels the operator configured
+    with environment variables (:mod:`fim_one.core.channels.instance`).  They
+    are shared by the whole instance, so the tool is registered only when the operator
     sets ``NOTIFICATION_TOOL_ENABLED``.  Email recipients go through the same
     ``SMTP_ALLOWED_*`` allowlist as ``email_send``.
     """
@@ -70,11 +70,9 @@ class SendNotificationTool(BaseTool):
 
     def availability(self) -> tuple[bool, str | None]:
         """Available when at least one notification provider is configured."""
-        from fim_one.core.notification import get_notification_registry
+        from fim_one.core.channels.instance import available_instance_providers
 
-        registry = get_notification_registry()
-        providers = registry.list_available()
-        if providers:
+        if available_instance_providers():
             return True, None
         return (
             False,
@@ -83,9 +81,9 @@ class SendNotificationTool(BaseTool):
         )
 
     async def run(self, **kwargs: Any) -> str:
-        from fim_one.core.notification import (
-            NotificationMessage,
-            get_notification_registry,
+        from fim_one.core.channels.instance import (
+            available_instance_providers,
+            instance_channel,
         )
 
         provider_name: str = kwargs.get("provider", "").strip()
@@ -113,18 +111,14 @@ class SendNotificationTool(BaseTool):
             if err:
                 return err
 
-        registry = get_notification_registry()
-        message = NotificationMessage(
-            title=title,
-            body=body,
-            channel=channel,
-        )
+        target = instance_channel(provider_name, recipient=channel)
+        if target is None:
+            return (
+                f"[Error] Notification provider '{provider_name}' is not configured. "
+                f"Available: {', '.join(available_instance_providers()) or '(none)'}"
+            )
 
-        try:
-            result = await registry.send(provider_name, message)
-        except KeyError as exc:
-            return f"[Error] {exc}"
-
-        if result.get("ok"):
+        result = await target.send_notice(title, body)
+        if result.ok:
             return f"Notification sent via {provider_name}."
-        return f"[Error] {result.get('error', 'Unknown error')}"
+        return f"[Error] {result.error or 'Unknown error'}"

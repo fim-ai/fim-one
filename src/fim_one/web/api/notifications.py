@@ -8,14 +8,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from fim_one.core.notification import (
-    NotificationMessage,
-    get_notification_registry,
-)
-from fim_one.core.notification.email_provider import EmailNotificationProvider
-from fim_one.core.notification.lark_provider import LarkNotificationProvider
-from fim_one.core.notification.slack_provider import SlackNotificationProvider
-from fim_one.core.notification.wecom_provider import WeComNotificationProvider
+from fim_one.core.channels import ChannelSendResult
+from fim_one.core.channels.instance import instance_channel, instance_providers
 from fim_one.web.auth import get_current_admin, get_current_user
 from fim_one.db.models.user import User
 from fim_one.web.schemas.notification import (
@@ -26,13 +20,12 @@ from fim_one.web.schemas.notification import (
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
-# All known provider classes (for showing unconfigured ones too)
-_ALL_PROVIDERS = [
-    EmailNotificationProvider(),
-    SlackNotificationProvider(),
-    LarkNotificationProvider(),
-    WeComNotificationProvider(),
-]
+
+def _outcome(provider: str, result: ChannelSendResult) -> dict[str, object]:
+    """The response body of a send: ``ok`` plus the provider or the error."""
+    if not result.ok:
+        return {"ok": False, "error": result.error or "Unknown error"}
+    return {"ok": True, "provider": provider, **result.raw}
 
 
 @router.get("/providers")
@@ -40,17 +33,15 @@ async def list_providers(
     _user: User = Depends(get_current_user),  # noqa: B008
 ) -> list[NotificationProviderInfo]:
     """List all notification providers with their configuration status."""
-    result: list[NotificationProviderInfo] = []
-    for provider in _ALL_PROVIDERS:
-        result.append(
-            NotificationProviderInfo(
-                name=provider.name,
-                display_name=provider.display_name,
-                description=provider.description,
-                configured=provider.validate_config(),
-            )
+    return [
+        NotificationProviderInfo(
+            name=provider.name,
+            display_name=provider.display_name,
+            description=provider.description,
+            configured=provider.configured,
         )
-    return result
+        for provider in instance_providers()
+    ]
 
 
 @router.post("/test")
@@ -63,12 +54,11 @@ async def test_notification(
     The providers post to instance-wide channels, so a regular user must not
     be able to trigger them.
     """
-    registry = get_notification_registry()
-    provider = registry.get(body.provider)
-    if provider is None:
+    known = {provider.name: provider for provider in instance_providers()}
+    channel = instance_channel(body.provider, recipient=body.channel)
+    if channel is None:
         # Check if provider name is valid but unconfigured
-        known_names = {p.name for p in _ALL_PROVIDERS}
-        if body.provider in known_names:
+        if body.provider in known:
             return {
                 "ok": False,
                 "error": f"Provider '{body.provider}' is not configured. "
@@ -76,16 +66,15 @@ async def test_notification(
             }
         return {"ok": False, "error": f"Unknown provider: '{body.provider}'."}
 
-    test_message = NotificationMessage(
-        title="FIM One Test Notification",
-        body=(
+    result = await channel.send_notice(
+        "FIM One Test Notification",
+        (
             f"This is a test notification from FIM One.\n\n"
             f"Sent by: {user.email or user.username}\n"
-            f"Provider: {provider.display_name}"
+            f"Provider: {known[body.provider].display_name}"
         ),
-        channel=body.channel,
     )
-    return await provider.send(test_message)
+    return _outcome(body.provider, result)
 
 
 @router.post("/send")
@@ -94,13 +83,14 @@ async def send_notification(
     _admin: User = Depends(get_current_admin),  # noqa: B008
 ) -> dict[str, object]:
     """Send a notification (admin only)."""
-    registry = get_notification_registry()
-    message = NotificationMessage(
-        title=body.title,
-        body=body.body,
-        channel=body.channel,
-    )
-    try:
-        return await registry.send(body.provider, message)
-    except KeyError as exc:
-        return {"ok": False, "error": str(exc)}
+    channel = instance_channel(body.provider, recipient=body.channel)
+    if channel is None:
+        available = [p.name for p in instance_providers() if p.configured]
+        return {
+            "ok": False,
+            "error": (
+                f"Notification provider '{body.provider}' is not configured. "
+                f"Available: {', '.join(available) or '(none)'}"
+            ),
+        }
+    return _outcome(body.provider, await channel.send_notice(body.title, body.body))

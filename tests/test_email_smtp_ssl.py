@@ -1,7 +1,7 @@
 """SMTP transport-mode resolution: an unrecognized SMTP_SSL must fail closed.
 
 Covers both SMTP call sites — the system-email path (`web.email`) and the
-notification provider (`core.notification.email_provider`) — since both
+email channel (`core.channels.email`) — since both
 authenticate with `server.login()` and would leak credentials in cleartext if a
 typo in SMTP_SSL silently selected the unencrypted transport.
 """
@@ -12,8 +12,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from fim_one.core.notification.email_provider import EmailNotificationProvider
-from fim_one.core.notification.smtp import resolve_ssl_mode
+from fim_one.core.channels.email import EmailChannel
+from fim_one.core.channels.smtp import resolve_ssl_mode
 from fim_one.web.email import _send_email
 
 
@@ -73,7 +73,7 @@ class TestSystemEmailTransport:
         monkeypatch.setenv("SMTP_SSL", "none")
         with patch("smtplib.SMTP") as plain:
             plain.return_value.__enter__.return_value = MagicMock()
-            with caplog.at_level(logging.WARNING, logger="fim_one.core.notification.smtp"):
+            with caplog.at_level(logging.WARNING, logger="fim_one.core.channels.smtp"):
                 _send_email("user@example.com", "hi", "<p>hi</p>")
         plain.assert_called_once()
         assert "cleartext" in caplog.text
@@ -87,8 +87,8 @@ class TestSystemEmailTransport:
         plain.assert_not_called()
 
 
-class TestNotificationProviderTransport:
-    """The notification provider shares the same login()-over-SMTP hazard."""
+class TestEmailChannelTransport:
+    """The email channel shares the same login()-over-SMTP hazard."""
 
     def test_typo_never_opens_a_plaintext_connection(
         self, monkeypatch: pytest.MonkeyPatch
@@ -96,7 +96,7 @@ class TestNotificationProviderTransport:
         monkeypatch.setenv("SMTP_SSL", "true")
         with patch("smtplib.SMTP") as plain, patch("smtplib.SMTP_SSL") as secure:
             with pytest.raises(ValueError):
-                EmailNotificationProvider._send_sync(
+                EmailChannel._send_sync(
                     to="user@example.com", subject="hi", body="<p>hi</p>"
                 )
         plain.assert_not_called()
@@ -108,8 +108,8 @@ class TestNotificationProviderTransport:
         monkeypatch.setenv("SMTP_SSL", "none")
         with patch("smtplib.SMTP") as plain:
             plain.return_value.__enter__.return_value = MagicMock()
-            with caplog.at_level(logging.WARNING, logger="fim_one.core.notification.smtp"):
-                EmailNotificationProvider._send_sync(
+            with caplog.at_level(logging.WARNING, logger="fim_one.core.channels.smtp"):
+                EmailChannel._send_sync(
                     to="user@example.com", subject="hi", body="<p>hi</p>"
                 )
         plain.assert_called_once()

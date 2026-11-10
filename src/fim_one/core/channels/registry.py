@@ -5,11 +5,17 @@ from __future__ import annotations
 from typing import Any
 
 from .base import BaseChannel
+from .email import EmailChannel
 from .feishu import FeishuChannel
+from .webhook import LarkWebhookChannel, SlackWebhookChannel, WeComWebhookChannel
 
 # Map of ``type`` column value → BaseChannel subclass.
 CHANNEL_TYPES: dict[str, type[BaseChannel]] = {
     "feishu": FeishuChannel,
+    "lark_webhook": LarkWebhookChannel,
+    "slack_webhook": SlackWebhookChannel,
+    "wecom_webhook": WeComWebhookChannel,
+    "email": EmailChannel,
 }
 
 
