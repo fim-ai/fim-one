@@ -31,7 +31,13 @@ from fim_one.core.assembly.principal import (
     resolve_principal,
 )
 from fim_one.core.channels import ApprovalCarrier, build_channel, get_channel_class
-from fim_one.core.channels.feishu import FeishuChannel, build_decided_card
+from fim_one.core.channels.feishu import (
+    BASE_URL_NOT_ALLOWED,
+    FeishuBaseUrlNotAllowed,
+    FeishuChannel,
+    base_url_allowed,
+    build_decided_card,
+)
 from fim_one.db import get_session
 from fim_one.web.exceptions import AppError
 from fim_one.web.auth import (
@@ -475,6 +481,14 @@ async def discover_chats(
       admin, and uses the decrypted stored secret when no fresh secret
       was provided.
 
+    The request goes to the Feishu API origin the channel itself would
+    call: the stored channel's ``base_url`` in edit mode, the request's
+    ``base_url`` in create mode (and in edit mode when the secret was
+    re-typed and a ``base_url`` came with it), ``https://open.feishu.cn``
+    when there is none. An origin the channel could not be saved with is
+    refused with ``feishu_channel_base_url_not_allowed`` before anything is
+    sent: the request carries the app secret.
+
     Returns a list of ``ChatInfo`` rows the caller can render into a
     picker UI.  Errors from Feishu (invalid credentials, network, etc.)
     surface as ``400`` with a human-readable ``detail`` message so the
@@ -483,10 +497,16 @@ async def discover_chats(
     # Resolve org + secret based on mode.
     app_id = body.app_id.strip()
     app_secret: str | None = (body.app_secret or "").strip() or None
+    base_url: Any = (body.base_url or "").strip() or None
 
     if body.channel_id:
         channel = await _load_channel_or_404(db, body.channel_id)
         await require_org_admin(channel.org_id, user, db)
+        stored_base_url = (channel.config or {}).get("base_url")
+        if app_secret is None or base_url is None:
+            # The stored secret only ever goes to the host it was saved for;
+            # a re-typed one goes there too unless the caller names another.
+            base_url = stored_base_url
         if app_secret is None:
             stored_secret = str((channel.config or {}).get("app_secret") or "")
             if not stored_secret:
@@ -522,9 +542,24 @@ async def discover_chats(
             detail="app_id is required to fetch the group list.",
         )
 
-    adapter = FeishuChannel({"app_id": app_id, "app_secret": app_secret})
+    def _base_url_refused() -> AppError:
+        return AppError(
+            BASE_URL_NOT_ALLOWED,
+            status_code=status.HTTP_400_BAD_REQUEST,
+            # The picker shows ``detail`` as it is, so it is a sentence.
+            detail=str(FeishuBaseUrlNotAllowed()),
+        )
+
+    if not base_url_allowed(base_url):
+        raise _base_url_refused()
+    adapter_config: dict[str, Any] = {"app_id": app_id, "app_secret": app_secret}
+    if base_url:
+        adapter_config["base_url"] = base_url
+    adapter = FeishuChannel(adapter_config)
     try:
         raw_items = await adapter.list_chats()
+    except FeishuBaseUrlNotAllowed as exc:
+        raise _base_url_refused() from exc
     except RuntimeError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
