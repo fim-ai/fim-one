@@ -258,6 +258,26 @@ async def drain_confirmations(
         yield event
 
 
+def discard_pending(scope: str, user_id: str) -> int:
+    """Drop what is queued for ``(scope, user_id)``; returns how many events.
+
+    Called when a turn starts, before its pump. A pump takes each event
+    the moment it is queued, so anything found here was queued while no
+    stream was open for the key: a request raised after its turn's stream
+    had ended, or under a scope no pump served. It belongs to an earlier
+    turn and must not be shown as a card of this one. The row is
+    untouched and closes at its own deadline.
+    """
+    q = queue_for(scope, user_id)
+    dropped = 0
+    while True:
+        try:
+            q.get_nowait()
+        except asyncio.QueueEmpty:
+            return dropped
+        dropped += 1
+
+
 async def clear_all_queues() -> None:
     """Test helper: drop every pending event across every key."""
     async with _queues_lock:
@@ -268,6 +288,7 @@ __all__ = [
     "register_confirmation_bridge",
     "unregister_confirmation_bridge",
     "drain_confirmations",
+    "discard_pending",
     "queue_for",
     "scope_for",
     "clear_all_queues",

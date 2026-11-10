@@ -776,6 +776,7 @@ const HistoryTurn = memo(function HistoryTurn({ userContent, userMetadata, orpha
           suggestions={dagData.suggestions}
           hideDagGraph={hideDagGraph}
           guardrailEvent={dagData.guardrailEvent}
+          confirmationEvents={dagData.confirmationEvents}
           onSuggestionSelect={onSuggestionSelect}
         />
       )}
@@ -2488,6 +2489,7 @@ function PlaygroundContent({
                           answerDone={dagData.answerDone}
                           suggestions={dagData.suggestions}
                           hideDagGraph
+                          confirmationEvents={dagData.confirmationEvents}
                           onSuggestionSelect={handleSuggestionSelect}
                           isPostProcessing={isPostProcessing}
                         />

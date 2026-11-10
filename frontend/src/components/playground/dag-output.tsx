@@ -33,11 +33,13 @@ import {
 import { useAuth } from "@/contexts/auth-context"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import type {
+  AwaitingConfirmationEvent,
   DagPhaseEvent,
   DagDoneEvent,
   GuardrailTripwiredEvent,
 } from "@/types/api"
 import { GuardrailBlockedCard } from "@/components/chat/guardrail-blocked-card"
+import { ConfirmationCard } from "@/components/chat/confirmation-card"
 import { CopyButton } from "@/components/ui/copy-button"
 import type { StepState, RoundSnapshot } from "@/hooks/use-dag-steps"
 import { DagFlowGraph } from "@/components/dag/dag-flow-graph"
@@ -84,6 +86,12 @@ interface DagOutputProps {
    * bubble is rendered in place of (or alongside) the answer card.
    */
   guardrailEvent?: GuardrailTripwiredEvent | null
+  /**
+   * Approval requests raised by this turn's tool calls. Each renders the
+   * card ReAct turns use, where the user approves or rejects; the cards
+   * stay after the turn is done.
+   */
+  confirmationEvents?: AwaitingConfirmationEvent[]
 }
 
 export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function DagOutput({
@@ -103,6 +111,7 @@ export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function Da
   onSuggestionSelect,
   isPostProcessing,
   guardrailEvent,
+  confirmationEvents = [],
 }, ref) {
   const t = useTranslations("playground")
   const { user } = useAuth()
@@ -117,6 +126,21 @@ export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function Da
     (s) => s.status === "completed",
   ).length
   const totalSteps = stepStates.length
+
+  const confirmationCards = confirmationEvents.map((ev) => (
+    <div key={`conf-${ev.confirmation_id}`} data-confirmation-id={ev.confirmation_id}>
+      <ConfirmationCard
+        confirmationId={ev.confirmation_id}
+        toolName={ev.tool_name}
+        arguments={ev.arguments}
+        timeoutAt={ev.timeout_at}
+        agentId={ev.agent_id}
+        mode={ev.mode}
+        channelLabel={ev.channel_label}
+        approverScope={ev.approver_scope}
+      />
+    </div>
+  ))
 
   // Determine which answer to show: doneEvent.answer is authoritative, fall back to streaming
   const displayAnswer = doneEvent?.answer ?? streamingAnswer ?? ""
@@ -170,6 +194,9 @@ export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function Da
             </div>
           )}
         </div>
+
+        {/* Approval requests — kept as the record of what was decided */}
+        {confirmationCards}
 
         {/* Inject messages — always visible */}
         {injectEvents.map((evt, i) => (
@@ -248,6 +275,9 @@ export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function Da
       {stepStates.length > 0 && currentPhase !== "planning" && (
         <StepList stepStates={stepStates} />
       )}
+
+      {/* Approval requests — a step's tool call waits here for a decision */}
+      {confirmationCards}
 
       {/* Inject messages */}
       {injectEvents.map((evt, i) => (

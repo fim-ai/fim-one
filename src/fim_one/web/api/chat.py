@@ -259,6 +259,42 @@ def _emit(sse_events: list[dict[str, Any]], event: str, data: Any) -> str:
     return _sse(event, {"cursor": entry["cursor"], "data": data})
 
 
+def _start_confirmation_pump(
+    agent_id: str | None,
+    conversation_id: str | None,
+    user_id: str | None,
+    progress_queue: "asyncio.Queue[str]",
+    sse_events: list[dict[str, Any]],
+) -> "asyncio.Task[None] | None":
+    """Start the pump that puts this turn's confirmation and question cards on its stream.
+
+    One entry for the ReAct and the DAG handler, so both listen on the
+    scope the bridge files a request under: the agent, or the
+    conversation for a chat with no agent. Events already queued for that
+    scope were left by an earlier turn and are discarded first; a turn
+    shows only the requests it raises. Returns ``None`` when the turn has
+    no addressable scope (no agent and no conversation, or no user).
+    """
+    from fim_one.web.confirmation_sse import discard_pending, scope_for
+
+    scope = scope_for(str(agent_id or ""), str(conversation_id or ""))
+    user = str(user_id or "")
+    if not scope or not user:
+        return None
+    stale = discard_pending(scope, user)
+    if stale:
+        logger.info(
+            "Discarded %d confirmation event(s) left over from an earlier turn "
+            "(scope=%s user=%s)",
+            stale,
+            scope,
+            user,
+        )
+    return asyncio.create_task(
+        _pump_inline_confirmations(scope, user, progress_queue, sse_events)
+    )
+
+
 async def _pump_inline_confirmations(
     scope: str,
     user_id: str,
@@ -3277,23 +3313,13 @@ async def react_endpoint(
         # while the DB poll is still blocked.  Scope falls back to the
         # conversation for agent-less playground runs so question cards
         # work without an agent binding.  Cancelled below at teardown.
-        from fim_one.web.confirmation_sse import scope_for as _confirm_scope_for
-
-        _react_confirm_scope = _confirm_scope_for(
-            str((agent_cfg or {}).get("agent_id") or ""),
-            str(conversation_id or ""),
+        _confirmation_pump_task = _start_confirmation_pump(
+            (agent_cfg or {}).get("agent_id"),
+            conversation_id,
+            current_user_id,
+            progress_queue,
+            sse_events,
         )
-        _react_confirm_user_id = str(current_user_id or "")
-        _confirmation_pump_task: asyncio.Task[None] | None = None
-        if _react_confirm_scope and _react_confirm_user_id:
-            _confirmation_pump_task = asyncio.create_task(
-                _pump_inline_confirmations(
-                    _react_confirm_scope,
-                    _react_confirm_user_id,
-                    progress_queue,
-                    sse_events,
-                )
-            )
         iter_start = time.time()
         thinking_done_iter = 0  # track which iteration's thinking-done was emitted
         current_iteration = 1  # track the current iteration for _on_answer_token
@@ -4556,20 +4582,15 @@ async def dag_endpoint(
         progress_queue: asyncio.Queue[str] = asyncio.Queue(maxsize=1000)
         done_event = asyncio.Event()
 
-        # Inline confirmation pump — mirrors the ReAct handler.  See
-        # ``_pump_inline_confirmations`` for rationale.
-        _dag_confirm_agent_id = str((agent_cfg or {}).get("agent_id") or "")
-        _dag_confirm_user_id = str(current_user_id or "")
-        _dag_confirmation_pump_task: asyncio.Task[None] | None = None
-        if _dag_confirm_agent_id and _dag_confirm_user_id:
-            _dag_confirmation_pump_task = asyncio.create_task(
-                _pump_inline_confirmations(
-                    _dag_confirm_agent_id,
-                    _dag_confirm_user_id,
-                    progress_queue,
-                    sse_events,
-                )
-            )
+        # Inline confirmation pump: the same entry as the ReAct handler,
+        # so a chat with no agent is served under its conversation here too.
+        _dag_confirmation_pump_task = _start_confirmation_pump(
+            (agent_cfg or {}).get("agent_id"),
+            conversation_id,
+            current_user_id,
+            progress_queue,
+            sse_events,
+        )
 
         # Step-level checkpoint: keyed by conversation + raw query hash so a
         # retry of the same request after a mid-execution crash resumes the
