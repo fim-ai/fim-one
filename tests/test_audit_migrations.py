@@ -67,7 +67,10 @@ def current_db(request: pytest.FixtureRequest) -> Iterator[sa.Engine]:
 def _migrate(engine: sa.Engine, module_name: str, direction: str) -> None:
     module = importlib.import_module(module_name)
     with engine.connect() as conn:
-        with Operations.context(MigrationContext.configure(conn)):
+        context = MigrationContext.configure(conn)
+        # As ``env.py`` runs them: inside the migration context's own
+        # transaction, which an autocommit block steps out of and back into.
+        with context.begin_transaction(), Operations.context(context):
             getattr(module, direction)()
         conn.commit()
 
@@ -320,3 +323,69 @@ class TestAuditFields:
         _migrate(before_c2p1, _C2P1, "upgrade")
         assert (_shape(before_c2p1, _AUDIT), _shape(before_c2p1, _LOGINS)) == upgraded
         assert len(_rows(before_c2p1, _AUDIT_ROW_SQL)) == 2
+
+
+class TestAuditIndexesOnPostgreSQL:
+    """The three indexes were built with a plain CREATE INDEX, which blocks
+    every insert into ``audit_logs`` while it scans the table."""
+
+    def test_the_indexes_are_built_concurrently(
+        self, before_c2p1: sa.Engine, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        if before_c2p1.dialect.name != "postgresql":
+            pytest.skip("CONCURRENTLY is PostgreSQL's")
+        statements: list[str] = []
+
+        @sa.event.listens_for(before_c2p1, "before_cursor_execute")
+        def _seen(_c: Any, _cur: Any, statement: str, *_rest: Any) -> None:
+            statements.append(statement)
+
+        _migrate(before_c2p1, _C2P1, "upgrade")
+
+        builds = [s for s in statements if s.lstrip().upper().startswith("CREATE INDEX")]
+        assert len(builds) == 3 and all("CONCURRENTLY" in s.upper() for s in builds)
+        assert set(_AUDIT_INDEXES) <= set(_shape(before_c2p1, _AUDIT)["indexes"])
+
+    def test_an_invalid_index_left_by_a_failed_build_is_rebuilt(
+        self, before_c2p1: sa.Engine
+    ) -> None:
+        if before_c2p1.dialect.name != "postgresql":
+            pytest.skip("CONCURRENTLY is PostgreSQL's")
+        _migrate(before_c2p1, _C2P1, "upgrade")
+        with before_c2p1.begin() as conn:
+            conn.execute(
+                text(
+                    "UPDATE pg_index SET indisvalid = false WHERE indexrelid ="
+                    " (SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace"
+                    "  WHERE c.relname = 'ix_audit_logs_target' AND n.nspname = current_schema())"
+                )
+            )
+
+        _migrate(before_c2p1, _C2P1, "upgrade")
+
+        with before_c2p1.connect() as conn:
+            valid = conn.execute(
+                text(
+                    "SELECT i.indisvalid FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid"
+                    " JOIN pg_namespace n ON n.oid = c.relnamespace"
+                    " WHERE c.relname = 'ix_audit_logs_target' AND n.nspname = current_schema()"
+                )
+            ).scalar_one()
+        assert valid is True
+
+
+class TestDowngradeTouchesOnlyLongNames:
+    def test_only_rows_with_a_long_operator_name_are_rewritten(
+        self, before_c2p1: sa.Engine
+    ) -> None:
+        _migrate(before_c2p1, _C2P1, "upgrade")
+        statements: list[str] = []
+
+        @sa.event.listens_for(before_c2p1, "before_cursor_execute")
+        def _seen(_c: Any, _cur: Any, statement: str, *_rest: Any) -> None:
+            statements.append(statement)
+
+        _migrate(before_c2p1, _C2P1, "downgrade")
+
+        (update,) = [s for s in statements if s.lstrip().upper().startswith("UPDATE AUDIT_LOGS")]
+        assert "WHERE LENGTH(admin_username) > 50" in update

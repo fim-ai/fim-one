@@ -23,7 +23,8 @@ default) and none is a foreign key: a record outlives what it names.
   or an email, and an email longer than 50 made the insert fail on
   PostgreSQL.
 - indexes on ``created_at``, ``(org_id, created_at)`` and
-  ``(target_type, target_id)``.
+  ``(target_type, target_id)``, built ``CONCURRENTLY`` on PostgreSQL so
+  that inserts into the table are not blocked while they are built.
 
 ``login_history`` gains ``method``: ``password``, ``email_code`` or
 ``oauth:<provider>``. Earlier rows leave it empty.
@@ -98,6 +99,50 @@ def _resize_label(bind: sa.Connection, *, old: int, new: int) -> None:
         )
 
 
+def _invalid_indexes(bind: sa.Connection) -> set[str]:
+    """Indexes of ``audit_logs`` a failed concurrent build left behind (PostgreSQL)."""
+    rows = bind.execute(
+        sa.text(
+            "SELECT c.relname FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid"
+            " JOIN pg_class t ON t.oid = i.indrelid"
+            " WHERE t.relname = :table AND NOT i.indisvalid"
+            " AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = current_schema())"
+        ),
+        {"table": _AUDIT},
+    )
+    return {row[0] for row in rows}
+
+
+def _create_indexes(bind: sa.Connection) -> None:
+    """Create the indexes that are missing.
+
+    On PostgreSQL they are built ``CONCURRENTLY``: an ordinary build holds
+    a lock that blocks every insert into ``audit_logs`` for as long as it
+    scans the table, and by now almost every request that changes something
+    inserts there. A concurrent build cannot run inside a transaction, so
+    it runs in an autocommit block (which commits what the migration run
+    has done so far). One that fails leaves an invalid index behind; it is
+    dropped and built again here.
+    """
+    if bind.dialect.name != "postgresql":
+        for name, columns in _INDEXES.items():
+            if not index_exists(bind, _AUDIT, name):
+                op.create_index(name, _AUDIT, columns)
+        return
+
+    invalid = _invalid_indexes(bind)
+    missing = [
+        name for name in _INDEXES if name in invalid or not index_exists(bind, _AUDIT, name)
+    ]
+    if not missing:
+        return
+    with op.get_context().autocommit_block():
+        for name in missing:
+            if name in invalid:
+                op.drop_index(name, table_name=_AUDIT, postgresql_concurrently=True)
+            op.create_index(name, _AUDIT, _INDEXES[name], postgresql_concurrently=True)
+
+
 def upgrade() -> None:
     bind = op.get_bind()
 
@@ -106,9 +151,7 @@ def upgrade() -> None:
             if not table_has_column(bind, _AUDIT, column.name):
                 op.add_column(_AUDIT, column)
         _resize_label(bind, old=50, new=255)
-        for name, columns in _INDEXES.items():
-            if not index_exists(bind, _AUDIT, name):
-                op.create_index(name, _AUDIT, columns)
+        _create_indexes(bind)
 
     if table_exists(bind, _LOGINS) and not table_has_column(bind, _LOGINS, "method"):
         op.add_column(_LOGINS, sa.Column("method", sa.String(40), nullable=True))
@@ -129,9 +172,13 @@ def downgrade() -> None:
     present = [c.name for c in _new_columns() if table_has_column(bind, _AUDIT, c.name)]
     narrow = _label_length(bind) != 50
     if narrow:
-        # A longer label cannot go back into 50 characters as it is.
+        # A longer label cannot go back into 50 characters as it is. Only
+        # the rows that have one are touched.
         op.execute(
-            sa.text(f"UPDATE {_AUDIT} SET {_LABEL} = SUBSTR({_LABEL}, 1, 50)")
+            sa.text(
+                f"UPDATE {_AUDIT} SET {_LABEL} = SUBSTR({_LABEL}, 1, 50)"
+                f" WHERE LENGTH({_LABEL}) > 50"
+            )
         )
     if present or narrow:
         with op.batch_alter_table(_AUDIT) as batch:
