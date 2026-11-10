@@ -395,3 +395,46 @@ class TestQuotaHasOneGate:
         assert not offenders, (
             "quota is checked by fim_one.core.assembly.quota:\n  " + "\n  ".join(offenders)
         )
+
+
+# What chat's endpoints and tools used to call directly to assemble an agent.
+# In chat.py each name may appear once: where it is defined.
+CHAT_ASSEMBLY_HELPERS = (
+    "_resolve_tools(",
+    "_connect_pending_mcp_servers(",
+    "_resolve_llm(",
+)
+
+
+class TestAgentsAreAssembledByTheRuntime:
+    """Chat turns, ``call_agent`` delegates and workflow Agent steps get an
+    agent's models, tools and hooks from ``web/services/agent_runtime.py``
+    (through the ``core.assembly.runtime`` port outside the web layer)."""
+
+    def test_chat_calls_the_runtime_stages_not_its_own_helpers(self) -> None:
+        chat = SRC / "web" / "api" / "chat.py"
+        # The vision model falls back to the main one inside its own resolver.
+        vision_fallback = "return await _resolve_llm(agent_cfg, db)"
+        offenders = [
+            f"{chat.relative_to(SRC)}:{lineno}: {line.strip()}"
+            for needle in CHAT_ASSEMBLY_HELPERS
+            for lineno, line in _source_lines(chat)
+            if needle in line and f"def {needle}" not in line and vision_fallback not in line
+        ]
+        offenders += _occurrences("build_hook_registry_for_agent", [chat])
+        assert not offenders, (
+            "chat.py assembles through fim_one.web.services.agent_runtime:\n  "
+            + "\n  ".join(offenders)
+        )
+
+    def test_call_agent_holds_no_resolver_of_its_own(self) -> None:
+        tool = CORE / "tool" / "builtin" / "call_agent.py"
+        offenders = [
+            hit
+            for needle in ("fim_one.web", "_resolver", "get_llm_from_config", "get_model_registry")
+            for hit in _occurrences(needle, [tool])
+        ]
+        assert not offenders, (
+            "call_agent builds its delegate with core.assembly.runtime:\n  "
+            + "\n  ".join(offenders)
+        )

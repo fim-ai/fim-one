@@ -1262,10 +1262,10 @@ KNOWN_DEVIATIONS: tuple[Deviation, ...] = (
     ),
     Deviation(
         name="agent-mcp-never-connected",
-        entries=("sub_agent", "wf_agent_node"),
+        entries=("wf_agent_node",),
         resources=MCP_SERVERS,
         what="MCP servers bound to the agent are never connected, so its MCP tools are missing.",
-        ref="N7; B16, B17",
+        ref="N7; B16",
         removed_in="C1 phase 4",
         today=_never_connected,
     ),

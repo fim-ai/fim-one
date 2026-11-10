@@ -44,6 +44,7 @@ background.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import base64
 import json
 import logging
@@ -2025,8 +2026,7 @@ async def _resolve_tools(
 
     # ------------------------------------------------------------------
     # Register CallAgentTool with all visible agents for multi-agent
-    # delegation.  The tool_resolver callback allows delegated agents to
-    # inherit the full tool set (minus call_agent itself).
+    # delegation.
     # Only available when no specific agent is selected — prevents
     # marketplace agents from accessing other agents' private prompts.
     # ------------------------------------------------------------------
@@ -2044,68 +2044,26 @@ async def _resolve_tools(
                 )
 
             if _visible_agents:
-                _agent_catalog = [
-                    {
-                        "id": a.id,
-                        "name": a.name,
-                        "description": a.description or "",
-                        "instructions": a.instructions,
-                        "model_config_json": a.model_config_json,
-                        "tool_categories": a.tool_categories,
-                        "kb_ids": a.kb_ids,
-                        "connector_ids": a.connector_ids,
-                        "mcp_server_ids": a.mcp_server_ids,
-                        "grounding_config": a.grounding_config,
-                        "sandbox_config": a.sandbox_config,
-                        "owner_user_id": a.user_id,
-                    }
-                    for a in _visible_agents
-                ]
-
-                async def _sub_agent_tool_resolver(
-                    sub_cfg: dict[str, Any], conv_id: str | None
-                ) -> Any:
-                    return await _resolve_tools(
-                        sub_cfg, conv_id, user_id=user_id, entry="sub_agent"
-                    )
-
-                async def _sub_agent_llm_resolver(
-                    sub_cfg: dict[str, Any],
-                ) -> Any:
-                    """Resolve LLM for a sub-agent with full DB-backed 3-tier fallback."""
-                    from fim_one.db import create_session as _cs_llm
-
-                    async with _cs_llm() as _llm_db:
-                        return await _resolve_llm(sub_cfg, _llm_db)
-
-                async def _sub_agent_hook_resolver(
-                    sub_cfg: dict[str, Any],
-                ) -> Any:
-                    """Build a delegated agent's own enforcement registry.
-
-                    Without this the delegate ran with an empty registry, so
-                    a sensitive connector call skipped the confirmation gate
-                    purely by being reached through ``call_agent``.
-                    """
-                    from fim_one.db import create_session as _cs_hook
-                    from fim_one.web.hooks_bootstrap import (
-                        build_hook_registry_for_agent,
-                    )
-
-                    _sub_shim = SimpleNamespace(
-                        model_config_json=sub_cfg.get("model_config_json")
-                    )
-                    return await build_hook_registry_for_agent(_sub_shim, _cs_hook)
-
                 from fim_one.core.tool.builtin.call_agent import CallAgentTool
 
+                # A catalogue of names. The delegate's configuration, tools
+                # (its MCP servers included) and hooks are assembled by the
+                # agent runtime when it is called, as for a chat with it.
                 tools.register(
                     CallAgentTool(
-                        available_agents=_agent_catalog,
-                        calling_user_id=user_id,
-                        tool_resolver=_sub_agent_tool_resolver,
-                        llm_resolver=_sub_agent_llm_resolver,
-                        hook_resolver=_sub_agent_hook_resolver,
+                        available_agents=[
+                            {"id": a.id, "name": a.name, "description": a.description or ""}
+                            for a in _visible_agents
+                        ],
+                        # The delegate runs outside the conversation's
+                        # sandbox and its calls are recorded as its own.
+                        call_context=dataclasses.replace(
+                            _tool_ctx,
+                            binding=None,
+                            entry="sub_agent",
+                            conversation_id=None,
+                            agent_id=None,
+                        ),
                     )
                 )
         except Exception:

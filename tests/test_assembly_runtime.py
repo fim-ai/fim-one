@@ -152,6 +152,61 @@ class TestBuild:
         assert closed == [True]
 
 
+class TestADelegatedAgent:
+    """B17 / N7: ``call_agent`` runs the delegate with the tools a chat with it has."""
+
+    async def test_its_mcp_servers_are_connected_for_the_run_and_released_after(
+        self, factory: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        scene = await m.seed_scene(factory, m.SceneKey("subscriber", True, True, False))
+        released: list[bool] = []
+        with m.outside_world(factory) as out:
+            from fim_one.core import mcp as mcp_mod
+
+            async def _release(_self: Any) -> None:
+                released.append(True)
+
+            monkeypatch.setattr(mcp_mod.MCPClient, "disconnect_all", _release)
+            ctx = _ctx(scene.actor, "chat_noagent")
+            tools = await agent_runtime.resolve_toolset(ctx, None)
+            call_agent = tools.get("call_agent")
+            assert call_agent is not None
+            # The catalogue names agents; it carries none of their configuration.
+            assert set(call_agent._agents[scene.carrier_agent_id]) == {"id", "name", "description"}
+
+            answer = await call_agent.run(agent_id=scene.carrier_agent_id, task="go")
+
+            assert answer == "done"
+            delegate = out.agents_built[-1]
+            assert {"mcp", "connector", "kb_retrieve"} <= _names(delegate["tools"])
+            assert set(out.mcp_connects) == {scene.names["mcp_stdio"], scene.names["mcp_http"]}
+            # The subscriber has no credential of their own: the owner allowed fallback.
+            assert out.mcp_connects[scene.names["mcp_http"]]["headers"] == m.OWNER_HEADERS
+            assert delegate["agent_id"] == scene.carrier_agent_id
+            assert delegate["user_id"] == scene.actor
+            assert [h.name for h in delegate["hook_registry"].list_hooks()] == ["approval_gate"]
+        assert released == [True]
+
+    async def test_an_agent_switched_off_after_the_catalogue_was_built_is_not_run(
+        self, factory: async_sessionmaker[AsyncSession]
+    ) -> None:
+        from fim_one.db.models.agent import Agent
+
+        scene = await m.seed_scene(factory, m.SceneKey("subscriber", True, True, False))
+        with m.outside_world(factory) as out:
+            tools = await agent_runtime.resolve_toolset(_ctx(scene.actor, "chat_noagent"), None)
+            async with factory() as s:
+                agent = await s.get(Agent, scene.carrier_agent_id)
+                assert agent is not None
+                agent.is_active = False
+                await s.commit()
+
+            answer = await tools.get("call_agent").run(agent_id=scene.carrier_agent_id, task="go")
+
+        assert "is not available" in answer
+        assert out.agents_built == []
+
+
 class TestCallContext:
     def test_an_agent_with_an_owner_is_the_binding(self) -> None:
         ctx = agent_runtime.call_context(
