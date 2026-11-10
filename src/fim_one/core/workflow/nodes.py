@@ -1245,20 +1245,27 @@ async def _action_tool(
 ACTION_CONFIRMATION_TIMEOUT_HOURS = 24.0
 
 
-def _call_fingerprint(connector: Any, action: Any) -> str:
+def _call_fingerprint(connector: Any, action: Any, credential_source: str = "") -> str:
     """What a confirmation of this action was a confirmation of.
 
-    A hash of where the call goes and how it is built: the connector's
-    address and authentication type, the action's method, path, parameter
-    schema, body template and response extraction. If it differs between
-    the request and the approval, the person approved something else.
+    A hash of where the call goes, as whom, and how it is built: the
+    connector's address, authentication type and configuration (hashed,
+    never kept), whether it lends its owner's credential, whose credential
+    this run will use (*credential_source*: the runner's own, or the
+    owner's), and the action's method, path, parameter schema, body
+    template, response extraction and flag. If it differs between the
+    request and the approval, the person approved something else.
     """
     import hashlib
 
+    auth_config = json.dumps(connector.auth_config, sort_keys=True, default=str)
     definition = {
         "connector_id": connector.id,
         "base_url": connector.base_url,
         "auth_type": connector.auth_type,
+        "auth_config": hashlib.sha256(auth_config.encode("utf-8")).hexdigest(),
+        "allow_fallback": bool(connector.allow_fallback),
+        "credential_source": credential_source,
         "action_id": action.id,
         "name": action.name,
         "method": action.method,
@@ -1280,6 +1287,7 @@ async def _confirmed(
     action: Any,
     params: dict[str, Any],
     t0: float,
+    credential_source: str = "",
 ) -> NodeResult | dict[str, Any]:
     """Put an action flagged "requires confirmation" before a person.
 
@@ -1338,7 +1346,7 @@ async def _confirmed(
                 "tool_args": params,
                 "connector_id": connector.id,
                 "action_id": action.id,
-                "fingerprint": _call_fingerprint(connector, action),
+                "fingerprint": _call_fingerprint(connector, action, credential_source),
             },
             eligible_scope="initiator",
             eligible_user_id=principal.user_id,
@@ -1369,7 +1377,9 @@ async def _confirmed(
     if outcome == "approve":
         shown = record.payload if isinstance(getattr(record, "payload", None), dict) else {}
         approved_args = shown.get("tool_args")
-        if shown.get("fingerprint") != _call_fingerprint(connector, action) or not isinstance(
+        if shown.get("fingerprint") != _call_fingerprint(
+            connector, action, credential_source
+        ) or not isinstance(
             approved_args, dict
         ):
             return failed(
@@ -1664,6 +1674,23 @@ class ConnectorExecutor:
                         duration_ms=_ms_since(t0),
                     )
                 connector = _usable[0]
+                # Whose credential the call would carry: the runner's own
+                # if they saved one, else the owner's.
+                from sqlalchemy import select
+
+                from fim_one.db.models.connector_credential import ConnectorCredential
+
+                own = (
+                    await db.execute(
+                        select(ConnectorCredential.id)
+                        .where(
+                            ConnectorCredential.connector_id == connector.id,
+                            ConnectorCredential.user_id == call_context.principal.user_id,
+                        )
+                        .limit(1)
+                    )
+                ).first()
+                credential_source = "own" if own is not None else "owner"
 
             # Also when the flag was taken off the action while a request
             # was waiting: a request that was made is answered, and its
@@ -1675,7 +1702,7 @@ class ConnectorExecutor:
                 # Asked after the checks above, so nobody is asked to
                 # confirm a call that would be refused anyway.
                 confirmed = await _confirmed(
-                    node, context, call_context, connector, action, params, t0
+                    node, context, call_context, connector, action, params, t0, credential_source
                 )
                 if isinstance(confirmed, NodeResult):
                     return confirmed
