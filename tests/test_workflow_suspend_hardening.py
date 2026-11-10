@@ -464,6 +464,47 @@ class TestWhatWasApprovedIsWhatRuns:
         assert run.status == "completed"
         assert flagged.calls == [shown]
 
+    @pytest.mark.parametrize("what", ["auth", "fallback", "credential"])
+    async def test_a_change_of_who_the_call_is_made_as_is_not_run(
+        self, rig: Rig, flagged: _Adapter, hooked: Any, what: str
+    ) -> None:
+        """Approved as one identity, it is not sent as another."""
+        from fim_one.core.security.encryption import encrypt_credential
+        from fim_one.db.models.connector import Connector
+        from fim_one.db.models.connector_credential import ConnectorCredential
+
+        outcome = await rig.start()
+        request = await rig.request_of(outcome.run_id)
+        connector_id = request.payload["connector_id"]
+        async with rig.factory() as db:
+            if what == "auth":
+                await db.execute(
+                    update(Connector)
+                    .where(Connector.id == connector_id)
+                    .values(auth_config={"token_header": "X-Other"})
+                )
+            elif what == "fallback":
+                connector = await db.get(Connector, connector_id)
+                assert connector is not None
+                connector.allow_fallback = not connector.allow_fallback
+            else:  # the runner saves a credential of their own meanwhile
+                db.add(
+                    ConnectorCredential(
+                        connector_id=connector_id,
+                        user_id=rig.owner.id,
+                        credentials_blob=encrypt_credential({"token": "mine"}),
+                    )
+                )
+            await db.commit()
+
+        await rig.decide(request.id, "approve")
+
+        run = await rig.ended(outcome.run_id)
+        assert run.status == "failed" and flagged.calls == []
+        assert "changed after the confirmation was requested" in (
+            run.node_results["connector_1"]["error"]
+        )
+
     @pytest.mark.parametrize("what", ["action", "connector"])
     async def test_an_action_or_connector_edited_meanwhile_is_not_run(
         self, rig: Rig, flagged: _Adapter, hooked: Any, what: str
@@ -783,7 +824,7 @@ class TestWaitingRunsAreCapped:
 # ---------------------------------------------------------------------------
 
 # A server process of its own. It runs start -> end, where the End step
-# blocks the event loop for three seconds (time.sleep): no task on that loop
+# blocks the event loop for four seconds (time.sleep): no task on that loop
 # can stamp the run meanwhile. With "thread" the supervisor stamps from its
 # heartbeat thread, as a server does; with "loop" from the loop, as before.
 _BLOCKED_SERVER = """
@@ -805,7 +846,7 @@ url = f"sqlite+aiosqlite:///{db_file}"
 
 
 async def blocking_end(node, store, ctx):
-    time.sleep(3)  # the whole event loop stands still
+    time.sleep(4)  # the whole event loop stands still
     open(marker, "w").write("the step ran to its end")
     return NodeResult(node_id=node.id, status=NodeStatus.COMPLETED, output={})
 
@@ -891,7 +932,7 @@ class TestALiveRunIsNotTakenForDead:
         self, rig: Rig, tmp_path: Any
     ) -> None:
         """Two real processes. One executes a step that blocks its event
-        loop for 3 s; the other sweeps meanwhile with a 0.6 s staleness
+        loop for 4 s; the other sweeps meanwhile with a 0.6 s staleness
         limit. The heartbeat thread keeps stamping, so nothing is closed."""
         if rig.backend != "sqlite":
             pytest.skip("the child process opens the SQLite file")
@@ -900,7 +941,7 @@ class TestALiveRunIsNotTakenForDead:
         other = WorkflowRunSupervisor(_new_service(), heartbeat_seconds=0.2, stale_seconds=0.6)
 
         closed: list[str] = []
-        for _ in range(4):  # 2 s into the 3 s the loop is blocked
+        for _ in range(4):  # 2 s into the 4 s the loop is blocked
             await asyncio.sleep(0.5)
             closed += (await other.sweep()).closed
 
@@ -922,9 +963,13 @@ class TestALiveRunIsNotTakenForDead:
         run = await _the_run(rig)
         other = WorkflowRunSupervisor(_new_service(), heartbeat_seconds=0.2, stale_seconds=0.6)
 
+        # Swept until it is closed, well inside the 3 s the child's loop is
+        # blocked (it goes stale 0.6 s after its last stamp): no fixed
+        # schedule of sweeps that a slow machine could miss.
         closed: list[str] = []
-        for _ in range(4):
-            await asyncio.sleep(0.5)
+        deadline = time.monotonic() + 2.5
+        while not closed and time.monotonic() < deadline:
+            await asyncio.sleep(0.1)
             closed += (await other.sweep()).closed
 
         out, err = await asyncio.wait_for(child.communicate(), timeout=60)
