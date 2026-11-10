@@ -304,3 +304,40 @@ class TestStripUrlSecrets:
     )
     def test_what_is_kept_and_what_is_cut(self, text: str, expected: str) -> None:
         assert strip_url_secrets(text) == expected
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            (
+                f"POST https://mcp.zapier.com/api/mcp/s/{T32}/mcp failed",
+                "POST https://mcp.zapier.com/api/mcp/s/***/mcp failed",
+            ),
+            (f"https://host.example/{T32}/sse?x=1", "https://host.example/***/sse"),
+            (
+                "https://open.feishu.cn/open-apis/bot/v2/hook/3f9c1c2e-1d2a-4b6f-9a77-0d6f2b1c9e11",
+                "https://open.feishu.cn/open-apis/bot/v2/hook/***",
+            ),
+            (
+                "https://host.example/mcp/sk-ak-abcdefgh12345/sse",
+                "https://host.example/mcp/***/sse",
+            ),
+            ("https://host.example/mcp;token=abc/sse", "https://host.example/mcp;***/sse"),
+            (f"https://host.example/{T32};a=b", "https://host.example/***"),
+            ("https://host.example/mcp%3Ftoken=abc", "https://host.example/***"),
+            (
+                "https://api.githubcopilot.com/mcp/x/repos",
+                "https://api.githubcopilot.com/mcp/x/repos",
+            ),
+        ],
+    )
+    def test_a_token_shaped_path_segment_is_masked(self, text: str, expected: str) -> None:
+        assert strip_url_secrets(text) == expected
+
+    def test_whatever_the_rule_flags_in_a_url_is_gone_from_its_stripped_form(self) -> None:
+        for url in (
+            f"https://u:p@host.example/{T32}/mcp;k=v?x=1#f",
+            f"https://mcp.pipedream.net/v2/{T32}",
+            "https://host.example/mcp/aB3dE5gH7jK9mN1pQ3sT5/sse",
+        ):
+            assert url_carries_secret(url) is True
+            assert url_carries_secret(strip_url_secrets(url)) is False

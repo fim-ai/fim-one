@@ -64,7 +64,7 @@ _STRAY_QUERY = re.compile(r"\?[^\s=&?#]+=\S*")
 
 
 def _bare_url(url: str) -> str:
-    """*url* with user-info, query string and fragment cut."""
+    """*url* without user-info, query string and fragment; token-shaped segments masked."""
     scheme, _, rest = url.partition("://")
     # The query string and the fragment: everything from the first of them.
     rest = re.split(r"[?#]", rest, maxsplit=1)[0]
@@ -75,11 +75,29 @@ def _bare_url(url: str) -> str:
         # ``user:p/ss@host/x``: a password with a slash in it. No client
         # would send it there, but what is printed must not keep it.
         authority, slash, path = path.rsplit("@", 1)[1].partition("/")
+    path = "/".join(_masked_segment(segment) for segment in path.split("/"))
     return f"{scheme}://{authority}{slash}{path}"
+
+
+def _masked_segment(raw_segment: str) -> str:
+    """A path segment as it may be printed: ``***`` where it is shaped like a secret."""
+    reason = _segment_reason(raw_segment)
+    if reason is None:
+        return raw_segment
+    name, has_parameters, _ = raw_segment.partition(";")
+    if reason == URL_PATH_PARAMETER and has_parameters and _segment_reason(name) is None:
+        # ``mcp;token=…``: the name stays, the parameters go.
+        return f"{name};***"
+    return "***"
 
 
 def strip_url_secrets(text: str | None) -> str | None:
     """*text* with the user-info, query string and fragment cut from every URL in it.
+
+    A path segment the address rule takes for a token
+    (:func:`url_secret_reasons`: a UUID, a long hex or mixed string, a known
+    token prefix) is printed as ``***``, and ``;name=value`` path parameters
+    as ``;***``: hosted MCP servers and webhooks keep their secret there.
 
     An error message quotes the URL that failed, and a URL can carry a
     credential (``https://user:pass@host/…``, ``…?api_key=…``). A record or
