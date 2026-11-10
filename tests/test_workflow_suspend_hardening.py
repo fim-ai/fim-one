@@ -314,3 +314,59 @@ class TestStoredState:
         with patch.object(rs, "seal_state", sealing):
             assert (await rig.start()).status == "waiting"
         assert threads and threading.current_thread().name not in threads
+
+
+# ---------------------------------------------------------------------------
+# L5. The sweep reaches every waiting run
+# ---------------------------------------------------------------------------
+
+
+class TestSweepReachesEveryWaitingRun:
+    async def test_runs_beyond_one_batch_are_continued_oldest_first(self, rig: Rig) -> None:
+        """More waiting runs than one batch, the decided ones among the
+        newest: a sweep that looked at "the first N in no order" could
+        leave them out for good."""
+        from fim_one.core.workflow import run_recovery
+
+        ids = [(await rig.start()).run_id for _ in range(7)]
+        async with rig.factory() as db:  # creation order, a second apart
+            for age, run_id in enumerate(reversed(ids)):
+                await db.execute(
+                    update(WorkflowRun)
+                    .where(WorkflowRun.id == run_id)
+                    .values(created_at=datetime.now(UTC) - timedelta(seconds=age))
+                )
+            await db.commit()
+        decided = [ids[1], ids[5], ids[6]]
+        for run_id in decided:
+            await rig.flip((await rig.request_of(run_id)).id, status="approved")
+
+        with patch.object(run_recovery, "_SWEEP_BATCH", 2):
+            report = await WorkflowRunSupervisor(rig.service).sweep()
+
+        assert report.resumed == decided  # all of them, oldest first
+        for run_id in decided:
+            assert (await rig.ended(run_id)).status == "completed"
+        assert {(await rig.run(i)).status for i in ids if i not in decided} == {"waiting"}
+
+    async def test_a_batch_costs_a_fixed_number_of_queries(self, rig: Rig) -> None:
+        from sqlalchemy import event
+
+        for _ in range(6):
+            await rig.start()
+        engine = rig.factory.kw["bind"].sync_engine
+        statements: list[str] = []
+
+        def count(_conn: Any, _cursor: Any, statement: str, *_rest: Any) -> None:
+            statements.append(statement)
+
+        event.listen(engine, "before_cursor_execute", count)
+        try:
+            await WorkflowRunSupervisor(rig.service)._resume_settled_runs(
+                __import__("fim_one.core.workflow.run_recovery", fromlist=["x"]).SweepReport()
+            )
+        finally:
+            event.remove(engine, "before_cursor_execute", count)
+        selects = [s for s in statements if s.lstrip().upper().startswith("SELECT")]
+        # ids, the batch's states, the batch's requests: not one per run.
+        assert len(selects) == 3, selects

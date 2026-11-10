@@ -52,7 +52,9 @@ from .run_service import (
     UNFINISHED_STATUSES,
     WorkflowRunService,
     get_run_service,
-    requests_settled,
+    request_states,
+    settled_given,
+    waited_request_ids,
 )
 
 logger = logging.getLogger(__name__)
@@ -245,26 +247,57 @@ class WorkflowRunSupervisor:
                 report.closed.append(run_id)
 
     async def _resume_settled_runs(self, report: SweepReport) -> None:
+        """Continue every waiting run that has something to go on with.
+
+        All of them, oldest first, however many there are: their ids are
+        read in one light query, then taken a batch at a time, each batch
+        with one query for its runs' states and one for their requests.
+        """
         from sqlalchemy import select
 
         from fim_one.db import create_session
         from fim_one.db.models import WorkflowRun
 
         async with create_session() as db:
-            waiting = (
-                await db.execute(
-                    select(WorkflowRun.id, WorkflowRun.suspend_state)
-                    .where(WorkflowRun.status == "waiting")
-                    .limit(_SWEEP_BATCH)
+            waiting_ids = list(
+                (
+                    await db.execute(
+                        select(WorkflowRun.id)
+                        .where(WorkflowRun.status == "waiting")
+                        .order_by(WorkflowRun.created_at, WorkflowRun.id)
+                    )
                 )
-            ).all()
-        for run_id, state in waiting:
-            # A run with no readable state cannot wait for anything: it is
-            # "continued" too, which closes it as failed.
-            if isinstance(state, dict) and not await requests_settled(state):
-                continue
-            if await self.service.resume_run(run_id) is not None or not isinstance(state, dict):
-                report.resumed.append(run_id)
+                .scalars()
+                .all()
+            )
+        for start in range(0, len(waiting_ids), _SWEEP_BATCH):
+            batch = waiting_ids[start : start + _SWEEP_BATCH]
+            async with create_session() as db:
+                states = {
+                    str(row[0]): row[1]
+                    for row in (
+                        await db.execute(
+                            select(WorkflowRun.id, WorkflowRun.suspend_state).where(
+                                WorkflowRun.id.in_(batch), WorkflowRun.status == "waiting"
+                            )
+                        )
+                    ).all()
+                }
+            requests = await request_states(
+                [rid for state in states.values() for rid in waited_request_ids(state)]
+            )
+            for run_id in batch:
+                if run_id not in states:
+                    continue  # no longer waiting
+                state = states[run_id]
+                # A run with no readable state cannot wait for anything: it
+                # is "continued" too, which closes it as failed.
+                if isinstance(state, dict) and not settled_given(state, requests):
+                    continue
+                if await self.service.resume_run(run_id) is not None or not isinstance(
+                    state, dict
+                ):
+                    report.resumed.append(run_id)
 
     async def _remove_sandboxes(self, report: SweepReport) -> None:
         from sqlalchemy import select

@@ -1469,28 +1469,51 @@ class WorkflowRunService:
         spawn_background(deliver_webhook(url, payload))
 
 
-async def requests_settled(state: dict[str, Any]) -> bool:
-    """Whether a waiting run has something to go on with.
+def waited_request_ids(state: Any) -> list[str]:
+    """The ids of the requests a waiting run's steps wait on (from its ``suspend_state``)."""
+    waiting = state.get("waiting") if isinstance(state, dict) else None
+    return [
+        str(record.get("confirmation_id"))
+        for record in (waiting or {}).values()
+        if isinstance(record, dict) and record.get("confirmation_id")
+    ]
 
-    True when any request its steps wait on (*state* is the run's
-    ``suspend_state``) is decided, closed, past its deadline or gone: the
-    step waiting on it can then finish, one way or the other. False while
-    every one of them is still open, and for a state that names none.
+
+def settled_given(state: Any, requests: dict[str, tuple[str, datetime | None]]) -> bool:
+    """:func:`requests_settled` for a caller that has the request rows.
+
+    *requests* maps a request id to its ``(status, expires_at)``; an id not
+    in it is a request that is gone.
     """
+    waiting = state.get("waiting") if isinstance(state, dict) else None
+    ids = waited_request_ids(state)
+    if not ids:
+        # A waiting step that names no request can only fail; let it.
+        return bool(waiting)
+    now = datetime.now(UTC)
+    for request_id in ids:
+        if request_id not in requests:
+            return True
+        status, expires_at = requests[request_id]
+        if status != "pending":
+            return True
+        if expires_at is not None:
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=UTC)
+            if expires_at <= now:
+                return True
+    return False
+
+
+async def request_states(ids: list[str]) -> dict[str, tuple[str, datetime | None]]:
+    """``(status, expires_at)`` of each of the requests *ids*, in one query."""
     from sqlalchemy import select
 
     from fim_one.db import create_session
     from fim_one.db.models.channel import ConfirmationRequest
 
-    waiting = state.get("waiting") if isinstance(state, dict) else None
-    ids = [
-        str(record.get("confirmation_id"))
-        for record in (waiting or {}).values()
-        if isinstance(record, dict) and record.get("confirmation_id")
-    ]
     if not ids:
-        # A waiting step that names no request can only fail; let it.
-        return bool(waiting)
+        return {}
     async with create_session() as db:
         rows = (
             await db.execute(
@@ -1501,18 +1524,18 @@ async def requests_settled(state: dict[str, Any]) -> bool:
                 ).where(ConfirmationRequest.id.in_(ids))
             )
         ).all()
-    if len(rows) < len(set(ids)):
-        return True
-    now = datetime.now(UTC)
-    for _id, status, expires_at in rows:
-        if status != "pending":
-            return True
-        if expires_at is not None:
-            if expires_at.tzinfo is None:
-                expires_at = expires_at.replace(tzinfo=UTC)
-            if expires_at <= now:
-                return True
-    return False
+    return {str(row[0]): (str(row[1]), row[2]) for row in rows}
+
+
+async def requests_settled(state: dict[str, Any]) -> bool:
+    """Whether a waiting run has something to go on with.
+
+    True when any request its steps wait on (*state* is the run's
+    ``suspend_state``) is decided, closed, past its deadline or gone: the
+    step waiting on it can then finish, one way or the other. False while
+    every one of them is still open, and for a state that names none.
+    """
+    return settled_given(state, await request_states(waited_request_ids(state)))
 
 
 async def deliver_webhook(webhook_url: str, payload: dict[str, Any]) -> None:
