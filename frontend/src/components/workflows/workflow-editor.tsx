@@ -47,6 +47,7 @@ import { useCanvasHistory } from "./editor/use-canvas-history"
 import { useCanvasOverlays } from "./editor/use-canvas-overlays"
 import { useCanvasSearch } from "./editor/use-canvas-search"
 import { useCanvasShortcuts } from "./editor/use-canvas-shortcuts"
+import { useCanvasViewport } from "./editor/use-canvas-viewport"
 import type {
   WorkflowBlueprint,
   WorkflowNodeType,
@@ -211,7 +212,10 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
     rfInstanceRef,
     onNodeAdded: addRecentNode,
   })
-  const sync = useBlueprintSync(nodes, edges, blueprint.viewport, onBlueprintChange)
+  // Pan and zoom are saved with the blueprint and are what the canvas opens
+  // with next time; they are not part of undo history.
+  const view = useCanvasViewport(blueprint.viewport)
+  const sync = useBlueprintSync(nodes, edges, view.viewport, onBlueprintChange)
   const getBlueprint = sync.serialize
 
   const showShortcuts = useCallback(() => setShortcutsDialogOpen(true), [])
@@ -362,8 +366,12 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
           onPaneContextMenu={onPaneContextMenu}
           onPaneClick={onPaneClick}
           onInit={(instance) => { rfInstanceRef.current = instance }}
+          onMoveEnd={view.onMoveEnd}
           deleteKeyCode={null}
-          fitView
+          // Open where the canvas was left; fit the graph into view only
+          // when no pan or zoom was ever saved.
+          defaultViewport={view.initial ?? undefined}
+          fitView={view.initial === null}
           fitViewOptions={{ maxZoom: 1, padding: 0.4 }}
           colorMode={rfColorMode}
           proOptions={{ hideAttribution: true }}

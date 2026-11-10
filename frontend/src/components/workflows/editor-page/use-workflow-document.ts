@@ -54,9 +54,16 @@ interface WorkflowDocumentOptions {
  */
 interface DocumentSnapshot {
   blueprintText: string
+  /** The blueprint without its viewport: what an edit changes, as opposed to a pan or zoom. */
+  graphText: string
   name: string
   description: string | null
   icon: string | null
+}
+
+/** The blueprint as JSON text without where the canvas is panned and zoomed to. */
+function graphTextOf(blueprint: WorkflowBlueprint): string {
+  return JSON.stringify({ ...blueprint, viewport: undefined })
 }
 
 /** A server copy of the workflow with the fields being edited locally kept as they are. */
@@ -85,6 +92,11 @@ function keepingLocalEdits(server: WorkflowResponse, local: WorkflowResponse): W
  *   accepted it, and compares the document against that afterwards: an edit
  *   made while the request was in flight leaves the document unsaved and
  *   schedules the next save.
+ *
+ * Pan and zoom are stored in the blueprint, so a pan or zoom alone is saved
+ * by the same automatic save. It is not an edit, though: it does not show
+ * the document as unsaved and does not hold up leaving the page (leaving
+ * before the save went out loses only where the canvas was scrolled to).
  *
  * Whatever replaces the document as a whole (loading, a version restore)
  * starts a new epoch; a save that began in an earlier epoch has its outcome
@@ -158,19 +170,36 @@ export function useWorkflowDocument({
     if (!wf) return null
     return {
       blueprintText: JSON.stringify(blueprintRef.current),
+      graphText: graphTextOf(blueprintRef.current),
       name: wf.name,
       description: wf.description,
       icon: wf.icon,
     }
   }, [blueprintRef])
 
-  /** Whether the document differs from what the server holds. */
+  /** Whether the document differs from what the server holds: whether there is anything to save. */
   const isUnsaved = useCallback((): boolean => {
     const current = currentSnapshot()
     const saved = savedRef.current
     if (!current || !saved) return false
     return (
       current.blueprintText !== saved.blueprintText ||
+      current.name !== saved.name ||
+      current.description !== saved.description ||
+      current.icon !== saved.icon
+    )
+  }, [currentSnapshot])
+
+  /**
+   * Whether there are edits the server does not hold: the same, leaving out
+   * the viewport. This is what "unsaved changes" means to the user.
+   */
+  const hasUnsavedEdits = useCallback((): boolean => {
+    const current = currentSnapshot()
+    const saved = savedRef.current
+    if (!current || !saved) return false
+    return (
+      current.graphText !== saved.graphText ||
       current.name !== saved.name ||
       current.description !== saved.description ||
       current.icon !== saved.icon
@@ -199,11 +228,10 @@ export function useWorkflowDocument({
 
   /** After any edit: update the unsaved marker, and save after a pause if there is something to save. */
   const noteEdit = useCallback(() => {
-    const unsaved = isUnsaved()
-    setIsDirty(unsaved)
-    if (unsaved) scheduleAutoSave()
+    setIsDirty(hasUnsavedEdits())
+    if (isUnsaved()) scheduleAutoSave()
     else cancelAutoSave()
-  }, [isUnsaved, scheduleAutoSave, cancelAutoSave])
+  }, [isUnsaved, hasUnsavedEdits, scheduleAutoSave, cancelAutoSave])
 
   const runSave = useCallback(
     async (mode: "manual" | "auto") => {
@@ -240,6 +268,7 @@ export function useWorkflowDocument({
         const blueprint = blueprintRef.current
         const sent: DocumentSnapshot = {
           blueprintText: JSON.stringify(blueprint),
+          graphText: graphTextOf(blueprint),
           name: wf.name,
           description: wf.description,
           icon: wf.icon,
@@ -401,7 +430,8 @@ export function useWorkflowDocument({
       trackNodeTypes(bp)
       // Overlay-only updates (validation badges, run status) serialize to
       // the stored text: they are not edits and are not validated again.
-      const changed = JSON.stringify(bp) !== savedRef.current?.blueprintText
+      // Neither is a pan or zoom.
+      const changed = graphTextOf(bp) !== savedRef.current?.graphText
       noteEdit()
       if (changed) onBlueprintChangedRef.current()
     },
@@ -498,13 +528,13 @@ export function useWorkflowDocument({
         return
       }
       const onCanvas = readCanvasRef.current?.() ?? blueprintRef.current
-      if (onCanvas.nodes.length > 0 || isUnsaved()) {
+      if (onCanvas.nodes.length > 0 || hasUnsavedEdits()) {
         setPendingImport(blueprint)
         return
       }
       applyImport(blueprint)
     },
-    [t, blueprintRef, isUnsaved, applyImport],
+    [t, blueprintRef, hasUnsavedEdits, applyImport],
   )
 
   /** The user agreed to replace the canvas with the file picked. */
@@ -582,8 +612,8 @@ export function useWorkflowDocument({
       trackNodeTypes(blueprintRef.current)
       noteEdit()
     }
-    return isUnsaved()
-  }, [blueprintRef, trackNodeTypes, noteEdit, isUnsaved])
+    return hasUnsavedEdits()
+  }, [blueprintRef, trackNodeTypes, noteEdit, hasUnsavedEdits])
 
   /** Give up the unsaved edits: nothing is saved from here on (the page is being left). */
   const discardChanges = useCallback(() => {

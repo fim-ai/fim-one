@@ -877,4 +877,58 @@ describe("useWorkflowDocument", () => {
       expect(blueprintRef.current.nodes[1].data.prompt_template).toBe("second")
     })
   })
+
+  describe("pan and zoom", () => {
+    const panned = (prompt: string): WorkflowBlueprint => ({
+      ...canvasOf(prompt),
+      viewport: { x: -80, y: 32, zoom: 0.5 },
+    })
+
+    beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }))
+
+    it("a pan alone is saved after the pause, without the document ever showing as unsaved", async () => {
+      const { result, onBlueprintChanged } = await mountDocument(canvasOf("first"))
+      onBlueprintChanged.mockClear()
+      act(() => result.current.changeBlueprint(panned("first")))
+      expect(result.current.isDirty).toBe(false)
+      expect(result.current.hasUnsavedChanges()).toBe(false)
+      // Nothing about the steps changed: no reason to validate again.
+      expect(onBlueprintChanged).not.toHaveBeenCalled()
+      expect(api.update).not.toHaveBeenCalled()
+
+      await act(() => vi.advanceTimersByTimeAsync(5000))
+      expect(api.update).toHaveBeenCalledTimes(1)
+      expect(api.update.mock.calls[0][1].blueprint.viewport).toEqual({ x: -80, y: 32, zoom: 0.5 })
+      expect(result.current.isDirty).toBe(false)
+
+      // Saved: the same viewport reported again sends nothing.
+      act(() => result.current.changeBlueprint(panned("first")))
+      await act(() => vi.advanceTimersByTimeAsync(5000))
+      expect(api.update).toHaveBeenCalledTimes(1)
+    })
+
+    it("an edit is unsaved as before, and is saved together with the pan", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      act(() => result.current.changeBlueprint(panned("second")))
+      expect(result.current.isDirty).toBe(true)
+      expect(result.current.hasUnsavedChanges()).toBe(true)
+      await act(() => vi.advanceTimersByTimeAsync(5000))
+      expect(api.update.mock.calls[0][1].blueprint).toEqual(panned("second"))
+      expect(result.current.isDirty).toBe(false)
+    })
+
+    it("a pan the canvas has not reported yet does not hold up leaving", async () => {
+      const readCanvas = vi.fn(() => panned("first"))
+      const { result } = await mountDocument(canvasOf("first"), { readCanvas })
+      let unsaved = true
+      act(() => {
+        unsaved = result.current.hasUnsavedChanges()
+      })
+      expect(unsaved).toBe(false)
+      expect(result.current.isDirty).toBe(false)
+      // It is still saved after the pause.
+      await act(() => vi.advanceTimersByTimeAsync(5000))
+      expect(api.update.mock.calls[0][1].blueprint.viewport).toEqual({ x: -80, y: 32, zoom: 0.5 })
+    })
+  })
 })
