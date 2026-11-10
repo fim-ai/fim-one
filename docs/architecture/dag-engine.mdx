@@ -31,7 +31,7 @@ flowchart TD
 
 **Analyze.** The PlanAnalyzer evaluates whether the executed plan achieved the original goal, producing a structured verdict: `achieved` (boolean), `confidence` (0.0-1.0), `reasoning`, and an optional `final_answer`.
 
-**Re-plan.** If the goal was not achieved and the analyzer does not judge it unreachable, the pipeline loops back to planning with a replan context that summarizes what happened and what went wrong. This loop runs up to `DAG_MAX_REPLAN_ROUNDS` times autonomously.
+**Re-plan.** If the goal was not achieved and the analyzer does not judge it unreachable, the pipeline loops back to planning with a replan context that summarizes what happened and what went wrong. `DAG_MAX_REPLAN_ROUNDS` (default 3) caps the rounds in total: the first plan plus up to N−1 autonomous re-plans.
 
 Two LLMs collaborate throughout: a **smart LLM** handles planning, analysis, and answer synthesis (tasks requiring high reasoning capability), while the **general LLM** handles step execution by default (with `model_hint="fast"` steps delegated to the fast LLM for cost savings). Context compaction and history summary use the fast LLM. Every structured output call uses `structured_llm_call`, which provides a 3-level degradation chain (Native FC, JSON Mode, plain text with regex fallback) to handle model-specific output quirks.
 

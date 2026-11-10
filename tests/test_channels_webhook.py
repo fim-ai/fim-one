@@ -592,6 +592,80 @@ class TestEmailCompletion:
         assert "https://fim.example/?c=conv-12345678&amp;x=1" in body
 
 
+class TestEmailNotice:
+    """A notice mail is HTML too; its body is text someone else wrote.
+
+    ``send_notice`` carries what a model passed to ``send_notification``,
+    the channel test message and the admin notification endpoints.
+    """
+
+    @staticmethod
+    async def _sent(title: str, body: str) -> Any:
+        import email as email_lib
+
+        channel = EmailChannel({"to": "user@example.com"})
+        with patch.dict(os.environ, {**_SMTP, "EMAIL_TOOL_ENABLED": "true"}):
+            with patch("fim_one.core.channels.email.smtplib.SMTP_SSL") as mock_smtp:
+                server = MagicMock()
+                mock_smtp.return_value.__enter__ = MagicMock(return_value=server)
+                mock_smtp.return_value.__exit__ = MagicMock(return_value=False)
+                result = await channel.send_notice(title, body)
+        assert result.ok is True
+        return email_lib.message_from_string(server.sendmail.call_args.args[2])
+
+    @staticmethod
+    def _html(message: Any) -> str:
+        (part,) = [p for p in message.walk() if p.get_content_type() == "text/html"]
+        payload = part.get_payload(decode=True)
+        assert isinstance(payload, bytes)
+        return payload.decode("utf-8")
+
+    @pytest.mark.asyncio
+    async def test_the_body_is_escaped_and_keeps_its_lines(self) -> None:
+        message = await self._sent(
+            "Build <b>failed</b>",
+            'Step 1 done\nStep 2: <img src=x onerror=alert(1)> & '
+            '<a href="https://evil.example">click</a>\n\n**Total**: 2 < 3',
+        )
+        body = self._html(message)
+
+        for tag in ("<img", "<a ", "</a>"):
+            assert tag not in body, tag
+        assert "&lt;img src=x onerror=alert(1)&gt; &amp; &lt;a href=" in body
+        assert "Step 1 done<br>" in body
+        assert "<b>Total</b>: 2 &lt; 3" in body
+        # The subject is a header, not HTML: it arrives as written.
+        assert message["Subject"] == "Build <b>failed</b>"
+
+    @pytest.mark.asyncio
+    async def test_the_send_notification_tool_cannot_put_markup_in_a_mail(self) -> None:
+        from fim_one.core.tool.builtin.send_notification import SendNotificationTool, _Target
+
+        channel = EmailChannel({"to": "user@example.com"})
+        sent: list[str] = []
+
+        def _record(*, to: str, subject: str, body: str) -> None:
+            sent.append(body)
+
+        target = _Target(key="ch-1", name="ops-mail", kind="email", channel=channel)
+        tool = SendNotificationTool()
+        with (
+            patch.dict(os.environ, {**_SMTP, "EMAIL_TOOL_ENABLED": "true"}),
+            patch.object(EmailChannel, "_send_sync", staticmethod(_record)),
+            patch.object(SendNotificationTool, "_targets", AsyncMock(return_value=[target])),
+        ):
+            out = await tool.run(
+                channel="ops-mail",
+                title="Report",
+                body='<form action="https://evil.example"><input name=pw></form>',
+            )
+
+        assert "sent" in out, out
+        (body,) = sent
+        assert "<form" not in body and "<input" not in body
+        assert "&lt;form action=&quot;https://evil.example&quot;&gt;" in body
+
+
 class TestNoInbound:
     """Outbound-only channels accept no callback."""
 

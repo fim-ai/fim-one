@@ -10,12 +10,12 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fim_one.core.tool.base import BaseTool
+from fim_one.core.tool.connector.adapter import connector_tool_prefix
 
 from .pool import ConnectionPoolManager
 from .redaction import pii_column_names, redact_rows
@@ -35,7 +35,7 @@ class _DatabaseListTablesTool(BaseTool):
         schema_tables: list[dict[str, Any]],
         on_call_complete: Callable[..., Awaitable[None]] | None = None,
     ) -> None:
-        safe_name = re.sub(r"[^a-zA-Z0-9]", "_", connector_name.lower()).strip("_")
+        safe_name = connector_tool_prefix(connector_name)
         self._name = f"{safe_name}__list_tables"
         self._connector_name = connector_name
         self._connector_id = connector_id
@@ -131,7 +131,7 @@ class _DatabaseDescribeTableTool(BaseTool):
         schema_tables: list[dict[str, Any]],
         on_call_complete: Callable[..., Awaitable[None]] | None = None,
     ) -> None:
-        safe_name = re.sub(r"[^a-zA-Z0-9]", "_", connector_name.lower()).strip("_")
+        safe_name = connector_tool_prefix(connector_name)
         self._name = f"{safe_name}__describe_table"
         self._connector_name = connector_name
         self._connector_id = connector_id
@@ -282,7 +282,7 @@ class _DatabaseQueryTool(BaseTool):
         query_timeout: int = 30,
         on_call_complete: Callable[..., Awaitable[None]] | None = None,
     ) -> None:
-        safe_name = re.sub(r"[^a-zA-Z0-9]", "_", connector_name.lower()).strip("_")
+        safe_name = connector_tool_prefix(connector_name)
         self._name = f"{safe_name}__query"
         self._connector_name = connector_name
         self._connector_id = connector_id

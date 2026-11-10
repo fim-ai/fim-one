@@ -126,7 +126,7 @@ cd frontend && pnpm install && cd ..
 
 #### Planning & Execution
 - **Dynamic DAG planning** — LLM decomposes goals into dependency graphs at runtime. No hard-coded workflows.
-- **Concurrent execution** — Independent steps run in parallel via asyncio; auto re-plan up to 3 rounds.
+- **Concurrent execution** — Independent steps run in parallel via asyncio; auto re-plan up to 3 rounds in total (the first plan plus 2 re-plans).
 - **ReAct agent** — Structured reasoning-and-acting loop with automatic error recovery.
 - **Agent harness** — Production-grade execution environment: ContextGuard for 5-layer token-budget management, progressive-disclosure meta-tools to keep the tool surface tractable, and self-reflection loops to counter goal drift.
 - **Hook System** — Deterministic enforcement that runs outside the LLM loop. First shipped: `ApprovalGateHook` gates sensitive tool calls behind a human approval card in the chat or in a Feishu group. Extensible to audit logging, read-only-mode guards, and rate limits (v0.9).

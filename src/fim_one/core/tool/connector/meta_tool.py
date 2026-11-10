@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from fim_one.core.tool.base import BaseTool
-from fim_one.core.tool.connector.adapter import ConnectorToolAdapter
+from fim_one.core.tool.connector.adapter import ConnectorToolAdapter, connector_tool_prefix
 
 logger = logging.getLogger(__name__)
 
@@ -373,7 +373,7 @@ def build_connector_meta_tool(
     for conn in connectors:
         # Sanitize connector name to match ConnectorToolAdapter convention.
         # Fall back to connector ID prefix if the name is pure non-ASCII.
-        safe_name = re.sub(r"[^a-zA-Z0-9]", "_", conn.name.lower()).strip("_")
+        safe_name = connector_tool_prefix(conn.name)
         if not safe_name:
             safe_name = f"connector_{getattr(conn, 'id', '')[:8] or len(stubs)}"
         # Deduplicate: append connector ID prefix on collision
