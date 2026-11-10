@@ -129,6 +129,9 @@ READS: tuple[str, ...] = (
     "WITH a AS (SELECT 1) SELECT count(x) comment, max(y) set FROM a",
     "WITH x AS (SELECT 1) TABLE secrets",
     "SELECT (a) update_count FROM t",
+    "SELECT share, mode, lock_in FROM t WHERE for_share = 1",
+    # PostgreSQL's named argument notation.
+    "SELECT make_interval(days := 2)",
     "SELECT COUNT(*) create FROM t",
     "SELECT 1 FROM t WHERE id = (SELECT 1) UNION SELECT 2 /*! */",
 )
@@ -147,6 +150,8 @@ NOT_ON: dict[SqlDialect, frozenset[str]] = {
             "SELECT 1 FROM t WHERE id = (SELECT 1) UNION SELECT 2 /*! */",
             # "$$" is not a quote there: the ";" is a second statement.
             "SELECT $$a;b$$",
+            # ":=" assigns a session variable there.
+            "SELECT make_interval(days := 2)",
         }
     ),
     "generic": frozenset(
@@ -230,6 +235,12 @@ WRITES: tuple[str, ...] = (
     "SELECT * FROM t INTO DUMPFILE '/tmp/x'",
     "SELECT * FROM t FOR UPDATE",
     "SELECT * FROM t FOR NO KEY UPDATE",
+    # Shared locks are locks too (PostgreSQL refuses them in a read-only
+    # transaction; MySQL takes them).
+    "SELECT * FROM t FOR SHARE",
+    "SELECT * FROM t FOR KEY SHARE",
+    "SELECT * FROM t LOCK IN SHARE MODE",
+    "SELECT * FROM t WHERE id = 1 FOR SHARE NOWAIT",
     "SELECT SLEEP(1)",
     "SELECT sleep (1)",
     "SELECT/**/SLEEP/**/(2)",
@@ -297,6 +308,8 @@ ONLY_ON: dict[SqlDialect, tuple[str, ...]] = {
         "SELECT 5 --1 INTO @c",
         "SELECT id FROM t WHERE id=1 --1 FOR UPDATE",
         "SELECT `SLEEP`(2)",
+        # Sets a user variable on the session.
+        "SELECT @a := 5",
         # "$$" and "#" hide nothing where they are not a quote / an operator.
         "WITH $$ AS (SELECT 1) DELETE FROM t WHERE 1 = 1 /* $$ */",
     ),

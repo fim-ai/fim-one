@@ -292,7 +292,10 @@ def _refuse_writes_inside_a_read(lexemes: list[Lexeme], dialect: SqlDialect) -> 
 
     for words in (
         ("FOR", "UPDATE"),
+        ("FOR", "SHARE"),
         ("FOR", "NO", "KEY", "UPDATE"),
+        ("FOR", "KEY", "SHARE"),
+        ("LOCK", "IN", "SHARE", "MODE"),
     ):
         if _has_words(lexemes, *words):
             raise SqlSafetyError(
@@ -306,6 +309,14 @@ def _refuse_writes_inside_a_read(lexemes: list[Lexeme], dialect: SqlDialect) -> 
                 f"{name}() is not allowed on a read-only connection: it acts outside "
                 "the query (files, other connections, server settings or processes)."
             )
+
+    if dialect == "mysql" and any(
+        lex.is_punct(":") and following.is_punct("=") for lex, following in pairwise(lexemes)
+    ):
+        raise SqlSafetyError(
+            "Only SELECT queries are allowed: ':=' sets a session variable, which a "
+            "read-only connection does not do."
+        )
 
     if dialect == "generic":
         # No read-only transaction stands behind this driver: a row-changing
