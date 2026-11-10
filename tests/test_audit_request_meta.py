@@ -173,3 +173,26 @@ class TestTheSystemHasNoAddress:
 
         (row,) = await world.events("billing.plan_change")
         assert (row.actor_kind, row.ip_address) == ("system", "192.0.2.5")
+
+
+class TestTheFilterOptions:
+    async def test_every_registered_action_is_offered_grouped_by_domain(
+        self, world: World
+    ) -> None:
+        from fim_one.core.audit import actions
+
+        root = await world.user("root", admin=True)
+
+        groups = (await world.call("GET", "/api/admin/audit-log/actions", by=root)).json()
+
+        offered = [name for group in groups for name in group["actions"]]
+        assert sorted(offered) == sorted(actions.ACTIONS)
+        assert all(
+            name.startswith(group["domain"] + ".") for group in groups for name in group["actions"]
+        )
+        assert "mcp_server.create_global" not in offered  # was offered, is recorded by nothing
+
+    async def test_it_is_the_administrators_alone(self, world: World) -> None:
+        bob = await world.user("bob")
+
+        await world.call("GET", "/api/admin/audit-log/actions", by=bob, expect=403)

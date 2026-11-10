@@ -36,3 +36,27 @@ def test_a_label_is_text_not_the_action_name() -> None:
     for key, label in _labels().items():
         assert isinstance(label, str) and label.strip(), key
         assert "__" not in label and "." not in label, (key, label)
+
+
+def _messages() -> dict[str, object]:
+    audit = json.loads(MESSAGES.read_text(encoding="utf-8"))["audit"]
+    assert isinstance(audit, dict)
+    return audit
+
+
+def test_every_domain_has_a_group_label_for_the_filter() -> None:
+    """The audit page groups its action filter by domain."""
+    groups = _messages()["actionGroups"]
+    assert isinstance(groups, dict)
+    domains = {name.partition(".")[0] for name in actions.ACTIONS}
+    assert domains - set(groups) == set()
+    assert set(groups) - domains == set()
+
+
+def test_the_page_holds_no_list_of_actions_of_its_own() -> None:
+    """The filter offered a hand-kept list of 26 names, two of which nothing
+    records; it is read from the registry (GET /api/admin/audit-log/actions)."""
+    page = MESSAGES.parents[2] / "src" / "components" / "admin" / "admin-audit.tsx"
+    source = page.read_text(encoding="utf-8")
+    assert "KNOWN_ACTIONS" not in source
+    assert "/api/admin/audit-log/actions" in source

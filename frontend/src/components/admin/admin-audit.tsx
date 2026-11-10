@@ -28,7 +28,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
@@ -72,34 +74,11 @@ interface AuditPage {
   pages: number
 }
 
-const KNOWN_ACTIONS = [
-  "user.create",
-  "user.delete",
-  "user.disable",
-  "user.enable",
-  "user.grant_admin",
-  "user.revoke_admin",
-  "user.reset_password",
-  "user.force_logout",
-  "user.set_quota",
-  "auth.force_logout_all",
-  "settings.update",
-  "conversation.delete",
-  "conversation.viewed",
-  "invite_code.create",
-  "invite_code.revoke",
-  "storage.clear_user",
-  "storage.cleanup_orphaned",
-  "mcp_server.create_global",
-  "mcp_server.delete_global",
-  "model.create",
-  "model.update",
-  "model.delete",
-  "model.enable",
-  "model.disable",
-  "model.set_role",
-  "account.self_delete",
-]
+/** The registered audit actions, grouped by domain (GET /api/admin/audit-log/actions). */
+interface ActionGroup {
+  domain: string
+  actions: string[]
+}
 
 const ACTION_COLORS: Record<string, string> = {
   "user.create": "bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30",
@@ -393,6 +372,22 @@ export function AdminAudit() {
   const [isExporting, setIsExporting] = useState(false)
   const [selected, setSelected] = useState<AuditEntry | null>(null)
   const [activeTab, setActiveTab] = useState<"system" | "review">("system")
+  // What can be filtered for is what can be recorded: read from the server's registry.
+  const [actionGroups, setActionGroups] = useState<ActionGroup[]>([])
+  const tGroups = useTranslations("admin.audit.actionGroups")
+  const getGroupLabel = (domain: string) => {
+    try {
+      return tGroups(domain as Parameters<typeof tGroups>[0])
+    } catch {
+      return domain
+    }
+  }
+
+  useEffect(() => {
+    apiFetch<ActionGroup[]>("/api/admin/audit-log/actions")
+      .then(setActionGroups)
+      .catch(() => setActionGroups([]))
+  }, [])
 
   // Filters
   const [actionFilter, setActionFilter] = useState("__all__")
@@ -532,10 +527,15 @@ export function AdminAudit() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">{t("filterActionAll")}</SelectItem>
-              {KNOWN_ACTIONS.map((a) => (
-                <SelectItem key={a} value={a}>
-                  {getActionLabel(a)}
-                </SelectItem>
+              {actionGroups.map((group) => (
+                <SelectGroup key={group.domain}>
+                  <SelectLabel>{getGroupLabel(group.domain)}</SelectLabel>
+                  {group.actions.map((a) => (
+                    <SelectItem key={a} value={a}>
+                      {getActionLabel(a)}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               ))}
             </SelectContent>
           </Select>

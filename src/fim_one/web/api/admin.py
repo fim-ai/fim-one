@@ -1289,6 +1289,28 @@ def _build_audit_filters(
     return filters
 
 
+class AuditActionGroup(BaseModel):
+    domain: str
+    actions: list[str]
+
+
+@router.get("/audit-log/actions", response_model=list[AuditActionGroup])
+async def list_audit_actions(
+    current_user: User = Depends(get_current_admin),  # noqa: B008
+) -> list[AuditActionGroup]:
+    """Every registered audit action, grouped by its domain.
+
+    What the audit page offers in its action filter: read from the
+    registry, so an action that can be recorded can be filtered for.
+    """
+    from fim_one.core.audit.actions import ACTIONS
+
+    groups: dict[str, list[str]] = {}
+    for name in sorted(ACTIONS):
+        groups.setdefault(name.partition(".")[0], []).append(name)
+    return [AuditActionGroup(domain=domain, actions=names) for domain, names in groups.items()]
+
+
 @router.get("/audit-log/export")
 async def export_audit_log(
     action: str | None = None,
