@@ -239,12 +239,36 @@ WRITES: tuple[str, ...] = (
     "SELECT pg_catalog.pg_sleep(10)",
     "SELECT pg_sleep_for('5 seconds')",
     "SELECT EXEC('x')",
+    # Functions that act outside the query; PostgreSQL runs them in a
+    # read-only transaction for a role that is allowed to.
+    "SELECT dblink_exec('dbname=x', 'INSERT INTO t VALUES (1)')",
+    "SELECT * FROM dblink('dbname=x', 'INSERT INTO t VALUES (1) RETURNING id') AS t(id int)",
+    "SELECT dblink_connect('c', 'dbname=x')",
+    "SELECT pg_read_file('/etc/passwd')",
+    "SELECT pg_read_binary_file('/etc/hostname')",
+    "SELECT pg_catalog.pg_read_file('/etc/passwd')",
+    "SELECT PG_READ_FILE /* c */ ('/etc/passwd')",
+    "SELECT pg_ls_dir('/')",
+    "SELECT pg_ls_logdir()",
+    "SELECT lo_import('/etc/passwd')",
+    "SELECT lo_export(1, '/tmp/x')",
+    "SELECT pg_terminate_backend(pg_backend_pid())",
+    "SELECT pg_cancel_backend(1)",
+    "SELECT pg_reload_conf()",
+    "SELECT pg_switch_wal()",
+    "SELECT pg_stat_reset()",
+    "SELECT pg_stat_reset_shared('bgwriter')",
+    "SELECT pg_create_restore_point('x')",
+    "SELECT set_config('statement_timeout', '0', true), g FROM generate_series(1, 9) g",
+    "EXPLAIN ANALYZE SELECT pg_read_file('/etc/passwd')",
+    "WITH f AS (SELECT pg_ls_dir('/') AS name) SELECT * FROM f",
 )
 
 # Refused only where the dialect makes them a write.
 ONLY_ON: dict[SqlDialect, tuple[str, ...]] = {
     "postgresql": (
         'SELECT "pg_sleep"(10)',
+        'SELECT "pg_read_file"(\'/etc/passwd\')',
         # "$$" opens a string only in PostgreSQL; elsewhere this is a
         # harmless query, here the statement is unreadable past it.
     ),
@@ -326,6 +350,7 @@ def test_a_connector_that_allows_writes_is_limited_only_by_the_never_allowed(
     dialect: SqlDialect,
 ) -> None:
     never = ("SLEEP", "BENCHMARK", "LOAD_FILE", "pg_sleep", "EXEC(", "OUTFILE", "DUMPFILE")
+    # A connector that allows writes may call the functions a read-only one may not.
     never += ("LOAD DATA", "; ")
     for sql in WRITES:
         if any(mark.lower() in sql.lower() for mark in never):

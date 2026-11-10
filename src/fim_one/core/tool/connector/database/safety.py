@@ -65,6 +65,19 @@ _NEVER_FUNCTIONS = {
     "execute": "EXECUTE() is not allowed",
 }
 
+# Functions a read-only connector may not call: PostgreSQL runs them in a
+# read-only transaction, and they reach outside it (another connection,
+# the server's files, its processes, its configuration, its WAL).
+# ``set_config`` can lift the statement timeout the query runs under.
+_READ_ONLY_FUNCTIONS = frozenset(
+    {
+        "lo_import", "lo_export", "pg_terminate_backend", "pg_cancel_backend",
+        "pg_reload_conf", "pg_switch_wal", "pg_rotate_logfile",
+        "pg_create_restore_point", "pg_logical_emit_message", "set_config",
+    }
+)  # fmt: skip
+_READ_ONLY_FUNCTION_PREFIXES = ("dblink", "pg_read_", "pg_ls_", "pg_stat_reset")
+
 
 def validate_sql(sql: str, *, allow_write: bool = False, dialect: str | None = None) -> str:
     """Validate and clean a SQL statement for safe execution.
@@ -285,6 +298,13 @@ def _refuse_writes_inside_a_read(lexemes: list[Lexeme], dialect: SqlDialect) -> 
             raise SqlSafetyError(
                 f"Only SELECT queries are allowed: {' '.join(words)} locks rows, which "
                 "a read-only connection does not do."
+            )
+
+    for name in _function_calls(lexemes):
+        if name in _READ_ONLY_FUNCTIONS or name.startswith(_READ_ONLY_FUNCTION_PREFIXES):
+            raise SqlSafetyError(
+                f"{name}() is not allowed on a read-only connection: it acts outside "
+                "the query (files, other connections, server settings or processes)."
             )
 
     if dialect == "generic":
