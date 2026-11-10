@@ -1677,6 +1677,49 @@ class TestTheHeartbeatThread:
             await locked.wait()
             await free.wait()
 
+    async def test_a_peers_sweep_does_not_wait_for_a_locked_row_and_then_close_it(
+        self, rig: Rig
+    ) -> None:
+        """PostgreSQL: the run's row is held by a progress save not yet
+        committed, so its own heartbeat skipped it and its stamp is old.
+        Before, a peer's sweep waited for the lock and then closed the
+        run; a locked row means someone alive is writing it."""
+        import os
+
+        from sqlalchemy import create_engine, text
+        from sqlalchemy.engine import make_url
+
+        if rig.backend != "postgresql":
+            pytest.skip("row locks are PostgreSQL's")
+        async with rig.factory() as s:
+            schema = (await s.execute(text("select current_schema()"))).scalar_one()
+        url = make_url(os.environ["FIM_TEST_PG_URL"]).set(drivername="postgresql+psycopg2")
+        holder = create_engine(url, connect_args={"options": f"-csearch_path={schema}"})
+
+        service, locked = await _held_run(rig)
+        await _age_stamp(rig, locked.run_id, 3600)
+        peer = WorkflowRunSupervisor(_new_service(), heartbeat_seconds=1, stale_seconds=90)
+        try:
+            with holder.connect() as conn:
+                conn.execute(
+                    text("update workflow_runs set node_results = '{}' where id = :id"),
+                    {"id": locked.run_id},
+                )
+                began = time.monotonic()
+                report = await asyncio.wait_for(peer.sweep(), timeout=10)
+                took = time.monotonic() - began
+                assert took < 1.5, f"the sweep waited {took:.1f}s behind the lock"
+                assert report.closed == []
+                conn.commit()
+            assert (await rig.run(locked.run_id)).status == "running"
+            # The control: with the row free and the stamp still old, the
+            # same sweep takes the run for dead.
+            assert (await peer.sweep()).closed == [locked.run_id]
+        finally:
+            holder.dispose()
+            _HeldEngine.release.set()
+            await locked.wait()
+
 
 class TestATriggerCallerLearnsWhyARunCouldNotWait:
     async def test_the_waiting_limit_has_its_own_code(
