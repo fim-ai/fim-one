@@ -12,11 +12,12 @@ import json
 import logging
 import math
 import re
+import secrets
 import time
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from .types import ExecutionContext, NodeResult, NodeStatus, NodeType, WorkflowNodeDef
-from .variable_store import VariableStore
+from .variable_store import VARIABLE_REFERENCE, VariableStore
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -861,19 +862,170 @@ def _step_call_context(node: WorkflowNodeDef, context: ExecutionContext) -> Call
 
 
 async def _interpolated_parameters(
-    store: VariableStore, template: dict[str, Any]
+    store: VariableStore, template: dict[str, Any], schema: Any = None
 ) -> dict[str, Any]:
     """The step's parameters with ``{{variable}}`` references filled in.
 
-    Only string values are templates; anything else is passed as it is.
+    Every text in *template* is a template, at any depth: the values of an
+    object and the items of a list are filled in like the top-level ones.
+    A filled-in value is data and is never read as a template again.
+
+    Filling a reference in yields text. With *schema* (a tool's JSON schema
+    for its arguments) a text that was a template is then given the type
+    the schema declares at its place, when the text is of that type:
+
+    - ``integer``, ``number``, ``boolean``: read from the text;
+    - ``object``, ``array``: the template is read as JSON first and the
+      references are filled into the parsed structure, so a value can
+      become a string, a number or a whole sub-tree in it, and cannot add
+      keys or items next to itself. A template that is one reference takes
+      the variable's value when it is of the declared type (or JSON text
+      of it).
+
+    Anything else is passed as text, for the tool to judge. A value written
+    without a reference is never touched.
     """
-    params: dict[str, Any] = {}
-    for key, val in template.items():
-        if isinstance(val, str) and "{{" in val:
-            params[key] = await store.interpolate(val)
-        else:
-            params[key] = val
-    return params
+    filled = await _filled(store, template, schema if isinstance(schema, dict) else None)
+    return filled if isinstance(filled, dict) else {}
+
+
+def _declared_types(schema: dict[str, Any] | None) -> list[str]:
+    declared = schema.get("type") if schema else None
+    if isinstance(declared, str):
+        return [declared]
+    if isinstance(declared, list):
+        return [kind for kind in declared if isinstance(kind, str)]
+    return []
+
+
+def _schema_of(schema: dict[str, Any] | None, part: str, key: str | None = None) -> Any:
+    """The schema of one property (``properties``) or of the items (``items``)."""
+    inner = schema.get(part) if schema else None
+    if key is not None:
+        inner = inner.get(key) if isinstance(inner, dict) else None
+    return inner if isinstance(inner, dict) else None
+
+
+async def _filled(store: VariableStore, written: Any, schema: dict[str, Any] | None) -> Any:
+    if isinstance(written, str):
+        if "{{" not in written:
+            return written
+        kinds = _declared_types(schema)
+        if "string" in kinds:
+            # Text is one of the types the tool takes: it stays text.
+            return await store.interpolate(written)
+        kind = next((k for k in kinds if k != "null"), None)
+        if kind in ("object", "array"):
+            structure = await _filled_json(store, written, schema, kind)
+            if structure is not _UNFIT:
+                return structure
+            return await store.interpolate(written)
+        return _fit_text(await store.interpolate(written), kind)
+    if isinstance(written, dict):
+        return {
+            key: await _filled(store, value, _schema_of(schema, "properties", key))
+            for key, value in written.items()
+        }
+    if isinstance(written, list):
+        items = _schema_of(schema, "items")
+        return [await _filled(store, value, items) for value in written]
+    return written
+
+
+def _fit_text(text: str, kind: str | None) -> Any:
+    """Filled-in *text* as a number or a boolean when *kind* asks and it is one."""
+    stripped = text.strip()
+    if kind == "integer":
+        whole = _integer_from_text(stripped)
+        return text if whole is None else whole
+    if kind == "number":
+        number = _number_from_text(stripped)
+        return text if number is None else number
+    if kind == "boolean" and stripped.lower() in ("true", "false"):
+        return stripped.lower() == "true"
+    return text
+
+
+_UNFIT = object()
+
+
+async def _filled_json(
+    store: VariableStore, written: str, schema: dict[str, Any] | None, kind: str
+) -> Any:
+    """A template for an object or a list, filled in after it is parsed.
+
+    Filling the references into the JSON text and parsing the result would
+    let a value close a string and add keys of its own. Here each reference
+    outside a JSON string is first replaced by a marker string, the text is
+    parsed, and the values are then put in place of their markers; a
+    reference inside a string is filled in as part of that string. Returns
+    ``_UNFIT`` when the template is not JSON of the declared *kind*.
+    """
+    wanted: type = dict if kind == "object" else list
+    marker = secrets.token_hex(8)
+    names: list[str] = []
+    text: list[str] = []
+    in_string = False
+    i = 0
+    while i < len(written):
+        ch = written[i]
+        if in_string:
+            if ch == "\\":
+                text.append(written[i : i + 2])
+                i += 2
+                continue
+            in_string = ch != '"'
+        elif ch == '"':
+            in_string = True
+        elif ch == "{" and (ref := VARIABLE_REFERENCE.match(written, i)):
+            text.append(json.dumps(f"{marker}:{len(names)}"))
+            names.append(ref.group(1))
+            i = ref.end()
+            continue
+        text.append(ch)
+        i += 1
+    try:
+        parsed = json.loads("".join(text))
+    except ValueError:
+        return _UNFIT
+    values = [await store.resolve(name, _UNFIT) for name in names]
+
+    def marked(node: Any) -> int | None:
+        if isinstance(node, str) and node.startswith(f"{marker}:"):
+            return int(node[len(marker) + 1 :])
+        return None
+
+    if (whole := marked(parsed)) is not None:
+        # The template is one reference: the variable's value, or the JSON
+        # it is the text of.
+        value = values[whole]
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except ValueError:
+                return _UNFIT
+        return value if isinstance(value, wanted) else _UNFIT
+
+    async def placed(node: Any, node_schema: dict[str, Any] | None) -> Any:
+        if (index := marked(node)) is not None:
+            value = values[index]
+            # A variable nothing has set stays visible, as in a text.
+            return f"{{{{{names[index]}}}}}" if value is _UNFIT else value
+        if isinstance(node, str):
+            return await _filled(store, node, node_schema)
+        if isinstance(node, dict):
+            return {
+                key: await placed(value, _schema_of(node_schema, "properties", key))
+                for key, value in node.items()
+            }
+        if isinstance(node, list):
+            items = _schema_of(node_schema, "items")
+            return [await placed(value, items) for value in node]
+        return node
+
+    if not isinstance(parsed, wanted):
+        return _UNFIT
+    return await placed(parsed, schema)
 
 
 # A JSON number, with an optional leading "+": ASCII digits only, no "_"
@@ -904,52 +1056,6 @@ def _integer_from_text(text: str) -> int | None:
     if value.adjusted() >= _MAX_INTEGER_DIGITS or value != value.to_integral_value():
         return None
     return int(value)
-
-
-def _fit_tool_schema(
-    params: dict[str, Any], template: dict[str, Any], schema: Any
-) -> dict[str, Any]:
-    """Give each filled-in ``{{variable}}`` the type the tool's schema asks for.
-
-    Filling a reference in always yields text, so a number taken from an
-    earlier step would reach a tool that declares ``integer`` as ``"3"`` and
-    be rejected. A parameter that was a template is converted when the
-    schema names a number, a boolean, an object or an array and the text is
-    one; anything else is passed as it is, for the tool to judge. A value
-    written literally is never touched.
-    """
-    properties = schema.get("properties") if isinstance(schema, dict) else None
-    if not isinstance(properties, dict):
-        return params
-    fitted = dict(params)
-    for key, value in params.items():
-        written = template.get(key)
-        if not (isinstance(written, str) and "{{" in written and isinstance(value, str)):
-            continue
-        declared = properties.get(key)
-        kind = declared.get("type") if isinstance(declared, dict) else None
-        if isinstance(kind, list):
-            if "string" in kind:
-                # Text is one of the types the tool takes: it stays text.
-                continue
-            kind = next((k for k in kind if k != "null"), None)
-        text = value.strip()
-        try:
-            if kind == "integer":
-                if (whole := _integer_from_text(text)) is not None:
-                    fitted[key] = whole
-            elif kind == "number":
-                if (number := _number_from_text(text)) is not None:
-                    fitted[key] = number
-            elif kind == "boolean" and text.lower() in ("true", "false"):
-                fitted[key] = text.lower() == "true"
-            elif kind in ("object", "array"):
-                parsed = json.loads(text)
-                if isinstance(parsed, dict if kind == "object" else list):
-                    fitted[key] = parsed
-        except ValueError:
-            pass
-    return fitted
 
 
 class _StepFailed(Exception):
@@ -1585,8 +1691,6 @@ class MCPExecutor:
                     duration_ms=_ms_since(t0),
                 )
 
-            params = await _interpolated_parameters(store, params_template)
-
             # Load MCP server config from DB
             from fim_one.db import create_session
 
@@ -1650,6 +1754,11 @@ class MCPExecutor:
                     duration_ms=_ms_since(t0),
                 )
 
+            # The arguments, filled in and in the types the tool declares.
+            params = await _interpolated_parameters(
+                store, params_template, getattr(target_tool, "parameters_schema", None)
+            )
+
             # Execute the tool
             logger.info(
                 "MCP node %s calling %s.%s with params: %s",
@@ -1658,11 +1767,7 @@ class MCPExecutor:
                 tool_name,
                 list(params.keys()),
             )
-            output = await target_tool.run(
-                **_fit_tool_schema(
-                    params, params_template, getattr(target_tool, "parameters_schema", None)
-                )
-            )
+            output = await target_tool.run(**params)
 
             # Store output
             await _store_output(node, store, output)

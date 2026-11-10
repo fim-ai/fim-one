@@ -14,6 +14,8 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _VAR_PATTERN = re.compile(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\}\}")
+# A ``{{variable}}`` reference; group 1 is the variable's name.
+VARIABLE_REFERENCE = _VAR_PATTERN
 
 
 def _lookup(data: dict[str, Any], var_name: str, default: Any) -> Any:
