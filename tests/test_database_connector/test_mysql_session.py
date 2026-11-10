@@ -256,16 +256,29 @@ class TestReset:
 class TestCancellationAndTimeouts:
     """A cancelled or timed-out query says so, and leaves a usable driver."""
 
-    SLOW = (
-        "SELECT COUNT(*) FROM information_schema.columns a, information_schema.columns b, "
-        "information_schema.columns c"
-    )
+    @staticmethod
+    def _slow(live: LiveDatabase) -> str:
+        """A sum over 2^32 joined rows: minutes of work the server can interrupt.
+
+        (Not a join of information_schema tables: MySQL does not interrupt
+        those for a long while, and each run would leave one behind.)
+        """
+        tables = ", ".join(f"{live.orders} t{i}" for i in range(32))
+        return f"SELECT SUM(t0.id + t31.id) FROM {tables}"
 
     async def test_cancelling_the_task_raises_cancellation(self, live_mysql: LiveDatabase) -> None:
         import asyncio
 
-        tool = _tool(live_mysql, read_only=True)
-        task = asyncio.create_task(tool.run(sql=self.SLOW))
+        # A short limit on the server, so that the abandoned query is gone
+        # before this test's tables are dropped.
+        tool = DatabaseToolAdapter.create_tools(
+            connector_name="live",
+            connector_id=live_mysql.connector_id,
+            db_config={**live_mysql.config, "read_only": True, "query_timeout": 3},
+            schema_tables=[],
+            on_call_complete=None,
+        )[2]
+        task = asyncio.create_task(tool.run(sql=self._slow(live_mysql)))
         await asyncio.sleep(0.5)
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
@@ -284,24 +297,27 @@ class TestCancellationAndTimeouts:
             schema_tables=[],
             on_call_complete=None,
         )[2]
-        text = await tool.run(sql=self.SLOW)
+        text = await tool.run(sql=self._slow(live_mysql))
         assert text.startswith("[Timeout]"), text
         assert json.loads(await tool.run(sql="SELECT 1"))["rows"] == [[1]]
 
     async def test_the_client_side_timeout_is_a_timeout_too(
         self, live_mysql: LiveDatabase, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Where the server has no limit of its own, the connection is dropped."""
+        """Where the server's own limit comes later (or not at all), the connection is dropped."""
+        limit = MySQLDriver._limit_statement_time
 
-        async def _no_limit(_cur: Any, _timeout_s: int) -> None:
-            return None
+        async def _later(cur: Any, _timeout_s: int) -> None:
+            # Long after the client gives up, and soon enough that the
+            # query is gone before this test's tables are dropped.
+            await limit(cur, 4)
 
-        monkeypatch.setattr(MySQLDriver, "_limit_statement_time", staticmethod(_no_limit))
+        monkeypatch.setattr(MySQLDriver, "_limit_statement_time", staticmethod(_later))
         driver = await ConnectionPoolManager.get_instance().get_driver(
             live_mysql.connector_id, live_mysql.config
         )
         with pytest.raises(TimeoutError, match="timed out after 1s"):
-            await driver.execute_query(self.SLOW, timeout_s=1)
+            await driver.execute_query(self._slow(live_mysql), timeout_s=1)
         assert (await driver.execute_query("SELECT 1")).rows == [[1]]
 
     async def test_nothing_is_rolled_back_on_a_connection_that_is_gone(self) -> None:
