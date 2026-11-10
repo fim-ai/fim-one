@@ -752,6 +752,8 @@
   "scheduleInputsInvalid": "Invalid JSON",
   "scheduleNextRun": "Next run",
   "scheduleNextRunNone": "Not scheduled",
+  "scheduleHeldRunning": "The previous scheduled run is still running. Scheduled times are skipped until it ends.",
+  "scheduleHeldWaiting": "The previous scheduled run is waiting for a decision. Scheduled times are skipped until it ends.",
   "scheduleStatusActive": "Active",
   "scheduleStatusInactive": "Inactive",
   "scheduleSaved": "Schedule saved",

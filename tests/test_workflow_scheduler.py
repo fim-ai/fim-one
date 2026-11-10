@@ -263,6 +263,10 @@ class TestDispatchRun:
                 "fim_one.db.create_session",
                 return_value=mock_session,
             ),
+            patch(
+                "fim_one.core.workflow.scheduler.unfinished_scheduled_run",
+                new=AsyncMock(return_value=None),
+            ),
             patch.object(
                 scheduler,
                 "_execute_workflow",
@@ -464,8 +468,69 @@ class TestScheduledRunGates:
         )
         with (
             patch("fim_one.db.create_session", return_value=mock_session),
+            patch(
+                "fim_one.core.workflow.scheduler.unfinished_scheduled_run",
+                new=AsyncMock(return_value=None),
+            ),
             patch.object(scheduler, "_execute_workflow", new_callable=AsyncMock) as ex,
         ):
             await scheduler._dispatch_run(wf)
             await asyncio.sleep(0)
         ex.assert_awaited_once_with(wf)
+
+    @pytest.mark.usefixtures("human_intervention_enabled")
+    @pytest.mark.asyncio
+    async def test_a_tick_is_skipped_while_the_previous_scheduled_run_has_not_ended(
+        self, sched_db
+    ) -> None:  # type: ignore[no-untyped-def]
+        """One scheduled run at a time: a run that waits for a decision (or
+        is slow) does not get a second one started beside it at the next tick."""
+        from sqlalchemy import select
+
+        from fim_one.core.workflow.run_service import get_run_service
+        from fim_one.db.models.user import User
+        from fim_one.db.models.workflow import Workflow, WorkflowRun
+        from fim_one.web.api import workflows as wf_api
+
+        factory, wf = sched_db
+        scheduler = WorkflowScheduler(poll_interval=60, max_concurrent_runs=2)
+        await asyncio.wait_for(_run_scheduled(wf), timeout=10)  # waits at the approval
+        async with factory() as s:
+            (first,) = (await s.execute(select(WorkflowRun))).scalars().all()
+            owner = await s.get(User, wf.user_id)
+        assert first.status == "waiting"
+
+        with patch.object(scheduler, "_execute_workflow", new_callable=AsyncMock) as started:
+            await scheduler._dispatch_run(wf)
+            await asyncio.sleep(0)
+        started.assert_not_awaited()
+        async with factory() as s:
+            stored = await s.get(Workflow, wf.id)
+            assert stored is not None
+            # The tick counts as dealt with: it is not made up for later.
+            assert stored.last_scheduled_at is not None
+            assert len((await s.execute(select(WorkflowRun))).scalars().all()) == 1
+            # The owner is shown which run holds the schedule.
+            shown = (await wf_api.get_workflow_schedule(wf.id, current_user=owner, db=s)).data
+        assert shown["held_by_run"]["run_id"] == first.id
+        assert shown["held_by_run"]["status"] == "waiting"
+
+        # Someone's unfinished run by hand does not hold the schedule.
+        assert await get_run_service().cancel_stored_run(first.id) is True
+        async with factory() as s:
+            s.add(
+                WorkflowRun(
+                    workflow_id=wf.id,
+                    user_id=wf.user_id,
+                    blueprint_snapshot={},
+                    status="running",
+                    mode="interactive",
+                )
+            )
+            await s.commit()
+            shown = (await wf_api.get_workflow_schedule(wf.id, current_user=owner, db=s)).data
+        assert shown["held_by_run"] is None
+        with patch.object(scheduler, "_execute_workflow", new_callable=AsyncMock) as started:
+            await scheduler._dispatch_run(wf)
+            await asyncio.sleep(0)
+        started.assert_awaited_once_with(wf)

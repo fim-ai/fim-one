@@ -217,6 +217,22 @@ class WorkflowScheduler:
             )
             return
 
+        # One scheduled run at a time: while the previous one is still
+        # running, or waiting for a decision, this tick is skipped (and
+        # counted as taken, so it is not made up for later). The schedule
+        # endpoint shows which run holds it (``unfinished_scheduled_run``).
+        held_by = await unfinished_scheduled_run(wf.id)
+        if held_by is not None:
+            logger.info(
+                "Scheduler: skipping '%s' (id=%s): its scheduled run %s is still %s",
+                wf.name,
+                wf.id,
+                held_by[0],
+                held_by[1],
+            )
+            await self._mark_scheduled(wf.id)
+            return
+
         logger.info(
             "Scheduler triggering workflow '%s' (id=%s, cron=%s, tz=%s)",
             wf.name,
@@ -226,25 +242,27 @@ class WorkflowScheduler:
         )
 
         # Update last_scheduled_at immediately to prevent duplicate triggers
-        from sqlalchemy import select
-
-        from fim_one.db import create_session
-        from fim_one.db.models import Workflow
-
-        now = datetime.now(UTC)
-        async with create_session() as db:
-            result = await db.execute(
-                select(Workflow).where(Workflow.id == wf.id)
-            )
-            db_wf = result.scalar_one_or_none()
-            if db_wf is not None:
-                db_wf.last_scheduled_at = now
-                await db.commit()
+        await self._mark_scheduled(wf.id)
 
         # Launch execution as a background task
         task = asyncio.create_task(self._execute_workflow(wf))
         self._running_tasks.add(task)
         task.add_done_callback(self._running_tasks.discard)
+
+    @staticmethod
+    async def _mark_scheduled(workflow_id: str) -> None:
+        """Record that the schedule's current tick has been dealt with."""
+        from sqlalchemy import select
+
+        from fim_one.db import create_session
+        from fim_one.db.models import Workflow
+
+        async with create_session() as db:
+            result = await db.execute(select(Workflow).where(Workflow.id == workflow_id))
+            db_wf = result.scalar_one_or_none()
+            if db_wf is not None:
+                db_wf.last_scheduled_at = datetime.now(UTC)
+                await db.commit()
 
     async def _execute_workflow(self, wf: Any) -> None:
         """Execute one scheduled run through the run service.
@@ -282,3 +300,38 @@ class WorkflowScheduler:
                 outcome.status,
                 outcome.duration_ms,
             )
+
+
+async def unfinished_scheduled_run(
+    workflow_id: str, db: Any = None
+) -> tuple[str, str, datetime | None] | None:
+    """The scheduled run of the workflow that has not ended, if any.
+
+    ``(run id, status, started at)`` of the oldest one. While there is one
+    the schedule skips its ticks: runs of a schedule do not pile up behind
+    one that is slow or waits for a decision. A run left behind by a dead
+    process stops counting once the recovery sweep has closed it.
+    """
+    from sqlalchemy import select
+
+    from fim_one.db import create_session
+    from fim_one.db.models import WorkflowRun
+
+    from .run_service import UNFINISHED_STATUSES
+
+    query = (
+        select(WorkflowRun.id, WorkflowRun.status, WorkflowRun.started_at)
+        .where(
+            WorkflowRun.workflow_id == workflow_id,
+            WorkflowRun.mode == "schedule",
+            WorkflowRun.status.in_(UNFINISHED_STATUSES),
+        )
+        .order_by(WorkflowRun.created_at)
+        .limit(1)
+    )
+    if db is not None:
+        row = (await db.execute(query)).first()
+    else:
+        async with create_session() as own:
+            row = (await own.execute(query)).first()
+    return (str(row[0]), str(row[1]), row[2]) if row is not None else None

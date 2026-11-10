@@ -73,6 +73,7 @@ from fim_one.web.schemas.workflow import (
     ApprovalInboxItem,
     ApprovalInboxUser,
     RunWaitingItem,
+    ScheduleHeldByRun,
     WorkflowApprovalResponse,
     _compute_next_run,
 )
@@ -2109,6 +2110,17 @@ async def get_workflow_schedule(
     if cron and enabled:
         next_run = _compute_next_run(cron, tz)
 
+    # Shown to the author, whose runs the scheduled ones are.
+    held_by_run: ScheduleHeldByRun | None = None
+    if wf.user_id == current_user.id:
+        from fim_one.core.workflow.scheduler import unfinished_scheduled_run
+
+        held = await unfinished_scheduled_run(wf.id, db)
+        if held is not None:
+            held_by_run = ScheduleHeldByRun(
+                run_id=held[0], status=held[1], started_at=_iso(held[2])
+            )
+
     return ApiResponse(
         data=WorkflowScheduleResponse(
             schedule_cron=cron,
@@ -2116,6 +2128,7 @@ async def get_workflow_schedule(
             schedule_inputs=getattr(wf, "schedule_inputs", None),
             schedule_timezone=tz,
             next_run_at=next_run,
+            held_by_run=held_by_run,
         ).model_dump()
     )
 

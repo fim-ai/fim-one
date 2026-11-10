@@ -509,6 +509,12 @@ class WorkflowScheduleUpdate(BaseModel):
         return v.strip()
 
 
+class ScheduleHeldByRun(BaseModel):
+    run_id: str
+    status: str
+    started_at: str | None = None
+
+
 class WorkflowScheduleResponse(BaseModel):
     """Current schedule configuration for a workflow."""
 
@@ -517,6 +523,9 @@ class WorkflowScheduleResponse(BaseModel):
     schedule_inputs: dict[str, Any] | None = None
     schedule_timezone: str = "UTC"
     next_run_at: str | None = None
+    # The scheduled run that has not ended (running, or waiting for a
+    # decision). While there is one the schedule skips its ticks.
+    held_by_run: ScheduleHeldByRun | None = None
 
 
 # ---------------------------------------------------------------------------

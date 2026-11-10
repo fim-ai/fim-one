@@ -372,6 +372,8 @@ export interface WorkflowScheduleResponse {
   inputs: Record<string, unknown> | null
   timezone: string
   next_run_at: string | null
+  /** The scheduled run that has not ended; while there is one, ticks are skipped. */
+  held_by_run?: { run_id: string; status: string; started_at: string | null } | null
 }
 
 export interface WorkflowScheduleUpdate {

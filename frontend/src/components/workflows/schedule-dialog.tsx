@@ -90,6 +90,7 @@ export function ScheduleDialog({
   const [timezone, setTimezone] = useState("UTC")
   const [inputsJson, setInputsJson] = useState("{}")
   const [nextRunAt, setNextRunAt] = useState<string | null>(null)
+  const [heldByRun, setHeldByRun] = useState<WorkflowScheduleResponse["held_by_run"]>(null)
   const [hasExistingSchedule, setHasExistingSchedule] = useState(false)
 
   const [cronError, setCronError] = useState<string | null>(null)
@@ -119,6 +120,7 @@ export function ScheduleDialog({
         setTimezone(data.timezone)
         setInputsJson(data.inputs ? JSON.stringify(data.inputs, null, 2) : "{}")
         setNextRunAt(data.next_run_at)
+        setHeldByRun(data.held_by_run ?? null)
         setHasExistingSchedule(true)
       })
       .catch(() => {
@@ -389,6 +391,11 @@ export function ScheduleDialog({
                   {formatDateTime(nextRunAt)}
                 </span>
               </div>
+            )}
+            {hasExistingSchedule && enabled && heldByRun && (
+              <p className="text-sm text-amber-600 dark:text-amber-500" data-testid="schedule-held">
+                {heldByRun.status === "waiting" ? t("scheduleHeldWaiting") : t("scheduleHeldRunning")}
+              </p>
             )}
             {hasExistingSchedule && !nextRunAt && (
               <div className="flex items-center gap-2 text-sm">
