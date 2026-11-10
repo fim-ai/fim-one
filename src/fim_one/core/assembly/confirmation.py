@@ -23,8 +23,9 @@ channel of the organization.
 
 A workflow approval (``kind="workflow_approval"``) is a request like any
 other: assigned to one user (``assignee``) or, unassigned, to the user the
-run belongs to (``initiator``). An assignee must be an active user who
-shares an organization with the run (:func:`validate_assignee`).
+run belongs to (``initiator``). An assignee is named by user id, username
+or email and must be an active user who shares an organization with the
+run (:func:`validate_assignee`); the row records the user id.
 
 A tool call in a chat with no agent has no agent policy, only the tool's
 own flag: a flagged action is confirmed inline by the person chatting
@@ -47,7 +48,7 @@ import logging
 import os
 import uuid
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
 
@@ -170,13 +171,16 @@ class ConfirmationService:
         usable channel, a channel with no target chat, or a failed send.
         """
         if spec.eligible_scope == "assignee":
+            # The assignee may be written as an id, a username or an email;
+            # the row records the user it names.
             async with self._session_factory() as session:
-                await validate_assignee(
+                assignee_id = await validate_assignee(
                     session,
                     assignee=spec.eligible_user_id,
                     initiator=spec.initiator,
                     org_id=spec.org_id,
                 )
+            spec = replace(spec, eligible_user_id=assignee_id)
 
         channel_row: Any = None
         carrier: ApprovalCarrier | None = None
@@ -501,16 +505,18 @@ async def validate_assignee(
     assignee: str | None,
     initiator: Principal,
     org_id: str | None,
-) -> None:
-    """Refuse an assignee who is not an active user in the run's organization.
+) -> str:
+    """The id of the user *assignee* names; refuses one the run cannot have.
 
-    With the workflow in an organization (*org_id*), the assignee must be a
-    member of it. A workflow with no organization is personal: the assignee
-    must share an organization with the user the run belongs to, and a user
-    in no organization can assign only to themself. Raises
+    *assignee* is a user id, a username or an email address (the address
+    regardless of case) and must name exactly one active user. With the
+    workflow in an organization (*org_id*), that user must be a member of
+    it. A workflow with no organization is personal: the assignee must
+    share an organization with the user the run belongs to, and a user in
+    no organization can assign only to themself. Raises
     :class:`AssemblyRefusal` ``approval_assignee_not_in_org`` (400).
     """
-    from sqlalchemy import select
+    from sqlalchemy import func, or_, select
 
     from fim_one.db.models.user import User
 
@@ -522,20 +528,40 @@ async def validate_assignee(
             {"assignee": assignee or ""},
         )
 
-    if not assignee:
+    name = (assignee or "").strip()
+    if not name:
         raise refuse("is empty")
-    active = (await db.execute(select(User.is_active).where(User.id == assignee))).scalar()
-    if not active:
+    matches = (
+        (
+            await db.execute(
+                select(User.id).where(
+                    User.is_active.is_(True),
+                    or_(
+                        User.id == name,
+                        User.username == name,
+                        func.lower(User.email) == name.lower(),
+                    ),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not matches:
         raise refuse("is not an active user")
-    assignee_orgs = set(await user_org_ids(db, assignee))
+    if len(matches) > 1:
+        raise refuse("matches more than one user")
+    user_id = str(matches[0])
+    assignee_orgs = set(await user_org_ids(db, user_id))
     if org_id:
         if org_id not in assignee_orgs:
             raise refuse("is not a member of the workflow's organization")
     elif initiator.org_ids:
         if not assignee_orgs & initiator.org_ids:
             raise refuse("shares no organization with the user running the workflow")
-    elif assignee != initiator.user_id:
+    elif user_id != initiator.user_id:
         raise refuse("cannot be assigned by a user outside any organization")
+    return user_id
 
 
 def _already_decided(status: str) -> AssemblyRefusal:

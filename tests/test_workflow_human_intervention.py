@@ -352,6 +352,30 @@ async def test_variable_interpolation(
     assert result.status == NodeStatus.COMPLETED
 
 
+@pytest.mark.asyncio
+async def test_an_assignee_filled_in_as_a_username_is_recorded_as_the_user(
+    factory: async_sessionmaker[AsyncSession], world: dict[str, str]
+) -> None:
+    """A run that fills the assignee in with a username stores the user id as decider."""
+    executor = HumanInterventionExecutor()
+    node = _make_node({
+        "title": "Sign-off",
+        "assignee": "{{who}}",
+        "timeout_hours": 1,
+        "poll_interval_seconds": 0.05,
+    })
+    store = VariableStore()
+    await store.set("who", "colleague")
+    task = asyncio.create_task(executor.execute(node, store, _make_context(factory, world["runner"])))
+
+    record = await _pending_approval(factory)
+    assert (record.eligible_scope, record.eligible_user_id) == ("assignee", world["colleague"])
+    # What the run filled in is kept as written.
+    assert record.payload["assignee"] == "colleague"
+    await _decide(factory, record.id, status="approved", by=world["colleague"])
+    assert (await task).status == NodeStatus.COMPLETED
+
+
 # ---------------------------------------------------------------------------
 # Test: an assignee outside the run's organization fails the node (B13)
 # ---------------------------------------------------------------------------

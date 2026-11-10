@@ -309,6 +309,54 @@ class TestAssigneeMustBeInTheOrganization:
         assert approval.eligible_scope == "assignee"
         assert approval.eligible_user_id == world.colleague.id
 
+    @pytest.mark.parametrize("written_as", ["username", "email", "EMAIL", " padded id "])
+    async def test_an_assignee_written_as_username_or_email_names_the_user(
+        self,
+        factory: async_sessionmaker[AsyncSession],
+        session: AsyncSession,
+        world: World,
+        written_as: str,
+    ) -> None:
+        """The form asks for an id, a username or an email; the row records the user id."""
+        world.colleague.username = "colleague_1"
+        await session.commit()
+        text = {
+            "username": "colleague_1",
+            "email": world.colleague.email,
+            "EMAIL": world.colleague.email.upper(),
+            " padded id ": f" {world.colleague.id} ",
+        }[written_as]
+
+        approval = await _make_approval(factory, session, world, assignee=text)
+
+        assert approval.eligible_scope == "assignee"
+        assert approval.eligible_user_id == world.colleague.id
+        resp = await approve_approval(
+            approval.id, ApprovalDecisionRequest(), current_user=world.colleague, db=session
+        )
+        assert resp.data["status"] == "approved"
+
+    async def test_a_username_outside_the_organization_is_refused(
+        self, factory: async_sessionmaker[AsyncSession], session: AsyncSession, world: World
+    ) -> None:
+        world.stranger.username = "stranger_1"
+        await session.commit()
+        for text in ("stranger_1", world.stranger.email, world.inactive.email):
+            with pytest.raises(AssemblyRefusal) as exc:
+                await _make_approval(factory, session, world, assignee=text)
+            assert exc.value.error_code == "approval_assignee_not_in_org"
+
+    async def test_a_name_matching_two_users_is_refused(
+        self, factory: async_sessionmaker[AsyncSession], session: AsyncSession, world: World
+    ) -> None:
+        """Email addresses are not unique in the table; a shared one names nobody."""
+        world.runner.email = world.colleague.email
+        await session.commit()
+        with pytest.raises(AssemblyRefusal) as exc:
+            await _make_approval(factory, session, world, assignee=world.colleague.email)
+        assert exc.value.error_code == "approval_assignee_not_in_org"
+        assert "more than one" in exc.value.detail
+
     async def test_personal_workflow_needs_a_shared_organization(
         self, factory: async_sessionmaker[AsyncSession], session: AsyncSession, world: World
     ) -> None:
@@ -357,6 +405,13 @@ class TestAssigneeMustBeInTheOrganization:
         await ensure_assignees_valid(
             session, blueprint(world.colleague.id), user=world.author, org_id=world.org
         )
+        # Written as a username or an email, as the form invites.
+        world.colleague.username = "colleague_1"
+        await session.commit()
+        for text in ("colleague_1", world.colleague.email):
+            await ensure_assignees_valid(
+                session, blueprint(text), user=world.author, org_id=world.org
+            )
         # A template is checked when the run fills it in, not here.
         await ensure_assignees_valid(
             session, blueprint("{{manager_id}}"), user=world.author, org_id=world.org

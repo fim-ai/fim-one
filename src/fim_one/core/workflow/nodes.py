@@ -1169,7 +1169,7 @@ class HumanInterventionExecutor:
         {
             "title": "Review content before publishing",
             "description": "Please review the generated content",
-            "assignee": "{{manager_id}}",       # optional, supports interpolation
+            "assignee": "{{manager_id}}",       # optional: user id, username or email; interpolated
             "timeout_hours": 24,                 # default 24
             "poll_interval_seconds": 5,          # default 5
             "output_variable": "approval_result"
