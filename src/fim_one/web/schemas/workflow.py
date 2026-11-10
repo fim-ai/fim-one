@@ -131,6 +131,9 @@ class WorkflowRunResponse(BaseModel):
     duration_ms: int | None
     error: str | None
     waiting_for: list[RunWaitingItem] | None = None
+    # A run continued after its approval that is queued for one of its
+    # user's concurrent-run slots: ``status`` is ``running``, no step runs yet.
+    queued: bool = False
     created_at: str
     updated_at: str | None
 

@@ -425,7 +425,7 @@ export function RunHistorySheet({
                   {formatRelativeTime(selectedRun.created_at)}
                 </SheetTitle>
                 <SheetDescription className="text-xs">
-                  {t(`runStatus_${selectedRun.status}` as Parameters<typeof t>[0])}
+                  {selectedRun.queued ? t("runStatus_queued") : t(`runStatus_${selectedRun.status}` as Parameters<typeof t>[0])}
                   {selectedRun.duration_ms != null &&
                     ` -- ${fmtDuration(selectedRun.duration_ms / 1000)}`}
                 </SheetDescription>
@@ -546,7 +546,7 @@ export function RunHistorySheet({
                     statusBadgeClass[selectedRun.status],
                   )}
                 >
-                  {t(`runStatus_${selectedRun.status}` as Parameters<typeof t>[0])}
+                  {selectedRun.queued ? t("runStatus_queued") : t(`runStatus_${selectedRun.status}` as Parameters<typeof t>[0])}
                 </Badge>
                 {selectedRun.duration_ms != null && (
                   <span className="text-[10px] text-muted-foreground tabular-nums flex items-center gap-1">
@@ -678,7 +678,7 @@ export function RunHistorySheet({
                               statusBadgeClass[run.status],
                             )}
                           >
-                            {t(`runStatus_${run.status}` as Parameters<typeof t>[0])}
+                            {run.queued ? t("runStatus_queued") : t(`runStatus_${run.status}` as Parameters<typeof t>[0])}
                           </Badge>
                           <span className="text-[10px] text-muted-foreground">
                             {formatRelativeTime(run.created_at)}

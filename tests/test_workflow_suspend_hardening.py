@@ -1599,3 +1599,71 @@ class TestARunClosedOnItsRecordIsAnnounced:
         with patch.object(rig.service, "_fire_webhook") as webhook:
             assert await rig.service.cancel_stored_run(outcome.run_id) is True
         webhook.assert_not_called()
+
+
+class TestAQueuedContinuation:
+    @staticmethod
+    def _capped(cap: int) -> rs.WorkflowRunService:
+        return rs.WorkflowRunService(
+            engine_factory=_CountingEngine,
+            rate_limiter=WorkflowRateLimiter(max_runs_per_minute=1000, max_concurrent_runs=cap),
+        )
+
+    async def _queued(self, rig: Rig, service: rs.WorkflowRunService) -> Any:
+        outcome = await rig.start(service=service)
+        await rig.flip((await rig.request_of(outcome.run_id)).id, status="approved")
+        await service.rate_limiter.acquire(rig.owner.id, "another-run")  # the only slot
+        started = await service.resume_run(outcome.run_id)
+        assert started is not None
+        await asyncio.sleep(0.1)
+        return started
+
+    async def test_it_is_shown_as_queued_and_goes_before_the_users_new_runs(
+        self, rig: Rig
+    ) -> None:
+        from fim_one.web.api import workflows as wf_api
+
+        service = self._capped(1)
+        started = await self._queued(rig, service)
+
+        async with rig.factory() as db:
+            shown = (
+                await wf_api.get_workflow_run(
+                    rig.wf.id, started.run_id, current_user=rig.owner, db=db
+                )
+            ).data
+        assert (shown["status"], shown["queued"]) == ("running", True)
+
+        # The slot comes free: a new run asking at that moment does not get it.
+        await service.rate_limiter.record_run_end(rig.owner.id, "another-run")
+        allowed, why = await service.rate_limiter.acquire(rig.owner.id, "a-new-run")
+        assert allowed is False and "next in line" in (why or "")
+
+        assert (await asyncio.wait_for(started.wait(), timeout=5)).status == "completed"
+        async with rig.factory() as db:
+            shown = (
+                await wf_api.get_workflow_run(
+                    rig.wf.id, started.run_id, current_user=rig.owner, db=db
+                )
+            ).data
+        assert (shown["status"], shown["queued"]) == ("completed", False)
+        # And nothing is held back once it has run.
+        assert (await service.rate_limiter.acquire(rig.owner.id, "a-new-run"))[0] is True
+
+    async def test_it_does_not_queue_for_ever(
+        self, rig: Rig, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("WORKFLOW_RESUME_SLOT_WAIT_SECONDS", "0.3")
+        service = self._capped(1)
+        started = await self._queued(rig, service)
+
+        outcome = await asyncio.wait_for(started.wait(), timeout=5)
+
+        assert outcome.status == "failed"
+        assert outcome.error_code == "workflow_resume_slot_timeout"
+        run = await rig.run(started.run_id)
+        assert run.status == "failed" and "none came free" in (run.error or "")
+        assert run.queued_at is None and _CountingEngine.continued == []
+        # The user's new runs are no longer held back for it.
+        await service.rate_limiter.record_run_end(rig.owner.id, "another-run")
+        assert (await service.rate_limiter.acquire(rig.owner.id, "a-new-run"))[0] is True

@@ -120,6 +120,13 @@ RUN_INTERRUPTED_ERROR = (
 )
 RUN_STATE_TOO_LARGE = "workflow_suspend_state_too_large"
 RUN_WAITING_LIMIT = "workflow_waiting_limit_reached"
+RUN_SLOT_TIMEOUT = "workflow_resume_slot_timeout"
+
+
+def resume_slot_wait_seconds() -> float:
+    """How long a continued run may queue for a concurrent-run slot
+    (``WORKFLOW_RESUME_SLOT_WAIT_SECONDS``)."""
+    return float(os.getenv("WORKFLOW_RESUME_SLOT_WAIT_SECONDS", "3600"))
 
 
 def waiting_runs_limit() -> int:
@@ -205,6 +212,10 @@ NO_APPROVAL_MODES = frozenset({RunMode.TOOL})
 # Entry points whose runs wait for a concurrent-run slot instead of being
 # refused when the user is at the limit, and always leave one slot free.
 QUEUED_MODES = frozenset({RunMode.BATCH})
+
+
+class _NoSlotInTimeError(Exception):
+    """A continued run queued for a concurrent-run slot for too long."""
 
 
 class RunRefusedError(AssemblyRefusal):
@@ -460,8 +471,12 @@ class StartedRun:
         start = time.time()
         out = self.outcome
         try:
-            if self._queue_for_slot:
-                await self._take_slot_when_free()
+            if self._queue_for_slot and not await self._take_slot_when_free():
+                raise _NoSlotInTimeError(
+                    "The run was approved but could not continue: it waited "
+                    f"{resume_slot_wait_seconds():.0f} seconds for one of this user's "
+                    "concurrent-run slots and none came free. Run the workflow again."
+                )
             if self._resume_state is not None:
                 stream = self._engine.execute_streaming(
                     self._parsed,
@@ -559,6 +574,13 @@ class StartedRun:
             out.status = "cancelled"
             out.error = "Execution cancelled"
             out.error_code = "workflow_run_cancelled"
+        except _NoSlotInTimeError as no_slot:
+            out.status = "failed"
+            out.error = str(no_slot)
+            out.error_code = RUN_SLOT_TIMEOUT
+            await self._queue.put(
+                ("run_failed", {"run_id": self.run_id, "status": "failed", "error": out.error})
+            )
         except Exception as exc:
             out.status = "failed"
             out.error = f"{type(exc).__name__}: {exc}"
@@ -651,15 +673,18 @@ class StartedRun:
         before = int((self._resume_state or {}).get("total_tokens") or 0)
         return before + spent
 
-    async def _take_slot_when_free(self) -> None:
-        """Wait for one of the principal's concurrent-run slots (a continued run).
+    async def _take_slot_when_free(self) -> bool:
+        """Queue for one of the principal's concurrent-run slots (a continued run).
 
-        Never refused, like a batch item. Cancelling the run ends the wait;
-        the engine then finds the cancel and ends the run as cancelled.
+        Ahead of the user's new runs, for at most
+        ``WORKFLOW_RESUME_SLOT_WAIT_SECONDS``; False when none came free in
+        that time. The run's record says it is queued while this lasts.
+        Cancelling the run ends the wait; the engine then finds the cancel
+        and ends the run as cancelled.
         """
         limiter = self._service.rate_limiter
         taking = asyncio.ensure_future(
-            limiter.acquire_when_free(self.principal.user_id, self.run_id)
+            limiter.acquire_first(self.principal.user_id, self.run_id, resume_slot_wait_seconds())
         )
         cancelled = asyncio.ensure_future(self.cancel_event.wait())
         try:
@@ -668,7 +693,12 @@ class StartedRun:
             for pending in (taking, cancelled):
                 if not pending.done():
                     pending.cancel()
-            await asyncio.gather(taking, cancelled, return_exceptions=True)
+            results = await asyncio.gather(taking, cancelled, return_exceptions=True)
+        got_slot = results[0] is True
+        if got_slot or self.cancel_event.is_set():
+            await self._service._set_queued(self.run_id, False)
+            return True
+        return False
 
     async def _save_progress(self) -> None:
         """Write the step results so far to the run record, at most once a
@@ -958,6 +988,7 @@ class WorkflowRunService:
                             completed_at=now,
                             suspend_state=None,
                             waiting_on=None,
+                            queued_at=None,
                         )
                         .execution_options(synchronize_session=False)
                     )
@@ -1313,6 +1344,8 @@ class WorkflowRunService:
                     heartbeat_at=db_now(_dialect_of(db)),
                     # Running again: it waits on nothing until it says so.
                     waiting_on=None,
+                    # Queued for a slot until its first step may run.
+                    queued_at=db_now(_dialect_of(db)),
                 )
                 .execution_options(synchronize_session=False)
             )
@@ -1748,6 +1781,7 @@ class WorkflowRunService:
             "total_tokens": out.total_tokens,
             "suspend_state": suspend_state,
             "waiting_on": waiting_on if suspend_state is not None else None,
+            "queued_at": None,
         }
         if started_at is not None:
             values["started_at"] = datetime.fromtimestamp(started_at, tz=UTC)
@@ -1804,6 +1838,24 @@ class WorkflowRunService:
         except Exception:
             logger.exception("Failed to persist workflow run %s", out.run_id)
             return None
+
+    async def _set_queued(self, run_id: str, queued: bool) -> None:
+        from sqlalchemy import update
+
+        from fim_one.db import create_session
+        from fim_one.db.models import WorkflowRun
+
+        try:
+            async with create_session() as db:
+                await db.execute(
+                    update(WorkflowRun)
+                    .where(WorkflowRun.id == run_id)
+                    .values(queued_at=db_now(_dialect_of(db)) if queued else None)
+                    .execution_options(synchronize_session=False)
+                )
+                await db.commit()
+        except Exception:
+            logger.exception("Could not update the queue mark of run %s", run_id)
 
     async def _save_progress(self, run_id: str, node_results: dict[str, Any]) -> None:
         from sqlalchemy import update

@@ -182,6 +182,9 @@ class WorkflowRun(UUIDPKMixin, TimestampMixin, Base):
     # so the recovery sweep and the API never load or decrypt that. Set when
     # the run is about to wait, emptied when it is continued or ends.
     waiting_on: Any = Column(JSON, nullable=True)
+    # Set while a continued run is queued for a concurrent-run slot: its
+    # status is ``running`` (it is claimed and stamped) but no step runs yet.
+    queued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # The server process executing the run and when it last said so. A run
     # still ``running`` whose heartbeat is old was left by a process that
     # died (``core/workflow/run_recovery.py``).

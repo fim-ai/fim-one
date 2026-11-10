@@ -198,6 +198,8 @@ export type WorkflowRunStatus =
   | "cancelled"
 
 export interface WorkflowRunResponse {
+  /** Continued after its approval and queued for a concurrent-run slot; `status` is `running`. */
+  queued?: boolean
   id: string
   workflow_id: string
   /** Who started the run. */

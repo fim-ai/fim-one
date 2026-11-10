@@ -9,6 +9,8 @@ run itself:
   empty for every other run).
 - ``workflow_runs.waiting_on``: which request each waiting step waits on
   (small JSON, in the clear, read by the recovery sweep).
+- ``workflow_runs.queued_at``: since when a continued run has been queued
+  for a concurrent-run slot.
 - ``workflow_runs.worker_id`` / ``heartbeat_at``: which server process is
   executing the run and when it last said so. A run still ``running`` with
   an old heartbeat was left behind by a process that died.
@@ -54,6 +56,7 @@ def _new_columns() -> list[sa.Column[Any]]:
     return [
         sa.Column("suspend_state", sa.JSON(), nullable=True),
         sa.Column("waiting_on", sa.JSON(), nullable=True),
+        sa.Column("queued_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("worker_id", sa.String(64), nullable=True),
         sa.Column("heartbeat_at", sa.DateTime(timezone=True), nullable=True),
     ]

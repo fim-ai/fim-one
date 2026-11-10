@@ -92,6 +92,7 @@
   "runStatus_pending": "Pending",
   "runStatus_running": "Running",
   "runStatus_waiting": "Waiting",
+  "runStatus_queued": "Queued for a free slot",
   "runStatus_completed": "Completed",
   "runStatus_failed": "Failed",
   "runStatus_cancelled": "Cancelled",

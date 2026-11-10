@@ -31,7 +31,7 @@ _PG = os.environ.get("FIM_TEST_PG_URL")
 _MIGRATION = "fim_one.migrations.versions.t10p5a1b2c3d4_workflow_run_suspend"
 _RUNS = "workflow_runs"
 _INDEX = "ix_workflow_runs_status"
-_NEW_COLUMNS = {"suspend_state", "waiting_on", "worker_id", "heartbeat_at"}
+_NEW_COLUMNS = {"suspend_state", "waiting_on", "queued_at", "worker_id", "heartbeat_at"}
 _APPROVALS_DDL = """
     CREATE TABLE workflow_approvals (
         id VARCHAR(36) PRIMARY KEY,

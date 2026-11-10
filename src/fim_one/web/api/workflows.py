@@ -253,6 +253,7 @@ def _run_to_response(run: WorkflowRun) -> WorkflowRunResponse:
         duration_ms=run.duration_ms,
         error=run.error,
         waiting_for=_waiting_for(run),
+        queued=run.status == "running" and run.queued_at is not None,
         created_at=run.created_at.isoformat() if run.created_at else "",
         updated_at=run.updated_at.isoformat() if run.updated_at else None,
     )
