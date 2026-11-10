@@ -605,3 +605,36 @@ class TestOneOutboundStack:
         # The gate looks at something: the one module does read all three.
         instance = (SRC / INSTANCE_CHANNELS_MODULE).read_text(encoding="utf-8")
         assert all(name in instance for name in INSTANCE_WEBHOOK_VARIABLES)
+
+
+class TestAuditRowsHaveOneWriter:
+    """``core/audit/writer.py`` constructs every audit-class row.
+
+    Three tables hold audit-class records. A row built anywhere else skips
+    what the writer adds for all of them: the request's address, the action
+    registry, the redaction of secrets.
+    """
+
+    ROWS = ("AuditLog(", "LoginHistory(", "ReviewLog(")
+    MODELS = frozenset(
+        {"db/models/audit_log.py", "db/models/login_history.py", "db/models/review_log.py"}
+    )
+
+    def test_rows_are_built_only_by_the_writer(self) -> None:
+        files = [py for py in sorted(SRC.rglob("*.py")) if "migrations" not in py.parts]
+        allowed = self.MODELS | {"core/audit/writer.py"}
+        offenders = [
+            hit
+            for needle in self.ROWS
+            for hit in _occurrences(needle, files)
+            if hit.split(":", 1)[0] not in allowed
+        ]
+        assert not offenders, (
+            "audit, sign-in and review rows are written by core/audit/writer.py:\n  "
+            + "\n  ".join(offenders)
+        )
+
+    def test_write_audit_is_defined_once(self) -> None:
+        files = [py for py in sorted(SRC.rglob("*.py")) if "migrations" not in py.parts]
+        definitions = [hit.split(":", 1)[0] for hit in _occurrences("def write_audit(", files)]
+        assert definitions == ["web/api/admin_utils.py"]

@@ -1,0 +1,230 @@
+"""The one place that writes audit rows.
+
+Three tables hold audit-class records: ``audit_logs`` (the general event
+table), ``login_history`` (sign-in attempts) and ``review_log`` (the
+publish-and-review trail of an organization). Each has one writer here:
+:func:`record`, :func:`record_login`, :func:`record_review`. Nothing else
+constructs their rows (``tests/test_architecture.py``).
+
+Two ways to write, chosen by the caller of :func:`record`:
+
+- with ``db``: the row joins the caller's session and is committed with the
+  change it describes. If it cannot be written, the change fails too. For
+  changes to permissions and secrets, where a change with no record is the
+  worse outcome.
+- without ``db``: the row is written in a session of its own; a failure is
+  logged and swallowed. For events whose main transaction rolls back (a
+  refusal) and for events that must not be held up by auditing (an export,
+  a view).
+
+This module imports nothing from ``fim_one.web``; ORM models are imported
+inside functions.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+from typing import TYPE_CHECKING, Any
+
+from .actions import is_registered
+from .context import current_request_auth, current_request_meta
+from .events import Actor, Outcome, RequestMeta
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from fim_one.core.assembly.principal import Principal
+
+__all__ = [
+    "actor_from_principal",
+    "actor_of",
+    "record",
+    "record_login",
+    "record_review",
+    "system_actor",
+]
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Who
+# ---------------------------------------------------------------------------
+
+
+def actor_of(user: Any) -> Actor:
+    """The actor for a signed-in user's row (``id``, ``username``, ``email``, ``is_admin``).
+
+    How the user was authenticated comes from the current request, when the
+    authentication dependency recorded it.
+    """
+    auth = current_request_auth()
+    return Actor(
+        user_id=user.id,
+        label=user.username or user.email,
+        kind="admin" if getattr(user, "is_admin", False) else "user",
+        auth=auth[0] if auth else None,
+        credential_ref=auth[1] if auth else None,
+    )
+
+
+def actor_from_principal(
+    principal: Principal, *, label: str | None = None, credential_ref: str | None = None
+) -> Actor:
+    """The actor for an assembly-layer principal."""
+    auth = str(principal.auth)
+    kind: Any = "system" if auth == "system" else ("admin" if principal.is_admin else "user")
+    return Actor(
+        user_id=principal.user_id or None,
+        label=label,
+        kind=kind,
+        auth=auth,
+        credential_ref=credential_ref,
+    )
+
+
+def system_actor(name: str) -> Actor:
+    """The platform acting on its own: a sweep, a billing event, a scheduled job."""
+    return Actor(user_id=None, label=name, kind="system", auth="system")
+
+
+# ---------------------------------------------------------------------------
+# audit_logs
+# ---------------------------------------------------------------------------
+
+
+def _strict_actions() -> bool:
+    """Whether an unregistered action name is an error (it is under test)."""
+    return bool(os.environ.get("PYTEST_CURRENT_TEST"))
+
+
+def _check_registered(action: str) -> None:
+    if is_registered(action):
+        return
+    if _strict_actions():
+        raise ValueError(
+            f"audit action {action!r} is not registered in fim_one.core.audit.actions"
+        )
+    logger.warning("Audit action %r is not registered; written as it is", action)
+
+
+async def record(
+    action: str,
+    *,
+    actor: Actor,
+    target_type: str | None = None,
+    target_id: str | None = None,
+    target_label: str | None = None,
+    detail: str | None = None,
+    db: AsyncSession | None = None,
+) -> None:
+    """Write one audit event.
+
+    With *db* the row is added to that session and the caller commits it
+    together with the change; without, it is committed in a session of its
+    own and a failure is logged, never raised.
+    """
+    from fim_one.db.models.audit_log import AuditLog
+
+    _check_registered(action)
+    row = AuditLog(
+        admin_id=actor.user_id,
+        admin_username=actor.label,
+        action=action,
+        target_type=target_type,
+        target_id=target_id,
+        target_label=target_label,
+        detail=detail,
+    )
+    if db is not None:
+        db.add(row)
+        return
+    try:
+        from fim_one.db import create_session
+
+        async with create_session() as session:
+            session.add(row)
+            await session.commit()
+    except Exception as exc:
+        # Only the error's type: its text can echo the row.
+        logger.error("Failed to record audit event %s: %s", action, type(exc).__name__)
+
+
+# ---------------------------------------------------------------------------
+# login_history
+# ---------------------------------------------------------------------------
+
+
+async def record_login(
+    *,
+    user_id: str | None,
+    username: str | None,
+    email: str | None,
+    success: bool,
+    failure_reason: str | None = None,
+    request: RequestMeta | None = None,
+    db: AsyncSession | None = None,
+) -> None:
+    """Write one sign-in attempt.
+
+    *request* defaults to the request being served. With *db* the row joins
+    that session (the caller commits); without, it is written in a session
+    of its own and a failure is logged, never raised.
+    """
+    from fim_one.db.models.login_history import LoginHistory
+
+    meta = request if request is not None else current_request_meta()
+    row = LoginHistory(
+        user_id=user_id,
+        username=username,
+        email=email,
+        ip_address=meta.ip if meta else None,
+        user_agent=meta.user_agent if meta else None,
+        success=success,
+        failure_reason=failure_reason,
+    )
+    if db is not None:
+        db.add(row)
+        return
+    try:
+        from fim_one.db import create_session
+
+        async with create_session() as session:
+            session.add(row)
+            await session.commit()
+    except Exception as exc:
+        logger.error("Failed to record a sign-in attempt: %s", type(exc).__name__)
+
+
+# ---------------------------------------------------------------------------
+# review_log
+# ---------------------------------------------------------------------------
+
+
+async def record_review(
+    db: AsyncSession,
+    *,
+    org_id: str,
+    resource_type: str,
+    resource_id: str,
+    resource_name: str,
+    action: str,
+    actor: Actor | None,
+    note: str | None = None,
+) -> None:
+    """Add one entry to an organization's review trail. The caller commits."""
+    from fim_one.db.models.review_log import ReviewLog
+
+    db.add(
+        ReviewLog(
+            org_id=org_id,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            resource_name=resource_name,
+            action=action,
+            actor_id=actor.user_id if actor else None,
+            actor_username=actor.label if actor else None,
+            note=note,
+        )
+    )

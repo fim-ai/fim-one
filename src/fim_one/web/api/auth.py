@@ -29,7 +29,6 @@ from fim_one.web.api.admin import (
 )
 from fim_one.web.api.admin_utils import get_setting
 from fim_one.web.services.default_plan import get_default_plan_id
-from fim_one.db.models.audit_log import AuditLog
 from fim_one.db.models.email_verification import EmailVerification
 from fim_one.db.models.invite_code import InviteCode
 from fim_one.web.auth import (
@@ -46,6 +45,8 @@ from fim_one.web.auth import (
     verify_password_async,
 )
 from fim_one.db.models import LoginHistory, User
+from fim_one.core.audit import writer as audit
+from fim_one.core.audit.events import Actor, RequestMeta
 from fim_one.db.models.agent import Agent
 from fim_one.db.models.api_key import ApiKey
 from fim_one.db.models.connector import Connector
@@ -146,20 +147,19 @@ async def _record_login(
     email: str | None = None,
 ) -> None:
     """Record a login attempt in login_history for security auditing."""
-    ip_address = request.client.host if request.client else None
-
-    user_agent = request.headers.get("User-Agent", "") or None
-
-    record = LoginHistory(
+    await audit.record_login(
         user_id=user.id if user else None,
         username=user.username if user else None,
         email=user.email if user else email,
-        ip_address=ip_address,
-        user_agent=user_agent,
         success=success,
         failure_reason=failure_reason,
+        request=RequestMeta(
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("User-Agent", "") or None,
+            request_id=None,
+        ),
+        db=db,
     )
-    db.add(record)
     await db.commit()
 
 
@@ -1508,19 +1508,17 @@ async def delete_own_account(
 
     # --- Audit trail (must happen before DB delete since user is the actor) ---
     summary = await purge_user_data(db, user_id)
-    db.add(
-        AuditLog(
-            admin_id=user_id,
-            admin_username=label,
-            action="account.self_delete",
-            target_type="user",
-            target_id=user_id,
-            target_label=label,
-            detail=(
-                f"user self-deleted; cleaned {summary['conversations']} conversations, "
-                f"{summary['knowledge_bases']} knowledge bases, sandbox & upload dirs"
-            ),
-        )
+    await audit.record(
+        "account.self_delete",
+        actor=Actor(user_id=user_id, label=label, kind="user"),
+        target_type="user",
+        target_id=user_id,
+        target_label=label,
+        detail=(
+            f"user self-deleted; cleaned {summary['conversations']} conversations, "
+            f"{summary['knowledge_bases']} knowledge bases, sandbox & upload dirs"
+        ),
+        db=db,
     )
     await db.commit()
 

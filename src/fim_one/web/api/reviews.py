@@ -97,19 +97,20 @@ async def log_review_event(
     note: str | None = None,
 ) -> None:
     """Append a review audit log entry.  Caller must commit after calling this."""
-    from fim_one.db.models.review_log import ReviewLog
+    from fim_one.core.audit import writer as audit
+    from fim_one.core.audit.events import Actor
 
-    entry = ReviewLog(
+    await audit.record_review(
+        db,
         org_id=org_id,
         resource_type=resource_type,
         resource_id=resource_id,
         resource_name=resource_name,
         action=action,
-        actor_id=actor.id if actor else None,
-        actor_username=actor.username if actor else None,
+        # The review trail names the actor by username alone, as it always has.
+        actor=Actor(user_id=actor.id, label=actor.username, kind="user") if actor else None,
         note=note,
     )
-    db.add(entry)
 
 
 # ---------------------------------------------------------------------------

@@ -49,10 +49,12 @@ __all__ = [
     "error_without_url_secrets",
     "launch_arg_reasons",
     "launch_args_carry_secret",
+    "names_a_secret",
     "strip_url_secrets",
     "traceback_without_url_secrets",
     "url_carries_secret",
     "url_secret_reasons",
+    "value_is_secret_shaped",
 ]
 
 # A URL inside free text: scheme://… up to white space. A URL has no white
@@ -375,6 +377,26 @@ def _names_a_secret(name: str) -> bool:
     if not any(word in SECRET_NAME_WORDS for word in (*words, *joined)):
         return False
     return words[0] not in _NEGATING_WORDS and words[-1] not in _DESCRIBING_WORDS
+
+
+def names_a_secret(name: str) -> bool:
+    """Whether a field, flag, variable or header called *name* holds a secret.
+
+    The same reading of a name the launch-argument rule uses
+    (:data:`SECRET_NAME_WORDS`), for callers outside this module that must
+    decide whether a value may be printed: ``api_key``, ``webhookSecret``
+    and ``Authorization`` are, ``key_file`` and ``no_auth`` are not.
+    """
+    return bool(name) and _names_a_secret(name)
+
+
+def value_is_secret_shaped(text: str | None) -> bool:
+    """Whether *text* is a credential by its own shape, whatever it is called.
+
+    A known token prefix, a ``Bearer`` value, a long opaque string, a
+    connection string with a password, or a URL that carries a secret.
+    """
+    return bool(text) and bool(_value_reasons(str(text)))
 
 
 def _holds_a_secret(name: str, value: str) -> bool:
