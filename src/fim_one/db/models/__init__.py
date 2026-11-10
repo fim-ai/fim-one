@@ -38,7 +38,7 @@ from .sensitive_word import SensitiveWord
 from .skill import Skill
 from .system_setting import SystemSetting
 from .user import User
-from .workflow import Workflow, WorkflowApproval, WorkflowRun, WorkflowTemplate, WorkflowVersion
+from .workflow import Workflow, WorkflowRun, WorkflowTemplate, WorkflowVersion
 
 __all__ = [
     "Agent",
@@ -84,7 +84,6 @@ __all__ = [
     "User",
     "UserOAuthBinding",
     "Workflow",
-    "WorkflowApproval",
     "WorkflowRun",
     "WorkflowTemplate",
     "WorkflowVersion",

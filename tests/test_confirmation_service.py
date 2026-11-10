@@ -332,6 +332,29 @@ class TestWait:
         stored = await _row(factory, row.id)
         assert stored.status == "expired" and stored.responded_at is not None
 
+    async def test_a_decision_landing_as_the_deadline_passes_is_honoured(
+        self, factory: async_sessionmaker[AsyncSession], world: dict[str, Any]
+    ) -> None:
+        """The waiter saw the row pending past its deadline; before it could
+        mark it expired, someone's decision was recorded. The mark changes
+        nothing then, and the answer is the decision, not "expired"."""
+        service = ConfirmationService(factory)
+        row = await service.request(_spec(world, timeout_seconds=0.01))
+        await asyncio.sleep(0.05)
+        mark = service._mark_expired
+
+        async def decided_just_before(confirmation_id: str) -> None:
+            async with factory() as db:
+                stored = await db.get(ConfirmationRequest, confirmation_id)
+                assert stored is not None and stored.status == "pending"
+                stored.status = "approved"
+                await db.commit()
+            await mark(confirmation_id)
+
+        with patch.object(service, "_mark_expired", decided_just_before):
+            assert await service.wait(row.id, poll_seconds=0) == "approve"
+        assert (await _row(factory, row.id)).status == "approved"
+
     async def test_a_deleted_row_counts_as_expired(
         self, factory: async_sessionmaker[AsyncSession]
     ) -> None:
@@ -735,6 +758,43 @@ class TestDecide:
                 await service.decide(db, confirmation_id=row.id, actor=second, decision="reject")
         assert exc.value.error_code == "confirmation_already_decided"
         assert exc.value.detail_args == {"status": "approved"}
+
+    async def test_on_decided_is_told_once_about_each_decision(
+        self, factory: async_sessionmaker[AsyncSession], deciders: dict[str, Any]
+    ) -> None:
+        """The hook a suspended workflow run is continued from (T10 P5)."""
+        row = await _request_with_scope(factory, deciders, "org_members")
+        service = ConfirmationService(factory)
+        first = await _principal(factory, deciders["users"]["initiator"])
+        second = await _principal(factory, deciders["users"]["member2"])
+        told: list[tuple[str, str]] = []
+
+        async def remember(decided: Any) -> None:
+            told.append((decided.id, decided.status))
+
+        def broken(_decided: Any) -> None:
+            raise RuntimeError("a listener's failure is not the decider's")
+
+        removers = [
+            ConfirmationService.on_decided(broken),
+            ConfirmationService.on_decided(remember),
+        ]
+        try:
+            async with factory() as db:
+                await service.decide(db, confirmation_id=row.id, actor=first, decision="reject")
+                with pytest.raises(AssemblyRefusal):
+                    await service.decide(
+                        db, confirmation_id=row.id, actor=second, decision="approve"
+                    )
+            assert told == [(row.id, "rejected")]
+        finally:
+            for remove in removers:
+                remove()
+
+        other = await _request_with_scope(factory, deciders, "org_members")
+        async with factory() as db:
+            await service.decide(db, confirmation_id=other.id, actor=first, decision="approve")
+        assert told == [(row.id, "rejected")]  # removed: no longer told
 
     async def test_a_request_past_its_deadline_cannot_be_decided(
         self, factory: async_sessionmaker[AsyncSession], deciders: dict[str, Any]

@@ -41,12 +41,13 @@ import { WebhookConfigDialog } from "@/components/workflows/webhook-config-dialo
 import { ApiKeyDialog } from "@/components/workflows/api-key-dialog"
 import { ScheduleDialog } from "@/components/workflows/schedule-dialog"
 import { BatchRunDialog } from "@/components/workflows/batch-run-dialog"
-import { emptyBlueprint, startVariablesOf } from "@/components/workflows/editor-page/blueprint-derived"
+import { emptyBlueprint, startChecksInputs, startVariablesOf } from "@/components/workflows/editor-page/blueprint-derived"
 import { useLeaveGuard } from "@/components/workflows/editor-page/use-leave-guard"
 import { useOpenPanels } from "@/components/workflows/editor-page/use-open-panels"
 import { useWorkflowDocument } from "@/components/workflows/editor-page/use-workflow-document"
 import { useWorkflowPublishing } from "@/components/workflows/editor-page/use-workflow-publishing"
 import { useWorkflowRun } from "@/components/workflows/editor-page/use-workflow-run"
+import { isActiveRunStatus } from "@/components/workflows/editor-page/run-record"
 import { useWorkflowValidation } from "@/components/workflows/editor-page/use-workflow-validation"
 import type {
   WorkflowBlueprint,
@@ -94,7 +95,8 @@ export default function WorkflowEditorPage() {
     readCanvas,
   })
   const { workflow, setWorkflow, isLoadingWorkflow, discardChanges } = doc
-  const run = useWorkflowRun(workflow?.id ?? null)
+  // A run executes the stored workflow: what is on the canvas is saved first.
+  const run = useWorkflowRun(workflow?.id ?? null, doc.saveBeforeRun)
   const publishing = useWorkflowPublishing(workflow, setWorkflow)
   // With unsaved changes, a link to another page asks before it is followed.
   const leaveGuard = useLeaveGuard(doc.hasUnsavedChanges)
@@ -154,6 +156,28 @@ export default function WorkflowEditorPage() {
         setScheduleActive(false)
       })
   }, [userId, workflowId])
+
+  // A run of this workflow that the user started and that has not ended
+  // (it runs, or waits for a decision) is shown again on opening the page.
+  const { attachToRun } = run
+  const loadedWorkflowId = workflow?.id ?? null
+  useEffect(() => {
+    if (!userId || !loadedWorkflowId) return
+    let cancelled = false
+    workflowApi
+      .getRuns(loadedWorkflowId, 1, 1)
+      .then((page) => {
+        const latest = page.items[0]
+        if (cancelled || !latest) return
+        if (latest.user_id === userId && isActiveRunStatus(latest.status)) attachToRun(latest)
+      })
+      .catch(() => {
+        // Nothing to show again; the run history still lists it.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [userId, loadedWorkflowId, attachToRun])
 
   // Auto-open run panel when navigated with ?run=true
   const { openRunPanel } = run
@@ -264,14 +288,21 @@ export default function WorkflowEditorPage() {
         // A new key when the blueprint was replaced as a whole (import,
         // version restore): the canvas starts over from it.
         key={doc.canvasRevision}
+        saveBeforeRun={doc.saveBeforeRun}
         ref={editorRef}
         workflowId={workflowId}
         blueprint={workflow.blueprint}
         onBlueprintChange={doc.changeBlueprint}
         onUndoRedoChange={handleUndoRedoChange}
-        isRunning={run.isRunning}
+        isRunning={run.isRunning || run.isWaiting}
+        runStatus={run.runStatus}
+        waitingFor={run.waitingFor}
+        onRunDecided={run.refreshRun}
         runPanelOpen={run.runPanelOpen}
         startVariables={startVariables}
+        checkInputs={startChecksInputs(blueprintRef.current)}
+        inputError={run.inputError}
+        onClearInputError={run.clearInputError}
         nodeResults={run.nodeResults}
         finalOutputs={run.finalOutputs}
         finalError={run.finalError}
@@ -490,6 +521,7 @@ export default function WorkflowEditorPage() {
       {/* Batch Run Dialog */}
       <BatchRunDialog
         workflowId={workflowId}
+        beforeRun={doc.saveBeforeRun}
         open={panels.isOpen("batchRun")}
         onOpenChange={panels.setter("batchRun")}
       />

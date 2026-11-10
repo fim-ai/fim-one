@@ -7,6 +7,24 @@ function getDateFnsLocale(locale: string): Locale {
   return DATE_FNS_LOCALES[locale] ?? DATE_FNS_LOCALES[locale.split("-")[0]] ?? enUS
 }
 
+/** A date and a time of day with no zone: "2026-03-23T07:45:12.123456", or with a space for the T. */
+const ZONELESS_DATE_TIME = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)$/
+
+/**
+ * Parse a timestamp the API sent.
+ *
+ * The backend stores UTC. On SQLite the zone is lost on the way out, and the
+ * API sends "2026-03-23T07:45:12" where PostgreSQL sends
+ * "2026-03-23T07:45:12+00:00". `new Date` reads a zone-less date-time as
+ * local time, which is off by the viewer's UTC offset ("about 8 hours ago"
+ * for something made just now, in UTC+8). A zone-less date-time is UTC here;
+ * a string that names its zone, and a date without a time, are read as is.
+ */
+export function parseApiDate(dateStr: string): Date {
+  const zoneless = ZONELESS_DATE_TIME.exec(dateStr.trim())
+  return new Date(zoneless ? `${zoneless[1]}T${zoneless[2]}Z` : dateStr)
+}
+
 /**
  * Format a date string as a localized date (e.g., "Mar 23, 2026").
  * Respects the user's timezone preference.
@@ -17,7 +35,7 @@ export function formatDate(
 ): string {
   if (!dateStr) return opts?.fallback ?? ""
   try {
-    return new Date(dateStr).toLocaleDateString(opts?.locale, {
+    return parseApiDate(dateStr).toLocaleDateString(opts?.locale, {
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -38,7 +56,7 @@ export function formatDateTime(
 ): string {
   if (!dateStr) return opts?.fallback ?? ""
   try {
-    return new Date(dateStr).toLocaleString(opts?.locale, {
+    return parseApiDate(dateStr).toLocaleString(opts?.locale, {
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -62,7 +80,7 @@ export function formatRelativeTime(
 ): string {
   if (!dateStr) return opts?.fallback ?? ""
   try {
-    return formatDistanceToNow(new Date(dateStr), {
+    return formatDistanceToNow(parseApiDate(dateStr), {
       addSuffix: true,
       locale: getDateFnsLocale(opts?.locale ?? "en"),
     })
@@ -81,7 +99,7 @@ export function formatDateLabel(
 ): string {
   if (!dateStr) return ""
   try {
-    return new Date(dateStr).toLocaleDateString(opts?.locale, {
+    return parseApiDate(dateStr).toLocaleDateString(opts?.locale, {
       month: "short",
       day: "numeric",
       timeZone: opts?.timezone || undefined,

@@ -34,6 +34,7 @@ import {
   XCircle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { ApprovalsLink } from "@/components/workflows/approvals/approvals-link"
 import { EmojiPickerPopover } from "@/components/ui/emoji-picker-popover"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -476,6 +477,9 @@ export function WorkflowToolbar({
           )}
           {isRunning ? t("editorRunning") : t("editorRun")}
         </Button>
+
+        {/* Approval inbox */}
+        <ApprovalsLink iconOnly />
 
         {/* More menu */}
         <DropdownMenu>

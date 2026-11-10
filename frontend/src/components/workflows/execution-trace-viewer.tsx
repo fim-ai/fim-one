@@ -68,6 +68,7 @@ function getNodeIcon(nodeType: string | undefined): React.ReactNode {
 const statusBadgeVariant: Record<NodeRunStatus, "default" | "secondary" | "destructive" | "outline"> = {
   pending: "outline",
   running: "secondary",
+  waiting: "outline",
   completed: "secondary",
   failed: "destructive",
   skipped: "outline",
@@ -77,6 +78,7 @@ const statusBadgeVariant: Record<NodeRunStatus, "default" | "secondary" | "destr
 const statusIcons: Record<NodeRunStatus, React.ReactNode> = {
   pending: null,
   running: null,
+  waiting: null,
   completed: <CheckCircle2 className="h-3 w-3 text-green-500" />,
   failed: <XCircle className="h-3 w-3 text-red-500" />,
   skipped: <SkipForward className="h-3 w-3 text-zinc-400" />,
@@ -86,6 +88,7 @@ const statusIcons: Record<NodeRunStatus, React.ReactNode> = {
 const timelineColors: Record<NodeRunStatus, string> = {
   pending: "bg-zinc-300 dark:bg-zinc-600",
   running: "bg-blue-500",
+  waiting: "bg-amber-500",
   completed: "bg-green-500",
   failed: "bg-red-500",
   skipped: "bg-zinc-300 dark:bg-zinc-600",

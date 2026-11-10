@@ -9,7 +9,8 @@ export const BLUEPRINT_SYNC_DELAY_MS = 300
 
 /**
  * Hand the canvas to the page as a v2 blueprint, a moment after the last
- * change to nodes or edges. Returns `serialize`, which gives the canvas as
+ * change to nodes, edges or the viewport (pan and zoom). Returns
+ * `serialize`, which gives the canvas as
  * it is right now for a caller that cannot wait for that moment (Save), and
  * `pending` / `reports`: whether a report is waiting out the pause and how
  * many were made, so a test can wait for "reported" instead of sleeping.
@@ -33,7 +34,7 @@ export function useBlueprintSync(
   const serializeRef = useRef(serialize)
   serializeRef.current = serialize
 
-  // Sync blueprint out when nodes/edges change (debounced)
+  // Sync blueprint out when nodes/edges/viewport change (debounced)
   // Use a ref for the callback so that callback identity changes (caused by
   // parent re-renders after save) don't re-trigger the sync effect and
   // spuriously mark the form dirty again.
@@ -54,8 +55,9 @@ export function useBlueprintSync(
     return () => {
       if (syncTimer.current) clearTimeout(syncTimer.current)
     }
-    // Only sync when nodes/edges actually change — NOT on callback identity change
-  }, [nodes, edges])
+    // Only sync when nodes/edges/viewport actually change — NOT on callback identity change
+    // (the viewport by value: a caller may pass a new object for the same pan and zoom)
+  }, [nodes, edges, viewport?.x, viewport?.y, viewport?.zoom])
 
   return { serialize, pending, reports }
 }

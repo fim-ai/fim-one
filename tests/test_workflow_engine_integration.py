@@ -614,27 +614,7 @@ class TestWorkflowTimeoutIntegration:
         assert len(run_failed) == 1
         assert "timed out" in run_failed[0]["error"].lower()
 
-    @pytest.mark.asyncio
-    async def test_approval_wait_does_not_count_toward_run_limit(self):
-        """T10 W5: a run waiting for a human decision is not timed out."""
-        async def slow_approval(node, store, ctx):
-            await asyncio.sleep(0.4)
-            return NodeResult(node_id=node.id, status=NodeStatus.COMPLETED)
-
-        bp = parse_blueprint({
-            "nodes": [_start_node(), _work_node("work_1"), _end_node()],
-            "edges": [_edge("start_1", "work_1"), _edge("work_1", "end_1")],
-        })
-        engine = WorkflowEngine(max_concurrency=5, workflow_timeout_ms=100)
-
-        with patch(
-            "fim_one.core.workflow.nodes.HumanInterventionExecutor.execute",
-            side_effect=slow_approval,
-        ):
-            events = await _collect_events(engine, bp)
-
-        assert _events_by_type(events, "run_failed") == []
-        assert _events_by_type(events, "run_completed")[0]["status"] == "completed"
+    # The time a run waits for a decision: tests/test_workflow_engine_suspend.py.
 
 
 # ---------------------------------------------------------------------------

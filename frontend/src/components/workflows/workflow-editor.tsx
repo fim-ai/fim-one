@@ -47,10 +47,13 @@ import { useCanvasHistory } from "./editor/use-canvas-history"
 import { useCanvasOverlays } from "./editor/use-canvas-overlays"
 import { useCanvasSearch } from "./editor/use-canvas-search"
 import { useCanvasShortcuts } from "./editor/use-canvas-shortcuts"
+import { useCanvasViewport } from "./editor/use-canvas-viewport"
 import type {
   WorkflowBlueprint,
   WorkflowNodeType,
   StartNodeData,
+  RunWaitingItem,
+  WorkflowRunStatus,
   NodeRunResult,
   WorkflowLogEvent,
 } from "@/types/workflow"
@@ -102,12 +105,26 @@ const getMinimapNodeColor = (node: Node) => minimapNodeColor[node.type ?? ""] ??
 
 interface WorkflowEditorProps {
   workflowId: string
+  /** Saves what is on the canvas before a step is tested; false when that save failed. */
+  saveBeforeRun?: () => Promise<boolean>
   blueprint: WorkflowBlueprint
   onBlueprintChange: (blueprint: WorkflowBlueprint) => void
   onUndoRedoChange?: (canUndo: boolean, canRedo: boolean) => void
+  /** The run is in progress: it executes, or it waits for a decision. */
   isRunning: boolean
+  /** The run's status once the server has named it. */
+  runStatus?: WorkflowRunStatus | null
+  /** What a waiting run waits on. */
+  waitingFor?: RunWaitingItem[]
+  /** A request the run waits on was decided. */
+  onRunDecided?: () => void
   runPanelOpen: boolean
   startVariables: StartNodeData["variables"]
+  /** The Start step has "check inputs before a run starts" on. */
+  checkInputs?: boolean
+  /** The input the server refused the last run for, and why. */
+  inputError?: { input: string; message: string } | null
+  onClearInputError?: () => void
   nodeResults: Record<string, NodeRunResult> | null
   finalOutputs: Record<string, unknown> | null
   finalError: string | null
@@ -137,12 +154,19 @@ export interface WorkflowEditorHandle {
 
 export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorProps>(function WorkflowEditor({
   workflowId,
+  saveBeforeRun,
   blueprint,
   onBlueprintChange,
   onUndoRedoChange,
   isRunning,
+  runStatus = null,
+  waitingFor,
+  onRunDecided,
   runPanelOpen,
   startVariables,
+  checkInputs,
+  inputError,
+  onClearInputError,
   nodeResults,
   finalOutputs,
   finalError,
@@ -211,7 +235,10 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
     rfInstanceRef,
     onNodeAdded: addRecentNode,
   })
-  const sync = useBlueprintSync(nodes, edges, blueprint.viewport, onBlueprintChange)
+  // Pan and zoom are saved with the blueprint and are what the canvas opens
+  // with next time; they are not part of undo history.
+  const view = useCanvasViewport(blueprint.viewport)
+  const sync = useBlueprintSync(nodes, edges, view.viewport, onBlueprintChange)
   const getBlueprint = sync.serialize
 
   const showShortcuts = useCallback(() => setShortcutsDialogOpen(true), [])
@@ -362,8 +389,12 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
           onPaneContextMenu={onPaneContextMenu}
           onPaneClick={onPaneClick}
           onInit={(instance) => { rfInstanceRef.current = instance }}
+          onMoveEnd={view.onMoveEnd}
           deleteKeyCode={null}
-          fitView
+          // Open where the canvas was left; fit the graph into view only
+          // when no pan or zoom was ever saved.
+          defaultViewport={view.initial ?? undefined}
+          fitView={view.initial === null}
           fitViewOptions={{ maxZoom: 1, padding: 0.4 }}
           colorMode={rfColorMode}
           proOptions={{ hideAttribution: true }}
@@ -434,7 +465,7 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
               setContextMenu(null)
             }}
             onDuplicate={() => {
-              editing.duplicateSelected()
+              editing.duplicateNode(contextMenu.nodeId)
               setContextMenu(null)
             }}
             onDelete={() => {
@@ -475,7 +506,7 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
       {runPanelOpen ? (
         <RunPanel
           isOpen={runPanelOpen}
-          isRunning={isRunning}
+          isRunning={isRunning && runStatus !== "waiting"}
           startVariables={startVariables ?? []}
           nodeResults={nodeResults}
           finalOutputs={finalOutputs}
@@ -484,6 +515,12 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
           nodeTypeMap={nodeTypeMap}
           totalNodeCount={totalNodeCount}
           logEvents={logEvents}
+          checkInputs={checkInputs}
+          inputError={inputError}
+          onClearInputError={onClearInputError}
+          runStatus={runStatus}
+          waitingFor={waitingFor}
+          onDecided={onRunDecided}
           onStartRun={onStartRun}
           onRunAgain={onRunAgain}
           onCancel={onCancelRun}
@@ -510,6 +547,7 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
       {testNodeTarget && (
         <TestNodeDialog
           workflowId={workflowId}
+          beforeRun={saveBeforeRun}
           nodeId={testNodeTarget.nodeId}
           nodeType={testNodeTarget.nodeType}
           nodeLabel={testNodeTarget.label}

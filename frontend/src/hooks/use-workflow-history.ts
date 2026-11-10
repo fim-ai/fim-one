@@ -1,9 +1,24 @@
 import { useCallback, useRef, useState } from "react"
 import type { Node, Edge } from "@xyflow/react"
 
+import { graphSignature, type CanvasNode } from "@/lib/workflow-blueprint"
+
 interface HistorySnapshot {
   nodes: Node[]
   edges: Edge[]
+}
+
+/** A recorded step: the canvas state plus the graph it holds, as text. */
+interface HistoryEntry extends HistorySnapshot {
+  signature: string
+}
+
+function entryOf(nodes: Node[], edges: Edge[]): HistoryEntry {
+  return {
+    nodes: structuredClone(nodes),
+    edges: structuredClone(edges),
+    signature: graphSignature(nodes as CanvasNode[], edges),
+  }
 }
 
 const MAX_HISTORY = 50
@@ -14,13 +29,18 @@ const DEBOUNCE_MS = 300
  *
  * Maintains a stack of { nodes, edges } snapshots with debounced pushState
  * to avoid flooding on drag operations. Max 50 entries.
+ *
+ * Only a change of the graph is a step: nodes added, removed, moved or
+ * configured, edges added or removed. React Flow keeps selection, dragging
+ * and measured sizes on the node objects too, and the editor stamps run and
+ * validation overlays into node data; a state that differs from the current
+ * step only in those is not recorded.
  */
 export function useWorkflowHistory(initialNodes: Node[], initialEdges: Edge[]) {
   // History stack and pointer. We store snapshots in a ref to avoid
   // re-renders on every push; only canUndo/canRedo trigger re-renders.
-  const historyRef = useRef<HistorySnapshot[]>([
-    { nodes: structuredClone(initialNodes), edges: structuredClone(initialEdges) },
-  ])
+  const historyRef = useRef<HistoryEntry[] | null>(null)
+  if (historyRef.current === null) historyRef.current = [entryOf(initialNodes, initialEdges)]
   const pointerRef = useRef(0)
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -35,7 +55,7 @@ export function useWorkflowHistory(initialNodes: Node[], initialEdges: Edge[]) {
 
   const updateFlags = useCallback(() => {
     setCanUndo(pointerRef.current > 0)
-    setCanRedo(pointerRef.current < historyRef.current.length - 1)
+    setCanRedo(pointerRef.current < historyRef.current!.length - 1)
     setRevision((n) => n + 1)
   }, [])
 
@@ -53,13 +73,13 @@ export function useWorkflowHistory(initialNodes: Node[], initialEdges: Edge[]) {
       debounceTimerRef.current = setTimeout(() => {
         debounceTimerRef.current = null
         setPending(false)
-        const snapshot: HistorySnapshot = {
-          nodes: structuredClone(nodes),
-          edges: structuredClone(edges),
-        }
+        const history = historyRef.current!
+        const snapshot = entryOf(nodes, edges)
+        // The same graph as the current step (a click, a selection change,
+        // an overlay): nothing to undo, and redo entries stay.
+        if (snapshot.signature === history[pointerRef.current]?.signature) return
 
         // Truncate any forward history (redo entries)
-        const history = historyRef.current
         history.splice(pointerRef.current + 1)
 
         // Push new entry
@@ -94,7 +114,7 @@ export function useWorkflowHistory(initialNodes: Node[], initialEdges: Edge[]) {
 
     if (pointerRef.current <= 0) return null
     pointerRef.current -= 1
-    const snapshot = historyRef.current[pointerRef.current]
+    const snapshot = historyRef.current![pointerRef.current]
     updateFlags()
     return snapshot ? {
       nodes: structuredClone(snapshot.nodes),
@@ -107,9 +127,9 @@ export function useWorkflowHistory(initialNodes: Node[], initialEdges: Edge[]) {
    * if already at the end.
    */
   const redo = useCallback((): HistorySnapshot | null => {
-    if (pointerRef.current >= historyRef.current.length - 1) return null
+    if (pointerRef.current >= historyRef.current!.length - 1) return null
     pointerRef.current += 1
-    const snapshot = historyRef.current[pointerRef.current]
+    const snapshot = historyRef.current![pointerRef.current]
     updateFlags()
     return snapshot ? {
       nodes: structuredClone(snapshot.nodes),
@@ -128,9 +148,7 @@ export function useWorkflowHistory(initialNodes: Node[], initialEdges: Edge[]) {
         debounceTimerRef.current = null
       }
       setPending(false)
-      historyRef.current = [
-        { nodes: structuredClone(nodes), edges: structuredClone(edges) },
-      ]
+      historyRef.current = [entryOf(nodes, edges)]
       pointerRef.current = 0
       updateFlags()
     },

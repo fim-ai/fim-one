@@ -1208,36 +1208,24 @@ class _StepFailed(Exception):
 
 async def _action_tool(
     db: AsyncSession, call_context: CallContext, connector: Any, action_id: str
-) -> BaseTool:
-    """The tool that runs one action of *connector* for this step.
+) -> tuple[BaseTool, Any]:
+    """The tool that runs one action of *connector* for this step, and the action.
 
     The runner's credential, the refusal when they have none, and the call
     record all come from core/assembly: the same rule and the same record as
-    a call made from chat.
+    a call made from chat. The action is ``None`` for a database
+    connector, whose operations are not actions and carry no
+    "requires confirmation" flag.
     """
     from fim_one.core.assembly.errors import AssemblyRefusal
     from fim_one.core.assembly.toolset import connector_tools
 
     if connector.type == "database":
-        return await _database_operation_tool(db, call_context, connector, action_id)
+        return await _database_operation_tool(db, call_context, connector, action_id), None
 
     action = next((a for a in connector.actions or [] if a.id == action_id), None)
     if not action:
         raise _StepFailed(f"Action '{action_id}' not found")
-
-    # Fail closed on confirmation-required actions (audit P0#3b).
-    # A workflow has no per-call interactive confirmation channel,
-    # so an action flagged requires_confirmation must not run
-    # unattended (the previous behavior silently bypassed the gate).
-    # The workflow-native way to gate a sensitive step is to place a
-    # Human Intervention node before it.
-    if action.requires_confirmation:
-        raise _StepFailed(
-            f"Action '{action.name}' requires confirmation and "
-            "cannot run unattended in a workflow. Add a Human "
-            "Intervention node before this step to gate it, or "
-            "use an action that does not require confirmation."
-        )
 
     try:
         (adapter,) = await connector_tools(
@@ -1250,7 +1238,138 @@ async def _action_tool(
         )
     except AssemblyRefusal as refused:
         raise _StepFailed(refused.detail) from None
-    return adapter
+    return adapter, action
+
+
+# How long a connector action's confirmation request stays answerable.
+ACTION_CONFIRMATION_TIMEOUT_HOURS = 24.0
+
+
+async def _confirmed(
+    node: WorkflowNodeDef,
+    context: ExecutionContext,
+    call_context: CallContext,
+    connector: Any,
+    action: Any,
+    params: dict[str, Any],
+    t0: float,
+    credential_source: str = "",
+) -> NodeResult | dict[str, Any]:
+    """Put an action flagged "requires confirmation" before a person.
+
+    Once it is approved: the arguments to call the action with, a
+    ``dict``. They are the ones the request showed, read back from the
+    request; the step's parameters are **not** filled in again, because
+    variables may have changed since (an env var edited, another branch
+    finishing). What was approved is what runs. If the connector or the
+    action was edited in between (``core.assembly.confirmed_call.call_fingerprint``), nothing runs
+    and the step fails.
+
+    Otherwise the step's result: ``WAITING`` when the request was just made
+    or is still open (the run is suspended and this step is run again once
+    it is decided), ``FAILED`` when it was rejected, ran out of time, or
+    nobody can be asked here.
+
+    The request is a ``kind="confirmation"`` one bound to the workflow and
+    decided by the person the run belongs to: whoever started it, or the
+    workflow's owner for a trigger key or a schedule (administrators may
+    always decide). The same rule and the same service as a flagged tool
+    call in chat.
+    """
+    from fim_one.core.assembly.confirmation import ConfirmationService, ConfirmationSpec
+    from fim_one.core.assembly.confirmed_call import call_fingerprint, open_call, seal_call
+    from fim_one.core.assembly.errors import AssemblyRefusal
+
+    def failed(error: str, *, answered: bool = False) -> NodeResult:
+        return NodeResult(
+            node_id=node.id,
+            status=NodeStatus.FAILED,
+            error=error,
+            duration_ms=_ms_since(t0),
+            # A person's "no", or their silence, is not retried.
+            no_retry=answered,
+        )
+
+    asked = context.suspensions.get(node.id)
+    if asked is None:
+        if context.db_session_factory is None or not context.can_suspend:
+            return failed(
+                f"Action '{action.name}' requires confirmation, and there is nobody to ask "
+                "here: a single-step test and a workflow run by an agent as a tool cannot "
+                "wait for a person. Run the workflow itself to be asked."
+            )
+        binding = call_context.binding
+        principal = call_context.principal
+        spec = ConfirmationSpec(
+            kind="confirmation",
+            initiator=principal,
+            binding=binding,
+            org_id=binding.org_id if binding is not None else None,
+            title=f"Confirm: {connector.name} / {action.name}"[:500],
+            description="A workflow step is about to run an action that requires confirmation.",
+            payload={
+                "tool_name": f"{connector.name}.{action.name}",
+                # Exactly what will be sent if this is approved, and what the
+                # approver is shown of it; encrypted.
+                "sealed": seal_call(params, context.env_vars),
+                "connector_id": connector.id,
+                "action_id": action.id,
+                "fingerprint": call_fingerprint(connector, action, credential_source),
+            },
+            eligible_scope="initiator",
+            eligible_user_id=principal.user_id,
+            delivery="inline_only",
+            channel_id=None,
+            timeout_seconds=ACTION_CONFIRMATION_TIMEOUT_HOURS * 3600,
+            workflow_run_id=context.run_id,
+            node_id=node.id,
+        )
+        try:
+            request = await ConfirmationService(context.db_session_factory).request(spec)
+        except AssemblyRefusal as refusal:
+            return failed(refusal.detail)
+        return NodeResult(
+            node_id=node.id,
+            status=NodeStatus.WAITING,
+            suspension=_suspension_of(request),
+            duration_ms=_ms_since(t0),
+        )
+
+    if context.db_session_factory is None:
+        return failed(f"Action '{action.name}' requires confirmation and its request is gone.")
+    outcome, record = await _awaited_decision(context, asked)
+    if outcome == "pending":
+        return NodeResult(
+            node_id=node.id, status=NodeStatus.WAITING, suspension=asked, duration_ms=_ms_since(t0)
+        )
+    if outcome == "approve":
+        shown = record.payload if isinstance(getattr(record, "payload", None), dict) else {}
+        approved_args, _ = open_call(shown)
+        if shown.get("fingerprint") != call_fingerprint(
+            connector, action, credential_source
+        ) or not isinstance(
+            approved_args, dict
+        ):
+            return failed(
+                f"Action '{action.name}' was not run: the action or its connector was "
+                "changed after the confirmation was requested, so what was approved is "
+                "no longer what would run. Run the workflow again.",
+                answered=True,
+            )
+        return approved_args
+    if outcome == "reject":
+        note = getattr(record, "decision_note", None)
+        return failed(
+            f"Action '{action.name}' was not run: the confirmation was rejected"
+            + (f" ({note})" if note else "")
+            + ".",
+            answered=True,
+        )
+    return failed(
+        f"Action '{action.name}' was not run: nobody confirmed it within "
+        f"{ACTION_CONFIRMATION_TIMEOUT_HOURS:g} hours.",
+        answered=True,
+    )
 
 
 async def _database_operation_tool(
@@ -1437,6 +1556,9 @@ class ConnectorExecutor:
     ``parameters`` are the action's. For a database connector ``action_id``
     is ``list_tables``, ``describe_table`` (``parameters.table_name``) or
     ``query`` (``parameters.sql``).
+
+    An action flagged "requires confirmation" is put before a person first
+    (:func:`_confirmed`): the run waits, and the action runs once approved.
     """
 
     @staticmethod
@@ -1509,7 +1631,9 @@ class ConnectorExecutor:
                         duration_ms=_ms_since(t0),
                     )
                 try:
-                    adapter = await _action_tool(db, call_context, _usable[0], action_id)
+                    adapter, action = await _action_tool(
+                        db, call_context, _usable[0], action_id
+                    )
                 except _StepFailed as failed_step:
                     return NodeResult(
                         node_id=node.id,
@@ -1517,6 +1641,31 @@ class ConnectorExecutor:
                         error=failed_step.detail,
                         duration_ms=_ms_since(t0),
                     )
+                connector = _usable[0]
+                # Whose credential the call would carry (the runner's own,
+                # or the owner's): part of what a confirmation covers.
+                from fim_one.core.assembly.confirmed_call import credential_source as _source
+
+                credential_source = await _source(
+                    db, connector.id, call_context.principal.user_id
+                )
+
+            # Also when the flag was taken off the action while a request
+            # was waiting: a request that was made is answered, and its
+            # answer counts (a rejection does not become a go-ahead because
+            # nobody would be asked today).
+            if action is not None and (
+                action.requires_confirmation or node.id in context.suspensions
+            ):
+                # Asked after the checks above, so nobody is asked to
+                # confirm a call that would be refused anyway.
+                confirmed = await _confirmed(
+                    node, context, call_context, connector, action, params, t0, credential_source
+                )
+                if isinstance(confirmed, NodeResult):
+                    return confirmed
+                # The arguments the approver was shown, not a fresh filling-in.
+                params = confirmed
 
             sql_template = params_template.get("sql")
             if (
@@ -1566,11 +1715,14 @@ class ConnectorExecutor:
                 duration_ms=_ms_since(t0),
             )
 class HumanInterventionExecutor:
-    """Pause workflow execution and wait for a human's approval.
+    """Stop the run until a human has approved.
 
     Asks :class:`~fim_one.core.assembly.confirmation.ConfirmationService`
-    for a ``kind="workflow_approval"`` request and polls it until it is
-    decided or its time is up. An assigned approval belongs to its
+    for a ``kind="workflow_approval"`` request and returns ``WAITING``
+    with the request's id: nothing polls. The engine suspends the run, and
+    when the request is decided or its time is up the run service
+    continues the run, which runs this step again to read the outcome
+    (:func:`_awaited_decision`). An assigned approval belongs to its
     assignee, who must be an active user in the run's organization; an
     unassigned one belongs to the user the run is attributed to.
 
@@ -1581,12 +1733,10 @@ class HumanInterventionExecutor:
             "description": "Please review the generated content",
             "assignee": "{{manager_id}}",       # optional: user id, username or email; interpolated
             "timeout_hours": 24,                 # default 24
-            "poll_interval_seconds": 5,          # default 5
             "output_variable": "approval_result"
         }
     """
 
-    DEFAULT_POLL_INTERVAL: float = 5.0
     DEFAULT_TIMEOUT_HOURS: float = 24.0
 
     @staticmethod
@@ -1627,9 +1777,12 @@ class HumanInterventionExecutor:
         timeout_hours = float(
             node.data.get("timeout_hours", self.DEFAULT_TIMEOUT_HOURS)
         )
-        poll_interval = float(
-            node.data.get("poll_interval_seconds", self.DEFAULT_POLL_INTERVAL)
-        )
+
+        # Run again after the run was suspended: read the outcome of the
+        # request made the first time.
+        asked = context.suspensions.get(node.id)
+        if asked is not None and context.db_session_factory is not None:
+            return await self._outcome(node, store, context, asked, timeout_hours, t0)
 
         # Interpolate templates
         title = await store.interpolate(title_template) if title_template else "Approval required"
@@ -1734,9 +1887,32 @@ class HumanInterventionExecutor:
             approval_id,
             timeout_hours,
         )
+        return NodeResult(
+            node_id=node.id,
+            status=NodeStatus.WAITING,
+            suspension=_suspension_of(request),
+            duration_ms=_ms_since(t0),
+        )
 
-        outcome = await service.wait(approval_id, poll_seconds=poll_interval)
-        record = await service.get(approval_id)
+    async def _outcome(
+        self,
+        node: WorkflowNodeDef,
+        store: VariableStore,
+        context: ExecutionContext,
+        asked: dict[str, Any],
+        timeout_hours: float,
+        t0: float,
+    ) -> NodeResult:
+        """The step's result once its approval request is no longer open."""
+        outcome, record = await _awaited_decision(context, asked)
+        approval_id = str(asked.get("confirmation_id") or "")
+        if outcome == "pending":
+            return NodeResult(
+                node_id=node.id,
+                status=NodeStatus.WAITING,
+                suspension=asked,
+                duration_ms=_ms_since(t0),
+            )
         if record is None:
             return NodeResult(
                 node_id=node.id,
@@ -1771,6 +1947,7 @@ class HumanInterventionExecutor:
                 status=NodeStatus.FAILED,
                 error=f"Approval rejected: {record.decision_note or 'No reason given'}",
                 duration_ms=_ms_since(t0),
+                no_retry=True,
             )
 
         return NodeResult(
@@ -1778,7 +1955,54 @@ class HumanInterventionExecutor:
             status=NodeStatus.FAILED,
             error=f"Approval timed out after {timeout_hours}h",
             duration_ms=_ms_since(t0),
+            no_retry=True,
         )
+
+
+def _suspension_of(request: Any) -> dict[str, Any]:
+    """What a step that asked for a decision is waiting on (kept with the run)."""
+    expires_at = getattr(request, "expires_at", None)
+    return {
+        "confirmation_id": str(request.id),
+        "kind": str(getattr(request, "kind", "") or ""),
+        "expires_at": expires_at.isoformat() if expires_at is not None else None,
+    }
+
+
+async def _awaited_decision(context: ExecutionContext, asked: dict[str, Any]) -> tuple[str, Any]:
+    """How the request a step is waiting on stands: ``(outcome, row)``.
+
+    ``pending`` while it can still be decided; ``approve`` / ``reject``
+    once decided; ``expired`` when its time is up (a request still open
+    past its deadline is closed here), when the run's ending closed it, or
+    when it is gone (``row`` is then ``None``).
+    """
+    from datetime import UTC, datetime
+
+    from fim_one.core.assembly.confirmation import ConfirmationService
+
+    assert context.db_session_factory is not None
+    service = ConfirmationService(context.db_session_factory)
+    confirmation_id = str(asked.get("confirmation_id") or "")
+    record = await service.get(confirmation_id) if confirmation_id else None
+    if record is None:
+        return "expired", None
+    if record.status in ("approved", "approve"):
+        return "approve", record
+    if record.status in ("rejected", "reject"):
+        return "reject", record
+    if record.status != "pending":
+        return "expired", record
+    deadline = record.expires_at
+    if deadline is not None:
+        if deadline.tzinfo is None:
+            deadline = deadline.replace(tzinfo=UTC)
+        if datetime.now(UTC) >= deadline:
+            # ``wait`` with no time between polls: it sees the deadline has
+            # passed, closes the request and says so.
+            outcome = await service.wait(confirmation_id, poll_seconds=0)
+            return outcome, await service.get(confirmation_id)
+    return "pending", record
 
 
 class MCPExecutor:

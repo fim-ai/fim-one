@@ -6,14 +6,13 @@ the ``run_workflow`` tool, schedules, trigger keys) is driven for real
 against a seeded database, and what it does is normalised to an
 :class:`Outcome`. :func:`expected` is the rule the assembly layer is being
 built to enforce (``dev/C1-assembly-layer.md`` §2.4 to §2.7), computed the same
-way for every entry point. Where an entry point does something else today,
-the difference is registered in :data:`KNOWN_DEVIATIONS`.
+way for every entry point.
 
-``tests/assembly/test_matrix.py`` asserts *actual deviations == registered
-deviations*: fixing one without removing its registration fails, and so
-does introducing a new one. C1 phases 2 to 4 and T10 P4 removed all but
-one: the workflow Connector step cannot wait for a human, which is T10 P5's
-(see :data:`KNOWN_DEVIATIONS`).
+``tests/assembly/test_matrix.py`` asserts that every entry point does what
+the rule says, cell for cell. While the layer was being built, entry points
+that still differed were registered as known deviations; the last one (the
+workflow Connector step could not wait for a human) went with T10 P5, and
+the registry with it.
 
 A **cell** is ``(role, resource, allow_fallback, is_active, has_personal)``:
 
@@ -674,12 +673,27 @@ def outside_world(factory: async_sessionmaker[AsyncSession]) -> Iterator[Outside
         async def run(self, _query: str) -> Any:
             return SimpleNamespace(answer="done", iterations=1, usage=None)
 
+    asked_payloads: dict[str, dict[str, Any]] = {}
+
     async def _asked(_self: Any, spec: Any) -> Any:
         out.gate_asked.append(str(spec.payload.get("tool_name")))
-        return SimpleNamespace(id="asked", mode="inline")
+        request_id = f"asked-{len(asked_payloads)}"
+        asked_payloads[request_id] = dict(spec.payload)
+        return SimpleNamespace(id=request_id, mode="inline")
 
     async def _approved(_self: Any, _confirmation_id: str, **_kwargs: Any) -> str:
         return "approve"
+
+    async def _approved_row(_self: Any, confirmation_id: str) -> Any:
+        # What a step that suspended its run reads when it is run again.
+        return SimpleNamespace(
+            id=confirmation_id,
+            status="approved",
+            expires_at=None,
+            decision_note=None,
+            # What was asked is what is approved and run.
+            payload=asked_payloads.get(confirmation_id, {}),
+        )
 
     with ExitStack() as stack:
         for target, value in (
@@ -705,6 +719,7 @@ def outside_world(factory: async_sessionmaker[AsyncSession]) -> Iterator[Outside
             stack.enter_context(patch(target, value))
         stack.enter_context(patch.object(ConfirmationService, "request", _asked))
         stack.enter_context(patch.object(ConfirmationService, "wait", _approved))
+        stack.enter_context(patch.object(ConfirmationService, "get", _approved_row))
         stack.enter_context(
             patch.object(rs, "_default_service", rs.WorkflowRunService(engine_factory=_FakeEngine))
         )
@@ -1030,6 +1045,9 @@ def _context(scene: Scene) -> Any:
         run_id=run_id,
         user_id=scene.actor,
         workflow_id=scene.ids["workflow"],
+        # A run with a record: its steps can stop it to wait for a person.
+        db_session_factory=lambda: None,
+        can_suspend=True,
         call_context=CallContext(
             principal=provisional_principal(scene.actor),
             binding=Binding(
@@ -1059,7 +1077,14 @@ async def probe_wf_connector_node(
             NodeType.CONNECTOR,
             {"connector_id": scene.ids[resource], "action_id": action_id, "parameters": {}},
         )
-        return await ConnectorExecutor().execute(node, VariableStore(), _context(scene))
+        context = _context(scene)
+        result = await ConnectorExecutor().execute(node, VariableStore(), context)
+        if result.status == NodeStatus.WAITING:
+            # The step asked and suspended the run; the run service runs it
+            # again once the request is decided (approved, in this world).
+            context.suspensions[node.id] = result.suspension
+            result = await ConnectorExecutor().execute(node, VariableStore(), context)
+        return result
 
     results: dict[str, Outcome] = {}
     with outside_world(factory) as out:
@@ -1070,8 +1095,8 @@ async def probe_wf_connector_node(
                 results[resource] = Outcome(exposed=False, refusal_code=_classify(result.error))
                 continue
             assert len(out.http) == sent + 1
-            # The flagged action: a node that waits for a human asks the
-            # gate; one that cannot wait fails.
+            # The flagged action: the node asks the gate, the run waits, and
+            # the action runs once a human has approved.
             asked = len(out.gate_asked)
             flagged = await _run(resource, scene.actions[resource]["wipe"])
             results[resource] = Outcome(
@@ -1272,62 +1297,6 @@ async def probe(
     }
 
 
-# ---------------------------------------------------------------------------
-# Known deviations: where an entry point does not follow the rule today
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class Deviation:
-    """One way an entry point differs from the rule today.
-
-    ``today`` takes a cell and the outcome so far (the rule's, then earlier
-    deviations applied in list order) and returns what the entry point
-    actually does, or ``None`` where this deviation changes nothing.
-    """
-
-    name: str
-    entries: tuple[str, ...]
-    resources: tuple[str, ...]
-    what: str  # what the entry point does instead of the rule
-    ref: str  # where the design records it
-    removed_in: str  # the phase that removes it
-    today: Callable[[str, Cell, Outcome], Outcome | None]
-
-
-def _replace(outcome: Outcome, **changes: Any) -> Outcome:
-    return Outcome(**{**{f: getattr(outcome, f) for f in FIELDS}, **changes})
-
-
-def _not_confirmed(_entry: str, _cell: Cell, so_far: Outcome) -> Outcome | None:
-    return _replace(so_far, confirmed=False) if so_far.exposed else None
-
-
-# Applied in this order: a later entry sees the outcome the earlier ones left.
-KNOWN_DEVIATIONS: tuple[Deviation, ...] = (
-    Deviation(
-        name="connector-node-cannot-confirm",
-        entries=("wf_connector_node",),
-        resources=API_CONNECTORS,
-        what="An action flagged 'requires confirmation' fails the node instead of waiting.",
-        ref="design §1.3 row 'wf-节点 (连接器)'",
-        removed_in="T10 P5 (not C1)",
-        today=_not_confirmed,
-    ),
-)
-
-
-def as_built(entry: str, cell: Cell) -> Outcome:
-    """What *entry* does with *cell* today: the rule plus the known deviations."""
-    outcome = expected(entry, cell)
-    for deviation in KNOWN_DEVIATIONS:
-        if entry in deviation.entries and cell.resource in deviation.resources:
-            changed = deviation.today(entry, cell, outcome)
-            if changed is not None:
-                outcome = changed
-    return outcome
-
-
 def all_cells(entry: str) -> list[Cell]:
     return [
         cell
@@ -1335,17 +1304,6 @@ def all_cells(entry: str) -> list[Cell]:
         for resource in RESOURCES
         if applicable(entry, cell := key.cell(resource))
     ]
-
-
-def registered_deviations() -> dict[tuple[str, Cell], Outcome]:
-    """Every (entry, cell) where today's registered behaviour is not the rule."""
-    registered: dict[tuple[str, Cell], Outcome] = {}
-    for entry in ENTRIES:
-        for cell in all_cells(entry):
-            today = as_built(entry, cell)
-            if today != expected(entry, cell):
-                registered[(entry, cell)] = today
-    return registered
 
 
 def describe(expected_outcome: Outcome, actual: Outcome) -> str:

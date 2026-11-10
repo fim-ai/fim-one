@@ -3,7 +3,12 @@
  * for the wire format and the mapping from run events to what the run
  * panel shows.
  */
-import type { NodeRunResult, WorkflowLogEvent, WorkflowLogEventType } from "@/types/workflow"
+import type {
+  NodeRunResult,
+  RunWaitingItem,
+  WorkflowLogEvent,
+  WorkflowLogEventType,
+} from "@/types/workflow"
 
 /**
  * Incremental SSE parser. Feed it decoded text as it arrives; it calls
@@ -45,6 +50,7 @@ const LOG_EVENTS: readonly WorkflowLogEventType[] = [
   "node_failed",
   "node_skipped",
   "node_retrying",
+  "node_waiting",
   "run_completed",
   "run_failed",
 ]
@@ -75,11 +81,52 @@ export function nodeCountOfRunStarted(eventType: string, data: Record<string, un
   return typeof count === "number" && Number.isFinite(count) && count >= 0 ? count : null
 }
 
+/**
+ * The id of the run, from a `run_started` event. The API's own event (the
+ * first of the stream) and the engine's both carry it. Cancelling and
+ * following a run need this id: the stream itself is not the run.
+ */
+export function runIdOfRunStarted(eventType: string, data: Record<string, unknown>): string | null {
+  if (eventType !== "run_started") return null
+  const id = data.run_id
+  return typeof id === "string" && id ? id : null
+}
+
+/**
+ * The well-formed entries of a `waiting` / `waiting_for` list: what a run
+ * that stopped for a decision waits on.
+ */
+export function waitingItemsOf(raw: unknown): RunWaitingItem[] {
+  if (!Array.isArray(raw)) return []
+  return raw.flatMap((entry) => {
+    if (typeof entry !== "object" || entry === null) return []
+    const { node_id, confirmation_id, kind, expires_at } = entry as Record<string, unknown>
+    if (typeof confirmation_id !== "string" || !confirmation_id) return []
+    return [
+      {
+        node_id: typeof node_id === "string" ? node_id : "",
+        confirmation_id,
+        kind: typeof kind === "string" ? kind : null,
+        expires_at: typeof expires_at === "string" ? expires_at : null,
+      },
+    ]
+  })
+}
+
+/** What the run waits on, from its `run_waiting` event; null for any other event. */
+export function waitingOfRunWaiting(
+  eventType: string,
+  data: Record<string, unknown>,
+): RunWaitingItem[] | null {
+  return eventType === "run_waiting" ? waitingItemsOf(data.waiting) : null
+}
+
 const NODE_EVENT_STATUS = new Map<string, NodeRunResult["status"]>([
   ["node_started", "running"],
   ["node_completed", "completed"],
   ["node_failed", "failed"],
   ["node_retrying", "retrying"],
+  ["node_waiting", "waiting"],
   ["node_skipped", "skipped"],
 ])
 

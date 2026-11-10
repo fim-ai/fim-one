@@ -72,6 +72,7 @@ __all__ = [
     "DEFAULT_POLL_INTERVAL_SECONDS",
     "DEFAULT_TIMEOUT_SECONDS",
     "ApprovalGateHook",
+    "DecidedCallback",
     "ConfirmationService",
     "ConfirmationSpec",
     "Decision",
@@ -98,6 +99,11 @@ EligibleScope = Literal["initiator", "agent_owner", "org_members", "assignee"]
 Delivery = Literal["auto", "inline_only", "channel_only"]
 WaitOutcome = Literal["approve", "reject", "expired"]
 Decision = Literal["approve", "reject"]
+
+# Told about every request that has just been decided (the row, already
+# committed). May be sync or async.
+DecidedCallback = Callable[[Any], Awaitable[None] | None]
+_decided_callbacks: list[DecidedCallback] = []
 
 # Scopes that name one eligible user.
 _SINGLE_USER_SCOPES = ("initiator", "agent_owner", "assignee")
@@ -329,6 +335,13 @@ class ConfirmationService:
                 return "expired"
             if datetime.now(UTC) >= _aware(row.expires_at or row.created_at):
                 await self._mark_expired(confirmation_id)
+                # Marking only touches a row still pending. A decision that
+                # landed in that instant stands: read what the row says now.
+                row = await self.get(confirmation_id)
+                if row is not None and row.status in ("approved", "approve"):
+                    return "approve"
+                if row is not None and row.status in ("rejected", "reject"):
+                    return "reject"
                 return "expired"
             await asyncio.sleep(poll_seconds)
 
@@ -475,7 +488,30 @@ class ConfirmationService:
         if not newly_applied:
             raise _already_decided(final_status)
         await db.refresh(row)
+        await _notify_decided(row)
         return row
+
+    @staticmethod
+    def on_decided(callback: DecidedCallback) -> Callable[[], None]:
+        """Call *callback* with the row each time :meth:`decide` decides one.
+
+        For whatever was waiting on the request without polling it (a
+        suspended workflow run). The callback runs in the process that took
+        the decision, after the decision is committed; it is told once per
+        request, because only one ``decide`` wins. It should hand long work
+        to a background task: the person deciding waits for it. An
+        exception it raises is logged and does not undo the decision.
+        A request that expires is not announced here.
+
+        Registration is process-wide. Returns a function that removes it.
+        """
+        _decided_callbacks.append(callback)
+
+        def remove() -> None:
+            if callback in _decided_callbacks:
+                _decided_callbacks.remove(callback)
+
+        return remove
 
     async def pending_for(self, db: Any, actor: Principal, *, kind: str | None = None) -> list[Any]:
         """Pending requests *actor* may decide, newest first.
@@ -483,25 +519,69 @@ class ConfirmationService:
         By the row only: an administrator sees those naming them like
         anyone else, not everything.
         """
-        from sqlalchemy import and_, or_, select
+        from sqlalchemy import select
 
         from fim_one.db.models.channel import ConfirmationRequest
 
-        eligible = or_(
-            and_(
-                ConfirmationRequest.eligible_scope.in_(_SINGLE_USER_SCOPES),
-                ConfirmationRequest.eligible_user_id == actor.user_id,
-            ),
-            and_(
-                ConfirmationRequest.eligible_scope == "org_members",
-                ConfirmationRequest.org_id.in_(sorted(actor.org_ids)),
-            ),
+        stmt = select(ConfirmationRequest).where(
+            ConfirmationRequest.status == "pending", _eligible_clause(actor)
         )
-        stmt = select(ConfirmationRequest).where(ConfirmationRequest.status == "pending", eligible)
         if kind is not None:
             stmt = stmt.where(ConfirmationRequest.kind == kind)
         result = await db.execute(stmt.order_by(ConfirmationRequest.created_at.desc()))
         return list(result.scalars().all())
+
+    async def count_pending_for(
+        self,
+        db: Any,
+        actor: Principal,
+        *,
+        kinds: tuple[str, ...] | None = None,
+        of_workflow_runs: bool = False,
+    ) -> int:
+        """How many open requests *actor* may decide, counted by the database.
+
+        The rule of :meth:`pending_for`, without loading a row: for a
+        badge that is asked for often. A request past its deadline is not
+        counted, whether or not the sweep has closed it. *of_workflow_runs*
+        counts only requests a workflow run waits on.
+        """
+        from sqlalchemy import func, or_, select
+
+        from fim_one.db.models.channel import ConfirmationRequest
+
+        stmt = select(func.count()).where(
+            ConfirmationRequest.status == "pending",
+            _eligible_clause(actor),
+            or_(
+                ConfirmationRequest.expires_at.is_(None),
+                ConfirmationRequest.expires_at > datetime.now(UTC),
+            ),
+        )
+        if kinds is not None:
+            stmt = stmt.where(ConfirmationRequest.kind.in_(kinds))
+        if of_workflow_runs:
+            stmt = stmt.where(ConfirmationRequest.workflow_run_id.is_not(None))
+        return int((await db.execute(stmt)).scalar_one())
+
+
+def _eligible_clause(actor: Principal) -> Any:
+    """SQL for "the row says *actor* may decide it" (what ``may_decide``
+    reads off a row with a scope, minus the administrator's bypass)."""
+    from sqlalchemy import and_, or_
+
+    from fim_one.db.models.channel import ConfirmationRequest
+
+    return or_(
+        and_(
+            ConfirmationRequest.eligible_scope.in_(_SINGLE_USER_SCOPES),
+            ConfirmationRequest.eligible_user_id == actor.user_id,
+        ),
+        and_(
+            ConfirmationRequest.eligible_scope == "org_members",
+            ConfirmationRequest.org_id.in_(sorted(actor.org_ids)),
+        ),
+    )
 
 
 async def validate_assignee(
@@ -595,6 +675,18 @@ async def close_requests_of_runs(db: Any, run_ids: Any) -> int:
         ),
     )
     return int(result.rowcount or 0)
+
+
+async def _notify_decided(row: Any) -> None:
+    for callback in list(_decided_callbacks):
+        try:
+            result = callback(row)
+            if result is not None:
+                await result
+        except Exception:
+            logger.exception(
+                "on_decided callback failed for confirmation %s", getattr(row, "id", None)
+            )
 
 
 def _already_decided(status: str) -> AssemblyRefusal:

@@ -83,6 +83,10 @@ class StartVariable(BaseModel):
 
 class StartNodeData(NodeDataBase):
     variables: list[StartVariable] = Field(default_factory=list)
+    # Check a run's inputs against ``variables`` before any step starts and
+    # hand them on in their declared types (``core/workflow/run_inputs.py``).
+    # Off for workflows saved before the switch existed.
+    validate_inputs: bool = False
     input_schema: dict[str, Any] | None = None
 
 
@@ -254,11 +258,15 @@ class WorkflowEdgeV2(BaseModel):
 
 
 class Viewport(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    """Where the canvas is panned and zoomed to. Saved on its own whenever
+    the view moves, so it is held to its shape: three finite numbers and
+    nothing else."""
 
-    x: float = 0.0
-    y: float = 0.0
-    zoom: float = 1.0
+    model_config = ConfigDict(extra="forbid")
+
+    x: float = Field(default=0.0, ge=-1e7, le=1e7, allow_inf_nan=False)
+    y: float = Field(default=0.0, ge=-1e7, le=1e7, allow_inf_nan=False)
+    zoom: float = Field(default=1.0, ge=0.01, le=10.0, allow_inf_nan=False)
 
 
 class BlueprintV2(BaseModel):

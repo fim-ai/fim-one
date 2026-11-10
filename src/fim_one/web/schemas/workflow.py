@@ -104,10 +104,24 @@ class NodeRunResult(BaseModel):
     duration_ms: int | None = None
 
 
+class RunWaitingItem(BaseModel):
+    """A request a waiting run is waiting on."""
+
+    node_id: str
+    confirmation_id: str
+    # ``workflow_approval`` (a Human Intervention step) or ``confirmation``
+    # (a connector action that requires confirmation).
+    kind: str
+    expires_at: str | None = None
+
+
 class WorkflowRunResponse(BaseModel):
     id: str
     workflow_id: str
     user_id: str
+    # pending / running / waiting / completed / failed / cancelled.
+    # ``waiting``: stopped at a step that needs a person's decision
+    # (``waiting_for``); it goes on once that is made.
     status: str
     inputs: dict[str, Any] | None
     outputs: dict[str, Any] | None
@@ -116,6 +130,10 @@ class WorkflowRunResponse(BaseModel):
     completed_at: str | None
     duration_ms: int | None
     error: str | None
+    waiting_for: list[RunWaitingItem] | None = None
+    # A run continued after its approval that is queued for one of its
+    # user's concurrent-run slots: ``status`` is ``running``, no step runs yet.
+    queued: bool = False
     created_at: str
     updated_at: str | None
 
@@ -162,6 +180,9 @@ class WorkflowBatchRunResponse(BaseModel):
     batch_id: str
     total: int
     results: list[BatchRunResultItem] = Field(default_factory=list)
+    # Items left out before starting: the caller had no more places for
+    # runs waiting for a decision (``workflow_waiting_limit_reached``).
+    not_started: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -494,6 +515,12 @@ class WorkflowScheduleUpdate(BaseModel):
         return v.strip()
 
 
+class ScheduleHeldByRun(BaseModel):
+    run_id: str
+    status: str
+    started_at: str | None = None
+
+
 class WorkflowScheduleResponse(BaseModel):
     """Current schedule configuration for a workflow."""
 
@@ -502,6 +529,9 @@ class WorkflowScheduleResponse(BaseModel):
     schedule_inputs: dict[str, Any] | None = None
     schedule_timezone: str = "UTC"
     next_run_at: str | None = None
+    # The scheduled run that has not ended (running, or waiting for a
+    # decision). While there is one the schedule skips its ticks.
+    held_by_run: ScheduleHeldByRun | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -602,10 +632,37 @@ class WorkflowApprovalResponse(BaseModel):
     updated_at: str | None
 
 
-class ApprovalDecisionRequest(BaseModel):
-    """Request body for approving or rejecting a workflow approval."""
+class ApprovalInboxUser(BaseModel):
+    id: str
+    name: str
 
-    note: str | None = None
+
+class ApprovalInboxItem(BaseModel):
+    """One request waiting for the signed-in user's decision.
+
+    ``kind`` is ``workflow_approval`` (an approval step: ``title`` and
+    ``description`` are the step's) or ``confirmation`` (a connector action
+    flagged "requires confirmation": ``action`` and ``arguments`` say what
+    is about to be called).
+    """
+
+    id: str
+    kind: str
+    status: str
+    title: str
+    description: str | None = None
+    workflow_id: str | None = None
+    workflow_name: str | None = None
+    run_id: str
+    # interactive / batch / trigger / schedule
+    run_mode: str | None = None
+    node_id: str
+    step_label: str | None = None
+    started_by: ApprovalInboxUser | None = None
+    action: str | None = None
+    arguments: dict[str, Any] | None = None
+    created_at: str
+    expires_at: str | None = None
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 import { getApiBaseUrl, ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, USER_KEY, MARKET_ORG_ID } from "./constants"
 import type { UserInfo, TokenResponse, LoginRequest, LoginWithCodeRequest, RegisterRequest, ChangePasswordRequest, SetPasswordRequest, SetupRequest } from "@/types/auth"
-import type { WorkflowResponse, WorkflowCreate, WorkflowUpdate, WorkflowRunResponse, WorkflowStats, WorkflowTemplate, NodeStatsResponse, WorkflowValidateResponse, WorkflowVersionResponse, WorkflowAnalyticsResponse, WorkflowScheduleResponse, WorkflowScheduleUpdate, WorkflowBatchRunResponse, WorkflowImportResult, NodeTestRequest, NodeTestResponse } from "@/types/workflow"
+import type { WorkflowResponse, WorkflowCreate, WorkflowUpdate, WorkflowRunResponse, WorkflowStats, WorkflowTemplate, NodeStatsResponse, WorkflowValidateResponse, WorkflowVersionResponse, WorkflowAnalyticsResponse, WorkflowScheduleResponse, WorkflowScheduleUpdate, WorkflowBatchRunResponse, WorkflowImportResult, NodeTestRequest, NodeTestResponse, ApprovalInboxItem } from "@/types/workflow"
 import type {
   ConversationResponse,
   ConversationDetail,
@@ -982,6 +982,23 @@ export const connectorApi = {
 }
 
 // --- Workflow API ---
+/**
+ * A workflow's schedule as the dialogs use it. The server names the fields
+ * `schedule_cron`, `schedule_enabled`, `schedule_inputs` and
+ * `schedule_timezone`; read as `cron`, `enabled`, ... they came out
+ * undefined and a saved schedule reopened blank.
+ */
+export function scheduleOfResponse(data: Record<string, unknown>): WorkflowScheduleResponse {
+  return {
+    cron: ((data.schedule_cron ?? data.cron) as string | null) ?? "",
+    enabled: Boolean(data.schedule_enabled ?? data.enabled),
+    inputs: ((data.schedule_inputs ?? data.inputs) as Record<string, unknown> | null) ?? null,
+    timezone: ((data.schedule_timezone ?? data.timezone) as string | null) || "UTC",
+    next_run_at: (data.next_run_at as string | null) ?? null,
+    held_by_run: (data.held_by_run as WorkflowScheduleResponse["held_by_run"]) ?? null,
+  }
+}
+
 export const workflowApi = {
   list: (page = 1, size = 50) =>
     apiFetch<PaginatedResponse<WorkflowResponse>>(
@@ -1037,6 +1054,18 @@ export const workflowApi = {
     apiFetch<ApiResponse<{ deleted_count: number }>>(
       `/api/workflows/${workflowId}/runs`,
       { method: "DELETE" },
+    ),
+
+  /** What the signed-in user is asked to decide for workflow runs. */
+  approvalInbox: () =>
+    apiFetch<ApiResponse<{ items: ApprovalInboxItem[]; count: number }>>(
+      "/api/workflows/approval-inbox",
+    ).then((r) => r.data),
+
+  /** How many requests wait for the signed-in user's decision. */
+  approvalInboxCount: () =>
+    apiFetch<ApiResponse<{ count: number }>>("/api/workflows/approval-inbox/count").then(
+      (r) => r.data.count,
     ),
 
   exportRuns: (workflowId: string, status?: string, limit?: number) => {
@@ -1176,15 +1205,15 @@ export const workflowApi = {
 
   // --- Schedule ---
   getSchedule: (id: string) =>
-    apiFetch<ApiResponse<WorkflowScheduleResponse>>(
+    apiFetch<ApiResponse<Record<string, unknown>>>(
       `/api/workflows/${id}/schedule`,
-    ).then((r) => r.data),
+    ).then((r) => scheduleOfResponse(r.data)),
 
   updateSchedule: (id: string, body: WorkflowScheduleUpdate) =>
-    apiFetch<ApiResponse<WorkflowScheduleResponse>>(
+    apiFetch<ApiResponse<Record<string, unknown>>>(
       `/api/workflows/${id}/schedule`,
       { method: "PUT", body: JSON.stringify(body) },
-    ).then((r) => r.data),
+    ).then((r) => scheduleOfResponse(r.data)),
 
   deleteSchedule: (id: string) =>
     apiFetch<ApiResponse<{ deleted: boolean }>>(

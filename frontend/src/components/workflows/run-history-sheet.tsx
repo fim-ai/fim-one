@@ -1,10 +1,11 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useTranslations } from "next-intl"
 import {
   CheckCircle2,
   XCircle,
+  Hourglass,
   Loader2,
   CircleDashed,
   Clock,
@@ -51,7 +52,12 @@ import {
 import { cn } from "@/lib/utils"
 import { fmtDuration } from "@/lib/utils"
 import { useDateFormatter } from "@/hooks/use-date-formatter"
-import { workflowApi } from "@/lib/api"
+import { ApiError, workflowApi } from "@/lib/api"
+import { getErrorMessage } from "@/lib/error-utils"
+import {
+  isActiveRunStatus,
+  nodeResultOfRecord,
+} from "@/components/workflows/editor-page/run-record"
 import { RunComparisonDialog } from "@/components/workflows/run-comparison-dialog"
 import type {
   WorkflowRunResponse,
@@ -73,6 +79,7 @@ interface RunHistorySheetProps {
 const runStatusIcons: Record<WorkflowRunResponse["status"], React.ReactNode> = {
   pending: <CircleDashed className="h-4 w-4 text-zinc-500" />,
   running: <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />,
+  waiting: <Hourglass className="h-4 w-4 text-amber-500" />,
   completed: <CheckCircle2 className="h-4 w-4 text-green-500" />,
   failed: <XCircle className="h-4 w-4 text-red-500" />,
   cancelled: <Ban className="h-4 w-4 text-zinc-400" />,
@@ -81,6 +88,7 @@ const runStatusIcons: Record<WorkflowRunResponse["status"], React.ReactNode> = {
 const nodeStatusIcons: Record<NodeRunStatus, React.ReactNode> = {
   pending: <CircleDashed className="h-3.5 w-3.5 text-zinc-500" />,
   running: <Loader2 className="h-3.5 w-3.5 text-blue-500 animate-spin" />,
+  waiting: <Hourglass className="h-3.5 w-3.5 text-amber-500" />,
   completed: <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />,
   failed: <XCircle className="h-3.5 w-3.5 text-red-500" />,
   skipped: <SkipForward className="h-3.5 w-3.5 text-zinc-400" />,
@@ -90,6 +98,7 @@ const nodeStatusIcons: Record<NodeRunStatus, React.ReactNode> = {
 const statusBadgeClass: Record<WorkflowRunResponse["status"], string> = {
   pending: "bg-zinc-500/15 text-zinc-600 dark:text-zinc-400",
   running: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
+  waiting: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
   completed: "bg-green-500/15 text-green-600 dark:text-green-400",
   failed: "bg-red-500/15 text-red-600 dark:text-red-400",
   cancelled: "bg-zinc-500/15 text-zinc-500 dark:text-zinc-400",
@@ -143,6 +152,16 @@ function NodeOutputCollapsible({ output }: { output: unknown }) {
   )
 }
 
+/** How often the list is read again while it shows a run that has not ended. */
+export const HISTORY_REFRESH_INTERVAL_MS = 3000
+
+/** A run's steps as node results (the record stores them as its events reported them). */
+function nodeResultsOf(run: WorkflowRunResponse): Record<string, NodeRunResult> {
+  return Object.fromEntries(
+    Object.entries(run.node_results ?? {}).map(([nodeId, entry]) => [nodeId, nodeResultOfRecord(entry)]),
+  )
+}
+
 function inputSummary(inputs: Record<string, unknown> | null): string {
   if (!inputs) return ""
   const keys = Object.keys(inputs)
@@ -165,6 +184,7 @@ export function RunHistorySheet({
 }: RunHistorySheetProps) {
   const t = useTranslations("workflows")
   const tc = useTranslations("common")
+  const tError = useTranslations("errors")
   const { formatRelativeTime } = useDateFormatter()
 
   const [runs, setRuns] = useState<WorkflowRunResponse[]>([])
@@ -230,18 +250,24 @@ export function RunHistorySheet({
           return next
         })
         toast.success(t("historyRunDeleted"))
-      } catch {
-        toast.error(t("historyRunDeleteFailed"))
+      } catch (err) {
+        // A run that is still in progress (running, or waiting for a
+        // decision) is refused; the refusal says so.
+        toast.error(
+          err instanceof ApiError && err.errorCode
+            ? getErrorMessage(err, tError)
+            : t("historyRunDeleteFailed"),
+        )
       }
     },
-    [workflowId, t],
+    [workflowId, t, tError],
   )
 
   const handleClearRuns = useCallback(async () => {
     try {
       const res = await workflowApi.clearRuns(workflowId)
       const count = res.data?.deleted_count ?? 0
-      setRuns((prev) => prev.filter((r) => r.status === "running" || r.status === "pending"))
+      setRuns((prev) => prev.filter((r) => isActiveRunStatus(r.status)))
       setSelectedForCompare(new Set())
       toast.success(t("historyRunsCleared", { count }))
     } catch {
@@ -283,6 +309,7 @@ export function RunHistorySheet({
         { value: "failed", label: t("historyFilterFailed") },
         { value: "cancelled", label: t("historyFilterCancelled") },
         { value: "running", label: t("historyFilterRunning") },
+        { value: "waiting", label: t("historyFilterWaiting") },
       ] as const,
     [t],
   )
@@ -309,6 +336,49 @@ export function RunHistorySheet({
       cancelled = true
     }
   }, [open, workflowId, statusFilter, t])
+
+  // Live state: while the sheet shows a run that has not ended (it runs, or
+  // waits for a decision), the list and the open run are read again every
+  // few seconds, quietly. It stops once nothing shown can change.
+  const selectedRunId = selectedRun?.id ?? null
+  const hasActiveRun =
+    runs.some((r) => isActiveRunStatus(r.status)) ||
+    (selectedRun !== null && isActiveRunStatus(selectedRun.status))
+  const selectedRunIdRef = useRef(selectedRunId)
+  selectedRunIdRef.current = selectedRunId
+  useEffect(() => {
+    if (!open || !workflowId || !hasActiveRun) return
+    let cancelled = false
+    const apiStatus = statusFilter === "__all__" ? undefined : statusFilter
+    const timer = setInterval(() => {
+      workflowApi
+        .getRuns(workflowId, 1, 20, apiStatus)
+        .then((data) => {
+          if (!cancelled) setRuns(data.items)
+        })
+        .catch(() => {
+          // Quiet: the next read may succeed.
+        })
+      const detailId = selectedRunIdRef.current
+      if (detailId) {
+        workflowApi
+          .getRun(workflowId, detailId)
+          .then((detail) => {
+            if (!cancelled && selectedRunIdRef.current === detailId) setSelectedRun(detail)
+          })
+          .catch(() => {})
+      }
+    }, HISTORY_REFRESH_INTERVAL_MS)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [open, workflowId, statusFilter, hasActiveRun])
+
+  const selectedNodeResults = useMemo(
+    () => (selectedRun ? nodeResultsOf(selectedRun) : {}),
+    [selectedRun],
+  )
 
   const handleSelectRun = useCallback(
     async (run: WorkflowRunResponse) => {
@@ -355,18 +425,18 @@ export function RunHistorySheet({
                   {formatRelativeTime(selectedRun.created_at)}
                 </SheetTitle>
                 <SheetDescription className="text-xs">
-                  {t(`runStatus_${selectedRun.status}` as Parameters<typeof t>[0])}
+                  {selectedRun.queued ? t("runStatus_queued") : t(`runStatus_${selectedRun.status}` as Parameters<typeof t>[0])}
                   {selectedRun.duration_ms != null &&
                     ` -- ${fmtDuration(selectedRun.duration_ms / 1000)}`}
                 </SheetDescription>
               </div>
-              {onViewRunOnCanvas && selectedRun.node_results && Object.keys(selectedRun.node_results).length > 0 && (
+              {onViewRunOnCanvas && Object.keys(selectedNodeResults).length > 0 && (
                 <Button
                   variant="ghost"
                   size="sm"
                   className="h-7 gap-1.5 text-xs shrink-0"
                   onClick={() => {
-                    onViewRunOnCanvas(selectedRun.node_results!)
+                    onViewRunOnCanvas(selectedNodeResults)
                     onOpenChange(false)
                   }}
                 >
@@ -476,7 +546,7 @@ export function RunHistorySheet({
                     statusBadgeClass[selectedRun.status],
                   )}
                 >
-                  {t(`runStatus_${selectedRun.status}` as Parameters<typeof t>[0])}
+                  {selectedRun.queued ? t("runStatus_queued") : t(`runStatus_${selectedRun.status}` as Parameters<typeof t>[0])}
                 </Badge>
                 {selectedRun.duration_ms != null && (
                   <span className="text-[10px] text-muted-foreground tabular-nums flex items-center gap-1">
@@ -498,11 +568,10 @@ export function RunHistorySheet({
                 )}
 
               {/* Node results */}
-              {selectedRun.node_results &&
-                Object.keys(selectedRun.node_results).length > 0 && (
+              {Object.keys(selectedNodeResults).length > 0 && (
                   <div className="space-y-2">
                     <p className="text-xs font-medium">{t("runPanelNodeResults")}</p>
-                    {Object.entries(selectedRun.node_results).map(
+                    {Object.entries(selectedNodeResults).map(
                       ([nodeId, result]: [string, NodeRunResult]) => (
                         <div
                           key={nodeId}
@@ -609,7 +678,7 @@ export function RunHistorySheet({
                               statusBadgeClass[run.status],
                             )}
                           >
-                            {t(`runStatus_${run.status}` as Parameters<typeof t>[0])}
+                            {run.queued ? t("runStatus_queued") : t(`runStatus_${run.status}` as Parameters<typeof t>[0])}
                           </Badge>
                           <span className="text-[10px] text-muted-foreground">
                             {formatRelativeTime(run.created_at)}
@@ -636,7 +705,7 @@ export function RunHistorySheet({
                       </div>
                     </div>
                   </button>
-                  {run.status !== "running" && run.status !== "pending" && (
+                  {!isActiveRunStatus(run.status) && (
                     <Button
                       variant="ghost"
                       size="icon-sm"

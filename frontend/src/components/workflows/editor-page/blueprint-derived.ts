@@ -20,6 +20,16 @@ export function startVariablesOf(blueprint: WorkflowBlueprint): NonNullable<Star
   return startData?.variables ?? []
 }
 
+/**
+ * Whether the Start step has "check inputs before a run starts" on: the
+ * server then checks a run's inputs against the Start variables and
+ * converts them. Off for a workflow saved before the switch existed.
+ */
+export function startChecksInputs(blueprint: WorkflowBlueprint): boolean {
+  const startNode = blueprint.nodes.find((n) => n.type === "start")
+  return (startNode?.data as StartNodeData | undefined)?.validate_inputs === true
+}
+
 /** `input_schema` saved with the workflow: one entry per Start variable, or null. */
 export function inputSchemaOf(blueprint: WorkflowBlueprint): Record<string, unknown> | null {
   const startNode = blueprint.nodes.find((n) => n.type === "start")

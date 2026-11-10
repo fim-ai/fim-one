@@ -360,10 +360,20 @@ class TestRunMutations:
         run = world.runs["member"]
         run.status = "running"
         await session.commit()
-        resp = await wf_api.cancel_workflow_run(
-            world.wf.id, run.id, current_user=world.member, db=session
-        )
+
+        @asynccontextmanager
+        async def _cs() -> AsyncIterator[AsyncSession]:
+            async with AsyncSession(session.bind, expire_on_commit=False) as s:
+                yield s
+
+        # Not executing in this process: cancelled on its record.
+        with patch("fim_one.db.create_session", _cs):
+            resp = await wf_api.cancel_workflow_run(
+                world.wf.id, run.id, current_user=world.member, db=session
+            )
         assert resp.data["cancelled"] is True
+        await session.refresh(run)
+        assert run.status == "cancelled"
 
     @pytest.mark.asyncio
     async def test_subscriber_cannot_cancel_others_run(
@@ -377,6 +387,92 @@ class TestRunMutations:
                 db=session,
             )
         assert exc.value.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Saving where the canvas is panned to is not an edit
+# ---------------------------------------------------------------------------
+
+
+class TestSavingTheViewIsNotAnEdit:
+    @staticmethod
+    def _blueprint(x: float, prompt: str = "hi") -> dict[str, Any]:
+        return {
+            "schema_version": 2,
+            "nodes": [
+                {"id": "start_1", "type": "start", "position": {"x": 0, "y": 0}, "data": {}},
+                {
+                    "id": "llm_1",
+                    "type": "llm",
+                    "position": {"x": 0, "y": 0},
+                    "data": {"prompt_template": prompt},
+                },
+                {"id": "end_1", "type": "end", "position": {"x": 0, "y": 0}, "data": {}},
+            ],
+            "edges": [
+                {"id": "e1", "source": "start_1", "target": "llm_1"},
+                {"id": "e2", "source": "llm_1", "target": "end_1"},
+            ],
+            "viewport": {"x": x, "y": 0, "zoom": 1},
+        }
+
+    async def _save(self, world: World, session: AsyncSession, blueprint: dict[str, Any]) -> Any:
+        from fim_one.web.schemas.workflow import WorkflowUpdate
+
+        with patch(
+            "fim_one.web.publish_review.get_org_requires_review", new=AsyncMock(return_value=True)
+        ):
+            return await wf_api.update_workflow(
+                world.wf.id,
+                WorkflowUpdate(blueprint=blueprint),
+                current_user=world.author,
+                db=session,
+            )
+
+    async def _versions(self, world: World, session: AsyncSession) -> int:
+        from sqlalchemy import func
+
+        from fim_one.db.models.workflow import WorkflowVersion
+
+        return int(
+            (
+                await session.execute(
+                    select(func.count()).where(WorkflowVersion.workflow_id == world.wf.id)
+                )
+            ).scalar_one()
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_pan_makes_no_version_and_keeps_the_workflow_published(
+        self, world: World, session: AsyncSession
+    ) -> None:
+        await self._save(world, session, self._blueprint(0))
+        world.wf.publish_status = "approved"
+        await session.commit()
+        versions = await self._versions(world, session)
+        summary = world.wf.change_summary
+
+        saved = await self._save(world, session, self._blueprint(250))
+
+        assert saved.data["blueprint"]["viewport"]["x"] == 250  # the view is stored
+        assert await self._versions(world, session) == versions
+        assert saved.data["publish_status"] == "approved"
+        assert "publish_status_reverted" not in saved.data
+        assert saved.data["change_summary"] == summary
+
+    @pytest.mark.asyncio
+    async def test_an_edit_still_makes_a_version_and_goes_back_to_review(
+        self, world: World, session: AsyncSession
+    ) -> None:
+        await self._save(world, session, self._blueprint(0))
+        world.wf.publish_status = "approved"
+        await session.commit()
+        versions = await self._versions(world, session)
+
+        saved = await self._save(world, session, self._blueprint(0, prompt="hello"))
+
+        assert await self._versions(world, session) == versions + 1
+        assert saved.data["publish_status"] == "pending_review"
 
 
 # ---------------------------------------------------------------------------

@@ -167,7 +167,7 @@ Snapshot of what shipped and what is still ahead:
 
 - ✅ `HookRegistry`, `HookContext`, `HookResult` primitives wired into both ReAct and DAG
 - ✅ `PreToolUseHook` / `PostToolUseHook` abstract bases
-- ✅ `ApprovalGateHook` and `ConfirmationService` — complete, including the `ConfirmationRequest` table, polling loop, timeout/expire, and callback-driven state flips; workflow approval steps use the same service
+- ✅ `ApprovalGateHook` and `ConfirmationService` — complete, including the `ConfirmationRequest` table, polling loop, timeout/expire, and callback-driven state flips; workflow approval steps and confirmations of connector actions in a workflow use the same service, and instead of polling they suspend the run and are told of the decision through `ConfirmationService.on_decided`
 - ✅ Feishu channel callback endpoint that decodes `card.action.trigger` and updates the pending row
 - ✅ Agent-level hook declarations: `agent.model_config_json.hooks.class_hooks` resolves to an instantiated `HookRegistry` on every ReAct/DAG session
 - ✅ **Hooks fire on every execution surface**: the main chat path (Portal, API, DAG), delegated sub-agents (`CallAgentTool`), and Workflow `AGENT` nodes. Eval Center runs intentionally **bypass** hooks (automated evaluation must not block on human approval).

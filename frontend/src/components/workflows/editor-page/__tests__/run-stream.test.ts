@@ -6,6 +6,9 @@ import {
   nodeCountOfRunStarted,
   nodeResultOfEvent,
   nodeStatusOfEvent,
+  runIdOfRunStarted,
+  waitingItemsOf,
+  waitingOfRunWaiting,
 } from "@/components/workflows/editor-page/run-stream"
 
 function collect() {
@@ -123,5 +126,41 @@ describe("run events", () => {
 
   it("takes the error of a failed node", () => {
     expect(nodeResultOfEvent("failed", { error: "boom" }, undefined).error).toBe("boom")
+  })
+
+  // A run that stops for a decision reports the step as waiting and then
+  // says what it waits on; neither used to be understood.
+  it("puts a step that waits for a decision in the waiting status", () => {
+    expect(nodeStatusOfEvent("node_waiting")).toBe("waiting")
+    expect(
+      nodeResultOfEvent("waiting", { node_id: "h_1", input_preview: "in" }, undefined),
+    ).toMatchObject({ status: "waiting", input_preview: "in", error: null })
+    expect(logEventOf("node_waiting", { node_id: "h_1" }, 7)).toMatchObject({
+      eventType: "node_waiting",
+      nodeId: "h_1",
+    })
+  })
+
+  it("reads the run id from either run_started event", () => {
+    expect(runIdOfRunStarted("run_started", { run_id: "r1", status: "running" })).toBe("r1")
+    expect(runIdOfRunStarted("run_started", { run_id: "r1", workflow_id: "w", node_count: 2 })).toBe("r1")
+    expect(runIdOfRunStarted("run_started", { node_count: 2 })).toBeNull()
+    expect(runIdOfRunStarted("node_started", { run_id: "r1" })).toBeNull()
+  })
+
+  it("reads what a waiting run waits on from run_waiting", () => {
+    const waiting = [
+      { node_id: "h_1", confirmation_id: "c1", kind: "workflow_approval", expires_at: "2026-01-02T00:00:00" },
+    ]
+    expect(waitingOfRunWaiting("run_waiting", { run_id: "r1", status: "waiting", waiting })).toEqual(waiting)
+    expect(waitingOfRunWaiting("run_completed", { waiting })).toBeNull()
+    expect(waitingOfRunWaiting("run_waiting", {})).toEqual([])
+  })
+
+  it("drops waiting entries that name no request", () => {
+    expect(waitingItemsOf([{ node_id: "a" }, null, "x", { confirmation_id: "c2" }])).toEqual([
+      { node_id: "", confirmation_id: "c2", kind: null, expires_at: null },
+    ])
+    expect(waitingItemsOf(null)).toEqual([])
   })
 })

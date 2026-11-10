@@ -6,7 +6,13 @@ import { defineConfig, devices } from "@playwright/test"
  *
  *   1. e2e/stubs/server.mjs  fake model, embeddings and connector target
  *   2. e2e/backend.py        the real backend on a throwaway SQLite database
- *   3. the Next.js app       built into .next-e2e and served
+ *   3. e2e/backend.py        a second backend with the Human Review step
+ *                            switched on (WORKFLOW_HUMAN_INTERVENTION_ENABLED),
+ *                            for e2e/suspend-resume.spec.ts. The first keeps
+ *                            the switch off, as shipped. The web app talks to
+ *                            the first; the spec routes its page's /api calls
+ *                            to the second.
+ *   4. the Next.js app       built into .next-e2e and served
  *
  * Ports and the Python interpreter can be overridden:
  *
@@ -16,8 +22,9 @@ import { defineConfig, devices } from "@playwright/test"
  *   E2E_WEB_MODE   `build` (default) or `dev` (next dev, quicker to start,
  *                  compiles pages on first visit)
  *   E2E_API_PORT / E2E_WEB_PORT / E2E_STUB_PORT   default 8765 / 3765 / 8766
+ *   E2E_APPROVALS_API_PORT   the second backend; default E2E_API_PORT + 2
  *
- * None of the three servers is ever reused: if something already listens on
+ * None of the servers is ever reused: if something already listens on
  * one of the ports, Playwright stops with "... is already used" instead of
  * testing against a process it did not start (another checkout's app, a
  * stale stub, a backend on someone's real database).
@@ -27,16 +34,22 @@ const repoRoot = path.resolve(__dirname, "..")
 const apiPort = Number(process.env.E2E_API_PORT || 8765)
 const webPort = Number(process.env.E2E_WEB_PORT || 3765)
 const stubPort = Number(process.env.E2E_STUB_PORT || 8766)
+const approvalsApiPort = Number(process.env.E2E_APPROVALS_API_PORT || apiPort + 2)
 const python = process.env.E2E_PYTHON || "uv run python"
 const webMode = process.env.E2E_WEB_MODE === "dev" ? "dev" : "build"
 
 const apiUrl = `http://127.0.0.1:${apiPort}`
 const webUrl = `http://127.0.0.1:${webPort}`
 const stubUrl = `http://127.0.0.1:${stubPort}`
+const approvalsApiUrl = `http://127.0.0.1:${approvalsApiPort}`
+// Under the first backend's state directory, which is wiped (with this one)
+// when the first backend starts; the servers start one after the other.
+const approvalsStateDir = path.join(__dirname, ".e2e-state", "approvals")
 
 // Read by the spec and its helpers.
 process.env.E2E_API_URL = apiUrl
 process.env.E2E_STUB_URL = stubUrl
+process.env.E2E_APPROVALS_API_URL = approvalsApiUrl
 process.env.E2E_MCP_STUB_PATH = path.join(__dirname, "e2e", "stubs", "mcp-stdio.mjs")
 process.env.E2E_STATE_DIR = path.join(__dirname, ".e2e-state")
 process.env.E2E_REPO_ROOT = repoRoot
@@ -84,6 +97,22 @@ export default defineConfig({
         E2E_API_PORT: String(apiPort),
         E2E_STUB_PORT: String(stubPort),
         E2E_STATE_DIR: path.join(__dirname, ".e2e-state"),
+      },
+      reuseExistingServer: false,
+      timeout: 180_000,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+    {
+      name: "backend-approvals",
+      command: `${python} frontend/e2e/backend.py`,
+      cwd: repoRoot,
+      url: `${approvalsApiUrl}/api/version`,
+      env: {
+        E2E_API_PORT: String(approvalsApiPort),
+        E2E_STUB_PORT: String(stubPort),
+        E2E_STATE_DIR: approvalsStateDir,
+        E2E_HUMAN_INTERVENTION: "true",
       },
       reuseExistingServer: false,
       timeout: 180_000,

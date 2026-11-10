@@ -54,9 +54,16 @@ interface WorkflowDocumentOptions {
  */
 interface DocumentSnapshot {
   blueprintText: string
+  /** The blueprint without its viewport: what an edit changes, as opposed to a pan or zoom. */
+  graphText: string
   name: string
   description: string | null
   icon: string | null
+}
+
+/** The blueprint as JSON text without where the canvas is panned and zoomed to. */
+function graphTextOf(blueprint: WorkflowBlueprint): string {
+  return JSON.stringify({ ...blueprint, viewport: undefined })
 }
 
 /** A server copy of the workflow with the fields being edited locally kept as they are. */
@@ -85,6 +92,11 @@ function keepingLocalEdits(server: WorkflowResponse, local: WorkflowResponse): W
  *   accepted it, and compares the document against that afterwards: an edit
  *   made while the request was in flight leaves the document unsaved and
  *   schedules the next save.
+ *
+ * Pan and zoom are stored in the blueprint, so a pan or zoom alone is saved
+ * by the same automatic save. It is not an edit, though: it does not show
+ * the document as unsaved and does not hold up leaving the page (leaving
+ * before the save went out loses only where the canvas was scrolled to).
  *
  * Whatever replaces the document as a whole (loading, a version restore)
  * starts a new epoch; a save that began in an earlier epoch has its outcome
@@ -158,19 +170,36 @@ export function useWorkflowDocument({
     if (!wf) return null
     return {
       blueprintText: JSON.stringify(blueprintRef.current),
+      graphText: graphTextOf(blueprintRef.current),
       name: wf.name,
       description: wf.description,
       icon: wf.icon,
     }
   }, [blueprintRef])
 
-  /** Whether the document differs from what the server holds. */
+  /** Whether the document differs from what the server holds: whether there is anything to save. */
   const isUnsaved = useCallback((): boolean => {
     const current = currentSnapshot()
     const saved = savedRef.current
     if (!current || !saved) return false
     return (
       current.blueprintText !== saved.blueprintText ||
+      current.name !== saved.name ||
+      current.description !== saved.description ||
+      current.icon !== saved.icon
+    )
+  }, [currentSnapshot])
+
+  /**
+   * Whether there are edits the server does not hold: the same, leaving out
+   * the viewport. This is what "unsaved changes" means to the user.
+   */
+  const hasUnsavedEdits = useCallback((): boolean => {
+    const current = currentSnapshot()
+    const saved = savedRef.current
+    if (!current || !saved) return false
+    return (
+      current.graphText !== saved.graphText ||
       current.name !== saved.name ||
       current.description !== saved.description ||
       current.icon !== saved.icon
@@ -185,7 +214,7 @@ export function useWorkflowDocument({
   }, [])
 
   // `runSave` and `scheduleAutoSave` call each other; the timer goes through a ref.
-  const runSaveRef = useRef<(mode: "manual" | "auto") => Promise<void>>(async () => {})
+  const runSaveRef = useRef<(mode: "manual" | "auto") => Promise<boolean>>(async () => false)
 
   /** (Re)start the pause after which the document saves itself. */
   const scheduleAutoSave = useCallback(() => {
@@ -199,17 +228,20 @@ export function useWorkflowDocument({
 
   /** After any edit: update the unsaved marker, and save after a pause if there is something to save. */
   const noteEdit = useCallback(() => {
-    const unsaved = isUnsaved()
-    setIsDirty(unsaved)
-    if (unsaved) scheduleAutoSave()
+    setIsDirty(hasUnsavedEdits())
+    if (isUnsaved()) scheduleAutoSave()
     else cancelAutoSave()
-  }, [isUnsaved, scheduleAutoSave, cancelAutoSave])
+  }, [isUnsaved, hasUnsavedEdits, scheduleAutoSave, cancelAutoSave])
 
+  /**
+   * Resolves true when the server accepted the save (or an automatic save
+   * had nothing to send), false when it failed or could not be made.
+   */
   const runSave = useCallback(
-    async (mode: "manual" | "auto") => {
+    async (mode: "manual" | "auto"): Promise<boolean> => {
       // Whichever way a save was asked for, the pending automatic one is this one.
       cancelAutoSave()
-      if (suspendedRef.current) return
+      if (suspendedRef.current) return false
       const manual = mode === "manual"
       if (manual) {
         manualSavesRef.current += 1
@@ -219,9 +251,9 @@ export function useWorkflowDocument({
         // One request at a time: the server must receive saves in the order
         // they were made, and each must send the document as it then is.
         while (inFlightRef.current) await inFlightRef.current
-        if (suspendedRef.current) return
+        if (suspendedRef.current) return false
         const wf = workflowRef.current
-        if (!wf) return
+        if (!wf) return false
 
         // Edits the canvas has not reported yet are part of what is saved.
         const canvas = readCanvasRef.current?.()
@@ -233,17 +265,19 @@ export function useWorkflowDocument({
         // took the edit) does not send anything.
         if (!manual && !isUnsaved()) {
           setIsDirty(false)
-          return
+          return true
         }
 
         const epoch = epochRef.current
         const blueprint = blueprintRef.current
         const sent: DocumentSnapshot = {
           blueprintText: JSON.stringify(blueprint),
+          graphText: graphTextOf(blueprint),
           name: wf.name,
           description: wf.description,
           icon: wf.icon,
         }
+        let accepted = false
         const request = (async () => {
           try {
             const updated = await workflowApi.update(wf.id, {
@@ -257,6 +291,7 @@ export function useWorkflowDocument({
             // The document was replaced while this was in flight: the answer
             // is about a document that is no longer being edited.
             if (epochRef.current !== epoch) return
+            accepted = true
             savedRef.current = sent
             setWorkflow((local) => (local ? keepingLocalEdits(updated, local) : local))
             setLastSavedAt(new Date())
@@ -282,6 +317,7 @@ export function useWorkflowDocument({
         })()
         inFlightRef.current = request
         await request
+        return accepted
       } finally {
         if (manual) {
           manualSavesRef.current -= 1
@@ -294,7 +330,31 @@ export function useWorkflowDocument({
   runSaveRef.current = runSave
 
   /** Save now (the Save button and Cmd+S). */
-  const save = useCallback(() => runSave("manual"), [runSave])
+  const save = useCallback(async () => {
+    await runSave("manual")
+  }, [runSave])
+
+  /**
+   * A run executes the workflow the server holds, not the canvas. Before
+   * one starts, whatever is not saved yet is saved: an edit waiting out the
+   * automatic save's pause, one the canvas has not even reported, a save
+   * already on its way. Resolves true when the server holds what was on
+   * screen, false when the save failed (the failure is shown as for Save);
+   * the run must not start then.
+   */
+  const saveBeforeRun = useCallback(async (): Promise<boolean> => {
+    // Nothing may be saved (a version restore is under way): the run takes
+    // what the server holds.
+    if (suspendedRef.current) return true
+    while (inFlightRef.current) await inFlightRef.current
+    const canvas = readCanvasRef.current?.()
+    if (canvas) {
+      blueprintRef.current = withVariablesOf(canvas, blueprintRef.current)
+      trackNodeTypes(blueprintRef.current)
+    }
+    if (!isUnsaved()) return true
+    return runSave("manual")
+  }, [blueprintRef, trackNodeTypes, isUnsaved, runSave])
 
   // Leaving the page: nothing may be saved from here on.
   useEffect(() => {
@@ -401,7 +461,8 @@ export function useWorkflowDocument({
       trackNodeTypes(bp)
       // Overlay-only updates (validation badges, run status) serialize to
       // the stored text: they are not edits and are not validated again.
-      const changed = JSON.stringify(bp) !== savedRef.current?.blueprintText
+      // Neither is a pan or zoom.
+      const changed = graphTextOf(bp) !== savedRef.current?.graphText
       noteEdit()
       if (changed) onBlueprintChangedRef.current()
     },
@@ -498,13 +559,13 @@ export function useWorkflowDocument({
         return
       }
       const onCanvas = readCanvasRef.current?.() ?? blueprintRef.current
-      if (onCanvas.nodes.length > 0 || isUnsaved()) {
+      if (onCanvas.nodes.length > 0 || hasUnsavedEdits()) {
         setPendingImport(blueprint)
         return
       }
       applyImport(blueprint)
     },
-    [t, blueprintRef, isUnsaved, applyImport],
+    [t, blueprintRef, hasUnsavedEdits, applyImport],
   )
 
   /** The user agreed to replace the canvas with the file picked. */
@@ -582,8 +643,8 @@ export function useWorkflowDocument({
       trackNodeTypes(blueprintRef.current)
       noteEdit()
     }
-    return isUnsaved()
-  }, [blueprintRef, trackNodeTypes, noteEdit, isUnsaved])
+    return hasUnsavedEdits()
+  }, [blueprintRef, trackNodeTypes, noteEdit, hasUnsavedEdits])
 
   /** Give up the unsaved edits: nothing is saved from here on (the page is being left). */
   const discardChanges = useCallback(() => {
@@ -660,6 +721,7 @@ export function useWorkflowDocument({
     changeDescription,
     changeStatus,
     save,
+    saveBeforeRun,
     changeBlueprint,
     changeVariables,
     exportToFile,

@@ -52,6 +52,9 @@ class WorkflowRateLimiter:
 
         # user_id -> batch items waiting for a slot, woken when one frees up
         self._slot_waiters: dict[str, list[asyncio.Event]] = defaultdict(list)
+        # user_id -> continued runs queued for a slot; while there are any,
+        # the user's new runs do not take one ahead of them
+        self._first_in_line: dict[str, int] = defaultdict(int)
 
         self._lock = asyncio.Lock()
 
@@ -75,6 +78,12 @@ class WorkflowRateLimiter:
         Extracted so both :meth:`check_rate_limit` and :meth:`acquire` can
         share the same logic without re-acquiring the lock.
         """
+        if self._first_in_line.get(user_id):
+            return (
+                False,
+                "A run of yours that was waiting for a decision is next in line for a "
+                "free slot. Start this one again once it is under way.",
+            )
         # --- concurrent run check ---
         active = self._active_runs.get(user_id, set())
         if len(active) >= self.max_concurrent_runs:
@@ -168,7 +177,10 @@ class WorkflowRateLimiter:
         """
         while True:
             async with self._lock:
-                if len(self._active_runs[user_id]) < self.max_batch_runs:
+                if (
+                    len(self._active_runs[user_id]) < self.max_batch_runs
+                    and not self._first_in_line.get(user_id)
+                ):
                     self._active_runs[user_id].add(run_id)
                     return
                 # Created here, in the waiting task's own event loop.
@@ -180,6 +192,47 @@ class WorkflowRateLimiter:
                 waiters = self._slot_waiters.get(user_id)
                 if waiters is not None and freed in waiters:
                     waiters.remove(freed)
+
+    async def acquire_first(self, user_id: str, run_id: str, timeout: float | None) -> bool:
+        """Take a concurrent slot for a run that is being continued.
+
+        It waits like a batch item, but ahead of everything else of the
+        user's: while it waits, their new runs are refused and their batch
+        items stay queued, so it cannot be starved; and it may take the
+        last slot. False when no slot came free within *timeout* seconds.
+        It does not count against runs-per-minute (the run did, when it
+        started).
+        """
+        deadline = None if timeout is None else time.monotonic() + timeout
+        async with self._lock:
+            self._first_in_line[user_id] += 1
+        try:
+            while True:
+                async with self._lock:
+                    if len(self._active_runs[user_id]) < self.max_concurrent_runs:
+                        self._active_runs[user_id].add(run_id)
+                        return True
+                    freed = asyncio.Event()
+                    self._slot_waiters[user_id].append(freed)
+                try:
+                    remaining = None if deadline is None else deadline - time.monotonic()
+                    if remaining is not None and remaining <= 0:
+                        return False
+                    await asyncio.wait_for(freed.wait(), timeout=remaining)
+                except TimeoutError:
+                    return False
+                finally:
+                    waiters = self._slot_waiters.get(user_id)
+                    if waiters is not None and freed in waiters:
+                        waiters.remove(freed)
+        finally:
+            async with self._lock:
+                self._first_in_line[user_id] -= 1
+                if self._first_in_line[user_id] <= 0:
+                    self._first_in_line.pop(user_id, None)
+                    # Whoever stood back for it may go on.
+                    for freed in self._slot_waiters.pop(user_id, []):
+                        freed.set()
 
     async def record_run_end(self, user_id: str, run_id: str) -> None:
         """Record that a workflow run has completed (any final status)."""

@@ -13,12 +13,18 @@ import {
   ChevronDown,
   ChevronRight,
   RotateCcw,
+  Hourglass,
+  Ban,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { runInputsOf } from "@/components/workflows/editor-page/run-inputs"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { fmtDuration } from "@/lib/utils"
+import { RunWaitingCard } from "@/components/workflows/approvals/run-waiting-card"
 import type {
   StartNodeData,
   NodeRunResult,
@@ -26,12 +32,28 @@ import type {
   WorkflowNodeType,
   WorkflowLogEvent,
   WorkflowLogEventType,
+  RunWaitingItem,
+  WorkflowRunStatus,
 } from "@/types/workflow"
 
 interface RunPanelProps {
   isOpen: boolean
   isRunning: boolean
+  /** The run's status once the server has named it; null on the input form. */
+  runStatus?: WorkflowRunStatus | null
+  /** What a waiting run waits on. */
+  waitingFor?: RunWaitingItem[]
+  /** A request the run waits on was decided: read the run again. */
+  onDecided?: () => void
   startVariables: NonNullable<StartNodeData["variables"]>
+  /**
+   * The Start step has "check inputs" on: the form sends what was typed
+   * and the server checks and converts it.
+   */
+  checkInputs?: boolean
+  /** The input the server refused the last run for, and why. */
+  inputError?: { input: string; message: string } | null
+  onClearInputError?: () => void
   nodeResults: Record<string, NodeRunResult> | null
   finalOutputs: Record<string, unknown> | null
   finalError: string | null
@@ -49,6 +71,7 @@ interface RunPanelProps {
 const statusIcons: Record<NodeRunStatus, React.ReactNode> = {
   pending: <CircleDashed className="h-3.5 w-3.5 text-zinc-500" />,
   running: <Loader2 className="h-3.5 w-3.5 text-blue-500 animate-spin" />,
+  waiting: <Hourglass className="h-3.5 w-3.5 text-amber-500" />,
   completed: <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />,
   failed: <XCircle className="h-3.5 w-3.5 text-red-500" />,
   skipped: <SkipForward className="h-3.5 w-3.5 text-zinc-400" />,
@@ -62,6 +85,7 @@ const eventBadgeClass: Record<WorkflowLogEventType, string> = {
   node_failed: "text-red-500",
   node_skipped: "text-zinc-400",
   node_retrying: "text-amber-500",
+  node_waiting: "text-amber-500",
   run_completed: "text-green-500",
   run_failed: "text-red-500",
 }
@@ -73,6 +97,7 @@ const eventTypeIcons: Record<WorkflowLogEventType, React.ReactNode> = {
   node_failed: <XCircle className="h-3 w-3" />,
   node_skipped: <SkipForward className="h-3 w-3" />,
   node_retrying: <RotateCcw className="h-3 w-3" />,
+  node_waiting: <Hourglass className="h-3 w-3" />,
   run_completed: <CheckCircle2 className="h-3 w-3" />,
   run_failed: <XCircle className="h-3 w-3" />,
 }
@@ -83,6 +108,11 @@ const filterBadgeClass: Record<string, string> = {
   node_failed: "bg-red-500/15 text-red-600 dark:text-red-400",
   node_skipped: "bg-zinc-500/15 text-zinc-500 dark:text-zinc-400",
   node_retrying: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+}
+
+const START_TYPES = ["string", "number", "boolean", "object", "array"] as const
+function isStartVariableType(type: unknown): type is (typeof START_TYPES)[number] {
+  return (START_TYPES as readonly unknown[]).includes(type)
 }
 
 /** Format a timestamp as HH:MM:SS.mmm */
@@ -643,7 +673,13 @@ function LogViewer({
 export function RunPanel({
   isOpen,
   isRunning,
+  runStatus = null,
+  waitingFor = [],
+  onDecided,
   startVariables,
+  checkInputs = false,
+  inputError = null,
+  onClearInputError,
   nodeResults,
   finalOutputs,
   finalError,
@@ -664,8 +700,9 @@ export function RunPanel({
   const handleInputChange = useCallback(
     (name: string, value: string) => {
       setInputValues((prev) => ({ ...prev, [name]: value }))
+      if (inputError) onClearInputError?.()
     },
-    [],
+    [inputError, onClearInputError],
   )
 
   const handleRunAgainWithPrefill = useCallback(() => {
@@ -675,29 +712,20 @@ export function RunPanel({
   }, [onRunAgain])
 
   const handleStartRun = useCallback(() => {
-    const inputs: Record<string, unknown> = {}
-    const effectiveStrings: Record<string, string> = {}
-    for (const v of startVariables) {
-      const raw = inputValues[v.name] ?? v.default_value ?? ""
-      effectiveStrings[v.name] = raw
-      if (v.type === "number") {
-        inputs[v.name] = raw ? Number(raw) : 0
-      } else if (v.type === "boolean") {
-        inputs[v.name] = raw === "true"
-      } else {
-        inputs[v.name] = raw
-      }
-    }
+    const { inputs, effectiveStrings } = runInputsOf(startVariables, inputValues, checkInputs)
     lastUsedInputsRef.current = effectiveStrings
     onStartRun(inputs)
-  }, [startVariables, inputValues, onStartRun])
+  }, [startVariables, inputValues, checkInputs, onStartRun])
 
   if (!isOpen) return null
 
   const hasInputs = startVariables.length > 0
   const hasResults = nodeResults && Object.keys(nodeResults).length > 0
-  const isFinished = !isRunning && hasResults
-  const showInputForm = !isRunning && !hasResults
+  // Stopped at a step that needs a decision: not running, not finished.
+  const isWaiting = runStatus === "waiting"
+  const isCancelled = runStatus === "cancelled"
+  const isFinished = !isRunning && !isWaiting && hasResults
+  const showInputForm = !isRunning && !isWaiting && !hasResults
   // Show hint when inputs are pre-filled from a previous run
   const isPrefilled = showInputForm && hasInputs && Object.keys(lastUsedInputsRef.current).length > 0
     && startVariables.some((v) => inputValues[v.name] !== undefined && inputValues[v.name] !== "")
@@ -721,7 +749,7 @@ export function RunPanel({
   }
 
   // Show tabs only when there are results or running (i.e., not on the input form)
-  const showTabs = isRunning || hasResults
+  const showTabs = isRunning || isWaiting || hasResults
 
   return (
     <div
@@ -734,7 +762,7 @@ export function RunPanel({
           {t("runPanelTitle")}
         </h3>
         <div className="flex items-center gap-1.5">
-          {isRunning && (
+          {(isRunning || isWaiting) && (
             <Button variant="outline" size="sm" className="h-6 text-xs gap-1" onClick={onCancel}>
               {t("runPanelCancel")}
             </Button>
@@ -757,13 +785,31 @@ export function RunPanel({
       </div>
 
       {/* Row 2: Status bar (only visible when running or has results) */}
-      {(isRunning || hasResults) && (
-        <div className="flex items-center gap-1.5 px-4 py-1.5 border-b border-border/20 bg-muted/30 shrink-0">
+      {(isRunning || isWaiting || hasResults) && (
+        <div
+          data-testid="run-status"
+          data-status={isRunning ? "running" : (runStatus ?? (finalError ? "failed" : "completed"))}
+          className="flex items-center gap-1.5 px-4 py-1.5 border-b border-border/20 bg-muted/30 shrink-0"
+        >
           {isRunning ? (
             <>
               <Loader2 className="h-3 w-3 text-blue-500 animate-spin shrink-0" />
               <span className="text-[11px] text-blue-600 dark:text-blue-400 font-medium">
                 {t("runPanelStatusRunning")}
+              </span>
+            </>
+          ) : isWaiting ? (
+            <>
+              <Hourglass className="h-3 w-3 text-amber-500 shrink-0" />
+              <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                {t("runPanelStatusWaiting")}
+              </span>
+            </>
+          ) : isCancelled ? (
+            <>
+              <Ban className="h-3 w-3 text-zinc-400 shrink-0" />
+              <span className="text-[11px] text-muted-foreground font-medium">
+                {t("runPanelStatusCancelled")}
               </span>
             </>
           ) : finalError ? (
@@ -813,21 +859,67 @@ export function RunPanel({
                   <p className="text-xs text-muted-foreground">
                     {isPrefilled ? t("runPanelPrefilledFromLastRun") : t("runPanelProvideInputs")}
                   </p>
-                  {startVariables.map((v) => (
-                    <div key={v.name} className="space-y-1">
-                      <label className="text-xs font-medium">
-                        {v.name}
-                        {v.required && <span className="text-destructive ml-0.5">*</span>}
-                        <span className="text-[11px] text-muted-foreground ml-1.5">({v.type})</span>
-                      </label>
-                      <Input
-                        className="h-7 text-xs"
-                        placeholder={v.default_value == null ? "" : String(v.default_value)}
-                        value={inputValues[v.name] ?? ""}
-                        onChange={(e) => handleInputChange(v.name, e.target.value)}
-                      />
-                    </div>
-                  ))}
+                  {startVariables.map((v) => {
+                    const fieldId = `run-input-${v.name}`
+                    const error = inputError?.input === v.name ? inputError.message : null
+                    const placeholder = v.default_value == null ? "" : String(v.default_value)
+                    const value = inputValues[v.name] ?? ""
+                    return (
+                      <div key={v.name} className="space-y-1" data-testid={`run-input-${v.name}`}>
+                        <label htmlFor={fieldId} className="text-xs font-medium">
+                          {v.name}
+                          {v.required && <span className="text-destructive ml-0.5">*</span>}
+                          <span className="text-[11px] text-muted-foreground ml-1.5">
+                            ({checkInputs && isStartVariableType(v.type)
+                              ? t(`configStartType_${v.type}`)
+                              : v.type})
+                          </span>
+                        </label>
+                        {checkInputs && v.type === "boolean" ? (
+                          <Select
+                            value={value === "" ? "__default__" : value}
+                            onValueChange={(next) =>
+                              handleInputChange(v.name, next === "__default__" ? "" : next)
+                            }
+                          >
+                            <SelectTrigger id={fieldId} className="w-full h-7 text-xs" aria-invalid={!!error}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__default__">
+                                {placeholder || t("runPanelBooleanUnset")}
+                              </SelectItem>
+                              <SelectItem value="true">{t("runPanelBooleanTrue")}</SelectItem>
+                              <SelectItem value="false">{t("runPanelBooleanFalse")}</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        ) : checkInputs && (v.type === "object" || v.type === "array") ? (
+                          <Textarea
+                            id={fieldId}
+                            className="min-h-[64px] text-xs font-mono"
+                            placeholder={placeholder || (v.type === "array" ? "[]" : "{}")}
+                            value={value}
+                            aria-invalid={!!error}
+                            onChange={(e) => handleInputChange(v.name, e.target.value)}
+                          />
+                        ) : (
+                          <Input
+                            id={fieldId}
+                            className="h-7 text-xs"
+                            placeholder={placeholder}
+                            value={value}
+                            aria-invalid={!!error}
+                            onChange={(e) => handleInputChange(v.name, e.target.value)}
+                          />
+                        )}
+                        {error && <p className="text-sm text-destructive">{error}</p>}
+                      </div>
+                    )
+                  })}
+                  {/* A refusal that names an input the form does not have */}
+                  {inputError && !startVariables.some((v) => v.name === inputError.input) && (
+                    <p className="text-sm text-destructive">{inputError.message}</p>
+                  )}
                 </>
               ) : (
                 <p className="text-xs text-muted-foreground">{t("runPanelNoInputs")}</p>
@@ -868,6 +960,14 @@ export function RunPanel({
                     <Loader2 className="h-6 w-6 text-blue-500 animate-spin" />
                     <p className="text-xs text-muted-foreground">{t("runPanelExecuting")}</p>
                   </div>
+                )}
+                {/* Waiting for a decision */}
+                {isWaiting && (
+                  <RunWaitingCard
+                    waitingFor={waitingFor}
+                    nodeLabel={getNodeLabel}
+                    onDecided={onDecided ?? (() => {})}
+                  />
                 )}
                 {/* Running/Results */}
                 {hasResults && (

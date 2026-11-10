@@ -16,6 +16,8 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from types import SimpleNamespace
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -33,20 +35,69 @@ from fim_one.db.models.channel import ConfirmationRequest
 from fim_one.db.models.organization import Organization, OrgMembership
 from fim_one.db.models.user import User
 from fim_one.db.models.workflow import Workflow, WorkflowRun
+from fim_one.web.api.confirmations import ConfirmationRespondRequest, respond_to_confirmation
 from fim_one.web.api.workflows import (
-    approve_approval,
+    _approval_to_response,
+    approval_inbox,
+    approval_inbox_count,
     clear_workflow_runs,
     delete_workflow,
     delete_workflow_run,
     ensure_assignees_valid,
-    list_pending_approvals,
     list_run_approvals,
     publish_workflow,
-    reject_approval,
 )
 from fim_one.web.exceptions import AppError
 from fim_one.web.schemas.common import PublishRequest
-from fim_one.web.schemas.workflow import ApprovalDecisionRequest
+
+
+# How the portal lists and decides approvals since T10 P5: the approval
+# inbox lists them, and deciding is the confirmations endpoint every other
+# request uses. The helpers keep the tests below in the shape they had when
+# workflows had approval endpoints of their own.
+
+
+@dataclass
+class ApprovalDecisionRequest:
+    note: str | None = None
+
+
+async def list_pending_approvals(*, current_user: User, db: AsyncSession) -> Any:
+    inbox = await approval_inbox(current_user=current_user, db=db)
+    count = await approval_inbox_count(current_user=current_user, db=db)
+    assert count.data["count"] == inbox.data["count"] == len(inbox.data["items"])
+    return SimpleNamespace(data=inbox.data["items"])
+
+
+async def _decide(
+    decision: str, approval_id: str, body: ApprovalDecisionRequest, current_user: User, db: Any
+) -> Any:
+    await respond_to_confirmation(
+        approval_id,
+        ConfirmationRespondRequest(decision=decision, reason=body.note),  # type: ignore[arg-type]
+        current_user=current_user,
+        db=db,
+    )
+    row = (
+        await db.execute(
+            select(ConfirmationRequest)
+            .where(ConfirmationRequest.id == approval_id)
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
+    return SimpleNamespace(data=_approval_to_response(row).model_dump())
+
+
+async def approve_approval(
+    approval_id: str, body: ApprovalDecisionRequest, *, current_user: User, db: Any
+) -> Any:
+    return await _decide("approve", approval_id, body, current_user, db)
+
+
+async def reject_approval(
+    approval_id: str, body: ApprovalDecisionRequest, *, current_user: User, db: Any
+) -> Any:
+    return await _decide("reject", approval_id, body, current_user, db)
 
 
 @pytest.fixture()
@@ -204,7 +255,7 @@ class TestUnassignedApproval:
                 await endpoint(
                     approval.id, ApprovalDecisionRequest(), current_user=user, db=session
                 )
-            assert exc.value.error_code == "approval_not_found"
+            assert exc.value.error_code == "confirmation_forbidden"
         assert await _status(factory, approval.id) == "pending"
 
     async def test_run_user_can_approve(
@@ -247,7 +298,7 @@ class TestUnassignedApproval:
             await reject_approval(
                 approval.id, ApprovalDecisionRequest(), current_user=world.runner, db=session
             )
-        assert exc.value.error_code == "approval_already_resolved"
+        assert exc.value.error_code == "confirmation_already_decided"
 
 
 class TestAssignedApproval:
@@ -277,7 +328,7 @@ class TestAssignedApproval:
             await approve_approval(
                 approval.id, ApprovalDecisionRequest(), current_user=world.runner, db=session
             )
-        assert exc.value.error_code == "approval_not_assigned"
+        assert exc.value.error_code == "confirmation_forbidden"
 
     async def test_a_platform_administrator_can_decide_an_assigned_one(
         self, factory: async_sessionmaker[AsyncSession], session: AsyncSession, world: World

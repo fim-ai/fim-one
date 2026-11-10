@@ -9,6 +9,9 @@ import { Switch } from "@/components/ui/switch"
 import type { StartVariable } from "@/types/workflow"
 import type { NodeFormProps } from "./types"
 
+/** The types a Start variable can have, as the blueprint stores them. */
+export const START_VARIABLE_TYPES = ["string", "number", "boolean", "object", "array"] as const
+
 export function StartForm({ data, setField }: NodeFormProps<"start">) {
   const t = useTranslations("workflows")
   const variables = data.variables ?? []
@@ -38,7 +41,7 @@ export function StartForm({ data, setField }: NodeFormProps<"start">) {
 
       {/* Compact table header */}
       {variables.length > 0 && (
-        <div className="grid grid-cols-[1fr_72px_28px] gap-1 px-0.5">
+        <div className="grid grid-cols-[1fr_88px_28px] gap-1 px-0.5">
           <span className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">
             {t("configStartName")}
           </span>
@@ -53,7 +56,7 @@ export function StartForm({ data, setField }: NodeFormProps<"start">) {
       {variables.map((v, i) => (
         <div key={i} className="space-y-1.5 rounded-md border border-border p-2">
           {/* Row 1: Name + Type + Remove */}
-          <div className="grid grid-cols-[1fr_72px_28px] gap-1 items-center">
+          <div className="grid grid-cols-[1fr_88px_28px] gap-1 items-center">
             <Input
               className="h-7 text-xs"
               placeholder={t("configVariableName")}
@@ -65,11 +68,11 @@ export function StartForm({ data, setField }: NodeFormProps<"start">) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="string">String</SelectItem>
-                <SelectItem value="number">Number</SelectItem>
-                <SelectItem value="boolean">Boolean</SelectItem>
-                <SelectItem value="object">Object</SelectItem>
-                <SelectItem value="array">Array</SelectItem>
+                {START_VARIABLE_TYPES.map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {t(`configStartType_${type}`)}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Button variant="ghost" size="icon-sm" className="h-7 w-7" onClick={() => removeVariable(i)}>
@@ -94,6 +97,21 @@ export function StartForm({ data, setField }: NodeFormProps<"start">) {
           </div>
         </div>
       ))}
+
+      {/* Have the server check a run's inputs against the variables above */}
+      <div className="space-y-1 border-t border-border pt-3">
+        <div className="flex items-center justify-between gap-2">
+          <label htmlFor="start-validate-inputs" className="text-xs font-medium">
+            {t("configStartValidateInputs")}
+          </label>
+          <Switch
+            id="start-validate-inputs"
+            checked={data.validate_inputs === true}
+            onCheckedChange={(checked) => setField("validate_inputs", checked)}
+          />
+        </div>
+        <p className="text-[11px] text-muted-foreground">{t("configStartValidateInputsHint")}</p>
+      </div>
     </div>
   )
 }

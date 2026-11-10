@@ -50,6 +50,7 @@ exports[`serializeBlueprint > produces a v2 blueprint (snapshot) 1`] = `
       "data": {
         "label": "start step",
         "note": "editor note",
+        "validate_inputs": true,
         "variables": [],
       },
       "id": "start_1",

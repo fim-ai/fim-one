@@ -435,3 +435,47 @@ def test_generated_typescript_is_current() -> None:
         encoding="utf-8"
     )
     assert current == expected, "run: uv run python scripts/gen_workflow_types.py"
+
+
+class TestViewportShape:
+    """The viewport is saved by itself on every pan; it is three numbers."""
+
+    @staticmethod
+    def _with(viewport: Any) -> dict[str, Any]:
+        return {
+            "schema_version": 2,
+            "nodes": [{"id": "start_1", "type": "start", "position": {"x": 0, "y": 0}, "data": {}}],
+            "edges": [],
+            "viewport": viewport,
+        }
+
+    @pytest.mark.parametrize(
+        "viewport",
+        [{"x": 12.5, "y": -340, "zoom": 0.75}, {}, {"x": 0, "y": 0, "zoom": 2}],
+    )
+    def test_a_real_viewport_is_kept(self, viewport: dict[str, Any]) -> None:
+        from fim_one.core.workflow.blueprint_v2 import normalize_for_save
+
+        saved = normalize_for_save(self._with(viewport))["viewport"]
+        assert {k: saved[k] for k in viewport} == viewport
+
+    @pytest.mark.parametrize(
+        "viewport",
+        [
+            {"x": 0, "y": 0, "zoom": 1, "notes": "x" * 1000},
+            {"x": 0, "y": 0, "zoom": 1, "blob": {"anything": ["goes"]}},
+            {"x": 0, "y": 0, "zoom": 0},
+            {"x": 0, "y": 0, "zoom": -1},
+            {"x": 0, "y": 0, "zoom": 1e9},
+            {"x": float("inf"), "y": 0, "zoom": 1},
+            {"x": 0, "y": float("nan"), "zoom": 1},
+            {"x": "left", "y": 0, "zoom": 1},
+            {"x": 1e12, "y": 0, "zoom": 1},
+        ],
+    )
+    def test_anything_else_is_refused(self, viewport: dict[str, Any]) -> None:
+        from fim_one.core.workflow.blueprint_v2 import BlueprintSchemaError, normalize_for_save
+
+        with pytest.raises(BlueprintSchemaError) as refused:
+            normalize_for_save(self._with(viewport))
+        assert any("viewport" in str(e.get("loc")) for e in refused.value.errors)

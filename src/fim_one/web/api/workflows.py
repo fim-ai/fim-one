@@ -70,8 +70,11 @@ from fim_one.web.schemas.workflow import (
     WorkflowUpdate,
     WorkflowValidateResponse,
     WorkflowVersionResponse,
+    ApprovalInboxItem,
+    ApprovalInboxUser,
+    RunWaitingItem,
+    ScheduleHeldByRun,
     WorkflowApprovalResponse,
-    ApprovalDecisionRequest,
     _compute_next_run,
 )
 from fim_one.web.visibility import build_visibility_filter
@@ -249,9 +252,28 @@ def _run_to_response(run: WorkflowRun) -> WorkflowRunResponse:
         completed_at=run.completed_at.isoformat() if run.completed_at else None,
         duration_ms=run.duration_ms,
         error=run.error,
+        waiting_for=_waiting_for(run),
+        queued=run.status == "running" and run.queued_at is not None,
         created_at=run.created_at.isoformat() if run.created_at else "",
         updated_at=run.updated_at.isoformat() if run.updated_at else None,
     )
+
+
+def _waiting_for(run: WorkflowRun) -> list[RunWaitingItem] | None:
+    """The requests a waiting run is waiting on, from its stored state."""
+    waiting_on = run.waiting_on
+    if run.status != "waiting" or not isinstance(waiting_on, dict):
+        return None
+    return [
+        RunWaitingItem(
+            node_id=node_id,
+            confirmation_id=str(record.get("confirmation_id") or ""),
+            kind=str(record.get("kind") or ""),
+            expires_at=record.get("expires_at"),
+        )
+        for node_id, record in sorted(waiting_on.items())
+        if isinstance(record, dict)
+    ]
 
 
 def _version_to_response(v: WorkflowVersion) -> WorkflowVersionResponse:
@@ -436,9 +458,20 @@ def _disabled_node_items(blueprint: Any) -> list[BlueprintWarningItem]:
     ]
 
 
+def _graph_of(blueprint: Any) -> str:
+    """A blueprint without its viewport, in a form that compares."""
+    graph = {k: v for k, v in (blueprint or {}).items() if k != "viewport"}
+    return json.dumps(graph, sort_keys=True, default=str)
+
+
 def _refused(exc: Any) -> AppError:
     """Map a run service refusal onto the API's error envelope."""
-    return AppError(exc.error_code, status_code=exc.status_code, detail=exc.detail)
+    return AppError(
+        exc.error_code,
+        status_code=exc.status_code,
+        detail=exc.detail,
+        detail_args=getattr(exc, "detail_args", None),
+    )
 
 
 async def _get_version_owner_workflow(
@@ -728,6 +761,14 @@ _TRIGGER_FAILURE_MESSAGES = {
         "in its run history."
     ),
     "workflow_run_timed_out": "The workflow run timed out.",
+    "workflow_waiting_limit_reached": (
+        "Too many runs are already waiting for a decision. Decide or cancel some of "
+        "them, then run the workflow again."
+    ),
+    "workflow_suspend_state_too_large": (
+        "The run could not wait for a decision: the steps before the approval produced "
+        "more data than a waiting run may keep."
+    ),
     "workflow_run_cancelled": "The workflow run was cancelled.",
     "workflow_run_failed": (
         "The workflow run failed. The workflow's owner can see the details in its "
@@ -830,7 +871,9 @@ async def _execute_trigger(
     # and in which way, not which step failed or what it said (a database's
     # error text, an exception's message). That stays in the run record.
     error_code = None
-    if outcome.status != "completed":
+    # ``waiting``: the run stopped at a step that needs a person's decision
+    # and goes on once it is made; the caller is told so, not that it failed.
+    if outcome.status not in ("completed", "waiting"):
         error_code = outcome.error_code or "workflow_run_failed"
         if error_code not in _TRIGGER_FAILURE_MESSAGES:
             error_code = "workflow_run_failed"
@@ -851,7 +894,8 @@ async def _execute_trigger(
 
 
 # Workflow approvals are confirmation requests of kind "workflow_approval";
-# these endpoints are a view onto ``ConfirmationService``.
+# these endpoints are a view onto ``ConfirmationService``. Deciding one is
+# ``POST /api/confirmations/{id}/respond``, as for any other request.
 APPROVAL_KIND = "workflow_approval"
 
 
@@ -888,91 +932,146 @@ def _approval_to_response(row: ConfirmationRequest) -> WorkflowApprovalResponse:
     )
 
 
-async def _decide_approval(
-    approval_id: str,
-    body: ApprovalDecisionRequest,
-    current_user: User,
-    db: AsyncSession,
-    *,
-    decision: Literal["approve", "reject"],
-) -> ApiResponse:
-    """Decide a workflow approval the user may decide, or raise.
+# Requests a workflow run waits on: an approval step's, and the
+# confirmation of a connector action flagged "requires confirmation".
+_INBOX_KINDS = (APPROVAL_KIND, "confirmation")
 
-    An assigned approval belongs to its assignee (``approval_not_assigned``
-    to anyone else); an unassigned one to the user its run is attributed
-    to, and to nobody else it does not exist (``approval_not_found``). A
-    platform administrator may decide either.
-    """
-    row = (
-        await db.execute(
-            select(ConfirmationRequest).where(
-                ConfirmationRequest.id == approval_id,
-                ConfirmationRequest.kind == APPROVAL_KIND,
-            )
-        )
-    ).scalar_one_or_none()
-    if row is None:
-        raise AppError("approval_not_found", status_code=404)
-    actor = await _principal_of(db, current_user)
+
+async def _inbox_rows(db: AsyncSession, user: User) -> list[ConfirmationRequest]:
+    """Pending requests of workflow runs that *user* may decide, newest first."""
+    actor = await _principal_of(db, user)
     service = _confirmation_service()
-    if not await service.may_decide(db, row, actor):
-        if row.eligible_scope == "assignee":
-            raise AppError(
-                "approval_not_assigned",
-                status_code=403,
-                detail="This approval is assigned to another user",
-            )
-        # Same response as a missing approval: do not reveal that it exists.
-        raise AppError("approval_not_found", status_code=404)
-    try:
-        decided = await service.decide(
-            db, confirmation_id=approval_id, actor=actor, decision=decision, note=body.note
+    rows: list[ConfirmationRequest] = []
+    for kind in _INBOX_KINDS:
+        rows.extend(
+            row for row in await service.pending_for(db, actor, kind=kind) if row.workflow_run_id
         )
-    except AssemblyRefusal as refusal:
-        if refusal.error_code == "confirmation_already_decided":
-            raise AppError(
-                "approval_already_resolved",
-                status_code=409,
-                detail="Approval has already been resolved",
-            ) from None
-        raise AppError("approval_not_found", status_code=404) from None
-    return ApiResponse(data=_approval_to_response(decided).model_dump())
+    now = datetime.now(UTC)
+
+    def open_still(row: ConfirmationRequest) -> bool:
+        deadline = row.expires_at
+        if deadline is None:
+            return True
+        if deadline.tzinfo is None:
+            deadline = deadline.replace(tzinfo=UTC)
+        return deadline > now
+
+    rows = [row for row in rows if open_still(row)]
+    rows.sort(key=lambda row: str(row.created_at or ""), reverse=True)
+    return rows
 
 
-@router.get("/approvals/pending", response_model=ApiResponse)
-async def list_pending_approvals(
+def _shown_arguments(payload: dict[str, Any]) -> dict[str, Any] | None:
+    from fim_one.core.assembly.confirmed_call import open_call
+
+    return open_call(payload)[1]
+
+
+def _step_label(run: WorkflowRun | None, node_id: str | None) -> str | None:
+    """The name the author gave the step, from the blueprint the run started with."""
+    snapshot = run.blueprint_snapshot if run is not None else None
+    if not isinstance(snapshot, dict) or not node_id:
+        return None
+    for node in snapshot.get("nodes") or []:
+        if isinstance(node, dict) and node.get("id") == node_id:
+            label = (node.get("data") or {}).get("label")
+            return str(label) if isinstance(label, str) and label.strip() else None
+    return None
+
+
+@router.get("/approval-inbox", response_model=ApiResponse)
+async def approval_inbox(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
-    """List pending approvals assigned to the current user, plus unassigned
-    ones on runs attributed to the current user."""
+    """What the signed-in user is being asked to decide for workflow runs.
+
+    Approval steps assigned to them or, unassigned, on runs that are
+    theirs, and confirmations of connector actions on runs that are theirs
+    (for a trigger key or a schedule: the workflow owner's). Each item
+    says which workflow and step asks, who started the run and when the
+    request runs out. Deciding is ``POST /api/confirmations/{id}/respond``;
+    a request someone else decided first answers 409
+    ``confirmation_already_decided`` with how it was decided.
+    """
+    rows = await _inbox_rows(db, current_user)
+    run_ids = {str(row.workflow_run_id) for row in rows}
+    runs: dict[str, WorkflowRun] = {}
+    workflows: dict[str, Workflow] = {}
+    starters: dict[str, User] = {}
+    if run_ids:
+        runs = {
+            run.id: run
+            for run in (
+                await db.execute(select(WorkflowRun).where(WorkflowRun.id.in_(run_ids)))
+            ).scalars()
+        }
+        workflow_ids = {run.workflow_id for run in runs.values()}
+        if workflow_ids:
+            workflows = {
+                wf.id: wf
+                for wf in (
+                    await db.execute(select(Workflow).where(Workflow.id.in_(workflow_ids)))
+                ).scalars()
+            }
+        user_ids = {run.user_id for run in runs.values()}
+        if user_ids:
+            starters = {
+                user.id: user
+                for user in (await db.execute(select(User).where(User.id.in_(user_ids)))).scalars()
+            }
+
+    items: list[ApprovalInboxItem] = []
+    for row in rows:
+        run = runs.get(str(row.workflow_run_id))
+        workflow = workflows.get(run.workflow_id) if run is not None else None
+        starter = starters.get(run.user_id) if run is not None else None
+        payload = row.payload if isinstance(row.payload, dict) else {}
+        items.append(
+            ApprovalInboxItem(
+                id=row.id,
+                kind=row.kind,
+                status=row.status,
+                title=row.title or "",
+                description=row.description,
+                workflow_id=workflow.id if workflow is not None else None,
+                workflow_name=workflow.name if workflow is not None else None,
+                run_id=str(row.workflow_run_id),
+                run_mode=run.mode if run is not None else None,
+                node_id=row.node_id or "",
+                step_label=_step_label(run, row.node_id),
+                started_by=(
+                    ApprovalInboxUser(
+                        id=starter.id,
+                        name=starter.display_name or starter.username or starter.email or "",
+                    )
+                    if starter is not None
+                    else None
+                ),
+                # What a flagged connector action is about to be called with.
+                action=str(payload.get("tool_name")) if row.kind == "confirmation" else None,
+                # Decrypted for the person who may decide, with env var
+                # values masked.
+                arguments=_shown_arguments(payload) if row.kind == "confirmation" else None,
+                created_at=_iso(row.created_at) or "",
+                expires_at=_iso(row.expires_at),
+            )
+        )
+    return ApiResponse(data={"items": [item.model_dump() for item in items], "count": len(items)})
+
+
+@router.get("/approval-inbox/count", response_model=ApiResponse)
+async def approval_inbox_count(
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """How many requests wait for the signed-in user's decision (for a badge)."""
+    # Counted by the database: the badge of every open tab asks every 30 s.
     actor = await _principal_of(db, current_user)
-    approvals = await _confirmation_service().pending_for(db, actor, kind=APPROVAL_KIND)
-    return ApiResponse(
-        data=[_approval_to_response(a).model_dump() for a in approvals]
+    count = await _confirmation_service().count_pending_for(
+        db, actor, kinds=_INBOX_KINDS, of_workflow_runs=True
     )
-
-
-@router.post("/approvals/{approval_id}/approve", response_model=ApiResponse)
-async def approve_approval(
-    approval_id: str,
-    body: ApprovalDecisionRequest,
-    current_user: User = Depends(get_current_user),  # noqa: B008
-    db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> ApiResponse:
-    """Approve a pending workflow approval."""
-    return await _decide_approval(approval_id, body, current_user, db, decision="approve")
-
-
-@router.post("/approvals/{approval_id}/reject", response_model=ApiResponse)
-async def reject_approval(
-    approval_id: str,
-    body: ApprovalDecisionRequest,
-    current_user: User = Depends(get_current_user),  # noqa: B008
-    db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> ApiResponse:
-    """Reject a pending workflow approval."""
-    return await _decide_approval(approval_id, body, current_user, db, decision="reject")
+    return ApiResponse(data={"count": count})
 
 
 # ---------------------------------------------------------------------------
@@ -1138,9 +1237,16 @@ async def update_workflow(
     for field, value in update_data.items():
         setattr(wf, field, value)
 
+    # Where the canvas is panned and zoomed to is saved with the blueprint,
+    # but moving the view is not an edit: it makes no version, leaves the
+    # change summary alone and does not send a published workflow back to
+    # review.
+    view_only = False
+
     # Auto-extract schemas and compute change summary when blueprint is updated
     if old_blueprint is not None:
         new_bp = update_data["blueprint"]
+        view_only = _graph_of(old_blueprint) == _graph_of(new_bp)
         input_schema, output_schema = _extract_schemas_from_blueprint(new_bp)
         wf.input_schema = input_schema
         wf.output_schema = output_schema
@@ -1149,7 +1255,8 @@ async def update_workflow(
         from fim_one.core.workflow.blueprint_diff import compute_blueprint_diff
 
         diff_summary = compute_blueprint_diff(old_blueprint, new_bp)
-        wf.change_summary = diff_summary
+        if not view_only:
+            wf.change_summary = diff_summary
 
         # Auto-version: snapshot blueprint when it actually changes
         latest_result = await db.execute(
@@ -1161,9 +1268,9 @@ async def update_workflow(
         latest_ver = latest_result.scalar_one_or_none()
 
         # Compare blueprints — only version if different (or no version yet)
-        should_version = latest_ver is None or json.dumps(
-            latest_ver.blueprint, sort_keys=True
-        ) != json.dumps(new_bp, sort_keys=True)
+        should_version = latest_ver is None or _graph_of(latest_ver.blueprint) != _graph_of(
+            new_bp
+        )
 
         if should_version:
             next_num = (latest_ver.version_number + 1) if latest_ver else 1
@@ -1178,7 +1285,9 @@ async def update_workflow(
             )
             db.add(ver)
 
-    content_changed = bool(update_data.keys() - {"is_active"})
+    content_changed = bool(
+        update_data.keys() - {"is_active"} - ({"blueprint"} if view_only else set())
+    )
     if content_changed:
         from fim_one.web.publish_review import check_edit_revert
 
@@ -1662,21 +1771,19 @@ async def run_workflow(
     async def generate() -> AsyncGenerator[str, None]:
         # The run executes in the run service's background task, which
         # persists it and releases its slot; this stream only relays events.
-        # Until runs are decoupled from the browser (T10 P5), a client that
-        # goes away cancels its run, however the disconnect is noticed.
-        try:
-            yield _sse("run_started", {"run_id": run_id, "status": "running"})
-            async for sse_event, sse_data in started.events(keepalive=15.0):
-                if await request.is_disconnected():
-                    return
-                if sse_event == "keepalive":
-                    # Keepalive comment to prevent proxy/browser timeout
-                    yield ": keepalive\n\n"
-                    continue
-                yield _sse(sse_event, sse_data)
-        finally:
-            if not started.done:
-                started.cancel()
+        # A client that goes away (closed tab, dropped connection) stops
+        # the relay and nothing else: the run goes on, and its record
+        # (GET .../runs/{run_id}) says where it is. Stopping a run is the
+        # cancel endpoint's job.
+        yield _sse("run_started", {"run_id": run_id, "status": "running"})
+        async for sse_event, sse_data in started.events(keepalive=15.0):
+            if await request.is_disconnected():
+                return
+            if sse_event == "keepalive":
+                # Keepalive comment to prevent proxy/browser timeout
+                yield ": keepalive\n\n"
+                continue
+            yield _sse(sse_event, sse_data)
         yield _sse("end", {})
 
     return StreamingResponse(
@@ -1727,8 +1834,28 @@ async def batch_run_workflow(
         authorized = await service.authorize(
             wf, current_user.id, RunMode.BATCH, admit_batch=True
         )
+        # Every item's inputs are checked before any item starts: a batch
+        # with one bad row is refused whole, naming the row.
+        checked: list[dict[str, Any]] = []
+        for index, item in enumerate(body.inputs):
+            try:
+                checked.append(service.check_inputs(authorized[1], item))
+            except RunRefusedError as exc:
+                raise RunRefusedError(
+                    exc.error_code,
+                    exc.status_code,
+                    f"Item {index + 1}: {exc.detail}",
+                    {**(exc.detail_args or {}), "index": index},
+                ) from None
     except RunRefusedError as exc:
         raise _refused(exc) from None
+
+    # A workflow whose runs wait for a decision: only as many items start
+    # as the caller has places left for waiting runs. The rest are not
+    # started at all, so their earlier steps do not run for nothing.
+    room = await service.waiting_room(authorized[1], current_user.id, RunMode.BATCH)
+    startable = len(checked) if room is None else min(len(checked), room)
+    not_started = len(checked) - startable
 
     batch_id = str(uuid.uuid4())
     semaphore = asyncio.Semaphore(body.max_parallel)
@@ -1743,6 +1870,7 @@ async def batch_run_workflow(
                     inputs=inputs,
                     mode=RunMode.BATCH,
                     authorized=authorized,
+                    inputs_checked=True,
                 )
             except Exception as exc:
                 logger.exception("Batch run %s item %d failed", batch_id, index)
@@ -1765,7 +1893,7 @@ async def batch_run_workflow(
     # Launch all runs concurrently (bounded by semaphore)
     tasks = [
         asyncio.create_task(_run_single(i, input_set))
-        for i, input_set in enumerate(body.inputs)
+        for i, input_set in enumerate(checked[:startable])
     ]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -1788,10 +1916,26 @@ async def batch_run_workflow(
         else:
             batch_results.append(result)
 
+    for input_set in checked[startable:]:
+        batch_results.append(
+            BatchRunResultItem(
+                run_id="",
+                inputs=input_set,
+                status="failed",
+                error=(
+                    f"Not started: {not_started} of the {len(checked)} items were left out "
+                    "because that many more runs would be waiting for a decision than one "
+                    "user may have (workflow_waiting_limit_reached)."
+                ),
+                duration_ms=0,
+            )
+        )
+
     response = WorkflowBatchRunResponse(
         batch_id=batch_id,
         total=len(body.inputs),
         results=batch_results,
+        not_started=not_started,
     )
     return ApiResponse(data=response.model_dump())
 
@@ -2012,6 +2156,17 @@ async def get_workflow_schedule(
     if cron and enabled:
         next_run = _compute_next_run(cron, tz)
 
+    # Shown to the author, whose runs the scheduled ones are.
+    held_by_run: ScheduleHeldByRun | None = None
+    if wf.user_id == current_user.id:
+        from fim_one.core.workflow.scheduler import unfinished_scheduled_run
+
+        held = await unfinished_scheduled_run(wf.id, db)
+        if held is not None:
+            held_by_run = ScheduleHeldByRun(
+                run_id=held[0], status=held[1], started_at=_iso(held[2])
+            )
+
     return ApiResponse(
         data=WorkflowScheduleResponse(
             schedule_cron=cron,
@@ -2019,6 +2174,7 @@ async def get_workflow_schedule(
             schedule_inputs=getattr(wf, "schedule_inputs", None),
             schedule_timezone=tz,
             next_run_at=next_run,
+            held_by_run=held_by_run,
         ).model_dump()
     )
 
@@ -2371,7 +2527,7 @@ async def get_workflow_stats(
 
     # Status breakdown
     status_counts: dict[str, int] = {}
-    for status_val in ("completed", "failed", "cancelled", "running", "pending"):
+    for status_val in ("completed", "failed", "cancelled", "running", "pending", "waiting"):
         count_result = await db.execute(
             select(func.count()).where(
                 *scope,
@@ -2796,14 +2952,25 @@ async def cancel_workflow_run(
 
     from fim_one.core.workflow.run_service import get_run_service
 
-    if get_run_service().cancel_run(run_id):
+    service = get_run_service()
+    if service.cancel_run(run_id):
         return ApiResponse(data={"cancelled": True, "run_id": run_id})
 
-    if run.status in ("pending", "running"):
-        run.status = "cancelled"
-        await db.commit()
+    # Not executing in this process: waiting for a decision (closed here,
+    # with its open requests), or running in another server process (which
+    # stops it when it sees the record).
+    if await service.cancel_stored_run(run_id):
+        return ApiResponse(data={"cancelled": True, "run_id": run_id})
 
-    return ApiResponse(data={"cancelled": True, "run_id": run_id})
+    # Nothing was cancelled: the run had ended by the time the cancel got
+    # to it (it may have been continued and finished in that moment).
+    await db.refresh(run)
+    raise AppError(
+        "workflow_run_already_finished",
+        status_code=409,
+        detail=f"The run has already ended ({run.status}); there is nothing to cancel.",
+        detail_args={"status": run.status},
+    )
 
 
 @router.get("/{workflow_id}/runs/{run_id}/approvals", response_model=ApiResponse)
@@ -2872,7 +3039,7 @@ async def delete_workflow_run(
     if run is None:
         raise AppError("workflow_run_not_found", status_code=404)
 
-    if run.status in ("pending", "running"):
+    if run.status in ("pending", "running", "waiting"):
         raise AppError("cannot_delete_active_run", status_code=409)
 
     await close_requests_of_runs(db, [run.id])

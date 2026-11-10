@@ -110,6 +110,27 @@ describe("workflow error codes", () => {
   })
 })
 
+describe("run input and approval refusals", () => {
+  it("names the input a run was refused for", () => {
+    const missing = new ApiError(422, "Input 'count' is required.", "workflow_input_required", {
+      input: "count",
+    })
+    expect(getErrorMessage(missing, tError)).toBe('Input "count" is required.')
+    const unfit = new ApiError(422, "Input 'count' must be a number.", "workflow_input_invalid", {
+      input: "count",
+      expected: "a number",
+    })
+    expect(getErrorMessage(unfit, tError)).toBe('Input "count" must be a number.')
+  })
+
+  it.each(["confirmation_already_decided", "confirmation_forbidden", "confirmation_not_found"])(
+    "%s has an English message",
+    (code) => {
+      expect(translateErrorCode(code, tError, { status: "approved" })).not.toBeNull()
+    },
+  )
+})
+
 describe("fieldOfLoc", () => {
   it.each([
     ["nodes.3.data.timeout_hours", "timeout_hours"],
