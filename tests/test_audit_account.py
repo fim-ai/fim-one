@@ -321,3 +321,16 @@ class TestEmailChange:
         )
 
         assert await world.events() == []
+
+
+class TestDeletingTheAccount:
+    async def test_the_record_says_how_the_user_was_signed_in(self, world: World) -> None:
+        """The actor was built by hand here, with no sign-in method and
+        ``user`` as kind even for an administrator."""
+        dave = await world.user("dave")
+
+        await world.call("DELETE", "/api/auth/account", by=dave)
+
+        row = await world.one("account.self_delete", actor=dave, target=("user", dave.id))
+        assert (row.auth_method, row.actor_kind) == ("session", "user")
+        assert await world.get(User, dave.id) is None
