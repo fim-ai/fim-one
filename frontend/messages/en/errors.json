@@ -112,6 +112,7 @@
   "agent_unavailable": "The agent this conversation uses is no longer available to you: it was unpublished, your subscription was removed, or it was switched off. Start a new conversation to continue.",
   "owner_only": "Only the owner can use this resource.",
   "mcp_tools_unavailable": "MCP server \"{name}\" did not answer ({reason}).",
+  "mcp_tools_busy": "Too many MCP servers are being asked for their tools at once. Wait for one to answer and try again.",
   "credential_required": "This resource needs your own credentials: its owner has switched fallback off. Save your own credentials for it.",
   "credential_unavailable": "The credentials for this resource could not be loaded. Try again shortly.",
 

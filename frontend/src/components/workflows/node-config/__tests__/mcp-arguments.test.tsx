@@ -7,6 +7,7 @@ import workflows from "../../../../../messages/en/workflows.json"
 import errors from "../../../../../messages/en/errors.json"
 import { defaultNodeData } from "@/lib/workflow-blueprint"
 import { MCPForm } from "../mcp-form"
+import { forgetMcpTools, MCP_TOOLS_TTL_MS } from "../mcp-tools-memory"
 import {
   argumentFields,
   fromArgumentText,
@@ -206,6 +207,9 @@ vi.mock("../../variable-picker", () => ({
 afterEach(() => {
   cleanup()
   backend.listTools = null
+  forgetMcpTools()
+  window.localStorage.clear()
+  vi.restoreAllMocks()
 })
 
 const TOOLS = [
@@ -382,5 +386,54 @@ describe("MCP step form", () => {
     // Its arguments are still there, as JSON.
     const json = screen.getByLabelText(workflows.configArgumentsJson) as HTMLTextAreaElement
     expect(JSON.parse(json.value)).toEqual({ a: 1 })
+  })
+})
+
+describe("MCP step form: the tool listing is kept for a short while", () => {
+  const step = { server_id: "s-1", tool_name: "ping", parameters: {} }
+
+  it("does not ask the server again when the same step is selected again", async () => {
+    backend.listTools = vi.fn(() => Promise.resolve(TOOLS))
+    renderMcp(step)
+    await screen.findByRole("option", { name: "search" })
+    // Selecting another step unmounts the form; coming back mounts it again.
+    cleanup()
+    renderMcp(step)
+    await screen.findByRole("option", { name: "search" })
+    expect(backend.listTools).toHaveBeenCalledTimes(1)
+  })
+
+  it("asks again once the listing is older than its time", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000)
+    backend.listTools = vi.fn(() => Promise.resolve(TOOLS))
+    renderMcp(step)
+    await screen.findByRole("option", { name: "search" })
+    cleanup()
+    now.mockReturnValue(1_000_000 + MCP_TOOLS_TTL_MS)
+    renderMcp(step)
+    await screen.findByRole("option", { name: "search" })
+    expect(backend.listTools).toHaveBeenCalledTimes(2)
+  })
+
+  it("does not show one user's listing to the next user of the same browser tab", async () => {
+    window.localStorage.setItem("fim_user", JSON.stringify({ id: "u-1" }))
+    backend.listTools = vi.fn(() => Promise.resolve(TOOLS))
+    renderMcp(step)
+    await screen.findByRole("option", { name: "search" })
+    cleanup()
+    window.localStorage.setItem("fim_user", JSON.stringify({ id: "u-2" }))
+    renderMcp(step)
+    await screen.findByRole("option", { name: "search" })
+    expect(backend.listTools).toHaveBeenCalledTimes(2)
+  })
+
+  it("does not keep a failure, and Retry asks the server", async () => {
+    backend.listTools = vi.fn(() => Promise.reject(new Error("down")))
+    renderMcp(step)
+    await screen.findByRole("button", { name: workflows.configToolsRetry })
+    backend.listTools = vi.fn(() => Promise.resolve(TOOLS))
+    fireEvent.click(screen.getByRole("button", { name: workflows.configToolsRetry }))
+    await screen.findByRole("option", { name: "search" })
+    expect(backend.listTools).toHaveBeenCalledTimes(1)
   })
 })

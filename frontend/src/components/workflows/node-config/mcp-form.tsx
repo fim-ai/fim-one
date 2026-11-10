@@ -21,6 +21,7 @@ import {
   type ArgumentField,
   type McpStepTool,
 } from "./mcp-arguments"
+import { forgetMcpTools, rememberMcpTools, rememberedMcpTools } from "./mcp-tools-memory"
 import { resourceOptions } from "./resource-options"
 import type { NodeFormProps } from "./types"
 import { useResourceList } from "./use-resource-list"
@@ -47,14 +48,21 @@ export function MCPForm({ data, setField, setFields, otherNodes }: NodeFormProps
   const serverChoices = useMemo(() => resourceOptions(servers, serverId), [servers, serverId])
 
   // The chosen server's tools. Asking opens the server, so it is done once
-  // for a server, and again only on "Retry".
+  // for a server, and again only on "Retry". An answer is kept for a short
+  // while across mounts: selecting this step again does not ask again.
   const [listing, setListing] = useState<ToolListing>({ state: "idle" })
   const [attempt, setAttempt] = useState(0)
   useEffect(() => {
     if (!serverId) return
     let cancelled = false
-    workflowApi
-      .listStepMcpTools(serverId)
+    const known = rememberedMcpTools(serverId)
+    const answer = known
+      ? Promise.resolve(known)
+      : workflowApi.listStepMcpTools(serverId).then((tools) => {
+          rememberMcpTools(serverId, tools)
+          return tools
+        })
+    answer
       .then((tools) => {
         if (!cancelled) setListing({ state: "ready", serverId, tools })
       })
@@ -172,6 +180,7 @@ export function MCPForm({ data, setField, setFields, otherNodes }: NodeFormProps
               size="sm"
               className="h-6 text-xs gap-1 shrink-0"
               onClick={() => {
+                forgetMcpTools(serverId)
                 setListing({ state: "loading", serverId })
                 setAttempt((n) => n + 1)
               }}

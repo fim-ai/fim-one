@@ -986,11 +986,23 @@ async def list_step_mcp_tools(
     the credential they would call it with, so the same refusals apply
     (``resource_not_found``, ``resource_inactive``, ``credential_required``).
     A server that cannot be reached answers ``mcp_tools_unavailable``.
+
+    A listing is served again for half a minute to the user who asked, as
+    long as the server and the credential have not changed; a user with too
+    many listings being fetched at once is answered ``mcp_tools_busy``
+    (429). See ``web.services.mcp_tool_listing``.
     """
+    from fim_one.core.assembly.credentials import resolve_credentials
     from fim_one.core.assembly.principal import CallContext
     from fim_one.core.assembly.toolset import ToolsetError, mcp_tools
     from fim_one.core.assembly.visibility import ResourceKind, authorize_use
+    from fim_one.web.services.mcp_tool_listing import (
+        TooManyListings,
+        listing_fingerprint,
+        listings,
+    )
 
+    user_id = current_user.id
     ctx = CallContext(
         principal=await _principal_of(db, current_user), binding=None, entry="workflow_node"
     )
@@ -998,33 +1010,54 @@ async def list_step_mcp_tools(
     if not decision.usable:
         raise decision.refused[server_id]
     server = decision.usable[0]
+    (credential,) = await resolve_credentials(db, ctx.principal, [server])
+    if isinstance(credential, AssemblyRefusal):
+        raise credential
+    fingerprint = listing_fingerprint(server, credential)
+    server_name = server.name
+    # Everything the database is needed for is done. Waiting for the server
+    # can take half a minute: the request's connection goes back to the
+    # pool first. (The rows read above stay usable; nothing was changed.)
+    await db.close()
+
+    remembered = listings.get(user_id, server_id, fingerprint)
+    if remembered is not None:
+        return ApiResponse(data={"tools": remembered})
 
     def _unavailable(reason: str) -> AppError:
         return AppError(
             "mcp_tools_unavailable",
             status_code=502,
-            detail=f"Could not list the tools of MCP server '{server.name}': {reason}",
-            detail_args={"name": server.name, "reason": reason},
+            detail=f"Could not list the tools of MCP server '{server_name}': {reason}",
+            detail_args={"name": server_name, "reason": reason},
         )
 
     client = None
     try:
-        # asyncio.timeout, not wait_for: the stdio client must be closed by
-        # the task that opened it.
-        async with asyncio.timeout(_MCP_TOOL_LISTING_TIMEOUT_SECONDS):
-            tools, client = await mcp_tools(ctx, [server], mode="legacy", strict=True)
-        return ApiResponse(
-            data={
-                "tools": [
-                    {
-                        "name": getattr(tool, "original_name", tool.name),
-                        "description": tool.description,
-                        "input_schema": tool.parameters_schema,
-                    }
-                    for tool in tools
-                ]
-            }
-        )
+        with listings.fetching(user_id):
+            # asyncio.timeout, not wait_for: the stdio client must be closed
+            # by the task that opened it.
+            async with asyncio.timeout(_MCP_TOOL_LISTING_TIMEOUT_SECONDS):
+                tools, client = await mcp_tools(ctx, [server], mode="legacy", strict=True)
+            listed = [
+                {
+                    "name": getattr(tool, "original_name", tool.name),
+                    "description": tool.description,
+                    "input_schema": tool.parameters_schema,
+                }
+                for tool in tools
+            ]
+        listings.put(user_id, server_id, fingerprint, listed)
+        return ApiResponse(data={"tools": listed})
+    except TooManyListings:
+        raise AppError(
+            "mcp_tools_busy",
+            status_code=429,
+            detail=(
+                "Too many MCP servers are being asked for their tools at once. "
+                "Wait for one to answer and try again."
+            ),
+        ) from None
     except AssemblyRefusal:
         raise
     except ToolsetError as exc:
@@ -1034,14 +1067,14 @@ async def list_step_mcp_tools(
             f"no answer within {_MCP_TOOL_LISTING_TIMEOUT_SECONDS} seconds"
         ) from None
     except Exception as exc:
-        logger.warning("Listing the tools of MCP server %r failed", server.name, exc_info=True)
+        logger.warning("Listing the tools of MCP server %r failed", server_name, exc_info=True)
         raise _unavailable(type(exc).__name__) from None
     finally:
         if client is not None:
             try:
                 await client.disconnect_all()
             except Exception:
-                logger.warning("Failed to close MCP server %r", server.name, exc_info=True)
+                logger.warning("Failed to close MCP server %r", server_name, exc_info=True)
 
 
 # ---------------------------------------------------------------------------
