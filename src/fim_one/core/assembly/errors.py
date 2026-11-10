@@ -8,6 +8,7 @@ __all__ = [
     "ACCOUNT_DISABLED",
     "AGENT_UNAVAILABLE",
     "APPROVAL_ASSIGNEE_NOT_IN_ORG",
+    "AUTHENTICATION_REQUIRED",
     "CONFIRMATION_ALREADY_DECIDED",
     "CONFIRMATION_FORBIDDEN",
     "CONFIRMATION_NOT_FOUND",
@@ -27,6 +28,7 @@ __all__ = [
 # Error codes share the API's ``AppError`` namespace; the frontend's
 # ``errors.json`` carries the message for each.
 ACCOUNT_DISABLED = "account_disabled"
+AUTHENTICATION_REQUIRED = "authentication_required"
 RESOURCE_NOT_FOUND = "resource_not_found"
 RESOURCE_INACTIVE = "resource_inactive"
 OWNER_ONLY = "owner_only"

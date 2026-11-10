@@ -26,6 +26,7 @@ import dataclasses
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
+from fim_one.core.assembly.errors import AUTHENTICATION_REQUIRED, AssemblyRefusal
 from fim_one.core.assembly.principal import Binding, CallContext, Entry, Principal
 from fim_one.core.assembly.runtime import AgentRuntime
 from fim_one.core.assembly.sandbox import SANDBOXED_TOOLS
@@ -69,8 +70,14 @@ async def resolve_agent(
     used. The agent is judged by ``ctx``'s subject. An agent that is not
     usable is a refusal: ``agent_unavailable`` (409) for the conversation's
     own agent, ``resource_not_found`` / ``resource_inactive`` for one named
-    explicitly.
+    explicitly. A context with no acting user is refused
+    (``authentication_required``): the lookup below reads an agent without
+    any check when it is given no user to check for.
     """
+    if not ctx.principal.user_id:
+        raise AssemblyRefusal(
+            AUTHENTICATION_REQUIRED, 401, "An agent cannot be used without an acting user"
+        )
     config: dict[str, Any] | None = await _chat()._resolve_agent_config(
         agent_id,
         conversation_id,

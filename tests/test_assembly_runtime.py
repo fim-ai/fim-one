@@ -127,6 +127,43 @@ class TestBuild:
         assert refused.value.error_code == code
         assert out.mcp_connects == {}
 
+    @pytest.mark.parametrize("named", [True, False])
+    async def test_a_context_with_no_acting_user_is_refused(
+        self, factory: async_sessionmaker[AsyncSession], named: bool
+    ) -> None:
+        """With no user to check for, the agent was read without any check."""
+        from fim_one.db.models.conversation import Conversation
+
+        # An agent the outsider cannot use, named or as a conversation's own.
+        scene = await m.seed_scene(factory, m.SceneKey("outsider", True, True, False))
+        async with factory() as s:
+            s.add(
+                Conversation(
+                    id="conv-of-owner",
+                    user_id=scene.users["owner"],
+                    title="t",
+                    mode="react",
+                    agent_id=scene.ids["agent"],
+                )
+            )
+            await s.commit()
+        agent_id = scene.ids["agent"] if named else None
+        conversation_id = None if named else "conv-of-owner"
+        with m.outside_world(factory) as out:
+            with pytest.raises(AssemblyRefusal) as refused:
+                await agent_runtime.resolve_agent(
+                    _ctx(""), agent_id, conversation_id=conversation_id
+                )
+            assert (refused.value.error_code, refused.value.status_code) == (
+                "authentication_required",
+                401,
+            )
+            with pytest.raises(AssemblyRefusal):
+                await WebAgentRuntimeFactory().build(
+                    _ctx(""), agent_id, conversation_id=conversation_id
+                )
+        assert out.mcp_connects == {}
+
     async def test_hooks_that_cannot_be_built_leave_no_connection_open(
         self, factory: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
     ) -> None:
