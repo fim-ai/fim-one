@@ -671,6 +671,7 @@ OTHER_WRITERS: dict[str, str] = {
     ),
     "core/channels/expiry.py": "the expiry sweep; records confirmation.expire",
     "core/memory/db.py": "conversation messages: content",
+    "core/usage/ledger.py": "the usage ledger (usage_ledger), its own table",
     "core/tool/builtin/agent_builder.py": "builder tools, see TOOL_WRITERS",
     "core/tool/builtin/connector_builder.py": "builder tools, see TOOL_WRITERS",
     "core/tool/builtin/db_builder.py": "builder tools, see TOOL_WRITERS",

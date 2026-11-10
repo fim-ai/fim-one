@@ -61,6 +61,17 @@ The copies at `.claude/skills/user-owned-module/SKILL.md` and
 | user uploads | `uploads/user_{user_id}/` | `shutil.rmtree` |
 | avatar | `uploads/avatars/{user_id}_*` | `glob` + `unlink` |
 
+## Tables that keep their rows
+
+Records that must outlive the account have no FK to `users` and are not
+deleted by `purge_user_data()`. A new table of this kind is listed here, with
+what becomes of the user's identity in it.
+
+| Table | What stays | Identity |
+|---|---|---|
+| `audit_logs` | every row | `admin_id` (the actor) set to NULL; the label stays |
+| `usage_ledger` | every row | `user_id` stays, naming a user that no longer exists |
+
 ## Test it
 
 Deletion is the one path where "it looked fine" is worthless: the failure

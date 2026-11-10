@@ -275,6 +275,12 @@ async def purge_user_data(db: AsyncSession, user_id: str) -> PurgedUser:
         .values(invited_by=None)
     )
 
+    # The usage ledger (``usage_ledger``) is left as it is: it has no
+    # foreign key, and what the account consumed stays counted in the
+    # organization's and the platform's totals after the account is gone.
+    # Its ``user_id`` then names nobody. (What is shown of a deleted user in
+    # the records that outlive them is decided with the other logs.)
+
     # Preserve audit history but remove the actor reference.
     await db.execute(
         update(AuditLog).where(AuditLog.actor_id == user_id).values(actor_id=None)
