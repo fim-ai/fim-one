@@ -29,7 +29,8 @@ from fim_one.core.assembly.errors import AssemblyRefusal
 from fim_one.core.assembly.principal import provisional_principal
 from fim_one.core.assembly.quota import check_quota
 from fim_one.db.base import Base
-from fim_one.db.models import BillingPlan, Conversation, SystemSetting, User
+from fim_one.db.models import BillingPlan, SystemSetting, User
+from fim_one.db.models.usage_ledger import UsageLedger
 from fim_one.web.api.chat import _build_quota_terminator_payload
 from fim_one.web.services.quota_backend import next_month_reset, reset_at, usage_and_cap
 
@@ -84,8 +85,11 @@ async def _user(
         )
         if monthly_tokens:
             s.add(
-                Conversation(
-                    user_id="user-1", title="t", mode="react", total_tokens=monthly_tokens
+                UsageLedger(
+                    user_id="user-1",
+                    source_type="conversation",
+                    entry="chat",
+                    total_tokens=monthly_tokens,
                 )
             )
         await s.commit()

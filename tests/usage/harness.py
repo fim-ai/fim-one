@@ -190,6 +190,30 @@ class Usage:
         response = await self.call("POST", endpoint, json=body)
         return events(response.text)
 
+    # -- quota -------------------------------------------------------------------
+
+    async def cap(self, tokens: int) -> None:
+        """Give every user without a plan or an override a quota of *tokens*."""
+        from fim_one.db.models import SystemSetting
+
+        await self.add(SystemSetting(key="default_token_quota", value=str(tokens)))
+
+    async def quota_used(self, user: User) -> int:
+        """What the quota check counts against *user* (the enforced number)."""
+        from fim_one.core.assembly.quota import quota_status
+
+        await self.settle()
+        status = await quota_status(user.id)
+        assert status.cap > 0, "give the user a cap first: usage is not summed without one"
+        return status.used
+
+    async def card(self, user: User, period: str = "month") -> dict[str, Any]:
+        """The user's own usage card."""
+        await self.settle()
+        response = await self.call("GET", f"/api/me/usage?period={period}", by=user)
+        body: dict[str, Any] = response.json()
+        return body
+
     # -- the ledger --------------------------------------------------------------
 
     async def settle(self) -> None:

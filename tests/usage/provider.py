@@ -79,8 +79,15 @@ class Provider:
     # Seconds a call takes before it answers, and a stream between chunks.
     delay: float = 0.0
     chunk_delay: float = 0.0
+    # The call with this number (1-based) never answers: a non-streamed
+    # call hangs, a streamed one sends ``stall_after`` chunks and then hangs.
+    hang_at: int = 0
+    stall_after: int = 2
     # Tool calls the model is to make: (tool name, arguments), each once.
     tool_calls: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
+    # Set when the call that hangs has started to; what streams have sent.
+    hung: asyncio.Event = field(default_factory=asyncio.Event)
+    streamed: list[str] = field(default_factory=list)
 
     @property
     def billed(self) -> int:
@@ -112,10 +119,14 @@ class Provider:
 
     async def acompletion(self, **kwargs: Any) -> Any:
         self._bill(kwargs)
+        hangs = self.hang_at == self.calls
         if self.delay:
             await asyncio.sleep(self.delay)
         if kwargs.get("stream"):
-            return self._stream(kwargs)
+            return self._stream(kwargs, stall=hangs)
+        if hangs:
+            self.hung.set()
+            await asyncio.Event().wait()
         return self._answer(kwargs)
 
     def completion(self, **kwargs: Any) -> Any:
@@ -136,7 +147,7 @@ class Provider:
             choices=[SimpleNamespace(message=message, finish_reason=finish)], usage=_usage()
         )
 
-    async def _stream(self, kwargs: dict[str, Any]) -> AsyncIterator[Any]:
+    async def _stream(self, kwargs: dict[str, Any], *, stall: bool = False) -> AsyncIterator[Any]:
         def chunk(finish: str | None = None, **delta: Any) -> SimpleNamespace:
             fields = {"content": None, "reasoning_content": None, "tool_calls": None, **delta}
             return SimpleNamespace(
@@ -151,8 +162,13 @@ class Provider:
             yield chunk("tool_calls")
         else:
             size = max(len(self.text) // self.pieces, 1)
-            for start in range(0, len(self.text), size):
-                yield chunk(content=self.text[start : start + size])
+            for sent, start in enumerate(range(0, len(self.text), size)):
+                if stall and sent == self.stall_after:
+                    self.hung.set()
+                    await asyncio.Event().wait()
+                piece = self.text[start : start + size]
+                self.streamed.append(piece)
+                yield chunk(content=piece)
                 if self.chunk_delay:
                     await asyncio.sleep(self.chunk_delay)
             yield chunk("stop")

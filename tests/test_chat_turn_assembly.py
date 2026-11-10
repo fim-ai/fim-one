@@ -28,6 +28,7 @@ from fim_one.db.models.agent import Agent
 from fim_one.db.models.connector import Connector, ConnectorAction
 from fim_one.db.models.conversation import Conversation
 from fim_one.db.models.organization import Organization, OrgMembership
+from fim_one.db.models.usage_ledger import UsageLedger
 from fim_one.db.models.user import User
 from fim_one.web import create_app
 from fim_one.web.auth import create_access_token
@@ -395,7 +396,11 @@ class TestAutoIsAdmittedBeforeItClassifies:
             user = await db.get(User, world.user)
             assert user is not None
             user.token_quota = 10
-            db.add(Conversation(user_id=world.user, title="t", mode="react", total_tokens=10))
+            db.add(
+                UsageLedger(
+                    user_id=world.user, source_type="conversation", entry="chat", total_tokens=10
+                )
+            )
             await db.commit()
 
         conv = await _conversation(world.user, None)

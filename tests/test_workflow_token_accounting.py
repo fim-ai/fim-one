@@ -27,8 +27,7 @@ from fim_one.core.workflow.types import (
 from fim_one.core.workflow.variable_store import VariableStore
 from fim_one.db.base import Base
 from fim_one.db.models import SystemSetting, User
-from fim_one.db.models.conversation import Conversation
-from fim_one.db.models.workflow import WorkflowRun
+from fim_one.db.models.usage_ledger import UsageLedger
 
 
 class _DummyCM:
@@ -117,13 +116,16 @@ async def test_quota_window_includes_workflow_run_tokens(
         # No override and no plan: the cap is the default_token_quota setting.
         s.add(User(id=user, email="o@x.io", username=user))
         s.add(SystemSetting(key="default_token_quota", value="100"))
-        s.add(Conversation(user_id=user, mode="chat", total_tokens=30))
         s.add(
-            WorkflowRun(
-                workflow_id="wf-1",
+            UsageLedger(user_id=user, source_type="conversation", entry="chat", total_tokens=30)
+        )
+        s.add(
+            UsageLedger(
                 user_id=user,
-                blueprint_snapshot={},
-                status="completed",
+                source_type="workflow_run",
+                source_id="run-1",
+                entry="trigger",
+                workflow_id="wf-1",
                 total_tokens=50,
             )
         )

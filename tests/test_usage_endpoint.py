@@ -26,6 +26,7 @@ from sqlalchemy.orm import sessionmaker
 
 from fim_one.db.base import Base
 from fim_one.db.models import BillingPlan, Conversation, Subscription, User
+from fim_one.db.models.usage_ledger import UsageLedger
 from fim_one.web.app import create_app
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
@@ -119,6 +120,17 @@ async def _add_conversation(
     )
     c.created_at = datetime.now(UTC) - timedelta(days=days_ago)  # type: ignore[assignment]
     db.add(c)
+    # What the conversation's turns consumed, recorded when they happened.
+    db.add(
+        UsageLedger(
+            user_id=user.id,
+            source_type="conversation",
+            source_id=c.id,
+            entry="chat",
+            total_tokens=tokens,
+            created_at=c.created_at,
+        )
+    )
     await db.commit()
 
 
@@ -208,6 +220,16 @@ async def _add_workflow_run(db: AsyncSession, user: User, *, tokens: int, days_a
     )
     run.created_at = datetime.now(UTC) - timedelta(days=days_ago)  # type: ignore[assignment]
     db.add(run)
+    db.add(
+        UsageLedger(
+            user_id=user.id,
+            source_type="workflow_run",
+            source_id=run.id,
+            entry="interactive",
+            total_tokens=tokens,
+            created_at=run.created_at,
+        )
+    )
     await db.commit()
 
 
