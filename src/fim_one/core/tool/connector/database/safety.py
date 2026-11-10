@@ -379,7 +379,8 @@ def _refuse_writes_inside_a_read(lexemes: list[Lexeme], dialect: SqlDialect) -> 
     ):
         raise SqlSafetyError(
             "Only SELECT queries are allowed: ':=' sets a session variable, which a "
-            "read-only connection does not do."
+            "read-only connection does not do. To number rows, use a window function: "
+            "ROW_NUMBER() OVER (ORDER BY ...)."
         )
 
     if dialect == "generic":

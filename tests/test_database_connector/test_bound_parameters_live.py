@@ -232,6 +232,35 @@ class TestMySQL(_BoundValues):
         text = await _query(live_mysql, limited, {"n": "1; DROP TABLE x", "m": 0})
         assert text.startswith("[SQL Safety Error]") and "LIMIT or OFFSET" in text
 
+    async def test_text_a_columns_character_set_cannot_hold_fails_with_a_readable_message(
+        self, live_mysql: LiveDatabase
+    ) -> None:
+        from fim_one.core.tool.connector.database.pool import ConnectionPoolManager
+
+        table = f"{live_mysql.orders}_cs"
+        driver = await ConnectionPoolManager.get_instance().get_driver(
+            live_mysql.connector_id, live_mysql.config
+        )
+        await driver.execute_query(
+            f"CREATE TABLE {table} (l varchar(32) CHARACTER SET latin1, "
+            "u3 varchar(32) CHARACTER SET utf8mb3)",
+            read_only=False,
+        )
+        try:
+            await driver.execute_query(
+                f"INSERT INTO {table} VALUES ('alice', 'alice')", read_only=False
+            )
+            for column, value in (("l", "张三"), ("u3", "😀")):
+                sql = f"SELECT l FROM {table} WHERE {column} = {{{{v}}}}"
+                text = await _query(live_mysql, sql, {"v": value})
+                assert text.startswith("[Error]"), text
+                assert "character set cannot hold" in text and "Illegal mix" in text
+            # Text the column can hold is compared as usual.
+            found = await _query(live_mysql, f"SELECT l FROM {table} WHERE l = {{{{v}}}}", {"v": "alice"})
+            assert json.loads(found)["rows"] == [["alice"]]
+        finally:
+            await driver.execute_query(f"DROP TABLE {table}", read_only=False)
+
     async def test_a_literal_percent_sign_survives_binding(self, live_mysql: LiveDatabase) -> None:
         text = await _query(
             live_mysql,

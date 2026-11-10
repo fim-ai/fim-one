@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 _COM_RESET_CONNECTION = 0x1F
 _ER_UNKNOWN_COM_ERROR = 1047
 _ER_UNKNOWN_SYSTEM_VARIABLE = 1193
+_ER_CANT_AGGREGATE_2COLLATIONS = 1267
 _MODE_NAME = re.compile(r"[A-Za-z0-9_]+")
 # Modes under which MySQL reads strings and quoted names differently from
 # its default: the two themselves, and the combination modes that include
@@ -351,8 +352,18 @@ class MySQLDriver(DatabaseDriver):
         except TimeoutError:
             raise TimeoutError(f"Query timed out after {timeout_s}s") from None
         except Exception as exc:
-            if getattr(exc, "args", (None,))[0] in _STATEMENT_TIMED_OUT:
+            code = getattr(exc, "args", (None,))[0]
+            if code in _STATEMENT_TIMED_OUT:
                 raise TimeoutError(f"Query timed out after {timeout_s}s") from None
+            if code == _ER_CANT_AGGREGATE_2COLLATIONS:
+                # "Illegal mix of collations (latin1_swedish_ci,IMPLICIT) and
+                # (utf8mb4_0900_ai_ci,COERCIBLE) for operation '='".
+                raise RuntimeError(
+                    "MySQL error: a text value cannot be compared with this column, "
+                    "because it has characters the column's character set cannot hold "
+                    "(Chinese text against a latin1 column, for example, or an emoji "
+                    f"against utf8mb3). The server said: {exc.args[1] if len(exc.args) > 1 else exc}"
+                ) from exc
             raise RuntimeError(f"MySQL error: {exc}") from exc
 
     @staticmethod

@@ -468,6 +468,13 @@ def test_a_connector_that_allows_writes_is_limited_only_by_the_never_allowed(
         assert validate_sql(sql, allow_write=True, dialect=dialect) == sql.strip().rstrip(";")
 
 
+def test_the_row_number_idiom_is_refused_with_what_to_write_instead() -> None:
+    with pytest.raises(SqlSafetyError, match=r"ROW_NUMBER\(\) OVER"):
+        validate_sql(
+            "SELECT @rownum := @rownum + 1 AS r FROM t, (SELECT @rownum := 0) x", dialect="mysql"
+        )
+
+
 class TestReading:
     """The reading the rules are applied to."""
 
