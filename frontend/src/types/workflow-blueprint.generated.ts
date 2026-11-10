@@ -190,6 +190,7 @@ export interface StartNodeData {
   retry_count?: number
   retry_delay_ms?: number
   variables?: Array<StartVariable>
+  validate_inputs?: boolean
   input_schema?: Record<string, unknown> | null
 }
 

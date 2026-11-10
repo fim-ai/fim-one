@@ -463,7 +463,12 @@ def _graph_of(blueprint: Any) -> str:
 
 def _refused(exc: Any) -> AppError:
     """Map a run service refusal onto the API's error envelope."""
-    return AppError(exc.error_code, status_code=exc.status_code, detail=exc.detail)
+    return AppError(
+        exc.error_code,
+        status_code=exc.status_code,
+        detail=exc.detail,
+        detail_args=getattr(exc, "detail_args", None),
+    )
 
 
 async def _get_version_owner_workflow(
@@ -1755,6 +1760,19 @@ async def batch_run_workflow(
         authorized = await service.authorize(
             wf, current_user.id, RunMode.BATCH, admit_batch=True
         )
+        # Every item's inputs are checked before any item starts: a batch
+        # with one bad row is refused whole, naming the row.
+        checked: list[dict[str, Any]] = []
+        for index, item in enumerate(body.inputs):
+            try:
+                checked.append(service.check_inputs(authorized[1], item))
+            except RunRefusedError as exc:
+                raise RunRefusedError(
+                    exc.error_code,
+                    exc.status_code,
+                    f"Item {index + 1}: {exc.detail}",
+                    {**(exc.detail_args or {}), "index": index},
+                ) from None
     except RunRefusedError as exc:
         raise _refused(exc) from None
 
@@ -1793,7 +1811,7 @@ async def batch_run_workflow(
     # Launch all runs concurrently (bounded by semaphore)
     tasks = [
         asyncio.create_task(_run_single(i, input_set))
-        for i, input_set in enumerate(body.inputs)
+        for i, input_set in enumerate(checked)
     ]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 

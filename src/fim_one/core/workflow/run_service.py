@@ -644,6 +644,23 @@ class WorkflowRunService:
                 raise RunRefusedError("workflow_rate_limited", 429, rate_error)
         return ctx, parsed
 
+    @staticmethod
+    def check_inputs(parsed: Any, inputs: dict[str, Any] | None) -> dict[str, Any]:
+        """*inputs* checked against the Start step and put in their declared types.
+
+        Raises :class:`RunRefusedError` ``workflow_input_required`` or
+        ``workflow_input_invalid`` (422) naming the input. A workflow whose
+        Start step does not ask for the check gets its inputs back as given.
+        """
+        from .run_inputs import InputRefusal, checked_inputs
+
+        try:
+            return checked_inputs(parsed, inputs)
+        except InputRefusal as refusal:
+            raise RunRefusedError(
+                refusal.error_code, refusal.status_code, refusal.detail, refusal.detail_args
+            ) from None
+
     async def _admit(
         self, workflow: Any, user_id: str, auth: AuthMethod, mode: RunMode
     ) -> CallContext:
@@ -715,6 +732,9 @@ class WorkflowRunService:
         inputs = inputs or {}
         try:
             ctx, parsed = authorized or await self.authorize(workflow, caller_id, mode)
+            # Against the Start step's declaration, before anything runs:
+            # the steps get each input in its declared type.
+            inputs = self.check_inputs(parsed, inputs)
             if single_flight:
                 # Early answer without taking the workflow's lock. Requests
                 # that arrive together all pass it; the check that decides
@@ -1183,7 +1203,12 @@ class WorkflowRunService:
                 started_at=now,
                 completed_at=now,
                 duration_ms=0,
-                error=exc.error_code,
+                # The code; for an input that does not fit, also which one.
+                error=(
+                    f"{exc.error_code}: {exc.detail}"
+                    if exc.error_code.startswith("workflow_input_")
+                    else exc.error_code
+                ),
             )
         except Exception:
             logger.exception("Failed to record refused %s run of %s", mode, workflow.id)

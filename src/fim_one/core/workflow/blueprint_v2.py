@@ -83,6 +83,10 @@ class StartVariable(BaseModel):
 
 class StartNodeData(NodeDataBase):
     variables: list[StartVariable] = Field(default_factory=list)
+    # Check a run's inputs against ``variables`` before any step starts and
+    # hand them on in their declared types (``core/workflow/run_inputs.py``).
+    # Off for workflows saved before the switch existed.
+    validate_inputs: bool = False
     input_schema: dict[str, Any] | None = None
 
 

@@ -82,6 +82,28 @@ APPROVAL_BLUEPRINT = _blueprint(
 )
 
 
+TYPED_BLUEPRINT: dict[str, Any] = {
+    "nodes": [
+        {
+            "id": "start_1",
+            "type": "start",
+            "data": {
+                "type": "START",
+                "validate_inputs": True,
+                "variables": [
+                    {"name": "amount", "type": "number", "required": True},
+                    {"name": "urgent", "type": "boolean", "required": False},
+                    {"name": "tags", "type": "array", "required": False},
+                    {"name": "note", "type": "string", "required": False, "default_value": "-"},
+                ],
+            },
+        },
+        *LLM_BLUEPRINT["nodes"][1:],
+    ],
+    "edges": LLM_BLUEPRINT["edges"],
+}
+
+
 # ---------------------------------------------------------------------------
 # World
 # ---------------------------------------------------------------------------
@@ -109,6 +131,7 @@ class _RecordingEngine:
         self, _parsed: Any, _inputs: Any, context: Any = None
     ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
         self._kwargs["context"] = context
+        self._kwargs["inputs"] = _inputs
         yield "node_completed", {"node_id": "llm_1", "status": "completed"}
         yield "run_completed", {"status": "completed", "outputs": {"ok": 1}, "total_tokens": 42}
 
@@ -196,9 +219,12 @@ def real_engine() -> Iterator[None]:
 @dataclass
 class Result:
     refused: str | None  # error code when the run was refused before starting
+    detail: str | None = None  # what the caller was told
+    args: dict[str, Any] = field(default_factory=dict)
 
 
-async def _drive(entry: str, w: World) -> Result:
+async def _drive(entry: str, w: World, inputs: dict[str, Any] | None = None) -> Result:
+    inputs = inputs or {}
     async with w.factory() as db:
         wf = await db.get(Workflow, w.wf.id)
         assert wf is not None
@@ -208,7 +234,7 @@ async def _drive(entry: str, w: World) -> Result:
                 request.is_disconnected = AsyncMock(return_value=False)
                 resp = await wf_api.run_workflow(
                     wf.id,
-                    WorkflowRunRequest(inputs={}),
+                    WorkflowRunRequest(inputs=inputs),
                     request,
                     current_user=w.subscriber,
                     db=db,
@@ -219,25 +245,27 @@ async def _drive(entry: str, w: World) -> Result:
             elif entry == "batch":
                 await wf_api.batch_run_workflow(
                     wf.id,
-                    WorkflowBatchRunRequest(inputs=[{}]),
+                    WorkflowBatchRunRequest(inputs=[inputs]),
                     current_user=w.subscriber,
                     db=db,
                 )
             elif entry == "trigger":
-                await wf_api._execute_trigger(wf, WorkflowTriggerRequest(inputs={}))
+                await wf_api._execute_trigger(wf, WorkflowTriggerRequest(inputs=inputs))
             elif entry == "schedule":
+                wf.schedule_inputs = inputs or None
                 await WorkflowScheduler(poll_interval=60)._execute_workflow(wf)
                 async with w.factory() as s:
                     run = (await s.execute(select(WorkflowRun))).scalar_one_or_none()
                 if run is not None and run.status == "failed" and run.duration_ms == 0:
-                    return Result(refused=run.error)  # refusal recorded for the author
+                    # Refusal recorded for the author: the code, then any detail.
+                    return Result(refused=str(run.error).split(":", 1)[0], detail=run.error)
             elif entry == "tool":
                 out = await RunWorkflowTool(
                     workflow_ids=[wf.id], user_id=w.subscriber.id
-                ).run(name=wf.name)
+                ).run(name=wf.name, inputs=inputs)
                 if out.startswith("[Error]"):
                     # Refusals end with "(<error_code>)".
-                    return Result(refused=out.rsplit("(", 1)[-1].rstrip(")"))
+                    return Result(refused=out.rsplit("(", 1)[-1].rstrip(")"), detail=out)
             elif entry == "test_node":
                 node_id = wf.blueprint["nodes"][1]["id"]
                 with patch(
@@ -248,7 +276,7 @@ async def _drive(entry: str, w: World) -> Result:
                         wf.id, NodeTestRequest(node_id=node_id), current_user=w.author, db=db
                     )
         except AppError as exc:
-            return Result(refused=exc.error_code)
+            return Result(refused=exc.error_code, detail=str(exc.detail), args=exc.detail_args)
     await asyncio.sleep(0)
     return Result(refused=None)
 
@@ -329,6 +357,110 @@ async def test_tokens_billed_to_the_principal(entry: str, world: World) -> None:
         ctx = built["context"]
         assert ctx.user_id == _expected_principal(entry, world)
         assert ctx.db_session_factory is not None  # approval nodes persist
+
+
+# Entry points that take a run's inputs (a single-step test takes variables).
+INPUT_ENTRIES = [e for e in ENTRIES if e != "test_node"]
+
+
+async def _typed(world: World, blueprint: dict[str, Any] | None = None) -> None:
+    async with world.factory() as s:
+        wf = await s.get(Workflow, world.wf.id)
+        assert wf is not None
+        wf.blueprint = blueprint or TYPED_BLUEPRINT
+        await s.commit()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("entry", INPUT_ENTRIES)
+async def test_a_missing_required_input_refuses_the_run(entry: str, world: World) -> None:
+    """F23: the Start step's declaration is checked before any step starts."""
+    await _typed(world)
+
+    result = await _drive(entry, world, {"urgent": True})
+
+    assert result.refused == "workflow_input_required"
+    assert "Input 'amount' is required." in (result.detail or "")
+    if entry in ("interactive", "batch", "trigger"):
+        assert result.args["input"] == "amount"
+    assert world.engines == []  # nothing ran
+    runs = await _runs(world)
+    # Only the schedule, which has nobody to tell, leaves a failed record.
+    assert [r.status for r in runs] == (["failed"] if entry == "schedule" else [])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("entry", INPUT_ENTRIES)
+async def test_an_input_of_the_wrong_type_refuses_the_run(entry: str, world: World) -> None:
+    await _typed(world)
+
+    result = await _drive(entry, world, {"amount": "a lot"})
+
+    assert result.refused == "workflow_input_invalid"
+    assert "Input 'amount' must be a number." in (result.detail or "")
+    assert world.engines == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("entry", INPUT_ENTRIES)
+async def test_inputs_reach_the_steps_in_their_declared_types(entry: str, world: World) -> None:
+    await _typed(world)
+
+    result = await _drive(
+        entry, world, {"amount": "12.5", "urgent": "yes", "tags": '["a", "b"]', "extra": "kept"}
+    )
+
+    assert result.refused is None
+    (built,) = world.engines
+    assert built["inputs"] == {
+        "amount": 12.5,  # text that reads as a number arrives as a number
+        "urgent": True,
+        "tags": ["a", "b"],
+        "note": "-",  # the declared default
+        "extra": "kept",  # undeclared inputs pass through
+    }
+    (run,) = await _runs(world)
+    assert run.inputs == built["inputs"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("entry", INPUT_ENTRIES)
+async def test_a_workflow_that_does_not_ask_for_the_check_runs_as_before(
+    entry: str, world: World
+) -> None:
+    """Workflows saved before the switch existed: nothing is checked or changed."""
+    start = TYPED_BLUEPRINT["nodes"][0]
+    legacy = {
+        **TYPED_BLUEPRINT,
+        "nodes": [
+            {**start, "data": {k: v for k, v in start["data"].items() if k != "validate_inputs"}},
+            *TYPED_BLUEPRINT["nodes"][1:],
+        ],
+    }
+    await _typed(world, legacy)
+
+    result = await _drive(entry, world, {"amount": "a lot", "urgent": "yes"})
+
+    assert result.refused is None
+    (built,) = world.engines
+    assert built["inputs"] == {"amount": "a lot", "urgent": "yes"}
+
+
+@pytest.mark.asyncio
+async def test_a_batch_with_one_bad_row_is_refused_whole_naming_the_row(world: World) -> None:
+    await _typed(world)
+    async with world.factory() as db:
+        with pytest.raises(AppError) as refused:
+            await wf_api.batch_run_workflow(
+                world.wf.id,
+                WorkflowBatchRunRequest(inputs=[{"amount": 1}, {"amount": "x"}, {"amount": 3}]),
+                current_user=world.subscriber,
+                db=db,
+            )
+    assert refused.value.error_code == "workflow_input_invalid"
+    assert refused.value.detail == "Item 2: Input 'amount' must be a number."
+    assert refused.value.detail_args == {"input": "amount", "expected": "a number", "index": 1}
+    assert world.engines == [] and await _runs(world) == []
 
 
 @pytest.mark.usefixtures("human_intervention_enabled")
