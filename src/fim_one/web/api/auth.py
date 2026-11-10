@@ -49,6 +49,7 @@ from fim_one.db.models import LoginHistory, User
 from fim_one.core.audit import actions
 from fim_one.core.audit import writer as audit
 from fim_one.core.audit.redact import diff_changes
+from fim_one.core.audit.refusals import admit_refusal
 from fim_one.core.audit.events import RequestMeta
 from fim_one.db.models.agent import Agent
 from fim_one.db.models.api_key import ApiKey
@@ -140,6 +141,11 @@ def _build_token_response(user: User, access: str, refresh: str) -> TokenRespons
     )
 
 
+# Enough for the administrators' failed-sign-in panel, which looks for five
+# or more failures from one address.
+_UNKNOWN_ACCOUNT_ROWS_PER_WINDOW = 10
+
+
 async def _record_login(
     db: AsyncSession,
     request: Request,
@@ -155,7 +161,17 @@ async def _record_login(
     *method* is how it was attempted (``password``, ``email_code``,
     ``oauth:<provider>``); the 2FA step records the method of the sign-in
     it completes.
+
+    A failed attempt for an account that does not exist needs no account to
+    produce: at most :data:`_UNKNOWN_ACCOUNT_ROWS_PER_WINDOW` per address
+    and ten minutes are written (and no more than the refusal budget
+    overall); the rest are counted and reported in a summary audit record.
     """
+    ip = request.client.host if request.client else None
+    if user is None and not admit_refusal(
+        actions.AUTH_LOGIN_UNKNOWN_ACCOUNT, ip, per_source=_UNKNOWN_ACCOUNT_ROWS_PER_WINDOW
+    ):
+        return
     await audit.record_login(
         user_id=user.id if user else None,
         username=user.username if user else None,

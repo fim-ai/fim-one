@@ -297,6 +297,10 @@ CONFIRMATION_EXPIRE = "confirmation.expire"
 SECURITY_IP_BLOCKED = "security.ip_blocked"
 # A call to the workflow trigger endpoint with a key no workflow has.
 WORKFLOW_TRIGGER_KEY_INVALID = "workflow.trigger_key_invalid"
+# Failed sign-ins for accounts that do not exist are rows of
+# ``login_history``; past ten per address and window they are only counted,
+# and this is the action of the summary record that reports the count.
+AUTH_LOGIN_UNKNOWN_ACCOUNT = "auth.login_unknown_account"
 
 ACTIONS: frozenset[str] = frozenset(ADMIN_ACTIONS) | frozenset(
     value

@@ -106,6 +106,22 @@ def _human_intervention_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("WORKFLOW_HUMAN_INTERVENTION_ENABLED", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _fresh_refusal_throttle() -> Iterator[None]:
+    """Start every test with nothing counted by the audit refusal throttle.
+
+    It is per process: without this, the tenth failed sign-in for an unknown
+    account anywhere in the run would decide what a later test sees.
+    """
+    from fim_one.core.audit import refusals
+
+    refusals._throttle.reset()
+    refusals._summary_pending.clear()
+    yield
+    refusals._throttle.reset()
+    refusals._summary_pending.clear()
+
+
 @pytest.fixture()
 def human_intervention_enabled(
     _human_intervention_default: None, monkeypatch: pytest.MonkeyPatch

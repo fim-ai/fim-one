@@ -665,7 +665,8 @@
       "confirmation__approve": "Approve Request",
       "confirmation__reject": "Reject Request",
       "confirmation__expire": "Approval Request Expired",
-      "channel__test_approval": "Channel Test Approval Card"
+      "channel__test_approval": "Channel Test Approval Card",
+      "auth__login_unknown_account": "Failed Sign-Ins for Unknown Accounts (Summary)"
     },
     "detailDialogTitle": "Audit Detail",
     "filterDateFrom": "From",

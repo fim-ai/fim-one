@@ -248,3 +248,86 @@ class TestADisabledAccount:
             assert (await db.execute(select(UserOAuthBinding))).scalars().all() == []
         (row,) = await world.logins()
         assert _row(row) == (octo.id, octo.email, "oauth:github", False, "account_disabled")
+
+
+class TestAnAccountThatDoesNotExist:
+    @pytest.fixture(autouse=True)
+    def _fresh_throttle(self) -> Iterator[None]:
+        from fim_one.core.audit import refusals
+
+        refusals._throttle.reset()
+        refusals._summary_pending.clear()
+        yield
+        refusals._throttle.reset()
+        refusals._summary_pending.clear()
+
+    async def test_a_password_typed_into_the_email_field_is_not_stored(self, world: World) -> None:
+        typed = "Tr0ub4dor&3-my-real-password"
+
+        await world.call(
+            "POST", "/api/auth/login", json={"email": typed, "password": "x"}, expect=401
+        )
+        await world.call(
+            "POST",
+            "/api/auth/login",
+            json={"email": "sk-live-0123456789abcdef0123456789abcdef@x.io", "password": "x"},
+            expect=401,
+        )
+
+        first, second = await world.logins()
+        assert first.email == f"(not an email address; {len(typed)} characters)"
+        assert second.email == "(not an email address; 45 characters)"
+        world.assert_absent(first, typed)
+        world.assert_absent(second, "sk-live-0123456789abcdef0123456789abcdef")
+
+    async def test_an_address_that_is_one_is_kept(self, world: World) -> None:
+        await world.call(
+            "POST", "/api/auth/login", json={"email": "ghost@x.io", "password": "x"}, expect=401
+        )
+
+        (row,) = await world.logins()
+        assert _row(row) == (None, "ghost@x.io", "password", False, "user_not_found")
+
+    async def test_an_overlong_address_is_refused_by_the_form(self, world: World) -> None:
+        await world.call(
+            "POST",
+            "/api/auth/login",
+            json={"email": "a" * 300 + "@x.io", "password": "x"},
+            expect=422,
+        )
+
+        assert await world.logins() == []
+
+    async def test_rows_for_unknown_accounts_from_one_address_are_bounded(
+        self, world: World
+    ) -> None:
+        from fim_one.core.audit import refusals
+
+        for n in range(25):
+            await world.call(
+                "POST",
+                "/api/auth/login",
+                json={"email": f"guess{n}@x.io", "password": "x"},
+                expect=401,
+            )
+
+        assert len(await world.logins()) == 10
+        # The rest are counted, and reported by a summary audit record.
+        assert await refusals.write_summary("auth.login_unknown_account") is True
+        (summary,) = await world.events("auth.login_unknown_account")
+        assert summary.detail is not None and summary.detail.startswith("15 more")
+
+    async def test_failures_for_an_account_that_exists_are_all_recorded(
+        self, world: World
+    ) -> None:
+        alice = await world.user("alice", password=PASSWORD)
+
+        for _ in range(15):
+            await world.call(
+                "POST",
+                "/api/auth/login",
+                json={"email": alice.email, "password": "wrong"},
+                expect=401,
+            )
+
+        assert len(await world.logins()) == 15

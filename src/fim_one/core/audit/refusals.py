@@ -38,6 +38,7 @@ __all__ = [
     "MAX_RECORDS_PER_WINDOW",
     "WINDOW_SECONDS",
     "RefusalThrottle",
+    "admit_refusal",
     "record_refusal",
     "safe_path",
     "write_summary",
@@ -53,8 +54,9 @@ MAX_RECORDS_PER_WINDOW = 600
 class _Kind:
     """What is remembered for one kind of refusal."""
 
-    # source -> when its record was written; oldest first.
-    written: OrderedDict[str, float] = field(default_factory=OrderedDict)
+    # source -> [when its first record of the window was written, how many
+    # records it has had since]; oldest first.
+    written: OrderedDict[str, list[float]] = field(default_factory=OrderedDict)
     budget_start: float = 0.0
     budget_used: int = 0
     # Refusals counted and not written since the last summary.
@@ -74,15 +76,19 @@ class RefusalThrottle:
         self._max_records = max_records_per_window
         self._kinds: dict[str, _Kind] = {}
 
-    def admit(self, action: str, source: str, *, now: float | None = None) -> bool:
+    def admit(
+        self, action: str, source: str, *, now: float | None = None, per_source: int = 1
+    ) -> bool:
         """Whether a refusal of kind *action* from *source* is written now.
 
-        ``False``: it was counted (:meth:`take_left_out` reports it).
+        A source gets *per_source* records per window. ``False``: this one
+        was counted (:meth:`take_left_out` reports it).
         """
         moment = time.monotonic() if now is None else now
         kind = self._kinds.setdefault(action, _Kind())
         self._forget_expired(kind, moment)
-        if source in kind.written:
+        seen = kind.written.get(source)
+        if seen is not None and seen[1] >= per_source:
             kind.left_out += 1
             return False
         if moment - kind.budget_start >= self._window:
@@ -90,14 +96,17 @@ class RefusalThrottle:
         if kind.budget_used >= self._max_records:
             kind.left_out += 1
             return False
-        kind.written[source] = moment
+        if seen is None:
+            kind.written[source] = [moment, 1]
+        else:
+            seen[1] += 1
         kind.budget_used += 1
         return True
 
     def _forget_expired(self, kind: _Kind, moment: float) -> None:
         # Insertion order is time order: stop at the first one still fresh.
         while kind.written:
-            source, written_at = next(iter(kind.written.items()))
+            source, (written_at, _count) = next(iter(kind.written.items()))
             if moment - written_at < self._window:
                 break
             del kind.written[source]
@@ -180,6 +189,19 @@ def _schedule_summary(action: str) -> None:
 
 
 _summary_tasks: set[asyncio.Task[bool]] = set()
+
+
+def admit_refusal(action: str, source: str | None, *, per_source: int = 1) -> bool:
+    """Whether a record of kind *action* from *source* may be written now.
+
+    For a caller that writes the record itself, to another table (a failed
+    sign-in). One that may not is counted and reported in the kind's next
+    summary record, like a refusal :func:`record_refusal` leaves out.
+    """
+    if _throttle.admit(action, source or "-", per_source=per_source):
+        return True
+    _schedule_summary(action)
+    return False
 
 
 async def record_refusal(

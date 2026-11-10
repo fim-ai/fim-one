@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
@@ -44,6 +45,7 @@ __all__ = [
     "record_login",
     "record_review",
     "system_actor",
+    "typed_identifier",
 ]
 
 logger = logging.getLogger(__name__)
@@ -218,6 +220,27 @@ async def record(
 # ---------------------------------------------------------------------------
 
 
+_EMAIL_SHAPE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+
+
+def typed_identifier(value: str | None) -> str | None:
+    """What may be stored of the name typed for an account that does not exist.
+
+    People type a password into the email field. The value is kept when it
+    is shaped like an email address and not like a credential; otherwise
+    only that something was typed, and how long it was.
+    """
+    if not value:
+        return value
+    from fim_one.core.assembly.mcp_address import value_is_secret_shaped
+
+    text = str(value)
+    local = text.split("@", 1)[0]
+    if len(text) <= 255 and _EMAIL_SHAPE.fullmatch(text) and not value_is_secret_shaped(local):
+        return text
+    return f"(not an email address; {len(text)} characters)"
+
+
 async def record_login(
     *,
     user_id: str | None,
@@ -243,8 +266,10 @@ async def record_login(
     meta = request if request is not None else current_request_meta()
     row = LoginHistory(
         user_id=user_id,
-        username=username,
-        email=email,
+        username=_fit(username, 50),
+        # For an account that exists this is its own address. For one that
+        # does not it is whatever was typed into the field.
+        email=_fit(email, 255) if user_id is not None else typed_identifier(email),
         ip_address=_fit(meta.ip, 45) if meta else None,
         user_agent=meta.user_agent if meta else None,
         success=success,

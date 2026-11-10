@@ -513,6 +513,11 @@ KNOWN_NON_ROUTE_GAPS: dict[str, Gap] = {
 # Records written outside any route: action -> the test that shows it
 # (``tests/<file>.py::<Class>::<test>``).
 NON_ROUTE_ACTIONS: dict[str, str] = {
+    # The summary of failed sign-ins for unknown accounts that were only counted.
+    "auth.login_unknown_account": (
+        "tests/test_audit_sign_in.py::TestAnAccountThatDoesNotExist::"
+        "test_rows_for_unknown_accounts_from_one_address_are_bounded"
+    ),
     # The expiry sweep, a wait that runs out, and a click that comes too late.
     "confirmation.expire": (
         "tests/test_audit_confirmations.py::TestNobodyDecidedInTime::"

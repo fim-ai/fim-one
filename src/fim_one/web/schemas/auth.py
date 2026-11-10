@@ -96,8 +96,10 @@ class LoginWithCodeRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: str
-    password: str
+    # Bounded like the other addresses: what is typed here is looked up and,
+    # for a failed attempt, recorded.
+    email: str = Field(..., max_length=255)
+    password: str = Field(..., max_length=1000)
 
 
 class TokenResponse(BaseModel):
