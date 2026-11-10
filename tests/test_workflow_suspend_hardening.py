@@ -1383,3 +1383,23 @@ class TestTheHeartbeatThread:
             _HeldEngine.release.set()
             await locked.wait()
             await free.wait()
+
+
+class TestATriggerCallerLearnsWhyARunCouldNotWait:
+    async def test_the_waiting_limit_has_its_own_code(
+        self, rig: Rig, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from fim_one.web.api import workflows as wf_api
+        from fim_one.web.schemas.workflow import WorkflowTriggerRequest
+
+        # A step before the approval, so the limit is met at the step.
+        monkeypatch.setenv("WORKFLOW_MAX_WAITING_RUNS_PER_USER", "1")
+        assert (await rig.start()).status == "waiting"
+        with patch.object(rig.service, "_refuse_if_running", return_value=None):
+            with patch.object(rig.service, "refuse_if_cannot_wait", return_value=None, create=True):
+                response = await wf_api._execute_trigger(
+                    await rig.workflow(), WorkflowTriggerRequest(inputs={})
+                )
+        assert response.data["status"] == "failed"
+        assert response.data["error_code"] == "workflow_waiting_limit_reached"
+        assert "too many runs" in response.data["error"]

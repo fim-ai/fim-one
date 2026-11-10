@@ -159,6 +159,8 @@
   "workflow_input_invalid": "Input \"{input}\" must be {expected}.",
   "cannot_delete_active_run": "A run that is still in progress cannot be deleted.",
   "workflow_run_already_finished": "This run has already ended, so there was nothing to cancel.",
+  "workflow_waiting_limit_reached": "Too many of your runs are already waiting for a decision. Decide or cancel some of them, then run the workflow again.",
+  "workflow_suspend_state_too_large": "The run could not wait for a decision: the steps before the approval produced more data than a waiting run may keep.",
   "node_not_found": "That step is not in the saved workflow. Save the workflow and try again.",
   "node_not_testable": "This kind of step cannot be tested on its own.",
   "schedule_cron_required": "Enter a cron expression to enable the schedule.",
