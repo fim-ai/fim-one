@@ -10,8 +10,15 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.audit import actions
 from fim_one.db import get_session
 from fim_one.web.exceptions import AppError
+from fim_one.web.audit_events import (
+    record_resource,
+    record_resource_change,
+    record_unpublish_by_other,
+    snapshot,
+)
 from fim_one.web.auth import get_current_user, get_user_org_ids
 from fim_one.web.platform import MARKET_ORG_ID, is_market_org
 from fim_one.db.models import Agent, User
@@ -80,6 +87,24 @@ def _agent_to_response(agent: Agent, *, is_owner: bool) -> AgentResponse:
         created_at=agent.created_at.isoformat() if agent.created_at else "",
         updated_at=agent.updated_at.isoformat() if agent.updated_at else None,
     )
+
+
+# What an audit record compares of an agent: whether it runs, when it asks
+# a human, who may answer and through which channel, and what it may reach.
+# A change to anything else (its name, its instructions) is a content edit.
+AGENT_AUDITED_FIELDS = (
+    "is_active",
+    "confirmation_mode",
+    "confirmation_approver_scope",
+    "require_confirmation_for_all",
+    "approval_channel_id",
+    "connector_ids",
+    "kb_ids",
+    "mcp_server_ids",
+    "skill_ids",
+    "tool_categories",
+    "sandbox_config",
+)
 
 
 async def _get_owned_agent(
@@ -386,6 +411,7 @@ async def create_agent(
         status="draft",
     )
     db.add(agent)
+    await record_resource(db, current_user, actions.AGENT_CREATE, "agent", agent)
     await db.commit()
     result = await db.execute(select(Agent).where(Agent.id == agent.id))
     agent = result.scalar_one()
@@ -474,6 +500,7 @@ async def update_agent(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     agent = await _get_owned_agent(agent_id, current_user.id, db)
+    before = snapshot(agent, AGENT_AUDITED_FIELDS)
 
     update_data = body.model_dump(exclude_unset=True)
     # Checked when it changes: the settings form sends the whole model config
@@ -523,6 +550,9 @@ async def update_agent(
     else:
         reverted = False
 
+    await record_resource_change(
+        db, current_user, actions.AGENT_UPDATE, "agent", agent, before
+    )
     await db.commit()
     result = await db.execute(select(Agent).where(Agent.id == agent.id))
     agent = result.scalar_one()
@@ -544,6 +574,7 @@ async def delete_agent(
     await purge_resource_subscriptions(
         db, resource_type="agent", resource_id=agent_id
     )
+    await record_resource(db, current_user, actions.AGENT_DELETE, "agent", agent)
     await db.delete(agent)
     await db.commit()
     return ApiResponse(data={"deleted": agent_id})
@@ -677,6 +708,9 @@ async def unpublish_agent(
         raise AppError("unpublish_denied", status_code=403)
 
     # Log BEFORE clearing org_id so we capture which org it was unpublished from
+    await record_unpublish_by_other(
+        db, current_user, actions.AGENT_UNPUBLISH_BY_ADMIN, "agent", agent
+    )
     if agent.org_id:
         from fim_one.web.api.reviews import log_review_event
         await log_review_event(
@@ -750,6 +784,9 @@ async def fork_agent(
         status="draft",
     )
     db.add(forked)
+    await record_resource(
+        db, current_user, actions.AGENT_CREATE, "agent", forked, detail=f"fork of {source.id}"
+    )
     await db.commit()
 
     result = await db.execute(

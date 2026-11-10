@@ -16,8 +16,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from fim_one.core.audit import actions
 from fim_one.db import get_session
 from fim_one.core.utils import spawn_background
+from fim_one.web.audit_events import record_resource, record_resource_change, snapshot
 from fim_one.web.auth import get_current_user
 from fim_one.web.services.quota_enforcer import get_quota_checked_user
 from fim_one.web.exceptions import AppError
@@ -112,6 +114,11 @@ async def _get_owned_kb(
 # ── KB CRUD ──────────────────────────────────────────────────────
 
 
+# What an audit record compares of a knowledge base: whether it is on. Its
+# documents and settings are content.
+KB_AUDITED_FIELDS = ("is_active",)
+
+
 @router.post("", response_model=ApiResponse)
 async def create_kb(
     body: KBCreate,
@@ -129,6 +136,7 @@ async def create_kb(
         status="active",
     )
     db.add(kb)
+    await record_resource(db, current_user, actions.KB_CREATE, "kb", kb)
     await db.commit()
     result = await db.execute(
         select(KnowledgeBase).where(KnowledgeBase.id == kb.id)
@@ -190,10 +198,12 @@ async def update_kb(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     kb = await _get_owned_kb(kb_id, current_user.id, db)
+    before = snapshot(kb, KB_AUDITED_FIELDS)
     update_data = body.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(kb, field, value)
 
+    await record_resource_change(db, current_user, actions.KB_UPDATE, "kb", kb, before)
     await db.commit()
     result = await db.execute(
         select(KnowledgeBase).where(KnowledgeBase.id == kb.id)
@@ -236,6 +246,7 @@ async def delete_kb(
     await purge_resource_subscriptions(
         db, resource_type="knowledge_base", resource_id=kb_id
     )
+    await record_resource(db, current_user, actions.KB_DELETE, "kb", kb)
     await db.delete(kb)
     await db.commit()
     return ApiResponse(data={"deleted": kb_id})
@@ -1238,6 +1249,8 @@ async def toggle_knowledge_base(
     if kb.user_id != current_user.id:
         raise AppError("permission_denied", status_code=403)
 
+    before = snapshot(kb, KB_AUDITED_FIELDS)
     kb.is_active = not kb.is_active
+    await record_resource_change(db, current_user, actions.KB_UPDATE, "kb", kb, before)
     await db.commit()
     return ApiResponse(data={"id": kb_id, "is_active": kb.is_active})

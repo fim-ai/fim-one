@@ -8,7 +8,7 @@ into the ``changes`` of an event. It keeps secrets out by construction:
   MCP address rule uses), is recorded as ``{"changed": True}`` and nothing
   else;
 - a value shaped like a credential, whatever its field is called, is
-  recorded as ``***``;
+  recorded as ``***`` (a bare UUID is an id, and is kept);
 - a URL loses its user-info, query string, fragment and token-shaped path
   segments (:func:`fim_one.core.assembly.mcp_address.strip_url_secrets`,
   the stripper call records and logs already go through);
@@ -19,6 +19,7 @@ into the ``changes`` of an event. It keeps secrets out by construction:
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Collection, Mapping
 from typing import Any
 
@@ -48,6 +49,19 @@ def safe_text(text: str | None, *, limit: int = _MAX_TEXT) -> str | None:
     return stripped if len(stripped) <= limit else stripped[: limit - 1] + "…"
 
 
+def _is_identifier(value: str) -> bool:
+    """Whether *value* is a bare UUID: how rows are named here, not a credential.
+
+    The shape rule takes any UUID for a possible token. In a change record
+    a bare UUID is the id of a bound resource, a channel or a user, and the
+    record is of no use without it. A UUID inside a URL is still cut.
+    """
+    try:
+        return str(uuid.UUID(value)) == value.lower() and len(value) == 36
+    except ValueError:
+        return False
+
+
 def _printable(value: Any) -> Any:
     """*value* as it may be stored: a scalar, a short list of scalars, or ``***``."""
     from fim_one.core.assembly.mcp_address import value_is_secret_shaped
@@ -55,6 +69,8 @@ def _printable(value: Any) -> Any:
     if value is None or isinstance(value, bool | int | float):
         return value
     if isinstance(value, str):
+        if _is_identifier(value):
+            return value
         if value_is_secret_shaped(value) and "://" not in value:
             return "***"
         return safe_text(value)
@@ -93,8 +109,11 @@ def diff_changes(
         was, now = old.get(name), new.get(name)
         if was == now:
             continue
-        if name in secret_fields or names_a_secret(name):
+        shown_was, shown_now = _printable(was), _printable(now)
+        if name in secret_fields or names_a_secret(name) or shown_was == shown_now:
+            # A secret, or two values that differ only in what was cut from
+            # them (the token in a URL): it changed, and that is all.
             changes[name] = dict(CHANGED)
         else:
-            changes[name] = {"from": _printable(was), "to": _printable(now)}
+            changes[name] = {"from": shown_was, "to": shown_now}
     return changes or None

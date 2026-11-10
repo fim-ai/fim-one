@@ -61,19 +61,43 @@ class TestDiffChanges:
             }
         }
 
+    def test_values_that_differ_only_in_the_secret_part_say_changed(self) -> None:
+        changes = diff_changes(
+            {"url": "https://mcp.example.test/mcp?token=old-old-old"},
+            {"url": "https://mcp.example.test/mcp?token=new-new-new"},
+        )
+        assert changes == {"url": {"changed": True}}
+
     def test_a_nested_structure_is_never_copied(self) -> None:
         changes = diff_changes(
             {"headers": {"X-Token": "a"}, "tools": [{"name": "a", "key": SECRET}]},
             {"headers": {"X-Token": SECRET}, "tools": [{"name": "b", "key": SECRET}]},
         )
-        assert changes == {
-            "headers": {"from": "(changed)", "to": "(changed)"},
-            "tools": {"from": "(changed)", "to": "(changed)"},
+        assert changes == {"headers": {"changed": True}, "tools": {"changed": True}}
+        # Set where there was nothing: that much is said.
+        assert diff_changes({"inputs": None}, {"inputs": {"a": SECRET}}) == {
+            "inputs": {"from": None, "to": "(changed)"}
         }
 
     def test_a_list_of_ids_is_kept(self) -> None:
         changes = diff_changes({"connector_ids": ["c-1"]}, {"connector_ids": ["c-1", "c-2"]})
         assert changes == {"connector_ids": {"from": ["c-1"], "to": ["c-1", "c-2"]}}
+
+    def test_a_uuid_is_an_id_not_a_credential(self) -> None:
+        """Resources, channels and users are named by UUID: a record of what
+        an agent was bound to is of no use with the ids masked."""
+        first, second = "03cc1615-6573-43c1-ba2e-12fed03ecef5", "9a1b2c3d-0000-4e5f-8a9b-0c1d2e3f4a5b"
+        changes = diff_changes(
+            {"connector_ids": [first], "approval_channel_id": None},
+            {"connector_ids": [first, second], "approval_channel_id": second},
+        )
+        assert changes == {
+            "connector_ids": {"from": [first], "to": [first, second]},
+            "approval_channel_id": {"from": None, "to": second},
+        }
+        # Inside a URL it is where hosted services put the secret: cut.
+        hook = diff_changes({"url": None}, {"url": f"https://h.test/hook/{second}"})
+        assert hook == {"url": {"from": None, "to": "https://h.test/hook/***"}}
 
     def test_only_the_named_fields_are_compared(self) -> None:
         changes = diff_changes(

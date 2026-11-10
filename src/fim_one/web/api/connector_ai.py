@@ -13,7 +13,9 @@ from sqlalchemy.orm import selectinload
 
 from fim_one.core.model.types import ChatMessage
 from fim_one.core.utils import get_language_directive
+from fim_one.core.audit import actions
 from fim_one.db import get_session
+from fim_one.web.audit_events import record_resource, record_resource_change, snapshot
 from fim_one.web.auth import get_current_user
 from fim_one.web.services.quota_enforcer import get_quota_checked_user
 from fim_one.core.model.structured import structured_llm_call
@@ -31,7 +33,13 @@ from fim_one.web.schemas.connector import (
     ConnectorResponse,
     OpenAPIImportRequest,
 )
-from fim_one.web.api.connectors import _get_owned_connector, _action_to_response, _connector_to_response, _resolve_openapi_spec
+from fim_one.web.api.connectors import (
+    CONNECTOR_AUDITED_FIELDS,
+    _action_to_response,
+    _connector_to_response,
+    _get_owned_connector,
+    _resolve_openapi_spec,
+)
 from fim_one.web.exceptions import AppError
 from fim_one.core.tool.connector.openapi_parser import parse_openapi_spec
 
@@ -322,6 +330,14 @@ async def ai_create_connector(
             )
             db.add(action)
 
+        await record_resource(
+            db,
+            current_user,
+            actions.CONNECTOR_CREATE,
+            "connector",
+            connector,
+            detail=f"from an OpenAPI document, by the AI builder; {len(action_dicts)} action(s)",
+        )
         await db.commit()
         msg = f"Imported {len(action_dicts)} action(s) from OpenAPI spec."
         msg_key = "ai_connector_imported"
@@ -366,6 +382,14 @@ async def ai_create_connector(
             except Exception as exc:
                 logger.warning("Failed to create action from AI output: %s", exc)
 
+        await record_resource(
+            db,
+            current_user,
+            actions.CONNECTOR_CREATE,
+            "connector",
+            connector,
+            detail=f"drafted by the AI builder; {created_count} action(s)",
+        )
         await db.commit()
         msg = f"Created connector with {created_count} action(s)."
         msg_key = "ai_connector_created"
@@ -456,6 +480,15 @@ async def ai_generate_actions(
             failed.append(f"Action #{i}: {exc}")
             logger.warning("Failed to create action #%d: %s", i, exc)
 
+    if created:
+        await record_resource(
+            db,
+            current_user,
+            actions.CONNECTOR_ACTIONS_IMPORT,
+            "connector",
+            connector,
+            detail=f"{len(created)} action(s) drafted by the AI builder",
+        )
     await db.commit()
 
     parts = [f"Created {len(created)} action(s)."]
@@ -481,6 +514,7 @@ async def ai_refine_action(
 ) -> ApiResponse:
     """Refine connector actions using AI instructions."""
     connector = await _get_owned_connector(connector_id, current_user.id, db)
+    connector_before = snapshot(connector, CONNECTOR_AUDITED_FIELDS)
     lang_directive = get_language_directive(current_user.preferred_language)
 
     connector_ctx = _build_connector_context(connector)
@@ -546,6 +580,7 @@ async def ai_refine_action(
     deleted: list[str] = []
     failed: list[str] = []
     connector_changed = False
+    auth_config_replaced = False
 
     for i, op_item in enumerate(operations):
         try:
@@ -630,6 +665,8 @@ async def ai_refine_action(
                 for field, value in data.items():
                     if field in connector_updatable:
                         setattr(connector, field, value)
+                        if field == "auth_config":
+                            auth_config_replaced = True
                 await db.flush()
                 connector_changed = True
 
@@ -639,6 +676,30 @@ async def ai_refine_action(
             failed.append(f"Op #{i}: {exc}")
             logger.warning("Failed to execute operation #%d: %s", i, exc)
 
+    # What the AI builder did to the connector's actions, as one record, and
+    # what it changed of the connector itself (address, sign-in) as another.
+    if created or updated or deleted:
+        await record_resource(
+            db,
+            current_user,
+            actions.CONNECTOR_ACTIONS_IMPORT,
+            "connector",
+            connector,
+            detail=(
+                f"by the AI builder: {len(created)} created, {len(updated)} updated, "
+                f"{len(deleted)} deleted"
+            ),
+        )
+    await record_resource_change(
+        db,
+        current_user,
+        actions.CONNECTOR_UPDATE,
+        "connector",
+        connector,
+        connector_before,
+        also_changed=["auth_config"] if auth_config_replaced else (),
+        detail="by the AI builder",
+    )
     await db.commit()
 
     # Build connector_updated response if connector settings were changed

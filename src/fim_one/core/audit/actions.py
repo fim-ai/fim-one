@@ -187,6 +187,57 @@ WORKFLOW_TRIGGER_KEY_REVOKE = "workflow.trigger_key_revoke"
 WORKFLOW_SCHEDULE_UPDATE = "workflow.schedule_update"
 WORKFLOW_SCHEDULE_DELETE = "workflow.schedule_delete"
 
+# -- Resources: agents, connectors, MCP servers, knowledge bases, skills, workflows --
+# ``create`` covers every way a resource comes to exist (new, fork, from a
+# template, imported, drafted by the AI builder; the detail says which).
+# ``update`` is written only when something that decides who or what the
+# resource may reach changed: switched on or off, a confirmation setting, a
+# bound resource, the address it calls, the fallback switch, a stored
+# credential (recorded as changed, never by value). An edit of a name or of
+# instructions is content and leaves no event.
+# ``unpublish_by_admin``: someone other than the owner (an organization's
+# administrator or a platform administrator) took it back out of its
+# organization; the detail names the owner.
+AGENT_CREATE = "agent.create"
+AGENT_UPDATE = "agent.update"
+AGENT_DELETE = "agent.delete"
+AGENT_UNPUBLISH_BY_ADMIN = "agent.unpublish_by_admin"
+CONNECTOR_CREATE = "connector.create"
+CONNECTOR_UPDATE = "connector.update"
+CONNECTOR_DELETE = "connector.delete"
+CONNECTOR_UNPUBLISH_BY_ADMIN = "connector.unpublish_by_admin"
+# One action of a connector: what it calls and whether a human is asked first.
+CONNECTOR_ACTION_CREATE = "connector.action_create"
+CONNECTOR_ACTION_UPDATE = "connector.action_update"
+CONNECTOR_ACTION_DELETE = "connector.action_delete"
+# Several actions added at once (an OpenAPI document, the AI builder).
+CONNECTOR_ACTIONS_IMPORT = "connector.actions_import"
+# What of a database connector's tables and columns the model may see, and
+# which columns are masked as personal data.
+CONNECTOR_SCHEMA_FENCE_UPDATE = "connector.schema_fence_update"
+MCP_SERVER_CREATE = "mcp_server.create"
+MCP_SERVER_UPDATE = "mcp_server.update"
+MCP_SERVER_DELETE = "mcp_server.delete"
+MCP_SERVER_UNPUBLISH_BY_ADMIN = "mcp_server.unpublish_by_admin"
+KB_CREATE = "kb.create"
+KB_UPDATE = "kb.update"
+KB_DELETE = "kb.delete"
+SKILL_CREATE = "skill.create"
+SKILL_UPDATE = "skill.update"
+SKILL_DELETE = "skill.delete"
+SKILL_UNPUBLISH_BY_ADMIN = "skill.unpublish_by_admin"
+WORKFLOW_CREATE = "workflow.create"
+WORKFLOW_UPDATE = "workflow.update"
+WORKFLOW_DELETE = "workflow.delete"
+WORKFLOW_UNPUBLISH_BY_ADMIN = "workflow.unpublish_by_admin"
+# The author removed run records: one, or all of a workflow's.
+WORKFLOW_RUN_DELETE = "workflow.run_delete"
+WORKFLOW_RUNS_CLEAR = "workflow.runs_clear"
+# Subscribing to a resource published to an organization or the Market, and
+# giving the subscription up.
+MARKET_SUBSCRIBE = "market.subscribe"
+MARKET_UNSUBSCRIBE = "market.unsubscribe"
+
 ACTIONS: frozenset[str] = frozenset(ADMIN_ACTIONS) | frozenset(
     value
     for name, value in dict(globals()).items()

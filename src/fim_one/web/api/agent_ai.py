@@ -13,7 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fim_one.core.model.structured import StructuredCallResult
 from fim_one.core.model.types import ChatMessage
 from fim_one.core.utils import get_language_directive
+from fim_one.core.audit import actions
 from fim_one.db import get_session
+from fim_one.web.audit_events import record_resource, record_resource_change, snapshot
 from fim_one.web.auth import get_current_user
 from fim_one.web.services.quota_enforcer import get_quota_checked_user
 from fim_one.core.model.structured import structured_llm_call
@@ -31,6 +33,7 @@ from fim_one.web.schemas.agent import (
 from fim_one.web.exceptions import AppError
 from fim_one.web.schemas.common import ApiResponse
 from fim_one.web.api.agents import (
+    AGENT_AUDITED_FIELDS,
     _agent_to_response,
     _get_owned_agent,
     _validate_binding_ownership,
@@ -270,6 +273,9 @@ async def ai_create_agent(
         status="draft",
     )
     db.add(agent)
+    await record_resource(
+        db, current_user, actions.AGENT_CREATE, "agent", agent, detail="drafted by the AI builder"
+    )
     await db.commit()
 
     result = await db.execute(select(Agent).where(Agent.id == agent.id))
@@ -293,6 +299,7 @@ async def ai_refine_agent(
 ) -> ApiResponse:
     """Refine an existing agent using AI instruction."""
     agent = await _get_owned_agent(agent_id, current_user.id, db)
+    before = snapshot(agent, AGENT_AUDITED_FIELDS)
     lang_directive = get_language_directive(current_user.preferred_language)
 
     resources_ctx = await _build_available_resources_context(current_user.id, db)
@@ -346,6 +353,15 @@ async def ai_refine_agent(
         kb_ids=data.get("kb_ids"),
     )
 
+    await record_resource_change(
+        db,
+        current_user,
+        actions.AGENT_UPDATE,
+        "agent",
+        agent,
+        before,
+        detail="by the AI builder",
+    )
     await db.commit()
     result = await db.execute(select(Agent).where(Agent.id == agent.id))
     agent = result.scalar_one()

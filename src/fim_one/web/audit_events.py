@@ -9,7 +9,7 @@ change it describes; call them before ``db.commit()``.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import replace
 from typing import Any
 
@@ -17,8 +17,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.core.audit import writer as audit
 from fim_one.core.audit.events import Outcome
+from fim_one.core.audit.redact import CHANGED, diff_changes
 
-__all__ = ["label_of", "record_account", "record_resource"]
+__all__ = [
+    "label_of",
+    "record_account",
+    "record_resource",
+    "record_resource_change",
+    "record_unpublish_by_other",
+    "snapshot",
+]
 
 
 def label_of(user: Any) -> str | None:
@@ -73,6 +81,9 @@ async def record_resource(
     The event belongs to the organization the resource is published to
     (``resource.org_id``) unless *org_id* says otherwise.
     """
+    if getattr(resource, "id", None) is None:
+        # A row just added gets its id when it is flushed.
+        await db.flush()
     await audit.record(
         action,
         actor=audit.actor_of(user),
@@ -84,4 +95,66 @@ async def record_resource(
         changes=changes,
         detail=detail,
         db=db,
+    )
+
+
+def snapshot(resource: Any, fields: Collection[str]) -> dict[str, Any]:
+    """The values of *fields* on *resource* now, for comparing after a change."""
+    state: dict[str, Any] = {}
+    for field in fields:
+        value = getattr(resource, field, None)
+        # A JSON column hands out the list it will be mutated through.
+        state[field] = list(value) if isinstance(value, list) else value
+    return state
+
+
+async def record_resource_change(
+    db: AsyncSession,
+    user: Any,
+    action: str,
+    resource_type: str,
+    resource: Any,
+    before: Mapping[str, Any],
+    *,
+    secret_fields: Collection[str] = (),
+    also_changed: Collection[str] = (),
+    detail: str | None = None,
+    org_id: str | None = None,
+) -> bool:
+    """Record what changed on *resource* among the fields *before* holds.
+
+    Nothing is recorded when none of them changed: an edit of a resource's
+    content (its name, its instructions) is not a security event, a change
+    of who or what it may reach is. *also_changed* names secrets that were
+    replaced and are not fields of the row (a stored credential); each is
+    recorded as changed and nothing more. Returns whether a record was
+    written.
+    """
+    changes = (
+        diff_changes(before, snapshot(resource, list(before)), secret_fields=secret_fields) or {}
+    )
+    changes.update({name: dict(CHANGED) for name in also_changed})
+    if not changes:
+        return False
+    await record_resource(
+        db, user, action, resource_type, resource, org_id=org_id, changes=changes, detail=detail
+    )
+    return True
+
+
+async def record_unpublish_by_other(
+    db: AsyncSession, user: Any, action: str, resource_type: str, resource: Any
+) -> None:
+    """Someone other than its owner took *resource* back out of its organization.
+
+    An organization's administrator or a platform administrator may do so.
+    The owner unpublishing their own resource is in the review trail and
+    needs no more; this records who unpublished whose. Call it while the
+    resource still names its organization.
+    """
+    owner_id = getattr(resource, "user_id", None)
+    if owner_id == user.id:
+        return
+    await record_resource(
+        db, user, action, resource_type, resource, detail=f"owner={owner_id}"
     )

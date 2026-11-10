@@ -25,7 +25,12 @@ from fim_one.core.audit.redact import diff_changes
 from fim_one.db import get_session
 from fim_one.core.security import get_safe_async_client, is_private_ip
 from fim_one.web.exceptions import AppError
-from fim_one.web.audit_events import record_resource
+from fim_one.web.audit_events import (
+    record_resource,
+    record_resource_change,
+    record_unpublish_by_other,
+    snapshot,
+)
 from fim_one.web.auth import get_current_user, get_user_org_ids
 from fim_one.web.platform import MARKET_ORG_ID, is_market_org
 from fim_one.core.assembly.confirmation import (
@@ -291,6 +296,11 @@ def _version_to_response(v: WorkflowVersion) -> WorkflowVersionResponse:
         created_by=v.created_by,
         created_at=v.created_at.isoformat() if v.created_at else "",
     )
+
+
+# What an audit record compares of a workflow: whether it may run, and the
+# address its completion webhook posts to. Its steps are content.
+WORKFLOW_AUDITED_FIELDS = ("is_active", "status", "webhook_url")
 
 
 async def _get_owned_workflow(
@@ -586,6 +596,7 @@ async def create_workflow(
         is_active=body.is_active,
     )
     db.add(wf)
+    await record_resource(db, current_user, actions.WORKFLOW_CREATE, "workflow", wf)
     await db.commit()
     result = await db.execute(select(Workflow).where(Workflow.id == wf.id))
     wf = result.scalar_one()
@@ -731,6 +742,14 @@ async def create_workflow_from_template(
         is_active=True,
     )
     db.add(wf)
+    await record_resource(
+        db,
+        current_user,
+        actions.WORKFLOW_CREATE,
+        "workflow",
+        wf,
+        detail="from a built-in template",
+    )
     await db.commit()
     result = await db.execute(select(Workflow).where(Workflow.id == wf.id))
     wf = result.scalar_one()
@@ -1221,6 +1240,7 @@ async def update_workflow(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     wf = await _get_owned_workflow(workflow_id, current_user.id, db)
+    before = snapshot(wf, WORKFLOW_AUDITED_FIELDS)
 
     update_data = body.model_dump(exclude_unset=True)
 
@@ -1298,6 +1318,9 @@ async def update_workflow(
     else:
         reverted = False
 
+    await record_resource_change(
+        db, current_user, actions.WORKFLOW_UPDATE, "workflow", wf, before
+    )
     await db.commit()
     result = await db.execute(select(Workflow).where(Workflow.id == wf.id))
     wf = result.scalar_one()
@@ -1351,6 +1374,14 @@ async def fork_workflow(
         forked_from=source.id,
     )
     db.add(forked)
+    await record_resource(
+        db,
+        current_user,
+        actions.WORKFLOW_CREATE,
+        "workflow",
+        forked,
+        detail=f"fork of {source.id}",
+    )
     await db.commit()
     result = await db.execute(select(Workflow).where(Workflow.id == forked.id))
     forked = result.scalar_one()
@@ -1373,6 +1404,7 @@ async def delete_workflow(
     await close_requests_of_runs(
         db, select(WorkflowRun.id).where(WorkflowRun.workflow_id == workflow_id)
     )
+    await record_resource(db, current_user, actions.WORKFLOW_DELETE, "workflow", wf)
     await db.delete(wf)
     await db.commit()
     return ApiResponse(data={"deleted": workflow_id})
@@ -1488,6 +1520,9 @@ async def unpublish_workflow(
         raise AppError("unpublish_denied", status_code=403)
 
     # Log BEFORE clearing org_id
+    await record_unpublish_by_other(
+        db, current_user, actions.WORKFLOW_UNPUBLISH_BY_ADMIN, "workflow", wf
+    )
     if wf.org_id:
         from fim_one.web.api.reviews import log_review_event
         await log_review_event(
@@ -3061,7 +3096,7 @@ async def delete_workflow_run(
     Only completed, failed, or cancelled runs can be deleted.
     Running/pending runs must be cancelled first.
     """
-    await _get_owned_workflow(workflow_id, current_user.id, db)
+    wf = await _get_owned_workflow(workflow_id, current_user.id, db)
 
     result = await db.execute(
         select(WorkflowRun).where(
@@ -3078,6 +3113,15 @@ async def delete_workflow_run(
         raise AppError("cannot_delete_active_run", status_code=409)
 
     await close_requests_of_runs(db, [run.id])
+    # A run record is what shows that the workflow ran and how it ended.
+    await record_resource(
+        db,
+        current_user,
+        actions.WORKFLOW_RUN_DELETE,
+        "workflow",
+        wf,
+        detail=f"run={run.id}; status={run.status}; mode={run.mode}",
+    )
     await db.delete(run)
     await db.commit()
     return ApiResponse(data={"deleted": run_id})
@@ -3093,7 +3137,7 @@ async def clear_workflow_runs(
 
     Active (pending/running) runs are preserved.
     """
-    await _get_owned_workflow(workflow_id, current_user.id, db)
+    wf = await _get_owned_workflow(workflow_id, current_user.id, db)
 
     finished = (
         WorkflowRun.workflow_id == workflow_id,
@@ -3102,6 +3146,15 @@ async def clear_workflow_runs(
     )
     await close_requests_of_runs(db, select(WorkflowRun.id).where(*finished))
     del_result = cast(CursorResult[Any], await db.execute(delete(WorkflowRun).where(*finished)))
+    if del_result.rowcount:
+        await record_resource(
+            db,
+            current_user,
+            actions.WORKFLOW_RUNS_CLEAR,
+            "workflow",
+            wf,
+            detail=f"deleted {del_result.rowcount} finished run(s)",
+        )
     await db.commit()
     return ApiResponse(data={"deleted_count": del_result.rowcount})
 
@@ -3220,6 +3273,9 @@ async def import_workflow(
         status="draft",
     )
     db.add(wf)
+    await record_resource(
+        db, current_user, actions.WORKFLOW_CREATE, "workflow", wf, detail="imported"
+    )
     await db.commit()
     result = await db.execute(select(Workflow).where(Workflow.id == wf.id))
     wf = result.scalar_one()
