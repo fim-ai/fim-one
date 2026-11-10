@@ -482,3 +482,105 @@ class TestWorkflowStepsHoldNoRuleOfTheirOwn:
             "core/workflow asks fim_one.core.assembly.visibility.authorize_use:\n  "
             + "\n  ".join(offenders)
         )
+
+
+REPO = SRC.parent.parent
+# Every tree that holds Python importing the package.
+PYTHON_TREES = ("src", "tests", "evals", "scripts", "examples")
+REMOVED_NOTIFICATION_PACKAGE = "fim_one.core.notification"
+INSTANCE_WEBHOOK_VARIABLES = ("LARK_WEBHOOK_URL", "SLACK_WEBHOOK_URL", "WECOM_WEBHOOK_URL")
+INSTANCE_CHANNELS_MODULE = "core/channels/instance.py"
+
+
+def _repo_py_files() -> list[Path]:
+    return sorted(
+        py
+        for tree in PYTHON_TREES
+        if (REPO / tree).is_dir()
+        for py in (REPO / tree).rglob("*.py")
+        if ".venv" not in py.parts and "node_modules" not in py.parts
+    )
+
+
+def _imported_modules(path: Path) -> list[tuple[int, str]]:
+    """``(line, dotted module)`` of every import in *path*, relative ones resolved.
+
+    ``from pkg import name`` yields both ``pkg`` and ``pkg.name``: the name
+    may be a submodule. A file that does not parse yields nothing.
+    """
+    package: list[str] = []
+    if SRC in path.parents:
+        package = ["fim_one", *path.relative_to(SRC).parts[:-1]]
+    found: list[tuple[int, str]] = []
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except SyntaxError:
+        # A fixture that is broken on purpose imports nothing.
+        return found
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            found.extend((node.lineno, alias.name) for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level:
+                base = package[: len(package) - (node.level - 1)] if package else []
+                module = ".".join([*base, *(node.module.split(".") if node.module else [])])
+            else:
+                module = node.module or ""
+            found.append((node.lineno, module))
+            found.extend((node.lineno, f"{module}.{alias.name}") for alias in node.names)
+    return found
+
+
+class TestOneOutboundStack:
+    """Phase 5: everything that leaves for a chat or a mailbox is a channel.
+
+    The notification providers became channel types under
+    ``core/channels``; the package they lived in is gone and must not come
+    back, and the instance-wide webhook variables (deprecated) are read in
+    one module so that removing them is one deletion.
+    """
+
+    def test_the_notification_package_is_not_imported_anywhere(self) -> None:
+        removed = REMOVED_NOTIFICATION_PACKAGE
+        pattern = re.compile(re.escape(removed) + r"\b")
+        offenders: list[str] = []
+        for py in _repo_py_files():
+            if py == Path(__file__).resolve():
+                continue
+            where = py.relative_to(REPO)
+            offenders.extend(
+                f"{where}:{lineno}: imports {module}"
+                for lineno, module in _imported_modules(py)
+                if module == removed or module.startswith(removed + ".")
+            )
+            # importlib / patch targets name the module in a string.
+            offenders.extend(
+                f"{where}:{lineno}: names {removed}"
+                for lineno, line in _source_lines(py)
+                if pattern.search(line)
+            )
+        assert not (CORE / "notification").exists(), (
+            "core/notification is back; a new outbound type belongs in core/channels"
+        )
+        assert not offenders, (
+            f"{removed} was removed; use fim_one.core.channels:\n  "
+            + "\n  ".join(sorted(set(offenders)))
+        )
+
+    def test_the_instance_webhook_variables_are_read_in_one_module(self) -> None:
+        files = [
+            py
+            for py in sorted(SRC.rglob("*.py"))
+            if py.relative_to(SRC).as_posix() != INSTANCE_CHANNELS_MODULE
+        ]
+        offenders = [
+            hit for name in INSTANCE_WEBHOOK_VARIABLES for hit in _occurrences(name, files)
+        ]
+        assert not offenders, (
+            f"only {INSTANCE_CHANNELS_MODULE} may name the instance-wide webhook "
+            "variables; ask it for the channel (instance_channel / instance_webhooks):\n  "
+            + "\n  ".join(offenders)
+        )
+        # The gate looks at something: the one module does read all three.
+        instance = (SRC / INSTANCE_CHANNELS_MODULE).read_text(encoding="utf-8")
+        assert all(name in instance for name in INSTANCE_WEBHOOK_VARIABLES)
