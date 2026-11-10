@@ -177,3 +177,44 @@ class TestStripUrlSecrets:
         stripped = strip_url_secrets(f"failed for url '{url}' twice")
         assert stripped == "failed for url 'https://host.example:8443/mcp' twice"
         assert url_carries_secret("https://host.example:8443/mcp") is False
+
+    @pytest.mark.parametrize("left", ["", "'", '"', "(", "[", "<", "url='"])
+    @pytest.mark.parametrize(
+        "secret",
+        ["p)ss'w", 'a"b', "x]y", "q>r<s", "a)b'c", "end)", "end'", "]}>", "plain", "a,b;c"],
+    )
+    def test_a_secret_with_quotes_or_brackets_in_it_is_cut_whole(
+        self, left: str, secret: str
+    ) -> None:
+        """The match used to stop at ``) ' " ] < >`` and leave the rest standing."""
+        right = {"'": "'", '"': '"', "(": ")", "[": "]", "<": ">", "url='": "'"}.get(left, "")
+        marked = secret.replace("plain", "PLAIN") + "SECRETMARK"
+        for url in (
+            f"https://user:{marked}@host.example/mcp",
+            f"https://host.example/mcp?token={marked}",
+            f"https://host.example/mcp#{marked}",
+            f"https://{marked}:{marked}@host.example/mcp?a={marked}&b={marked}#{marked}",
+        ):
+            stripped = strip_url_secrets(f"failed for {left}{url}{right} after 3 tries")
+            assert stripped is not None
+            assert "SECRETMARK" not in stripped
+            assert stripped.startswith(f"failed for {left}https://host.example/mcp")
+            assert stripped.endswith(" after 3 tries")
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("(see https://host.example/mcp).", "(see https://host.example/mcp)."),
+            ("at https://host.example/mcp, then", "at https://host.example/mcp, then"),
+            ("URL('https://h.example/mcp?t=abc')", "URL('https://h.example/mcp')"),
+            ("http://[::1]:8080/mcp?x=1", "http://[::1]:8080/mcp"),
+            ("https://h.example/p?next=https://u:p@h2.example/x", "https://h.example/p"),
+            ("https://user:p/ss@h.example/mcp", "https://h.example/mcp"),
+            ("//user:pw@h.example/mcp", "//h.example/mcp"),
+            ("h.example/mcp?token=abc failed", "h.example/mcp failed"),
+            ("why? because a=b", "why? because a=b"),
+            ("http://127.0.0.1:99/a@b", "http://127.0.0.1:99/a@b"),
+        ],
+    )
+    def test_what_is_kept_and_what_is_cut(self, text: str, expected: str) -> None:
+        assert strip_url_secrets(text) == expected

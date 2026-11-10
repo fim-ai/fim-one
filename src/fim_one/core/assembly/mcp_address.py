@@ -34,7 +34,7 @@ import re
 import traceback
 from collections.abc import Sequence
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urlsplit
 
 __all__ = [
     "SECRET_NAME_WORDS",
@@ -46,8 +46,32 @@ __all__ = [
     "url_carries_secret",
 ]
 
-# A URL inside free text: scheme://… up to whitespace or a closing quote/bracket.
-_URL_IN_TEXT = re.compile(r"""[A-Za-z][A-Za-z0-9+.\-]*://[^\s'"<>)\]]+""")
+# A URL inside free text: scheme://… up to white space. A URL has no white
+# space; anything else can be part of it, a quote or a bracket in a password
+# included, so nothing else ends the match.
+_URL_IN_TEXT = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*://\S+")
+# What follows a URL in a sentence rather than belonging to it. Only looked
+# for at the very end of a match.
+_TRAILING_PUNCTUATION = ".,;:!?)]}>'\"`"
+# User-info and a ``?name=value`` tail outside anything the pass above took
+# for a URL (no scheme, as in ``//user:pass@host/x``).
+_STRAY_USERINFO = re.compile(r"//[^/\s@]*@")
+_STRAY_QUERY = re.compile(r"\?[^\s=&?#]+=\S*")
+
+
+def _bare_url(url: str) -> str:
+    """*url* with user-info, query string and fragment cut."""
+    scheme, _, rest = url.partition("://")
+    # The query string and the fragment: everything from the first of them.
+    rest = re.split(r"[?#]", rest, maxsplit=1)[0]
+    authority, slash, path = rest.partition("/")
+    if "@" in authority:
+        authority = authority.rsplit("@", 1)[1]
+    elif "@" in path and not re.fullmatch(r"[^:]*(:\d*)?|\[[^\]]*\](:\d*)?", authority):
+        # ``user:p/ss@host/x``: a password with a slash in it. No client
+        # would send it there, but what is printed must not keep it.
+        authority, slash, path = path.rsplit("@", 1)[1].partition("/")
+    return f"{scheme}://{authority}{slash}{path}"
 
 
 def strip_url_secrets(text: str | None) -> str | None:
@@ -56,27 +80,25 @@ def strip_url_secrets(text: str | None) -> str | None:
     An error message quotes the URL that failed, and a URL can carry a
     credential (``https://user:pass@host/…``, ``…?api_key=…``). A record or
     a log keeps where the call went, not what authenticated it.
+
+    The secret may hold any character but white space, quotes and brackets
+    included: a URL is taken up to the next white space, and only closing
+    punctuation at its very end is given back to the sentence. What the
+    text has after a cut query string is gone with it.
     """
     if not text:
         return text
 
     def _bare(match: re.Match[str]) -> str:
         url = match.group(0)
-        try:
-            parts = urlsplit(url)
-            host = parts.hostname or ""
-            if ":" in host:  # an IPv6 literal
-                host = f"[{host}]"
-            if parts.port is not None:
-                host = f"{host}:{parts.port}"
-            return urlunsplit((parts.scheme, host, parts.path, "", ""))
-        except ValueError:
-            # Not parseable: cut it where the secrets would start.
-            scheme, _, rest = url.partition("://")
-            rest = rest.split("?", 1)[0].split("#", 1)[0]
-            return f"{scheme}://{rest.rsplit('@', 1)[-1]}"
+        core = url.rstrip(_TRAILING_PUNCTUATION)
+        # The closing punctuation goes back to the sentence. Where it was
+        # the end of a secret instead, it is a bracket or a quote of it.
+        return _bare_url(core) + url[len(core) :]
 
-    return _URL_IN_TEXT.sub(_bare, text)
+    stripped = _URL_IN_TEXT.sub(_bare, text)
+    stripped = _STRAY_USERINFO.sub("//", stripped)
+    return _STRAY_QUERY.sub("", stripped)
 
 
 def error_without_url_secrets(exc: BaseException) -> str:
