@@ -88,6 +88,20 @@ class TestLive:
         # The same connection, reused, not a new one.
         assert json.loads(await read_only.run(sql="SELECT CONNECTION_ID()"))["rows"] == connection
 
+    async def test_use_does_not_move_later_queries_to_another_database(
+        self, live_mysql: LiveDatabase, one_connection: None
+    ) -> None:
+        read_write = _tool(live_mysql, read_only=False)
+        read_only = _tool(live_mysql, read_only=True)
+        configured = json.loads(await read_only.run(sql="SELECT DATABASE()"))["rows"]
+        assert not (await read_write.run(sql="USE mysql")).startswith("[")
+        for tool in (read_only, read_write):
+            assert json.loads(await tool.run(sql="SELECT DATABASE()"))["rows"] == configured
+        orders = json.loads(await read_only.run(sql=f"SELECT COUNT(*) FROM {live_mysql.orders}"))
+        assert orders["rows"] == [[2]]
+        # A read-only connector does not take USE at all.
+        assert (await read_only.run(sql="USE mysql")).startswith("[SQL Safety Error]")
+
     async def test_a_read_write_connector_is_reset_between_its_own_calls_too(
         self, live_mysql: LiveDatabase, one_connection: None
     ) -> None:
@@ -152,6 +166,7 @@ class TestReset:
         conn._read_ok_packet = AsyncMock(side_effect=error)
         conn.set_charset = AsyncMock()
         conn.autocommit = AsyncMock()
+        conn.select_db = AsyncMock()
         return conn
 
     async def test_it_resets_then_states_the_character_set_and_autocommit(self) -> None:
@@ -161,6 +176,13 @@ class TestReset:
         conn._execute_command.assert_awaited_once_with(0x1F, b"")
         conn.set_charset.assert_awaited_once_with("utf8mb4")
         conn.autocommit.assert_awaited_once_with(True)
+        conn.select_db.assert_not_awaited()
+
+    async def test_it_goes_back_to_the_connectors_database(self) -> None:
+        driver = MySQLDriver({"database": "app"})
+        conn = self._connection()
+        assert await driver._reset(conn) is True
+        conn.select_db.assert_awaited_once_with("app")
 
     async def test_a_server_that_does_not_know_the_command_stops_reuse(self) -> None:
         driver = MySQLDriver({})

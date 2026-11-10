@@ -85,8 +85,9 @@ class MySQLDriver(DatabaseDriver):
         ran, on a read-write connector by design (``SET NAMES gbk``), and
         the next caller would run under them. So each checkout first sends
         ``COM_RESET_CONNECTION`` (MySQL 5.7.3+, MariaDB 10.2.4+), which
-        clears all of them, and then states the character set and
-        auto-commit again.
+        clears all of them, and then states the character set, auto-commit,
+        the connector's database (the reset keeps whatever ``USE`` chose)
+        and the SQL mode again.
 
         A server that does not know the command gets a connection of its
         own for every call, closed afterwards: with no reliable reset,
@@ -154,8 +155,13 @@ class MySQLDriver(DatabaseDriver):
         try:
             await send(_COM_RESET_CONNECTION, b"")
             await read_ok()
-            await conn.set_charset(self._connection_settings()["charset"])
+            settings = self._connection_settings()
+            await conn.set_charset(settings["charset"])
             await conn.autocommit(True)
+            if settings["db"]:
+                # The reset keeps the current database: after "USE other"
+                # every later query on this connection would run there.
+                await conn.select_db(settings["db"])
             await self._set_sql_mode(conn)
         except Exception as exc:
             if getattr(exc, "args", (None,))[0] == _ER_UNKNOWN_COM_ERROR:
