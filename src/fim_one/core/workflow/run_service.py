@@ -446,7 +446,11 @@ class StartedRun:
                             suspend_state=self._suspend_state if suspended else None,
                         )
                     finally:
-                        self._service._active_runs.pop(self.run_id, None)
+                        # Only this object's registration: by now the run may
+                        # have been continued, by a new StartedRun under the
+                        # same id (a decision made the moment it was stored).
+                        if self._service._active_runs.get(self.run_id) is self:
+                            del self._service._active_runs[self.run_id]
                         if suspended:
                             # The run is not over: its files stay, no webhook
                             # yet. A decision made while other branches were

@@ -583,6 +583,43 @@ class TestOneContinuation:
         assert _CountingEngine.continued == [run.id]
 
 
+    async def test_a_run_continued_the_moment_it_is_stored_stays_registered(
+        self, rig: Rig
+    ) -> None:
+        """The first part of the run is still tidying up when the continuation
+        starts under the same id: the tidying must not unregister it, or the
+        process would stop stamping its heartbeat and could not cancel it."""
+        from fim_one.core.workflow.types import NodeResult, NodeStatus
+
+        release = asyncio.Event()
+        store_run = rig.service._persist
+        continued: list[Any] = []
+
+        async def store_then_continue(out: rs.RunOutcome, **kwargs: Any) -> None:
+            await store_run(out, **kwargs)
+            if out.status == "waiting":
+                request = await rig.request_of(out.run_id)
+                await rig.flip(request.id, status="approved")
+                continued.append(await rig.service.resume_run(out.run_id))
+
+        async def held_end(node: Any, store: Any, ctx: Any) -> Any:
+            await release.wait()
+            return NodeResult(node_id=node.id, status=NodeStatus.COMPLETED, output={})
+
+        with (
+            patch.object(rig.service, "_persist", store_then_continue),
+            patch("fim_one.core.workflow.nodes.EndExecutor.execute", side_effect=held_end),
+        ):
+            outcome = await rig.start()
+            assert outcome.status == "waiting" and continued[0] is not None
+
+            assert rig.service.active_run_ids() == [outcome.run_id]
+            assert rig.service.cancel_run(outcome.run_id) is True  # reachable
+            release.set()
+            await continued[0].wait()
+        assert rig.service.active_run_ids() == []
+
+
 # ---------------------------------------------------------------------------
 # Cancelling or failing closes the run's requests
 # ---------------------------------------------------------------------------
