@@ -387,7 +387,10 @@ class TestTheServerAndTheCheckReadTheSameStatement:
             assert "NO_BACKSLASH_ESCAPES" in mode[1] and "ANSI_QUOTES" in mode[1]
             assert "NO_BACKSLASH_ESCAPES" not in mode[0] and "ANSI_QUOTES" not in mode[0]
             # The rest of the server's mode is kept.
-            assert set(mode[0].split(",")) == set(before.split(",")) - {"ANSI_QUOTES"}
+            assert set(mode[0].split(",")) == set(before.split(",")) - {
+                "ANSI_QUOTES",
+                "NO_BACKSLASH_ESCAPES",
+            }
             for sql in (
                 "SELECT '\\' , LOAD_FILE('/etc/hostname') , '\\'",
                 f"SELECT 1, '\\' INTO OUTFILE '{path}' -- '",
