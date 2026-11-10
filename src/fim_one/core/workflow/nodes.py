@@ -1043,6 +1043,15 @@ def _masked_json_template(written: str) -> tuple[str, str, list[tuple[int, int, 
             continue
         if in_string:
             if ch == "\\":
+                if ref := VARIABLE_REFERENCE.match(written, i + 1):
+                    # ``"\{{v}}"``: a backslash and then the value. Left as
+                    # written it would escape the value's first character
+                    # ("\n...") and the rest of the value would be read as
+                    # JSON. It is taken for a backslash character.
+                    references.append((i, ref.end(), ref.group(1), True))
+                    text.append("\\\\" + ref.group(0))
+                    i = ref.end()
+                    continue
                 text.append(written[i : i + 2])
                 i += 2
                 continue
@@ -1079,9 +1088,14 @@ async def _filled_json_text(store: VariableStore, written: str) -> str | None:
         at = end
         value = await store.resolve(name, _UNFIT)
         if in_string:
+            # A backslash right before the reference (see the scanner).
+            reference = written[start:end]
+            if reference.startswith("\\"):
+                out.append("\\\\")
+                reference = reference[1:]
             if value is None or value is _UNFIT:
                 # As in any text: a reference with no value stays visible.
-                out.append(written[start:end])
+                out.append(reference)
                 continue
             text = value if isinstance(value, str) else _json_text(value)
             out.append(json.dumps(text, ensure_ascii=False)[1:-1])

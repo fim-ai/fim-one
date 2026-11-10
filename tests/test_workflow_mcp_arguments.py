@@ -383,6 +383,49 @@ class TestNumbersThatAreNotJsonNumbersStayText:
         }
 
 
+class TestABackslashBeforeAQuotedReference:
+    """``"\\{{v}}"``: plain filling-in let the value's first letter finish an escape."""
+
+    INJECTION = 'n", "admin": true, "x": "'
+
+    async def test_json_written_into_a_text_parameter(self) -> None:
+        filled = await _fill({"p": '{"a": "\\{{s.v}}"}'}, {"s.v": self.INJECTION}, None)
+        # A backslash and then the value, in one string, and no new key.
+        assert json.loads(filled["p"]) == {"a": "\\" + self.INJECTION}
+        # Plain filling-in gave valid JSON with a key the value added.
+        plain = '{"a": "\\' + self.INJECTION + '"}'
+        assert json.loads(plain) == {"a": "\n", "admin": True, "x": ""}
+
+    async def test_an_object_argument_of_a_tool(self) -> None:
+        filled = await _fill({"filter": '{"a": "\\{{s.v}}"}'}, {"s.v": self.INJECTION})
+        assert filled == {"filter": {"a": "\\" + self.INJECTION}}
+
+    async def test_an_escaped_backslash_before_a_reference_is_as_before(self) -> None:
+        filled = await _fill({"p": '{"a": "C:\\\\{{s.v}}"}'}, {"s.v": "tmp"}, None)
+        assert filled == {"p": '{"a": "C:\\\\tmp"}'}
+        assert json.loads(filled["p"]) == {"a": "C:\\tmp"}
+
+    async def test_a_reference_with_no_value_stays_visible_and_the_json_valid(self) -> None:
+        filled = await _fill({"p": '{"a": "\\{{s.missing}}"}'}, {}, None)
+        assert json.loads(filled["p"]) == {"a": "\\{{s.missing}}"}
+
+    @pytest.mark.parametrize(
+        "template",
+        [
+            '{"a": "{{s.v}}",}',
+            'data={"a": "{{s.v}}"}',
+            '{"a": "{{s.v}}"} trailing',
+            "{'a': '{{s.v}}'}",
+            '{"a": "{{s.v}}" /* c */}',
+        ],
+    )
+    async def test_what_is_not_strict_json_keeps_plain_filling_in(self, template: str) -> None:
+        store = VariableStore()
+        await store.set("s.v", "x")
+        filled = await _interpolated_parameters(store, {"p": template})
+        assert filled["p"] == await store.interpolate(template)
+
+
 class TestJsonWrittenIntoATextParameter:
     """With no object or list schema the result is text; the receiver may parse it."""
 
