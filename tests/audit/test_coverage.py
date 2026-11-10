@@ -152,3 +152,65 @@ class TestTheRecordIsWhereTheTableSaysItIs:
             path = REPO / file_name
             assert path.is_file(), node
             assert names and f"def {names[-1]}(" in path.read_text(encoding="utf-8"), node
+
+
+SRC = REPO / "src" / "fim_one"
+
+
+def _committing_tool_classes() -> dict[str, str]:
+    """Classes under ``core/tool/builtin`` whose code commits, with their source."""
+    import ast
+
+    found: dict[str, str] = {}
+    for path in sorted((SRC / "core" / "tool" / "builtin").glob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        for node in ast.walk(ast.parse(text)):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            commits = any(
+                isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Attribute)
+                and call.func.attr == "commit"
+                for call in ast.walk(node)
+            )
+            if commits:
+                found[node.name] = ast.get_source_segment(text, node) or ""
+    return found
+
+
+class TestWritersThatAreNotRoutes:
+    def test_every_builtin_tool_that_commits_is_listed(self) -> None:
+        """A tool an agent calls changes things with no route in between: a
+        new one that writes must say what it records, or why nothing."""
+        writing = set(_committing_tool_classes())
+        listed = set(c.TOOL_WRITERS) | set(c.TOOL_WRITERS_EXEMPT)
+
+        assert writing - listed == set(), "builtin tools that commit and are not in TOOL_WRITERS"
+        assert listed - writing == set(), "listed tools that no longer commit"
+        assert not set(c.TOOL_WRITERS) & set(c.TOOL_WRITERS_EXEMPT)
+
+    def test_a_listed_tool_records_through_the_shared_helper_and_has_a_test(self) -> None:
+        sources = _committing_tool_classes()
+        for name, (recorded, node) in c.TOOL_WRITERS.items():
+            for action in recorded:
+                assert actions.is_registered(action), (name, action)
+            # The same recorder the HTTP routes use, so the two cannot drift.
+            assert "audited." in sources[name] or "_record_" in sources[name], name
+            file_name, *names = node.split("::")
+            text = (REPO / file_name).read_text(encoding="utf-8")
+            assert f"def {names[-1]}(" in text, node
+        for name, reason in c.TOOL_WRITERS_EXEMPT.items():
+            assert reason.strip(), name
+
+    def test_every_other_module_that_commits_is_accounted_for(self) -> None:
+        committing = {
+            str(path.relative_to(SRC))
+            for folder in ("core", "web", "rag", "db")
+            for path in (SRC / folder).rglob("*.py")
+            if ".commit()" in path.read_text(encoding="utf-8")
+            and not str(path.relative_to(SRC)).startswith("web/api/")
+        }
+        assert committing - set(c.OTHER_WRITERS) == set()
+        assert set(c.OTHER_WRITERS) - committing == set()
+        for script in c.UNRECORDED_SCRIPTS:
+            assert (REPO / script).is_file(), script

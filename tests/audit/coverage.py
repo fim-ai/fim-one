@@ -113,6 +113,7 @@ def mutating_routes(app: Any) -> Iterator[tuple[Route, Any]]:
 
 
 AUDITED: dict[Route, tuple[str, ...]] = {
+    ("POST", "/api/builder/session"): ("agent.create",),
     ("POST", "/api/workflows/{workflow_id}/test-webhook"): ("workflow.webhook_test",),
     ("PATCH", "/api/auth/profile"): ("auth.username_change",),
     ("POST", "/api/channels/{channel_id}/test-approval"): ("channel.test_approval",),
@@ -419,7 +420,6 @@ EXEMPT: dict[Route, str] = {
     # session
     ("POST", "/api/auth/oauth/bind-ticket"): SESSION,
     ("POST", "/api/auth/refresh"): SESSION,
-    ("POST", "/api/builder/session"): SESSION,
     ("POST", "/api/chat/ticket"): SESSION,
     # payment_redirect
     ("POST", "/api/billing/checkout"): PAYMENT_REDIRECT,
@@ -556,4 +556,118 @@ RECORDED_IN: dict[Route, tuple[str, ...]] = {
         "fim_one.core.assembly.confirmation",
     ),
     ("POST", "/api/channels/{channel_id}/callback"): ("fim_one.core.assembly.confirmation",),
+    # The schema form's saves and the database builder tools share the recorder.
+    ("PUT", "/api/connectors/{connector_id}/schemas/bulk"): ("fim_one.core.audit.resources",),
+    ("PUT", "/api/connectors/{connector_id}/schemas/{schema_id}"): (
+        "fim_one.core.audit.resources",
+    ),
+    ("PUT", "/api/connectors/{connector_id}/schemas/{schema_id}/columns/{col_id}"): (
+        "fim_one.core.audit.resources",
+    ),
 }
+
+
+# ---------------------------------------------------------------------------
+# Writers that are not routes
+# ---------------------------------------------------------------------------
+
+# Builtin tools (``core/tool/builtin``) that commit to the database: an agent
+# calls them in a chat, so no route sees the change. ``test_coverage.py``
+# finds every tool class that commits and requires it here, in one table or
+# the other. Class name -> (the actions it records, the test that shows it).
+_TOOLS = "tests/test_audit_builder_tools.py::"
+TOOL_WRITERS: dict[str, tuple[tuple[str, ...], str]] = {
+    "ConnectorCreateActionTool": (
+        ("connector.action_create",),
+        _TOOLS + "TestConnectorBuilder::test_creating_changing_and_deleting_an_action",
+    ),
+    "ConnectorUpdateActionTool": (
+        ("connector.action_update",),
+        _TOOLS + "TestConnectorBuilder::test_creating_changing_and_deleting_an_action",
+    ),
+    "ConnectorDeleteActionTool": (
+        ("connector.action_delete",),
+        _TOOLS + "TestConnectorBuilder::test_creating_changing_and_deleting_an_action",
+    ),
+    "ConnectorUpdateSettingsTool": (
+        ("connector.update",),
+        _TOOLS + "TestConnectorBuilder::test_changing_where_the_connector_calls_and_how_it_signs_in",
+    ),
+    "ConnectorImportOpenAPITool": (
+        ("connector.actions_import",),
+        _TOOLS + "TestConnectorBuilder::test_importing_actions_from_an_openapi_document",
+    ),
+    "AgentUpdateSettingsTool": (
+        ("agent.update",),
+        _TOOLS + "TestAgentBuilder::test_tool_categories_and_bound_connectors",
+    ),
+    "AgentAddConnectorTool": (
+        ("agent.update",),
+        _TOOLS + "TestAgentBuilder::test_tool_categories_and_bound_connectors",
+    ),
+    "AgentRemoveConnectorTool": (
+        ("agent.update",),
+        _TOOLS + "TestAgentBuilder::test_tool_categories_and_bound_connectors",
+    ),
+    "AgentSetModelTool": (
+        ("agent.update",),
+        _TOOLS + "TestAgentBuilder::test_a_model_change_is_content_and_leaves_no_record",
+    ),
+    "DbUpdateConnectorSettingsTool": (
+        ("connector.update",),
+        _TOOLS + "TestDatabaseBuilder::test_switching_read_only_off",
+    ),
+    "DbSetTableVisibilityTool": (
+        ("connector.schema_fence_update",),
+        _TOOLS + "TestDatabaseBuilder::test_hiding_and_showing_tables",
+    ),
+    "DbBatchSetVisibilityTool": (
+        ("connector.schema_fence_update",),
+        _TOOLS + "TestDatabaseBuilder::test_hiding_and_showing_tables",
+    ),
+}
+# Tools that commit and record nothing, with the reason.
+TOOL_WRITERS_EXEMPT: dict[str, str] = {
+    "DbAnnotateTableTool": "sets a table's display name and description: an annotation",
+    "DbAnnotateColumnTool": "sets a column's display name and description: an annotation",
+    "AskUserQuestionTool": (
+        "stores the user's answer to the agent's question; an answer is not a decision"
+    ),
+}
+
+# Every other module outside ``web/api`` that commits, and what becomes of
+# what it writes. A new module that commits must be listed (``test_coverage``).
+OTHER_WRITERS: dict[str, str] = {
+    "core/audit/writer.py": "the audit writer itself",
+    "core/assembly/calls.py": "the call record (connector_call_logs), its own table",
+    "core/assembly/confirmation.py": (
+        "approval requests; decisions and expiries are recorded (confirmation.*)"
+    ),
+    "core/channels/expiry.py": "the expiry sweep; records confirmation.expire",
+    "core/memory/db.py": "conversation messages: content",
+    "core/tool/builtin/agent_builder.py": "builder tools, see TOOL_WRITERS",
+    "core/tool/builtin/connector_builder.py": "builder tools, see TOOL_WRITERS",
+    "core/tool/builtin/db_builder.py": "builder tools, see TOOL_WRITERS",
+    "core/tool/builtin/ask_user_question.py": "see TOOL_WRITERS_EXEMPT",
+    "core/tool/connector/database/drivers/postgresql.py": (
+        "commits on the connector's own database, not this one"
+    ),
+    "core/workflow/run_service.py": "workflow runs: run events, T10 P7",
+    "core/workflow/run_recovery.py": "closes stale runs: run events, T10 P7",
+    "core/workflow/run_cleanup.py": (
+        "the retention sweep deletes old runs: run events, T10 P7 (the administrators' "
+        "manual clean-up is recorded: workflow.cleanup_runs)"
+    ),
+    "core/workflow/scheduler.py": "starts scheduled runs: run events, T10 P7",
+    "web/audit_events.py": "helpers that record",
+    "web/auth.py": "an API key's last-used time and request count: a counter, by design",
+    "web/services/billing_flag.py": (
+        "the billing switch, called from the administration routes that record "
+        "billing.activate / enable / disable"
+    ),
+    "web/services/subscription_lifecycle.py": "records billing.plan_change",
+}
+# Command-line scripts for developers that write to the database with no
+# user and no request (``scripts/``). Not recorded: they are run by whoever
+# operates the instance, on its database directly.
+UNRECORDED_SCRIPTS = ("scripts/seed_workflow_examples.py", "scripts/smoke_feishu_gate.py")

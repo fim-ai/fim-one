@@ -9,7 +9,9 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.audit import actions
 from fim_one.db import get_session
+from fim_one.web.audit_events import record_resource
 from fim_one.web.auth import get_current_user
 from fim_one.web.exceptions import AppError
 from fim_one.db.models import Agent
@@ -200,5 +202,16 @@ async def create_builder_session(
         is_builder=True,
     )
     db.add(agent)
+    # A hidden agent that holds the builder tools for this one target. It is
+    # an agent like any other in the tables, so its creation is recorded as
+    # one; opening the builder again reuses it and records nothing.
+    await record_resource(
+        db,
+        current_user,
+        actions.AGENT_CREATE,
+        "agent",
+        agent,
+        detail=f"builder assistant for {body.target_type} {body.target_id}",
+    )
     await db.commit()
     return ApiResponse(data={"builder_agent_id": agent.id})

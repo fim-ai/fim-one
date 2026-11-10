@@ -14,6 +14,9 @@ from typing import Any
 
 from sqlalchemy import select
 
+from fim_one.core.audit import actions as audit_actions
+from fim_one.core.audit import resources as audited
+
 from ..base import BaseTool
 
 logger = logging.getLogger(__name__)
@@ -40,6 +43,23 @@ class _AgentBuilderBase(BaseTool, ABC):
             )
         )
         return result.scalar_one_or_none()
+
+    async def _record_change(self, db: Any, agent: Any, before: dict[str, Any]) -> None:
+        """Record what the tool changed of the agent's audited state, if anything.
+
+        The same comparison the agent's own settings form is recorded with;
+        the actor is the person chatting with the builder.
+        """
+        await audited.record_resource_change(
+            db,
+            await audited.builder_actor(db, self.user_id),
+            audit_actions.AGENT_UPDATE,
+            "agent",
+            agent,
+            before,
+            after=audited.agent_state(agent),
+            detail=audited.THROUGH_THE_BUILDER,
+        )
 
 
 class AgentGetSettingsTool(_AgentBuilderBase):
@@ -154,9 +174,11 @@ class AgentUpdateSettingsTool(_AgentBuilderBase):
             if not updates:
                 return "[Error] At least one updatable field must be provided."
 
+            before = audited.agent_state(agent)
             for field, value in updates.items():
                 setattr(agent, field, value)
 
+            await self._record_change(db, agent, before)
             await db.commit()
             return json.dumps(
                 {"updated": True, "fields": list(updates.keys())},
@@ -289,8 +311,10 @@ class AgentAddConnectorTool(_AgentBuilderBase):
                     ensure_ascii=False,
                 )
 
+            before = audited.agent_state(agent)
             current.append(connector_id)
             agent.connector_ids = current
+            await self._record_change(db, agent, before)
             await db.commit()
 
             return json.dumps(
@@ -354,8 +378,10 @@ class AgentRemoveConnectorTool(_AgentBuilderBase):
                     ensure_ascii=False,
                 )
 
+            before = audited.agent_state(agent)
             current.remove(connector_id)
             agent.connector_ids = current
+            await self._record_change(db, agent, before)
             await db.commit()
 
             return json.dumps(
@@ -423,8 +449,10 @@ class AgentSetModelTool(_AgentBuilderBase):
                 return "[Error] Agent not found or access denied."
 
             current_cfg: dict[str, Any] = dict(agent.model_config_json or {})
+            before = audited.agent_state(agent)
             current_cfg.update(updates)
             agent.model_config_json = current_cfg
+            await self._record_change(db, agent, before)
             await db.commit()
 
             return json.dumps(

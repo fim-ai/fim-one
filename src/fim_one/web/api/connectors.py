@@ -20,7 +20,12 @@ from fim_one.core.tool.connector.openapi_parser import parse_openapi_spec
 from fim_one.core.tool.connector.semantic_tags import get_all_semantic_tags
 from fim_one.web.exceptions import AppError
 from fim_one.core.audit import actions
-from fim_one.core.audit.redact import CHANGED, diff_changes, safe_path
+from fim_one.core.audit.resources import (
+    ACTION_AUDITED_FIELDS,
+    CONNECTOR_AUDITED_FIELDS,
+    action_deleted_detail,
+    connector_created_changes,
+)
 from fim_one.db import get_session
 from fim_one.web.audit_events import (
     record_resource,
@@ -211,30 +216,6 @@ def _connector_to_response(
         created_at=connector.created_at.isoformat() if connector.created_at else "",
         updated_at=connector.updated_at.isoformat() if connector.updated_at else None,
     )
-
-
-# What an audit record compares of a connector: whether it is on, where it
-# calls, how it signs in, and whether others may borrow the owner's
-# credential. The credential itself is recorded only as changed.
-CONNECTOR_AUDITED_FIELDS = ("is_active", "allow_fallback", "type", "base_url", "auth_type")
-# ... and of one of its actions: what it calls and whether a human is asked first.
-ACTION_AUDITED_FIELDS = ("requires_confirmation", "method", "path")
-
-
-async def connector_created_changes(
-    db: AsyncSession, connector: Connector
-) -> dict[str, dict[str, Any]] | None:
-    """The ``changes`` of a new connector, however it came to exist.
-
-    Its audited fields from nothing (where it calls, how it signs in,
-    whether others may borrow the owner's credential), and whether a default
-    credential was stored with it; the credential itself is not recorded.
-    """
-    await db.flush()
-    changes = diff_changes(None, snapshot(connector, CONNECTOR_AUDITED_FIELDS)) or {}
-    if await _has_default_credential(connector.id, db):
-        changes["default_credential"] = dict(CHANGED)
-    return changes or None
 
 
 async def _get_owned_connector(
@@ -1384,8 +1365,7 @@ async def delete_action(
         "connector_action",
         action,
         org_id=connector.org_id,
-        # Never the raw path: it can carry a key in a segment or its query.
-        detail=f"connector={connector_id}; {action.method} {safe_path(action.path)}",
+        detail=action_deleted_detail(connector_id, action),
     )
     await db.delete(action)
     await db.commit()

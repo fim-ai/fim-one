@@ -16,6 +16,9 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from fim_one.core.audit import actions as audit_actions
+from fim_one.core.audit import resources as audited
+
 from ..base import BaseTool
 
 logger = logging.getLogger(__name__)
@@ -42,6 +45,23 @@ class _DbBuilderBase(BaseTool, ABC):
             )
         )
         return result.scalar_one_or_none()
+
+    async def _record_fences(self, db: Any, fences: dict[str, dict[str, Any]]) -> None:
+        """Record the visibility switches the tool flipped, as the schema form's save is."""
+        if not fences:
+            return
+        from fim_one.db.models.connector import Connector
+
+        connector = await db.get(Connector, self.connector_id)
+        if connector is None:
+            return
+        await audited.record_fences(
+            db,
+            await audited.builder_actor(db, self.user_id),
+            connector,
+            fences,
+            detail=audited.THROUGH_THE_BUILDER,
+        )
 
     async def _get_schemas(self, db: Any) -> list[Any]:
         from fim_one.db.models.database_schema import DatabaseSchema
@@ -165,9 +185,22 @@ class DbUpdateConnectorSettingsTool(_DbBuilderBase):
                 return "[Error] Connector not found or access denied."
 
             current_cfg = dict(connector.db_config or {})
+            # The fences of the connection (read-only, TLS, row and time
+            # limits) are not secrets: recorded with before and after.
+            before = {f"db_config.{key}": current_cfg.get(key) for key in updates}
             current_cfg.update(updates)
             connector.db_config = current_cfg
             flag_modified(connector, "db_config")
+            await audited.record_resource_change(
+                db,
+                await audited.builder_actor(db, self.user_id),
+                audit_actions.CONNECTOR_UPDATE,
+                "connector",
+                connector,
+                before,
+                after={f"db_config.{key}": value for key, value in updates.items()},
+                detail=audited.THROUGH_THE_BUILDER,
+            )
             await db.commit()
 
         return json.dumps(
@@ -529,9 +562,15 @@ class DbSetTableVisibilityTool(_DbBuilderBase):
             if schema is None:
                 return f"[Error] Table '{table_name}' not found."
 
+            fences: dict[str, dict[str, Any]] = {}
+            audited.note_fence(fences, table_name, "is_visible", schema.is_visible, visible)
             schema.is_visible = visible
             for col in (schema.columns or []):
+                audited.note_fence(
+                    fences, f"{table_name}.{col.column_name}", "is_visible", col.is_visible, visible
+                )
                 col.is_visible = visible
+            await self._record_fences(db, fences)
             await db.commit()
 
         action = "shown" if visible else "hidden"
@@ -597,15 +636,25 @@ class DbBatchSetVisibilityTool(_DbBuilderBase):
         async with create_session() as db:
             schemas = await self._get_schemas(db)
             matched = 0
+            fences: dict[str, dict[str, Any]] = {}
             for s in schemas:
                 hit = s.table_name in exact_set or any(
                     s.table_name.startswith(p) for p in prefixes
                 )
                 if hit:
+                    audited.note_fence(fences, s.table_name, "is_visible", s.is_visible, visible)
                     s.is_visible = visible
                     for col in (s.columns or []):
+                        audited.note_fence(
+                            fences,
+                            f"{s.table_name}.{col.column_name}",
+                            "is_visible",
+                            col.is_visible,
+                            visible,
+                        )
                         col.is_visible = visible
                     matched += 1
+            await self._record_fences(db, fences)
             await db.commit()
 
         action = "shown" if visible else "hidden"

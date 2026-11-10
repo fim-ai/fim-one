@@ -33,10 +33,12 @@ from fim_one.web.schemas.connector import (
     ConnectorResponse,
     OpenAPIImportRequest,
 )
-from fim_one.web.api.connectors import (
+from fim_one.core.audit.resources import (
     ACTION_AUDITED_FIELDS,
     CONNECTOR_AUDITED_FIELDS,
     connector_created_changes,
+)
+from fim_one.web.api.connectors import (
     _action_to_response,
     _connector_to_response,
     _get_owned_connector,

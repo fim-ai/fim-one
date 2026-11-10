@@ -32,8 +32,8 @@ from fim_one.web.schemas.agent import (
 )
 from fim_one.web.exceptions import AppError
 from fim_one.web.schemas.common import ApiResponse
+from fim_one.core.audit.resources import AGENT_AUDITED_FIELDS
 from fim_one.web.api.agents import (
-    AGENT_AUDITED_FIELDS,
     _agent_to_response,
     _get_owned_agent,
     _validate_binding_ownership,

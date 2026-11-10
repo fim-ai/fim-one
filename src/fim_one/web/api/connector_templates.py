@@ -18,7 +18,7 @@ from sqlalchemy.orm import selectinload
 from fim_one.core.audit import actions
 from fim_one.db import get_session
 from fim_one.web.audit_events import record_resource
-from fim_one.web.api.connectors import connector_created_changes
+from fim_one.core.audit.resources import connector_created_changes
 from fim_one.web.auth import get_current_user
 from fim_one.web.exceptions import AppError
 from fim_one.db.models.connector import Connector, ConnectorAction

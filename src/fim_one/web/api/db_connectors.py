@@ -26,6 +26,7 @@ from fim_one.core.tool.connector.database.pool import ConnectionPoolManager
 from fim_one.core.tool.connector.database.safety import SqlSafetyError, validate_sql
 from fim_one.core.audit import actions
 from fim_one.core.audit import writer as audit
+from fim_one.core.audit.resources import note_fence, record_fences
 from fim_one.db import create_session, get_session
 from fim_one.web.audit_events import record_resource
 from fim_one.web.auth import get_current_user
@@ -61,36 +62,11 @@ router = APIRouter(prefix="/api/connectors", tags=["db-connectors"])
 # ---------------------------------------------------------------------------
 
 
-# The switches on a table or column that decide what the model is shown:
-# hidden or visible, and masked as personal data or not. Display names and
-# descriptions are annotations and leave no record.
-_FENCE_FIELDS = ("is_visible", "is_pii")
-_MAX_RECORDED_FENCES = 50
-
-
-def _note_fence(
-    fences: dict[str, dict[str, Any]], owner: str, field: str, before: Any, after: Any
-) -> None:
-    """Remember a fence switch of table or column *owner* that is being changed."""
-    if field in _FENCE_FIELDS and bool(before) != bool(after):
-        fences[f"{owner}.{field}"] = {"from": bool(before), "to": bool(after)}
-
-
 async def _record_fences(
     db: AsyncSession, user: User, connector: Connector, fences: dict[str, dict[str, Any]]
 ) -> None:
     """Record the fence switches a save changed; nothing when it changed none."""
-    if not fences:
-        return
-    await record_resource(
-        db,
-        user,
-        actions.CONNECTOR_SCHEMA_FENCE_UPDATE,
-        "connector",
-        connector,
-        changes=dict(list(fences.items())[:_MAX_RECORDED_FENCES]),
-        detail=f"{len(fences)} switch(es) changed",
-    )
+    await record_fences(db, audit.actor_of(user), connector, fences)
 
 
 async def _record_query(
@@ -433,7 +409,7 @@ async def bulk_update_schemas(
         # Update table-level fields
         for field in ("display_name", "description", "is_visible"):
             if field in table_update:
-                _note_fence(fences, table_name, field, getattr(schema_obj, field), table_update[field])
+                note_fence(fences, table_name, field, getattr(schema_obj, field), table_update[field])
                 setattr(schema_obj, field, table_update[field])
                 updated_count += 1
 
@@ -448,7 +424,7 @@ async def bulk_update_schemas(
                 col_obj = col_lookup[col_name]
                 for field in ("display_name", "description", "is_visible", "is_pii"):
                     if field in cu:
-                        _note_fence(
+                        note_fence(
                             fences,
                             f"{table_name}.{col_name}",
                             field,
@@ -489,7 +465,7 @@ async def update_schema_table(
 
     update_data = body.model_dump(exclude_unset=True)
     for field, value in update_data.items():
-        _note_fence(fences, schema_obj.table_name, field, getattr(schema_obj, field), value)
+        note_fence(fences, schema_obj.table_name, field, getattr(schema_obj, field), value)
         setattr(schema_obj, field, value)
 
     await _record_fences(db, current_user, connector, fences)
@@ -535,7 +511,7 @@ async def update_schema_column(
     table = await db.get(DatabaseSchema, schema_id)
     owner_name = f"{table.table_name}.{col_obj.column_name}" if table else col_obj.column_name
     for field, value in update_data.items():
-        _note_fence(fences, owner_name, field, getattr(col_obj, field), value)
+        note_fence(fences, owner_name, field, getattr(col_obj, field), value)
         setattr(col_obj, field, value)
 
     await _record_fences(db, current_user, connector, fences)

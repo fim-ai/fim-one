@@ -18,7 +18,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fim_one.core.audit import writer as audit
 from fim_one.core.audit.context import current_request_meta
 from fim_one.core.audit.events import Outcome
-from fim_one.core.audit.redact import CHANGED, diff_changes
+from fim_one.core.audit import resources
+from fim_one.core.audit.redact import diff_changes
+from fim_one.core.audit.resources import snapshot
 
 __all__ = [
     "label_of",
@@ -78,36 +80,18 @@ async def record_resource(
     detail: str | None = None,
     outcome: Outcome = "success",
 ) -> None:
-    """*user* did *action* to *resource* (a row with ``id`` and ``name``).
-
-    The event belongs to the organization the resource is published to
-    (``resource.org_id``) unless *org_id* says otherwise.
-    """
-    if getattr(resource, "id", None) is None:
-        # A row just added gets its id when it is flushed.
-        await db.flush()
-    await audit.record(
+    """*user* did *action* to *resource*; see :func:`fim_one.core.audit.resources.record_resource`."""
+    await resources.record_resource(
+        db,
+        audit.actor_of(user),
         action,
-        actor=audit.actor_of(user),
-        org_id=org_id if org_id is not None else getattr(resource, "org_id", None),
-        target_type=resource_type,
-        target_id=resource.id,
-        target_label=getattr(resource, "name", None),
-        outcome=outcome,
+        resource_type,
+        resource,
+        org_id=org_id,
         changes=changes,
         detail=detail,
-        db=db,
+        outcome=outcome,
     )
-
-
-def snapshot(resource: Any, fields: Collection[str]) -> dict[str, Any]:
-    """The values of *fields* on *resource* now, for comparing after a change."""
-    state: dict[str, Any] = {}
-    for field in fields:
-        value = getattr(resource, field, None)
-        # A JSON column hands out the list it will be mutated through.
-        state[field] = list(value) if isinstance(value, list) else value
-    return state
 
 
 async def record_resource_change(
@@ -124,25 +108,21 @@ async def record_resource_change(
     org_id: str | None = None,
     after: Mapping[str, Any] | None = None,
 ) -> bool:
-    """Record what changed on *resource* among the fields *before* holds.
-
-    Nothing is recorded when none of them changed: an edit of a resource's
-    content (its name, its instructions) is not a security event, a change
-    of who or what it may reach is. *also_changed* names secrets that were
-    replaced and are not fields of the row (a stored credential); each is
-    recorded as changed and nothing more. *after* is the state to compare
-    with when it is not simply the fields of the row (a value kept inside a
-    JSON column). Returns whether a record was written.
-    """
-    now = after if after is not None else snapshot(resource, list(before))
-    changes = diff_changes(before, now, secret_fields=secret_fields) or {}
-    changes.update({name: dict(CHANGED) for name in also_changed})
-    if not changes:
-        return False
-    await record_resource(
-        db, user, action, resource_type, resource, org_id=org_id, changes=changes, detail=detail
+    """What *user* changed on *resource*; see the function of the same name in
+    :mod:`fim_one.core.audit.resources`, which the builder tools call too."""
+    return await resources.record_resource_change(
+        db,
+        audit.actor_of(user),
+        action,
+        resource_type,
+        resource,
+        before,
+        secret_fields=secret_fields,
+        also_changed=also_changed,
+        detail=detail,
+        org_id=org_id,
+        after=after,
     )
-    return True
 
 
 async def record_unpublish_by_other(
