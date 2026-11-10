@@ -370,3 +370,124 @@ class TestSweepReachesEveryWaitingRun:
         selects = [s for s in statements if s.lstrip().upper().startswith("SELECT")]
         # ids, the batch's states, the batch's requests: not one per run.
         assert len(selects) == 3, selects
+
+
+# ---------------------------------------------------------------------------
+# M1. What was approved is what runs
+# ---------------------------------------------------------------------------
+
+
+class TestWhatWasApprovedIsWhatRuns:
+    async def test_an_env_var_edited_while_the_request_waits_does_not_change_the_call(
+        self, rig: Rig, flagged: _Adapter, hooked: Any
+    ) -> None:
+        wf = await rig.workflow()
+        await rig.workflow(
+            _with_node_data(wf.blueprint, "connector_1", parameters={"target": "{{env.TARGET}}"})
+        )
+        env = {"TARGET": "staging-db"}
+        with patch.object(rs, "decrypt_workflow_env", lambda _wf: dict(env)):
+            outcome = await rig.start()
+            assert outcome.status == "waiting"
+            request = await rig.request_of(outcome.run_id)
+            shown = request.payload["tool_args"]
+            assert shown == {"target": "staging-db"}
+
+            env["TARGET"] = "PROD-db"  # the author edits the env vars meanwhile
+            await rig.decide(request.id, "approve")
+            run = await rig.ended(outcome.run_id)
+
+        assert run.status == "completed"
+        assert flagged.calls == [shown]
+
+    async def test_a_variable_another_branch_wrote_meanwhile_does_not_change_the_call(
+        self, rig: Rig, flagged: _Adapter, hooked: Any
+    ) -> None:
+        wf = await rig.workflow()
+        connector = next(n for n in wf.blueprint["nodes"] if n["id"] == "connector_1")
+        connector = {
+            **connector,
+            "data": {
+                **connector["data"],
+                "parameters": {"target": "{{approval_result.decision_note}}"},
+            },
+        }
+        await rig.workflow(
+            {
+                "schema_version": 2,
+                "nodes": [
+                    _node("start_1", "start", "START"),
+                    APPROVAL,
+                    connector,
+                    _node("end_1", "end", "END"),
+                ],
+                "edges": [
+                    _edge("start_1", "human_1"),
+                    _edge("start_1", "connector_1"),
+                    _edge("human_1", "end_1"),
+                    _edge("connector_1", "end_1"),
+                ],
+                "viewport": {"x": 0, "y": 0, "zoom": 1},
+            }
+        )
+        outcome = await rig.start()
+        assert outcome.status == "waiting"
+        requests = {r.kind: r for r in await _requests(rig, outcome.run_id)}
+        shown = requests["confirmation"].payload["tool_args"]
+
+        # The approval step is decided first and writes the variable the
+        # connector's parameter refers to; the run waits again on the other.
+        await rig.decide(requests["workflow_approval"].id, "approve", note="prod-ledger")
+        for _ in range(500):
+            run = await rig.run(outcome.run_id)
+            if run.status == "waiting" and "human_1" not in run.suspend_state["waiting"]:
+                break
+            await asyncio.sleep(0.02)
+        await rig.decide(requests["confirmation"].id, "approve")
+        run = await rig.ended(outcome.run_id)
+
+        assert run.status == "completed"
+        assert flagged.calls == [shown]
+
+    @pytest.mark.parametrize("what", ["action", "connector"])
+    async def test_an_action_or_connector_edited_meanwhile_is_not_run(
+        self, rig: Rig, flagged: _Adapter, hooked: Any, what: str
+    ) -> None:
+        from fim_one.db.models.connector import Connector, ConnectorAction
+
+        outcome = await rig.start()
+        request = await rig.request_of(outcome.run_id)
+        async with rig.factory() as db:
+            if what == "action":
+                await db.execute(
+                    update(ConnectorAction)
+                    .where(ConnectorAction.id == "wipe-1")
+                    .values(path="/wipe-everything")
+                )
+            else:
+                await db.execute(
+                    update(Connector)
+                    .where(Connector.id == request.payload["connector_id"])
+                    .values(base_url="https://elsewhere.example.test")
+                )
+            await db.commit()
+
+        await rig.decide(request.id, "approve")
+
+        run = await rig.ended(outcome.run_id)
+        assert run.status == "failed"
+        assert "changed after the confirmation was requested" in (
+            run.node_results["connector_1"]["error"]
+        )
+        assert flagged.calls == []
+
+    async def test_the_inbox_shows_the_arguments_that_will_be_sent(
+        self, rig: Rig, flagged: _Adapter
+    ) -> None:
+        from fim_one.web.api import workflows as wf_api
+
+        outcome = await rig.start(inputs={"q": "ledger-9"})
+        request = await rig.request_of(outcome.run_id)
+        async with rig.factory() as db:
+            (item,) = (await wf_api.approval_inbox(current_user=rig.owner, db=db)).data["items"]
+        assert item["arguments"] == request.payload["tool_args"] == {"target": "ledger-9"}

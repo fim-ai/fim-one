@@ -673,9 +673,13 @@ def outside_world(factory: async_sessionmaker[AsyncSession]) -> Iterator[Outside
         async def run(self, _query: str) -> Any:
             return SimpleNamespace(answer="done", iterations=1, usage=None)
 
+    asked_payloads: dict[str, dict[str, Any]] = {}
+
     async def _asked(_self: Any, spec: Any) -> Any:
         out.gate_asked.append(str(spec.payload.get("tool_name")))
-        return SimpleNamespace(id="asked", mode="inline")
+        request_id = f"asked-{len(asked_payloads)}"
+        asked_payloads[request_id] = dict(spec.payload)
+        return SimpleNamespace(id=request_id, mode="inline")
 
     async def _approved(_self: Any, _confirmation_id: str, **_kwargs: Any) -> str:
         return "approve"
@@ -683,7 +687,12 @@ def outside_world(factory: async_sessionmaker[AsyncSession]) -> Iterator[Outside
     async def _approved_row(_self: Any, confirmation_id: str) -> Any:
         # What a step that suspended its run reads when it is run again.
         return SimpleNamespace(
-            id=confirmation_id, status="approved", expires_at=None, decision_note=None
+            id=confirmation_id,
+            status="approved",
+            expires_at=None,
+            decision_note=None,
+            # What was asked is what is approved and run.
+            payload=asked_payloads.get(confirmation_id, {}),
         )
 
     with ExitStack() as stack:

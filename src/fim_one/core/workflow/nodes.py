@@ -1245,6 +1245,32 @@ async def _action_tool(
 ACTION_CONFIRMATION_TIMEOUT_HOURS = 24.0
 
 
+def _call_fingerprint(connector: Any, action: Any) -> str:
+    """What a confirmation of this action was a confirmation of.
+
+    A hash of where the call goes and how it is built: the connector's
+    address and authentication type, the action's method, path, parameter
+    schema, body template and response extraction. If it differs between
+    the request and the approval, the person approved something else.
+    """
+    import hashlib
+
+    definition = {
+        "connector_id": connector.id,
+        "base_url": connector.base_url,
+        "auth_type": connector.auth_type,
+        "action_id": action.id,
+        "name": action.name,
+        "method": action.method,
+        "path": action.path,
+        "parameters_schema": action.parameters_schema,
+        "request_body_template": action.request_body_template,
+        "response_extract": action.response_extract,
+    }
+    text = json.dumps(definition, sort_keys=True, default=str, ensure_ascii=False)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 async def _confirmed(
     node: WorkflowNodeDef,
     context: ExecutionContext,
@@ -1253,14 +1279,21 @@ async def _confirmed(
     action: Any,
     params: dict[str, Any],
     t0: float,
-) -> NodeResult | None:
+) -> NodeResult | dict[str, Any]:
     """Put an action flagged "requires confirmation" before a person.
 
-    ``None`` once it is approved: the action may run. Otherwise the step's
-    result: ``WAITING`` when the request was just made or is still open
-    (the run is suspended and this step is run again once it is decided),
-    ``FAILED`` when it was rejected, ran out of time, or nobody can be
-    asked here.
+    Once it is approved: the arguments to call the action with, a
+    ``dict``. They are the ones the request showed, read back from the
+    request; the step's parameters are **not** filled in again, because
+    variables may have changed since (an env var edited, another branch
+    finishing). What was approved is what runs. If the connector or the
+    action was edited in between (:func:`_call_fingerprint`), nothing runs
+    and the step fails.
+
+    Otherwise the step's result: ``WAITING`` when the request was just made
+    or is still open (the run is suspended and this step is run again once
+    it is decided), ``FAILED`` when it was rejected, ran out of time, or
+    nobody can be asked here.
 
     The request is a ``kind="confirmation"`` one bound to the workflow and
     decided by the person the run belongs to: whoever started it, or the
@@ -1300,9 +1333,11 @@ async def _confirmed(
             description="A workflow step is about to run an action that requires confirmation.",
             payload={
                 "tool_name": f"{connector.name}.{action.name}",
+                # Exactly what will be sent if this is approved.
                 "tool_args": params,
                 "connector_id": connector.id,
                 "action_id": action.id,
+                "fingerprint": _call_fingerprint(connector, action),
             },
             eligible_scope="initiator",
             eligible_user_id=principal.user_id,
@@ -1331,7 +1366,18 @@ async def _confirmed(
             node_id=node.id, status=NodeStatus.WAITING, suspension=asked, duration_ms=_ms_since(t0)
         )
     if outcome == "approve":
-        return None
+        shown = record.payload if isinstance(getattr(record, "payload", None), dict) else {}
+        approved_args = shown.get("tool_args")
+        if shown.get("fingerprint") != _call_fingerprint(connector, action) or not isinstance(
+            approved_args, dict
+        ):
+            return failed(
+                f"Action '{action.name}' was not run: the action or its connector was "
+                "changed after the confirmation was requested, so what was approved is "
+                "no longer what would run. Run the workflow again.",
+                answered=True,
+            )
+        return approved_args
     if outcome == "reject":
         note = getattr(record, "decision_note", None)
         return failed(
@@ -1621,11 +1667,13 @@ class ConnectorExecutor:
             if action is not None and action.requires_confirmation:
                 # Asked after the checks above, so nobody is asked to
                 # confirm a call that would be refused anyway.
-                unconfirmed = await _confirmed(
+                confirmed = await _confirmed(
                     node, context, call_context, connector, action, params, t0
                 )
-                if unconfirmed is not None:
-                    return unconfirmed
+                if isinstance(confirmed, NodeResult):
+                    return confirmed
+                # The arguments the approver was shown, not a fresh filling-in.
+                params = confirmed
 
             sql_template = params_template.get("sql")
             if (
