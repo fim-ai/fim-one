@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
+from fim_one.core.audit import actions
+from fim_one.core.audit import writer as audit
 from fim_one.core.channels import ChannelSendResult
 from fim_one.core.channels.instance import (
     available_instance_providers,
@@ -52,6 +54,20 @@ async def list_providers(
     ]
 
 
+async def _record_send(admin: User, action: str, provider: str, ok: bool) -> None:
+    """An administrator sent a message through an instance-wide webhook.
+
+    Which provider and whether it went out. The message and the provider's
+    answer are not recorded. Written on its own, after the send.
+    """
+    await audit.record(
+        action,
+        actor=audit.actor_of(admin),
+        outcome="success" if ok else "failed",
+        detail=f"provider={provider}",
+    )
+
+
 @router.post("/test")
 async def test_notification(
     body: NotificationTestRequest,
@@ -82,13 +98,14 @@ async def test_notification(
             f"Provider: {known[body.provider].display_name}"
         ),
     )
+    await _record_send(user, actions.NOTIFICATIONS_INSTANCE_TEST, body.provider, result.ok)
     return _outcome(body.provider, result)
 
 
 @router.post("/send")
 async def send_notification(
     body: NotificationSendRequest,
-    _admin: User = Depends(get_current_admin),  # noqa: B008
+    admin: User = Depends(get_current_admin),  # noqa: B008
 ) -> dict[str, object]:
     """Send a notification (admin only)."""
     channel = instance_channel(body.provider, recipient=body.channel)
@@ -100,4 +117,6 @@ async def send_notification(
                 f"Available: {', '.join(available_instance_providers()) or '(none)'}"
             ),
         }
-    return _outcome(body.provider, await channel.send_notice(body.title, body.body))
+    result = await channel.send_notice(body.title, body.body)
+    await _record_send(admin, actions.NOTIFICATIONS_INSTANCE_SEND, body.provider, result.ok)
+    return _outcome(body.provider, result)

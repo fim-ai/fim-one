@@ -27,6 +27,8 @@ ADMIN_ACTIONS: tuple[str, ...] = (
     "user.reset_password",
     "user.force_logout",
     "user.set_quota",
+    # An administrator changing a user's email address or display name.
+    "user.update",
     "auth.force_logout_all",
     "invite_code.create",
     "invite_code.revoke",
@@ -261,6 +263,17 @@ SYSTEM_LOGS_READ = "system_logs.read"
 # The owner running SQL against a database connector from the portal. The
 # statement and its result are not recorded.
 DATABASE_QUERY = "database.query"
+
+# -- Platform administration, added to ADMIN_ACTIONS' company ----------------------
+# A platform administrator changing or deleting an organization they need
+# not belong to.
+ORG_ADMIN_UPDATE = "org.admin_update"
+ORG_ADMIN_DELETE = "org.admin_delete"
+# The prebuilt solution templates were imported into the Market.
+MARKET_IMPORT_TEMPLATES = "market.import_templates"
+# A message sent through an instance-wide webhook (``/api/notifications``).
+NOTIFICATIONS_INSTANCE_TEST = "notifications.instance_test"
+NOTIFICATIONS_INSTANCE_SEND = "notifications.instance_send"
 
 # -- Refusals anyone can provoke -------------------------------------------------
 # Written through ``core/audit/refusals.py``: at most one per source address

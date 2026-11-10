@@ -839,9 +839,13 @@ async def admin_update_org(
             update_data["slug"], db, exclude_id=org_id
         )
 
+    before = {field: getattr(org, field) for field in update_data}
     for field, value in update_data.items():
         setattr(org, field, value)
 
+    await _record_org(
+        db, _admin, actions.ORG_ADMIN_UPDATE, org, changes=diff_changes(before, update_data)
+    )
     await db.commit()
     await db.refresh(org)
 
@@ -874,6 +878,13 @@ async def admin_delete_org(
         raise AppError("org_not_found", status_code=404)
 
     await _dissolve_org_sharing(db, org_id)
+    await _record_org(
+        db,
+        _admin,
+        actions.ORG_ADMIN_DELETE,
+        org,
+        detail=f"owner={org.owner_id}; members={len(org.memberships)}",
+    )
     await db.delete(org)
     await db.commit()
     return ApiResponse(data={"deleted": org_id})

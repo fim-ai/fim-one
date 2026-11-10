@@ -649,7 +649,13 @@
       "system_logs__read": "Read System Logs",
       "database__query": "Run SQL on Database Connector",
       "security__ip_blocked": "Request Blocked by IP Rule",
-      "workflow__trigger_key_invalid": "Unknown Workflow Trigger Key"
+      "workflow__trigger_key_invalid": "Unknown Workflow Trigger Key",
+      "user__update": "Update User",
+      "org__admin_update": "Update Organization (Admin)",
+      "org__admin_delete": "Delete Organization (Admin)",
+      "market__import_templates": "Import Market Templates",
+      "notifications__instance_test": "Test Instance Webhook",
+      "notifications__instance_send": "Send via Instance Webhook"
     },
     "detailDialogTitle": "Audit Detail",
     "filterDateFrom": "From",

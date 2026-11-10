@@ -335,6 +335,12 @@ AUDITED: dict[Route, tuple[str, ...]] = {
     ),
     ("POST", "/api/webhooks/stripe"): ("billing.plan_change",),
     ("POST", "/api/connectors/{connector_id}/query"): ("database.query",),
+    ("POST", "/api/admin/market/import-templates"): ("market.import_templates",),
+    ("DELETE", "/api/admin/organizations/{org_id}"): ("org.admin_delete",),
+    ("PUT", "/api/admin/organizations/{org_id}"): ("org.admin_update",),
+    ("PATCH", "/api/admin/users/{user_id}"): ("user.update",),
+    ("POST", "/api/notifications/send"): ("notifications.instance_send",),
+    ("POST", "/api/notifications/test"): ("notifications.instance_test",),
 }
 
 EXEMPT: dict[Route, str] = {
@@ -377,6 +383,8 @@ EXEMPT: dict[Route, str] = {
     ("POST", "/api/knowledge-bases/{kb_id}/ai/chat"): MODEL_CALL,
     ("POST", "/api/react"): MODEL_CALL,
     # probe
+    # Named a toggle, it changes nothing: it returns the agent as it is.
+    ("PATCH", "/api/admin/agents/{agent_id}/active"): PROBE,
     ("POST", "/api/admin/sensitive-words/check"): PROBE,
     ("POST", "/api/auth/2fa/setup"): PROBE,
     ("POST", "/api/auth/verify-forgot-code"): PROBE,
@@ -408,14 +416,6 @@ EXEMPT: dict[Route, str] = {
 }
 
 KNOWN_GAPS: dict[Route, Gap] = {
-    # 10 admin leftovers
-    ("PATCH", "/api/admin/agents/{agent_id}/active"): Gap("10 admin leftovers", "agent.admin_enable|agent.admin_disable"),
-    ("POST", "/api/admin/market/import-templates"): Gap("10 admin leftovers", "market.import_templates"),
-    ("DELETE", "/api/admin/organizations/{org_id}"): Gap("10 admin leftovers", "org.admin_delete"),
-    ("PUT", "/api/admin/organizations/{org_id}"): Gap("10 admin leftovers", "org.admin_update"),
-    ("PATCH", "/api/admin/users/{user_id}"): Gap("10 admin leftovers", "user.update"),
-    ("POST", "/api/notifications/send"): Gap("10 admin leftovers", "notifications.send"),
-    ("POST", "/api/notifications/test"): Gap("10 admin leftovers", "notifications.test"),
     # 11 confirmation decisions
     ("POST", "/api/channels/{channel_id}/callback"): Gap("11 confirmation decisions", "confirmation.approve|confirmation.reject"),
     ("POST", "/api/confirmations/{confirmation_id}/respond"): Gap("11 confirmation decisions", "confirmation.approve|confirmation.reject"),

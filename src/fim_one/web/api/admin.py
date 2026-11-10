@@ -49,6 +49,7 @@ from fim_one.web.services.user_deletion import purge_user_data
 # Settings helpers (delegated to admin_utils, re-exported for compatibility)
 # ---------------------------------------------------------------------------
 
+from fim_one.core.audit.redact import diff_changes
 from fim_one.core.audit.redact import hint as redact_hint
 from fim_one.web.api.admin_utils import get_setting, set_setting, write_audit  # noqa: F811,E402
 from fim_one.web.api.files import _load_index, _user_dir
@@ -714,6 +715,7 @@ async def update_user(
     target_user = result.scalar_one_or_none()
     if target_user is None:
         raise AppError("user_not_found", status_code=404)
+    before = {"email": target_user.email, "display_name": target_user.display_name}
 
     if body.display_name is not None:
         target_user.display_name = body.display_name or None
@@ -727,6 +729,21 @@ async def update_user(
                 raise AppError("email_already_registered", status_code=409)
         target_user.email = body.email or None  # type: ignore[assignment]
 
+    # Committed with the change: the address is what the account signs in and
+    # recovers its password with.
+    changes = diff_changes(
+        before, {"email": target_user.email, "display_name": target_user.display_name}
+    )
+    if changes:
+        await audit.record(
+            "user.update",
+            actor=audit.actor_of(current_user),
+            target_type="user",
+            target_id=user_id,
+            target_label=target_user.username or before["email"] or target_user.email,
+            changes=changes,
+            db=db,
+        )
     await db.commit()
     result = await db.execute(select(User).where(User.id == user_id))
     target_user = result.scalar_one()
