@@ -234,9 +234,13 @@ AUDITED: dict[Route, tuple[str, ...]] = {
     ("POST", "/api/skills/{skill_id}/publish"): ("review_log:submitted",),
     ("POST", "/api/skills/{skill_id}/resubmit"): ("review_log:resubmitted",),
     ("POST", "/api/skills/{skill_id}/unpublish"): ("review_log:unpublished",),
+    ("DELETE", "/api/workflows/{workflow_id}/api-key"): ("workflow.trigger_key_revoke",),
     ("PUT", "/api/workflows/{workflow_id}/env"): ("workflow.env_update",),
+    ("POST", "/api/workflows/{workflow_id}/generate-api-key"): ("workflow.trigger_key_generate",),
     ("POST", "/api/workflows/{workflow_id}/publish"): ("review_log:submitted",),
     ("POST", "/api/workflows/{workflow_id}/resubmit"): ("review_log:resubmitted",),
+    ("DELETE", "/api/workflows/{workflow_id}/schedule"): ("workflow.schedule_delete",),
+    ("PUT", "/api/workflows/{workflow_id}/schedule"): ("workflow.schedule_update",),
     ("POST", "/api/workflows/{workflow_id}/unpublish"): ("review_log:unpublished",),
 }
 
@@ -316,11 +320,6 @@ EXEMPT: dict[Route, str] = {
 }
 
 KNOWN_GAPS: dict[Route, Gap] = {
-    # 5 trigger keys and schedules
-    ("DELETE", "/api/workflows/{workflow_id}/api-key"): Gap("5 trigger keys and schedules", "workflow.trigger_key_revoke"),
-    ("POST", "/api/workflows/{workflow_id}/generate-api-key"): Gap("5 trigger keys and schedules", "workflow.trigger_key_generate"),
-    ("DELETE", "/api/workflows/{workflow_id}/schedule"): Gap("5 trigger keys and schedules", "workflow.schedule_delete"),
-    ("PUT", "/api/workflows/{workflow_id}/schedule"): Gap("5 trigger keys and schedules", "workflow.schedule_update"),
     # 6 resource lifecycle
     ("POST", "/api/agent-templates/{template_id}/create"): Gap("6 resource lifecycle", "agent.create"),
     ("POST", "/api/agents"): Gap("6 resource lifecycle", "agent.create"),

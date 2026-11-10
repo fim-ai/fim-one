@@ -604,7 +604,11 @@
       "connector__credential_delete": "Delete Personal Connector Credential",
       "mcp_server__credential_set": "Save Personal MCP Credential",
       "mcp_server__credential_delete": "Delete Personal MCP Credential",
-      "workflow__env_update": "Update Workflow Env Vars"
+      "workflow__env_update": "Update Workflow Env Vars",
+      "workflow__trigger_key_generate": "Generate Workflow Trigger Key",
+      "workflow__trigger_key_revoke": "Revoke Workflow Trigger Key",
+      "workflow__schedule_update": "Update Workflow Schedule",
+      "workflow__schedule_delete": "Clear Workflow Schedule"
     },
     "detailDialogTitle": "Audit Detail",
     "filterDateFrom": "From",

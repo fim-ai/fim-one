@@ -179,6 +179,14 @@ MCP_SERVER_CREDENTIAL_DELETE = "mcp_server.credential_delete"
 # The encrypted env vars of a workflow were replaced.
 WORKFLOW_ENV_UPDATE = "workflow.env_update"
 
+# -- Workflow trigger keys and schedules ---------------------------------------
+# A trigger key is named by its display prefix, never by its value.
+# Generating one over an existing key replaces (rotates) it.
+WORKFLOW_TRIGGER_KEY_GENERATE = "workflow.trigger_key_generate"
+WORKFLOW_TRIGGER_KEY_REVOKE = "workflow.trigger_key_revoke"
+WORKFLOW_SCHEDULE_UPDATE = "workflow.schedule_update"
+WORKFLOW_SCHEDULE_DELETE = "workflow.schedule_delete"
+
 ACTIONS: frozenset[str] = frozenset(ADMIN_ACTIONS) | frozenset(
     value
     for name, value in dict(globals()).items()

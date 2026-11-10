@@ -638,3 +638,18 @@ class TestAuditRowsHaveOneWriter:
         files = [py for py in sorted(SRC.rglob("*.py")) if "migrations" not in py.parts]
         definitions = [hit.split(":", 1)[0] for hit in _occurrences("def write_audit(", files)]
         assert definitions == ["web/api/admin_utils.py"]
+
+    def test_no_security_event_is_only_logged(self) -> None:
+        """Generating or revoking a workflow trigger key used to be a log
+        line and nothing else; such a line would mean the record is missing."""
+        files = sorted((SRC / "web" / "api").rglob("*.py"))
+        offenders = [
+            f"{py.relative_to(SRC)}:{lineno}"
+            for py in files
+            for lineno, line in _source_lines(py)
+            if re.search(r"trigger key %s (generated|revoked)", line)
+        ]
+        assert not offenders, (
+            "a trigger key change is an audit event (core/audit/writer.py), not a log line:\n  "
+            + "\n  ".join(offenders)
+        )
