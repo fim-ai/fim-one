@@ -501,10 +501,13 @@ Every server process stamps the runs it is executing. A run still `running` whos
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `WORKFLOW_RUN_HEARTBEAT_SECONDS` | No | `10` | How often a process stamps the runs it is executing. A run cancelled from another process is noticed on the same pass |
-| `WORKFLOW_RUN_STALE_SECONDS` | No | `90` | A `running` run with no stamp for this long is taken for dead and closed as failed. Never less than three heartbeats. Raise it if the server can be unresponsive for longer than this (a long blocking call), or live runs will be closed |
+| `WORKFLOW_RUN_HEARTBEAT_SECONDS` | No | `10` | How often a process stamps the runs it is executing, from a thread of its own and by the database's clock. A run cancelled from another process starts no further step; a step already in progress is stopped on this pass at the latest |
+| `WORKFLOW_RUN_STALE_SECONDS` | No | `90` | A `running` run with no stamp for this long is taken for dead and closed as failed. Never less than three heartbeats. A blocked event loop does not stop the stamping; a process that cannot reach the database for this long loses its runs |
 | `WORKFLOW_RUN_SWEEP_SECONDS` | No | `30` | How often the recovery sweep runs after the one at startup |
 | `SANDBOX_ORPHAN_MAX_AGE_HOURS` | No | `24` | A run working directory under `data/sandbox` that belongs to no workflow run record (a single-step test, a delegated agent, an evaluation run) is removed once nothing in it has changed for this many hours. Directories of workflow runs are removed when the run has ended |
+| `WORKFLOW_RUN_LEGACY_GRACE_SECONDS` | No | `1800` | Runs that were `running` before the first start of a version with heartbeats carry no mark. They are left alone for this long after a process starts (an old process may still be executing them during a rolling deployment), then closed as failed |
+| `WORKFLOW_MAX_WAITING_RUNS_PER_USER` | No | `20` | How many runs of one user may wait for a decision at the same time. A run that would wait beyond that fails at the step with `workflow_waiting_limit_reached`. `0` removes the limit |
+| `WORKFLOW_SUSPEND_STATE_MAX_BYTES` | No | `5242880` | The most a waiting run may keep to go on later (its variables and step outputs, stored encrypted with the credential key). A run that would exceed it fails at the step with `workflow_suspend_state_too_large` |
 
 ## Workflow Run Retention
 
