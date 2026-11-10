@@ -10,10 +10,10 @@ run, and with whose credential.
 from __future__ import annotations
 
 import logging
-import re
 from collections.abc import Awaitable, Callable, Mapping
 from typing import TYPE_CHECKING, Any, Literal
-from urllib.parse import urlsplit, urlunsplit
+
+from .mcp_address import strip_url_secrets
 
 if TYPE_CHECKING:
     from .credentials import CredentialSource
@@ -24,39 +24,6 @@ __all__ = ["RecordKind", "call_recorder"]
 logger = logging.getLogger(__name__)
 
 RecordKind = Literal["connector", "database", "mcp"]
-
-
-# A URL inside free text: scheme://… up to whitespace or a closing quote/bracket.
-_URL_IN_TEXT = re.compile(r"""[A-Za-z][A-Za-z0-9+.\-]*://[^\s'"<>)\]]+""")
-
-
-def _strip_url_secrets(text: str | None) -> str | None:
-    """*text* with the user-info and query string cut from every URL in it.
-
-    An error message quotes the URL that failed, and a URL can carry a
-    credential (``https://user:pass@host/…``, ``…?api_key=…``). The record
-    keeps where the call went, not what authenticated it.
-    """
-    if not text:
-        return text
-
-    def _bare(match: re.Match[str]) -> str:
-        url = match.group(0)
-        try:
-            parts = urlsplit(url)
-            host = parts.hostname or ""
-            if ":" in host:  # an IPv6 literal
-                host = f"[{host}]"
-            if parts.port is not None:
-                host = f"{host}:{parts.port}"
-            return urlunsplit((parts.scheme, host, parts.path, "", ""))
-        except ValueError:
-            # Not parseable: cut it where the secrets would start.
-            scheme, _, rest = url.partition("://")
-            rest = rest.split("?", 1)[0].split("#", 1)[0]
-            return f"{scheme}://{rest.rsplit('@', 1)[-1]}"
-
-    return _URL_IN_TEXT.sub(_bare, text)
 
 
 def _fit(value: Any, limit: int) -> str:
@@ -119,7 +86,7 @@ def call_recorder(
                         response_status=call.get("response_status"),
                         response_time_ms=call.get("response_time_ms"),
                         success=call.get("success", False),
-                        error_message=_strip_url_secrets(call.get("error_message")),
+                        error_message=strip_url_secrets(call.get("error_message")),
                         scope_rules_applied=call.get("scope_rules_applied"),
                     )
                 )
