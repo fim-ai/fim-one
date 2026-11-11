@@ -247,6 +247,16 @@ async def _deidentify_records(
 
     earlier_addresses, earlier_names = await _earlier_names(db, user_id, is_target)
     all_addresses = {email, *earlier_addresses} - {""}
+    # An earlier address that another account holds today is that account's:
+    # its sign-in attempts and pending verification codes are not this user's.
+    taken = await db.execute(
+        select(func.lower(User.email)).where(
+            User.id != user_id,
+            func.lower(User.email).in_({address.lower() for address in all_addresses}),
+        )
+    )
+    held_by_others = {address for address in taken.scalars().all() if address}
+    all_addresses = {a for a in all_addresses if a.lower() not in held_by_others}
     # Compared without case: the sign-in form takes the address as typed,
     # and ``ZELDA@EXAMPLE.TEST`` is recorded as an unknown account.
     lowered = sorted({address.lower() for address in all_addresses})

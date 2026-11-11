@@ -789,3 +789,39 @@ async def test_the_review_trail_names_the_user_by_the_label(db: AsyncSession) ->
     assert kept is not None
     assert (kept.actor_id, kept.actor_username) == (carol.id, f"deleted-user-{carol.id[:8]}")
     assert (kept.action, kept.note) == ("approved", "fine")
+
+
+async def test_an_earlier_address_another_account_holds_now_is_left_to_that_account(
+    db: AsyncSession,
+) -> None:
+    """Carol gave up an address and Dana registered with it: what is recorded
+    against that address since is Dana's."""
+    carol = await _person(db, "carol")
+    dana = await _person(db, "dana")
+    dana.email = "shared@example.test"
+    was_carols = AuditLog(
+        id=_uid(), action="user.update", actor_id=dana.id, actor_label="dana",
+        actor_kind="admin", target_type="user", target_id=carol.id, target_label="carol",
+        changes={"email": {"from": "shared@example.test", "to": carol.email}},
+    )  # fmt: skip
+    danas_attempt = LoginHistory(
+        id=_uid(), user_id=None, email="Shared@Example.test", ip_address="203.0.113.60",
+        success=False, failure_reason="user_not_found",
+    )  # fmt: skip
+    danas_code = EmailVerification(
+        email="shared@example.test", code="654321", purpose="reset_password", expires_at=_now()
+    )
+    db.add_all([was_carols, danas_attempt, danas_code])
+    await db.commit()
+
+    await purge_user_data(db, carol.id)
+    await db.commit()
+
+    attempt = await _fresh(db, LoginHistory, danas_attempt.id)
+    assert attempt is not None and attempt.email == "Shared@Example.test"
+    codes = (
+        await db.execute(
+            select(EmailVerification).where(EmailVerification.email == "shared@example.test")
+        )
+    ).scalars().all()
+    assert len(codes) == 1, "another account's pending code went with the deleted user"
