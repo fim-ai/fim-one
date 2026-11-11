@@ -91,6 +91,13 @@ class QuotaStatus:
     def exhausted(self) -> bool:
         return not self.unlimited and self.used >= self.cap
 
+    def exhausted_after(self, consumed: int) -> bool:
+        """Whether the cap is reached once *consumed* is added to what was used
+        at the check: the mid-run test of a long piece of work (a chat
+        turn's answer, an evaluation's cases, a batch's items), made from
+        its own meter without asking the database again."""
+        return not self.unlimited and self.used + consumed >= self.cap
+
 
 async def quota_status(user_id: str, *, with_reset: bool = False) -> QuotaStatus:
     """Usage and cap of *user_id*; the pre-run check and the mid-stream guard share it."""

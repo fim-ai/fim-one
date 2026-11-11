@@ -368,6 +368,47 @@ class TestOtherEntries:
         # The agent and the grader, for each of the three cases.
         assert provider.calls >= 6
 
+    async def test_an_eval_run_that_uses_up_the_quota_starts_no_further_case(
+        self, usage: Usage, provider: Provider  # noqa: F811
+    ) -> None:
+        """Admitted once; between cases it is checked from the run's own meter."""
+        from sqlalchemy import select
+
+        from fim_one.db import create_session
+        from fim_one.db.models.eval import EvalCase, EvalCaseResult, EvalDataset, EvalRun
+
+        owner = await usage.user("owner")
+        await usage.cap(1)
+        agent = await usage.agent(owner)
+        await usage.add(
+            EvalDataset(id="ds-1", user_id=owner.id, name="pongs"),
+            *(
+                EvalCase(
+                    id=f"case-{index}", dataset_id="ds-1", user_id=owner.id,
+                    prompt="say pong", expected_behavior="says pong",
+                )  # fmt: skip
+                for index in range(8)
+            ),
+        )
+
+        started = await usage.call(
+            "POST", "/api/eval/runs", by=owner, json={"agent_id": agent.id, "dataset_id": "ds-1"}
+        )
+
+        run_id = started.json()["data"]["id"]
+        await _recorded(usage, provider, by=owner)
+        async with create_session() as db:
+            run = await db.get(EvalRun, run_id)
+            results = (
+                await db.execute(select(EvalCaseResult).where(EvalCaseResult.run_id == run_id))
+            ).scalars().all()
+        # Five cases run at a time: the first five started on an unused
+        # quota and finished; the other three did not start.
+        assert len(results) == 5
+        assert run is not None and run.status == "failed"
+        assert "token_quota_exceeded" in (run.error_message or "")
+        assert "3 of 8 cases were not run" in (run.error_message or "")
+
     async def test_a_chat_with_a_builder_assistant(
         self, usage: Usage, provider: Provider  # noqa: F811
     ) -> None:
@@ -672,6 +713,25 @@ class TestWorkflows:
         assert _sources(rows) == {("workflow_run", run.id) for run in stored}
         assert _entries(rows) == {"batch"}
         assert provider.calls == 3
+
+    async def test_a_batch_that_uses_up_the_quota_starts_no_further_item(
+        self, usage: Usage, provider: Provider, runs: Any  # noqa: F811
+    ) -> None:
+        """Admitted once; between items it is checked from what the items consumed."""
+        alice = await usage.user("alice")
+        await usage.cap(UNIT)
+        await _workflow(usage, alice)
+
+        answer = await usage.call(
+            "POST", "/api/workflows/wf-1/batch-run", by=alice,
+            json={"inputs": [{}, {}, {}], "max_parallel": 1},
+        )  # fmt: skip
+
+        results = answer.json()["data"]["results"]
+        assert [item["status"] for item in results] == ["completed", "failed", "failed"]
+        assert all("token_quota_exceeded" in item["error"] for item in results[1:])
+        assert provider.calls == 1
+        await _recorded(usage, provider, by=alice)
 
     async def test_a_trigger_key_is_billed_to_the_author(
         self, usage: Usage, provider: Provider, runs: Any  # noqa: F811
