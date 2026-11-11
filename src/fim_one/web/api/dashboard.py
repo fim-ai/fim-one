@@ -147,7 +147,7 @@ async def get_dashboard_stats(
 
     # total_tokens: everything the usage ledger holds against the user,
     # deleted conversations, runs and the helper endpoints included
-    total_tokens = await usage_ledger.used_between(db, user_id=current_user.id)
+    total_tokens = await usage_ledger.used_by_user_between(db, current_user.id)
 
     # total_agents: non-builder agents owned by the user
     total_agents_result = await db.execute(
@@ -236,11 +236,11 @@ async def get_dashboard_stats(
     conversations_week_trend = _week_trend(curr_week_conv, prev_week_conv)
 
     # Current and previous week tokens, from the usage ledger
-    curr_week_tokens = await usage_ledger.used_between(
-        db, since=week_start, user_id=current_user.id
+    curr_week_tokens = await usage_ledger.used_by_user_between(
+        db, current_user.id, since=week_start
     )
-    prev_week_tokens = await usage_ledger.used_between(
-        db, since=two_weeks_start, until=week_start, user_id=current_user.id
+    prev_week_tokens = await usage_ledger.used_by_user_between(
+        db, current_user.id, since=two_weeks_start, until=week_start
     )
 
     tokens_week_trend = _week_trend(curr_week_tokens, prev_week_tokens)

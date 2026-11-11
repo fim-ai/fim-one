@@ -28,6 +28,7 @@ __all__ = [
     "used_by",
     "used_by_day",
     "used_by_origin",
+    "used_by_user_between",
     "used_by_users_since",
     "used_since",
     "write_entries",
@@ -309,15 +310,13 @@ class UsageSlice:
     background: bool | None = None
 
 
-def _window(query: Any, since: datetime | None, until: datetime | None, user_id: str | None) -> Any:
+def _window(query: Any, since: datetime | None, until: datetime | None) -> Any:
     from fim_one.db.models.usage_ledger import UsageLedger
 
     if since is not None:
         query = query.where(UsageLedger.created_at >= since)
     if until is not None:
         query = query.where(UsageLedger.created_at < until)
-    if user_id is not None:
-        query = query.where(UsageLedger.user_id == user_id)
     return query
 
 
@@ -326,16 +325,45 @@ async def used_between(
     *,
     since: datetime | None = None,
     until: datetime | None = None,
-    user_id: str | None = None,
 ) -> int:
-    """Tokens recorded from *since* (inclusive) to *until* (exclusive), by
-    everyone or by *user_id*; either bound may be left open. Never negative."""
+    """Tokens recorded by everyone from *since* (inclusive) to *until*
+    (exclusive); either bound may be left open. Never negative.
+
+    One user's figure is :func:`used_by_user_between`.
+    """
     from sqlalchemy import func, select
 
     from fim_one.db.models.usage_ledger import UsageLedger
 
+    query = _window(select(func.coalesce(func.sum(UsageLedger.total_tokens), 0)), since, until)
+    return max(int((await db.execute(query)).scalar_one() or 0), 0)
+
+
+async def used_by_user_between(
+    db: AsyncSession,
+    user_id: str,
+    *,
+    since: datetime | None = None,
+    until: datetime | None = None,
+) -> int:
+    """Tokens recorded against *user_id* from *since* (inclusive) to *until*
+    (exclusive); either bound may be left open. Never negative.
+
+    Raises ``ValueError`` without a user id, so a missing id cannot turn
+    into everyone's figure.
+    """
+    from sqlalchemy import func, select
+
+    from fim_one.db.models.usage_ledger import UsageLedger
+
+    if not user_id:
+        raise ValueError("a per-user usage read needs a user id")
     query = _window(
-        select(func.coalesce(func.sum(UsageLedger.total_tokens), 0)), since, until, user_id
+        select(func.coalesce(func.sum(UsageLedger.total_tokens), 0)).where(
+            UsageLedger.user_id == user_id
+        ),
+        since,
+        until,
     )
     return max(int((await db.execute(query)).scalar_one() or 0), 0)
 
@@ -346,10 +374,9 @@ async def used_by(
     *,
     since: datetime | None = None,
     until: datetime | None = None,
-    user_id: str | None = None,
 ) -> list[UsageSlice]:
-    """Tokens recorded in the window, grouped by the dimensions in *by*,
-    by everyone or by *user_id*. Ordered by day when grouped by day."""
+    """Tokens recorded by everyone in the window, grouped by the dimensions
+    in *by*. Ordered by day when grouped by day."""
     from sqlalchemy import case, func, select
 
     from fim_one.db.models.usage_ledger import UsageLedger
@@ -369,7 +396,6 @@ async def used_by(
         select(*grouped, func.coalesce(func.sum(UsageLedger.total_tokens), 0)),
         since,
         until,
-        user_id,
     )
     if grouped:
         query = query.group_by(*grouped)

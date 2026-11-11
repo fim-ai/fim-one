@@ -305,15 +305,34 @@ class TestPlatformFigures:
         return day
 
     async def test_totals_in_a_window(self, factory: Factory) -> None:  # noqa: F811
-        from fim_one.core.usage.ledger import used_between
+        from fim_one.core.usage.ledger import used_between, used_by_user_between
 
         day = await self._seed(factory)
         async with factory() as db:
             assert await used_between(db) == 125
             assert await used_between(db, since=day) == 18
             assert await used_between(db, until=day) == 107
-            assert await used_between(db, user_id="alice") == 107
-            assert await used_between(db, since=day, user_id="alice") == 0
+            assert await used_by_user_between(db, "alice") == 107
+            assert await used_by_user_between(db, "alice", since=day) == 0
+            assert await used_by_user_between(db, "bob", until=day) == 0
+            assert await used_by_user_between(db, "bob", since=day) == 15
+
+    async def test_a_per_user_read_without_a_user_is_refused(
+        self, factory: Factory  # noqa: F811
+    ) -> None:
+        """Everyone's figure is its own function: a missing id raises
+        instead of reading every user's rows."""
+        from fim_one.core.usage.ledger import used_between, used_by, used_by_user_between
+
+        await self._seed(factory)
+        async with factory() as db:
+            for missing in (None, ""):
+                with pytest.raises(ValueError):
+                    await used_by_user_between(db, missing)  # type: ignore[arg-type]
+            with pytest.raises(TypeError):
+                await used_between(db, user_id="alice")  # type: ignore[call-arg]
+            with pytest.raises(TypeError):
+                await used_by(db, ["day"], user_id="alice")  # type: ignore[call-arg]
 
     async def test_grouped_by_day_model_and_background(self, factory: Factory) -> None:  # noqa: F811
         from fim_one.core.usage.ledger import UsageSlice, used_by
