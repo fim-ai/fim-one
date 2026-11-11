@@ -10,6 +10,7 @@ records; default 180); ``0`` keeps for ever. Every sweep leaves one
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import uuid
@@ -449,6 +450,66 @@ class TestTheLockOnPostgres:
             await db.execute(
                 text("SELECT pg_advisory_unlock(hashtext('fim_one.audit_retention_sweep'))")
             )
+
+
+class _LockConnection:
+    """A connection that takes the lock and answers the unlock with *unlocked*."""
+
+    def __init__(self, unlocked: bool | Exception) -> None:
+        self.unlocked = unlocked
+        self.invalidated = False
+
+    async def execution_options(self, **_: Any) -> _LockConnection:
+        return self
+
+    async def scalar(self, statement: Any, _params: Any = None) -> bool:
+        if "pg_try_advisory_lock" in str(statement):
+            return True
+        if isinstance(self.unlocked, Exception):
+            raise self.unlocked
+        return self.unlocked
+
+    async def invalidate(self) -> None:
+        self.invalidated = True
+
+
+class _LockBind:
+    def __init__(self, conn: _LockConnection) -> None:
+        self.conn = conn
+
+    def connect(self) -> Any:
+        @contextlib.asynccontextmanager
+        async def opened() -> AsyncIterator[_LockConnection]:
+            yield self.conn
+
+        return opened()
+
+
+class TestReleasingTheLock:
+    """A lock that is not released stays with the server session until it
+    closes; returned to the pool, that connection blocks every later sweep."""
+
+    @pytest.mark.parametrize(
+        "unlocked", [False, RuntimeError("connection reset")], ids=["answered-false", "raised"]
+    )
+    async def test_a_failed_unlock_closes_the_connection(
+        self, unlocked: bool | Exception, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        conn = _LockConnection(unlocked)
+        with caplog.at_level("WARNING", logger="fim_one.core.audit.retention"):
+            async with contextlib.AsyncExitStack() as stack:
+                assert await AuditRetentionSweeper._take_lock(stack, _LockBind(conn))
+                assert not conn.invalidated
+
+        assert conn.invalidated
+        assert [r.levelname for r in caplog.records] == ["WARNING"]
+
+    async def test_a_released_lock_leaves_the_connection_to_the_pool(self) -> None:
+        conn = _LockConnection(True)
+        async with contextlib.AsyncExitStack() as stack:
+            assert await AuditRetentionSweeper._take_lock(stack, _LockBind(conn))
+
+        assert not conn.invalidated
 
 
 class TestATableThatFails:

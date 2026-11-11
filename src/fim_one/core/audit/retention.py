@@ -196,7 +196,9 @@ class AuditRetentionSweeper:
         A session-level lock on a connection of its own in autocommit: the
         connection sits idle outside any transaction, so it holds no
         snapshot back from VACUUM. The lock goes with ``pg_advisory_unlock``
-        at the end, or with the connection if that drops.
+        at the end, or with the connection if that drops. An unlock that
+        fails or answers false (the lock is not this session's) closes the
+        connection instead of returning it to the pool.
         """
         from sqlalchemy import text
 
@@ -210,12 +212,23 @@ class AuditRetentionSweeper:
 
         async def release() -> None:
             try:
-                await conn.execute(
+                released = await conn.scalar(
                     text("SELECT pg_advisory_unlock(hashtext(:name))"), {"name": _LOCK_NAME}
                 )
             except Exception:
                 # Not back into the pool still holding the lock.
                 logger.warning("Audit retention: could not release the lock", exc_info=True)
+                await conn.invalidate()
+                return
+            if not released:
+                # The server session that answered does not hold the lock:
+                # a pooler in transaction mode sent the two statements to
+                # different sessions, and the one that took the lock keeps
+                # it. Closing this connection is all that can be done here.
+                logger.warning(
+                    "Audit retention: the lock was not held by this connection at release; "
+                    "the sweep needs a direct or session-mode database connection"
+                )
                 await conn.invalidate()
 
         stack.push_async_callback(release)
