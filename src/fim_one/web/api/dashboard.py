@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.usage import ledger as usage_ledger
 from fim_one.db import get_session
 from fim_one.db.models import Agent, Connector, ConnectorCallLog, Conversation, KnowledgeBase, User
 from fim_one.db.models.resource_subscription import ResourceSubscription
@@ -144,13 +145,9 @@ async def get_dashboard_stats(
     )
     total_conversations: int = total_conv_result.scalar_one()
 
-    # total_tokens: sum of tokens across all user conversations
-    total_tokens_result = await db.execute(
-        select(func.coalesce(func.sum(Conversation.total_tokens), 0))
-        .select_from(Conversation)
-        .where(Conversation.user_id == current_user.id)
-    )
-    total_tokens: int = total_tokens_result.scalar_one()
+    # total_tokens: everything the usage ledger holds against the user,
+    # deleted conversations, runs and the helper endpoints included
+    total_tokens = await usage_ledger.used_between(db, user_id=current_user.id)
 
     # total_agents: non-builder agents owned by the user
     total_agents_result = await db.execute(
@@ -238,28 +235,13 @@ async def get_dashboard_stats(
 
     conversations_week_trend = _week_trend(curr_week_conv, prev_week_conv)
 
-    # Current week tokens
-    curr_tok_result = await db.execute(
-        select(func.coalesce(func.sum(Conversation.total_tokens), 0))
-        .select_from(Conversation)
-        .where(
-            Conversation.user_id == current_user.id,
-            Conversation.created_at >= week_start,
-        )
+    # Current and previous week tokens, from the usage ledger
+    curr_week_tokens = await usage_ledger.used_between(
+        db, since=week_start, user_id=current_user.id
     )
-    curr_week_tokens: int = curr_tok_result.scalar_one()
-
-    # Previous week tokens
-    prev_tok_result = await db.execute(
-        select(func.coalesce(func.sum(Conversation.total_tokens), 0))
-        .select_from(Conversation)
-        .where(
-            Conversation.user_id == current_user.id,
-            Conversation.created_at >= two_weeks_start,
-            Conversation.created_at < week_start,
-        )
+    prev_week_tokens = await usage_ledger.used_between(
+        db, since=two_weeks_start, until=week_start, user_id=current_user.id
     )
-    prev_week_tokens: int = prev_tok_result.scalar_one()
 
     tokens_week_trend = _week_trend(curr_week_tokens, prev_week_tokens)
 
@@ -414,11 +396,11 @@ async def get_dashboard_stats(
     # ------------------------------------------------------------------
 
     activity_cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    # Conversations started per day; tokens per day from the usage ledger.
     trend_rows = await db.execute(
         select(
             func.date(Conversation.created_at).label("day"),
             func.count().label("cnt"),
-            func.coalesce(func.sum(Conversation.total_tokens), 0).label("tok"),
         )
         .where(
             Conversation.user_id == current_user.id,
@@ -427,6 +409,7 @@ async def get_dashboard_stats(
         .group_by(func.date(Conversation.created_at))
         .order_by(func.date(Conversation.created_at))
     )
+    tokens_by_day = dict(await usage_ledger.used_by_day(db, current_user.id, activity_cutoff))
 
     today_date = date.today()
     # Build ordered map from oldest to newest (6 days ago → today)
@@ -438,7 +421,9 @@ async def get_dashboard_stats(
         key = str(row.day)
         if key in date_map:
             date_map[key]["count"] = row.cnt
-            date_map[key]["tokens"] = row.tok
+    for key, tokens in tokens_by_day.items():
+        if key in date_map:
+            date_map[key]["tokens"] = tokens
 
     activity_trend = [
         DashboardDayStat(date=d, count=v["count"], tokens=v["tokens"])

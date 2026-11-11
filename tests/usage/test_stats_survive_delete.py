@@ -442,3 +442,62 @@ class TestMetricsTokenUsage:
         }
         days = [row["date"] for row in found["daily"]]
         assert days == sorted(days)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/dashboard/stats: each user's own dashboard
+# ---------------------------------------------------------------------------
+
+
+class TestDashboard:
+    PATH = "/api/dashboard/stats"
+    TOKENS = ("total_tokens", "tokens_week_trend")
+
+    async def test_survives(
+        self, usage: Usage, provider: Provider, alice: User, root: User, runs: Any  # noqa: F811
+    ) -> None:
+        billed = await _everything(usage, provider, alice)
+        before = await _get(usage, self.PATH, alice)
+        assert before["total_tokens"] == provider.billed
+        assert before["tokens_week_trend"] == 100.0
+        assert sum(day["tokens"] for day in before["activity_trend"]) == provider.billed
+        # Someone else's usage is not on it.
+        assert (await _get(usage, self.PATH, root))["total_tokens"] == 0
+
+        await _delete_everything(usage, alice, billed)
+
+        after = await _get(usage, self.PATH, alice)
+        for figure in self.TOKENS:
+            assert after[figure] == before[figure], figure
+        assert [day["tokens"] for day in after["activity_trend"]] == [
+            day["tokens"] for day in before["activity_trend"]
+        ]
+        assert after["total_conversations"] == 0
+
+    async def test_backfilled(
+        self, usage: Usage, backfilled: Backfilled, alice: User  # noqa: F811
+    ) -> None:
+        dashboard = await _get(usage, self.PATH, alice)
+        now = datetime.now(UTC)
+        week, two_weeks = now - timedelta(days=7), now - timedelta(days=14)
+
+        async def old(since: datetime | None, until: datetime | None = None) -> int:
+            sql = "SELECT COALESCE(SUM(total_tokens), 0) FROM conversations WHERE user_id = :u"
+            params: dict[str, Any] = {"u": alice.id}
+            if since is not None:
+                sql += " AND created_at >= :since"
+                params["since"] = since
+            if until is not None:
+                sql += " AND created_at < :until"
+                params["until"] = until
+            return await backfilled.old_one(sql, **params)
+
+        runs_all = await backfilled.runs_since(user=alice)
+        assert dashboard["total_tokens"] == await old(None) + runs_all
+        current = await old(week) + await backfilled.runs_since(week, alice)
+        previous = await old(two_weeks, week) + (
+            await backfilled.runs_since(two_weeks, alice) - await backfilled.runs_since(week, alice)
+        )
+        assert previous > 0
+        assert dashboard["tokens_week_trend"] == round((current - previous) / previous * 100, 2)
+        assert sum(day["tokens"] for day in dashboard["activity_trend"]) == current

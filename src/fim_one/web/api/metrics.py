@@ -233,9 +233,7 @@ async def get_token_usage(
     # from before the ledger for runs and for the conversations' fast-model
     # tokens). "input" and "output" are the split described in the overview.
     split: dict[tuple[str, str], list[int]] = {}
-    for usage_slice in await usage_ledger.used_by(
-        db, ["day", "model", "background"], since=cutoff
-    ):
+    for usage_slice in await usage_ledger.used_by(db, ["day", "model", "background"], since=cutoff):
         key = (str(usage_slice.day), usage_slice.model or "unknown")
         tokens = split.setdefault(key, [0, 0])
         tokens[1 if usage_slice.background else 0] += usage_slice.total_tokens

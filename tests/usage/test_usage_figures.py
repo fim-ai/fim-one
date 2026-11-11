@@ -224,7 +224,6 @@ class TestNothingElseSumsTheOldTotals:
     SRC = Path(fim_one.__file__).parent
     # File -> how many sums it may hold. A new one anywhere fails this test.
     STATISTICS = {
-        "web/api/dashboard.py": 4,
     }
 
     def test_sums_over_conversation_totals(self) -> None:
