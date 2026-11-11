@@ -27,6 +27,7 @@ import logging
 import os
 import re
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from .actions import is_registered
@@ -341,5 +342,8 @@ async def record_review(
             actor_id=actor.user_id if actor else None,
             actor_username=actor.label if actor else None,
             note=note,
+            # The column has no zone, and ``CURRENT_TIMESTAMP`` would give
+            # the database session's wall clock: stamped here, in UTC.
+            created_at=datetime.now(UTC).replace(tzinfo=None),
         )
     )

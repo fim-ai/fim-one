@@ -501,3 +501,22 @@ class TestTimeZones:
 
         assert counts is not None and counts["review_log"] == 1
         assert await _count(factory, ReviewLog) == 1
+
+    async def test_a_review_entry_is_stamped_in_utc_whatever_the_sessions_zone(
+        self, factory: Factory
+    ) -> None:
+        from fim_one.core.audit import writer as audit
+
+        async with factory() as db:
+            if factory.kw["bind"].dialect.name == "postgresql":
+                await db.execute(text("SET TIME ZONE 'Asia/Shanghai'"))
+            await audit.record_review(
+                db, org_id="org-a", resource_type="agent", resource_id="a1",
+                resource_name="Helper", action="approved", actor=None,
+            )  # fmt: skip
+            await db.commit()
+
+        async with factory() as db:
+            stamp = await db.scalar(select(ReviewLog.created_at))
+        assert stamp is not None and stamp.tzinfo is None
+        assert abs(stamp - datetime.now(UTC).replace(tzinfo=None)) < timedelta(minutes=5)
