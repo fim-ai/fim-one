@@ -819,10 +819,12 @@ interface TurnRefusal {
  * Whether sending the same turn again could be answered differently. A
  * refusal about the request or what it uses (the conversation's agent is
  * gone, a quota is used up, access is denied) is given again; a timeout, a
- * rate limit or a server error may not be.
+ * rate limit or a server error may not be. Nor is an expired sign-in: the
+ * stream sends its token in the body, outside the client that refreshes
+ * one on a 401, and by the retry another request has refreshed it.
  */
 function isRetryableRefusal(err: ApiError): boolean {
-  if (err.status === 408 || err.status === 429) return true
+  if (err.status === 401 || err.status === 408 || err.status === 429) return true
   return err.status < 400 || err.status >= 500
 }
 
