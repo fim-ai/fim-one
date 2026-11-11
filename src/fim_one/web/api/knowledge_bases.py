@@ -418,6 +418,30 @@ async def _ingest_document(
         )
 
 
+async def _vision_allowed(user_id: str, file_path: Path) -> bool:
+    """Whether the user's plan and quota cover the vision model reading the document.
+
+    The chat turn's check (``check_quota``): not when access is sold by
+    plan and the user has none, not when the quota is used up, and not
+    when either cannot be read.
+    """
+    from fim_one.core.assembly.errors import AssemblyRefusal
+    from fim_one.core.assembly.principal import provisional_principal
+    from fim_one.core.assembly.quota import check_quota
+
+    try:
+        await check_quota(provisional_principal(user_id))
+    except AssemblyRefusal as refusal:
+        logger.info(
+            "KB ingest of %s for user %s reads it without the vision model (%s)",
+            file_path,
+            user_id,
+            refusal.error_code,
+        )
+        return False
+    return True
+
+
 async def _ingest_document_metered(
     *,
     doc_id: str,
@@ -432,19 +456,23 @@ async def _ingest_document_metered(
 
     # Resolve vision LLM for OCR injection — best-effort. A failure
     # here must not block ingestion; the loaders degrade to text-only.
+    # The vision model's tokens count against the user's quota, so a user
+    # the quota check would refuse a model call gets the text-only reading
+    # instead: the document is still added.
     vision_llm = None
-    try:
-        from fim_one.web.api.chat import _build_markitdown_vision_deps
+    if await _vision_allowed(user_id, file_path):
+        try:
+            from fim_one.web.api.chat import _build_markitdown_vision_deps
 
-        async with create_session() as _vision_db:
-            vision_llm = await _build_markitdown_vision_deps(None, _vision_db)
-    except Exception:
-        logger.warning(
-            "Failed to resolve vision LLM for KB ingest of %s; "
-            "continuing in text-only mode",
-            file_path,
-            exc_info=True,
-        )
+            async with create_session() as _vision_db:
+                vision_llm = await _build_markitdown_vision_deps(None, _vision_db)
+        except Exception:
+            logger.warning(
+                "Failed to resolve vision LLM for KB ingest of %s; "
+                "continuing in text-only mode",
+                file_path,
+                exc_info=True,
+            )
 
     try:
         manager = get_kb_manager()
