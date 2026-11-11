@@ -1560,8 +1560,9 @@ class WorkflowRunService:
             from fim_one.core.utils import cancel_requested
 
             if cancel_requested():
-                # Cancelled (shutdown), not the run's own failure: left as
-                # it is, for the sweep of another or the next process.
+                # Cancelled (shutdown), not the run's own failure. It stays
+                # claimed and unstamped; the recovery sweep closes it as
+                # interrupted, as it does any run whose process stopped.
                 raise
             logger.exception("Workflow run %s could not be continued", run_id)
             await self._end_stored_run(
