@@ -11,7 +11,7 @@ import uuid
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,11 +21,15 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "UsageBucket",
     "UsageEntry",
+    "UsageSlice",
+    "usage_per_agent_subquery",
+    "usage_per_user_subquery",
+    "used_between",
+    "used_by",
     "used_by_day",
     "used_by_origin",
     "used_by_users_since",
     "used_since",
-    "usage_per_user_subquery",
     "write_entries",
 ]
 
@@ -277,3 +281,130 @@ async def used_by_origin(db: AsyncSession, user_id: str, since: datetime) -> lis
         )
         for agent_id, source_type, entry, total in rows
     ]
+
+
+# ---------------------------------------------------------------------------
+# Platform-wide figures (the statistics pages)
+# ---------------------------------------------------------------------------
+
+Dimension = Literal["day", "model", "agent", "background"]
+_DIMENSIONS: tuple[Dimension, ...] = ("day", "model", "agent", "background")
+
+
+@dataclass(frozen=True)
+class UsageSlice:
+    """Usage that shares the values of the dimensions it was grouped by.
+
+    A dimension not grouped by is ``None``. ``day`` is the date the usage
+    was recorded, as ``YYYY-MM-DD`` (``DATE(created_at)``, as the other
+    daily figures). ``background`` is whether it was the work done after a
+    turn (entry ``background``: the title, and on backfilled rows every
+    fast-model token of the conversation, which carry no model).
+    """
+
+    total_tokens: int
+    day: str | None = None
+    model: str | None = None
+    agent_id: str | None = None
+    background: bool | None = None
+
+
+def _window(query: Any, since: datetime | None, until: datetime | None, user_id: str | None) -> Any:
+    from fim_one.db.models.usage_ledger import UsageLedger
+
+    if since is not None:
+        query = query.where(UsageLedger.created_at >= since)
+    if until is not None:
+        query = query.where(UsageLedger.created_at < until)
+    if user_id is not None:
+        query = query.where(UsageLedger.user_id == user_id)
+    return query
+
+
+async def used_between(
+    db: AsyncSession,
+    *,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    user_id: str | None = None,
+) -> int:
+    """Tokens recorded from *since* (inclusive) to *until* (exclusive), by
+    everyone or by *user_id*; either bound may be left open. Never negative."""
+    from sqlalchemy import func, select
+
+    from fim_one.db.models.usage_ledger import UsageLedger
+
+    query = _window(
+        select(func.coalesce(func.sum(UsageLedger.total_tokens), 0)), since, until, user_id
+    )
+    return max(int((await db.execute(query)).scalar_one() or 0), 0)
+
+
+async def used_by(
+    db: AsyncSession,
+    by: Sequence[Dimension],
+    *,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    user_id: str | None = None,
+) -> list[UsageSlice]:
+    """Tokens recorded in the window, grouped by the dimensions in *by*,
+    by everyone or by *user_id*. Ordered by day when grouped by day."""
+    from sqlalchemy import case, func, select
+
+    from fim_one.db.models.usage_ledger import UsageLedger
+
+    unknown = [name for name in by if name not in _DIMENSIONS]
+    if unknown:
+        raise ValueError(f"cannot group usage by {unknown}")
+    columns: dict[str, Any] = {
+        "day": func.date(UsageLedger.created_at),
+        "model": UsageLedger.model,
+        "agent": UsageLedger.agent_id,
+        "background": case((UsageLedger.entry == "background", 1), else_=0),
+    }
+    keys = [name for name in _DIMENSIONS if name in by]
+    grouped = [columns[name] for name in keys]
+    query = _window(
+        select(*grouped, func.coalesce(func.sum(UsageLedger.total_tokens), 0)),
+        since,
+        until,
+        user_id,
+    )
+    if grouped:
+        query = query.group_by(*grouped)
+    if "day" in keys:
+        query = query.order_by(columns["day"])
+    slices = []
+    for row in (await db.execute(query)).all():
+        values = dict(zip(keys, row[:-1], strict=True))
+        slices.append(
+            UsageSlice(
+                total_tokens=max(int(row[-1] or 0), 0),
+                day=str(values["day"]) if "day" in values else None,
+                model=values.get("model"),
+                agent_id=values.get("agent"),
+                background=bool(values["background"]) if "background" in values else None,
+            )
+        )
+    return slices
+
+
+def usage_per_agent_subquery(since: datetime | None = None) -> Any:
+    """A subquery of ``(agent_id, total_tokens)``: what was recorded through
+    each agent from *since* on (over all time when ``None``), for joining to agents."""
+    from sqlalchemy import func, select
+
+    from fim_one.db.models.usage_ledger import UsageLedger
+
+    query = (
+        select(
+            UsageLedger.agent_id.label("agent_id"),
+            func.coalesce(func.sum(UsageLedger.total_tokens), 0).label("total_tokens"),
+        )
+        .where(UsageLedger.agent_id.is_not(None))
+        .group_by(UsageLedger.agent_id)
+    )
+    if since is not None:
+        query = query.where(UsageLedger.created_at >= since)
+    return query.subquery()
