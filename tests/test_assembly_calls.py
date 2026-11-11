@@ -192,3 +192,20 @@ async def test_urls_in_an_error_message_are_stored_without_their_secrets(
 
     (row,) = await _rows(factory)
     assert row.error_message == stored
+
+
+async def test_the_address_is_stored_without_the_credential_in_its_path(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """The recorder cleaned only user-info, query string and fragment: a bot
+    token in the path was stored as it was."""
+    await call_recorder(_ctx(), kind="connector")(
+        connector_id="c",
+        request_method="POST",
+        request_url="https://api.telegram.org/bot123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"
+        "/sendMessage?chat_id=1",
+        success=True,
+    )
+
+    (row,) = await _rows(factory)
+    assert row.request_url == "https://api.telegram.org/***/sendMessage"

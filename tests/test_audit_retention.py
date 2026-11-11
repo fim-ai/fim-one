@@ -10,6 +10,7 @@ records; default 180); ``0`` keeps for ever. Every sweep leaves one
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import uuid
@@ -25,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 import fim_one.db.models  # noqa: F401
 from fim_one.core.audit import actions
+from fim_one.core.audit import writer as audit_writer
 from fim_one.core.audit.retention import (
     AuditRetentionSweeper,
     Retention,
@@ -451,6 +453,66 @@ class TestTheLockOnPostgres:
             )
 
 
+class _LockConnection:
+    """A connection that takes the lock and answers the unlock with *unlocked*."""
+
+    def __init__(self, unlocked: bool | Exception) -> None:
+        self.unlocked = unlocked
+        self.invalidated = False
+
+    async def execution_options(self, **_: Any) -> _LockConnection:
+        return self
+
+    async def scalar(self, statement: Any, _params: Any = None) -> bool:
+        if "pg_try_advisory_lock" in str(statement):
+            return True
+        if isinstance(self.unlocked, Exception):
+            raise self.unlocked
+        return self.unlocked
+
+    async def invalidate(self) -> None:
+        self.invalidated = True
+
+
+class _LockBind:
+    def __init__(self, conn: _LockConnection) -> None:
+        self.conn = conn
+
+    def connect(self) -> Any:
+        @contextlib.asynccontextmanager
+        async def opened() -> AsyncIterator[_LockConnection]:
+            yield self.conn
+
+        return opened()
+
+
+class TestReleasingTheLock:
+    """A lock that is not released stays with the server session until it
+    closes; returned to the pool, that connection blocks every later sweep."""
+
+    @pytest.mark.parametrize(
+        "unlocked", [False, RuntimeError("connection reset")], ids=["answered-false", "raised"]
+    )
+    async def test_a_failed_unlock_closes_the_connection(
+        self, unlocked: bool | Exception, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        conn = _LockConnection(unlocked)
+        with caplog.at_level("WARNING", logger="fim_one.core.audit.retention"):
+            async with contextlib.AsyncExitStack() as stack:
+                assert await AuditRetentionSweeper._take_lock(stack, _LockBind(conn))
+                assert not conn.invalidated
+
+        assert conn.invalidated
+        assert [r.levelname for r in caplog.records] == ["WARNING"]
+
+    async def test_a_released_lock_leaves_the_connection_to_the_pool(self) -> None:
+        conn = _LockConnection(True)
+        async with contextlib.AsyncExitStack() as stack:
+            assert await AuditRetentionSweeper._take_lock(stack, _LockBind(conn))
+
+        assert not conn.invalidated
+
+
 class TestATableThatFails:
     async def test_the_other_tables_are_swept_and_the_record_names_the_failure(
         self, factory: Factory, monkeypatch: pytest.MonkeyPatch
@@ -479,6 +541,98 @@ class TestATableThatFails:
         assert record.detail is not None
         assert "login_history=2" in record.detail and "review_log=1" in record.detail
         assert record.detail.endswith("failed: login_history")
+
+
+    @pytest.mark.parametrize(
+        ("table", "rows"),
+        [
+            ("audit_logs", lambda: [_event(900) for _ in range(3)]),
+            ("login_history", lambda: [_login(900) for _ in range(3)]),
+            ("review_log", lambda: [_review(900) for _ in range(3)]),
+            ("confirmation_payloads", lambda: [_request(900) for _ in range(3)]),
+            ("connector_call_logs", lambda: [_call(900) for _ in range(3)]),
+        ],
+    )
+    async def test_what_a_failing_table_removed_before_it_failed_is_counted(
+        self, factory: Factory, monkeypatch: pytest.MonkeyPatch, table: str, rows: Any
+    ) -> None:
+        """Only the sign-in history was checked; a table whose running count
+        was lost would report 0 for the rows it had removed."""
+        await _add(factory, *rows())
+        pauses = 0
+
+        async def pause(_seconds: float) -> None:
+            # Only this table has rows: its second pause, after two batches of one.
+            nonlocal pauses
+            pauses += 1
+            if pauses == 2:
+                raise RuntimeError("database away")
+
+        monkeypatch.setattr("fim_one.core.audit.retention.asyncio.sleep", pause)
+
+        counts = await AuditRetentionSweeper(Retention(), batch_size=1).sweep(now=NOW)
+
+        assert counts is not None and counts[table] == 2
+        [record] = await _sweeps(factory)
+        assert record.detail is not None
+        assert f"{table}=2" in record.detail
+        assert record.detail.endswith(f"failed: {table}")
+
+
+class TestWhenTheDatabaseGoesAwayDuringASweep:
+    """Every table failed and the record could not be written: the process
+    waited 21.6 hours before it tried again."""
+
+    async def test_it_tries_again_after_an_hour(
+        self, factory: Factory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        await _add(factory, _login(900))
+        away = True
+
+        async def failing(original: Any, *args: Any, **kwargs: Any) -> Any:
+            if away:
+                raise RuntimeError("database away")
+            return await original(*args, **kwargs)
+
+        for name in ("_delete_older", "_clear_payloads"):
+            original = getattr(AuditRetentionSweeper, name)
+
+            async def wrapped(self: Any, *a: Any, _o: Any = original, **k: Any) -> Any:
+                return await failing(_o, self, *a, **k)
+
+            monkeypatch.setattr(AuditRetentionSweeper, name, wrapped)
+        real_record = audit_writer.record
+
+        async def record(*args: Any, **kwargs: Any) -> None:
+            if away:
+                raise RuntimeError("database away")
+            await real_record(*args, **kwargs)
+
+        monkeypatch.setattr("fim_one.core.audit.retention.audit.record", record)
+        sweeper = AuditRetentionSweeper(Retention())
+
+        assert await sweeper.sweep(now=NOW) is not None
+        assert await sweeper.sweep(now=NOW + timedelta(minutes=30)) is None
+        away = False
+        counts = await sweeper.sweep(now=NOW + timedelta(hours=1))
+
+        assert counts is not None and counts["login_history"] == 1
+        assert len(await _sweeps(factory)) == 1
+
+    async def test_a_sweep_that_removed_something_waits_the_interval(
+        self, factory: Factory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Only the record is lost: the hour is not for this case."""
+        await _add(factory, _login(900))
+
+        async def record(*_args: Any, **_kwargs: Any) -> None:
+            raise RuntimeError("database away")
+
+        monkeypatch.setattr("fim_one.core.audit.retention.audit.record", record)
+        sweeper = AuditRetentionSweeper(Retention())
+
+        assert await sweeper.sweep(now=NOW) is not None
+        assert await sweeper.sweep(now=NOW + timedelta(hours=1)) is None
 
 
 class TestTimeZones:

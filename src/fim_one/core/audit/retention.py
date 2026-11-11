@@ -124,6 +124,10 @@ def _aware(moment: datetime) -> datetime:
     return moment.astimezone(UTC) if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
 
 
+# How soon a sweep that removed nothing and could not record itself is tried again.
+_RETRY_AFTER_FAILURE = timedelta(hours=1)
+
+
 class AuditRetentionSweeper:
     """Removes audit records older than their retention period, once a day.
 
@@ -154,10 +158,11 @@ class AuditRetentionSweeper:
         self.interval_hours = interval_hours
         self.check_interval_seconds = check_interval_seconds
         self.batch_size = max(1, batch_size)
-        # When this process last swept. The ``audit.retention_sweep`` record
-        # says so across processes; this covers a record that failed to be
-        # written, which would otherwise have every check sweep again.
-        self._last_attempt: datetime | None = None
+        # When this process may sweep next. The ``audit.retention_sweep``
+        # record says when the last sweep ran across processes; this covers
+        # a record that failed to be written, which would otherwise have
+        # every check sweep again.
+        self._not_before: datetime | None = None
 
     # ------------------------------------------------------------------
     # One sweep
@@ -184,10 +189,21 @@ class AuditRetentionSweeper:
                 return None
             if not await self._due(moment):
                 return None
-            self._last_attempt = moment
-            counts, failed = await self._remove_expired(moment)
-            await self._leave_a_record(counts, failed)
+            self._not_before = moment + self._wait
+            counts, failed, ran = await self._remove_expired(moment)
+            recorded = await self._leave_a_record(counts, failed)
+            if not recorded and set(failed) >= set(ran):
+                # Nothing was swept and nothing says so: the database went
+                # away during the sweep. Try again at the next check
+                # instead of in a day.
+                self._not_before = moment + min(_RETRY_AFTER_FAILURE, self._wait)
         return counts
+
+    @property
+    def _wait(self) -> timedelta:
+        # A little under the interval, so a daily sweep does not drift later
+        # by one check interval a day.
+        return timedelta(hours=self.interval_hours * 0.9)
 
     @staticmethod
     async def _take_lock(stack: contextlib.AsyncExitStack, bind: Any) -> bool:
@@ -196,7 +212,9 @@ class AuditRetentionSweeper:
         A session-level lock on a connection of its own in autocommit: the
         connection sits idle outside any transaction, so it holds no
         snapshot back from VACUUM. The lock goes with ``pg_advisory_unlock``
-        at the end, or with the connection if that drops.
+        at the end, or with the connection if that drops. An unlock that
+        fails or answers false (the lock is not this session's) closes the
+        connection instead of returning it to the pool.
         """
         from sqlalchemy import text
 
@@ -210,12 +228,23 @@ class AuditRetentionSweeper:
 
         async def release() -> None:
             try:
-                await conn.execute(
+                released = await conn.scalar(
                     text("SELECT pg_advisory_unlock(hashtext(:name))"), {"name": _LOCK_NAME}
                 )
             except Exception:
                 # Not back into the pool still holding the lock.
                 logger.warning("Audit retention: could not release the lock", exc_info=True)
+                await conn.invalidate()
+                return
+            if not released:
+                # The server session that answered does not hold the lock:
+                # a pooler in transaction mode sent the two statements to
+                # different sessions, and the one that took the lock keeps
+                # it. Closing this connection is all that can be done here.
+                logger.warning(
+                    "Audit retention: the lock was not held by this connection at release; "
+                    "the sweep needs a direct or session-mode database connection"
+                )
                 await conn.invalidate()
 
         stack.push_async_callback(release)
@@ -227,7 +256,7 @@ class AuditRetentionSweeper:
         from fim_one.db import create_session
         from fim_one.db.models.audit_log import AuditLog
 
-        if self._last_attempt is not None and not self._elapsed(self._last_attempt, moment):
+        if self._not_before is not None and moment < self._not_before:
             return False
 
         async with create_session() as db:
@@ -244,12 +273,14 @@ class AuditRetentionSweeper:
         return self._elapsed(_aware(last), moment)
 
     def _elapsed(self, last: datetime, moment: datetime) -> bool:
-        # A little under the interval, so a daily sweep does not drift later
-        # by one check interval a day.
-        return moment - last >= timedelta(hours=self.interval_hours * 0.9)
+        return moment - last >= self._wait
 
-    async def _remove_expired(self, moment: datetime) -> tuple[dict[str, int], list[str]]:
-        """Remove what is past its period. Returns the counts and the tables that failed.
+    async def _remove_expired(
+        self, moment: datetime
+    ) -> tuple[dict[str, int], list[str], list[str]]:
+        """Remove what is past its period.
+
+        Returns the counts, the tables that failed and the tables swept.
 
         A table that fails is logged and named; the others are still swept,
         and what that table had already removed stays counted.
@@ -267,8 +298,10 @@ class AuditRetentionSweeper:
             "confirmation_payloads": 0,
         }
         failed: list[str] = []
+        ran: list[str] = []
 
         async def step(table: str, work: Awaitable[int]) -> None:
+            ran.append(table)
             try:
                 counts[table] = await work
             except Exception:
@@ -288,7 +321,7 @@ class AuditRetentionSweeper:
             await step(
                 "connector_call_logs", self._delete_older(ConnectorCallLog, cutoff, tally=counts)
             )
-        return counts, failed
+        return counts, failed, ran
 
     async def _delete_older(
         self, model: Any, cutoff: datetime, *, tally: dict[str, int] | None = None
@@ -379,25 +412,40 @@ class AuditRetentionSweeper:
                 return cleared
             await asyncio.sleep(0)
 
-    async def _leave_a_record(self, counts: dict[str, int], failed: list[str]) -> None:
+    async def _leave_a_record(self, counts: dict[str, int], failed: list[str]) -> bool:
+        """Write the sweep's ``audit.retention_sweep`` event. Whether it was written."""
+        from fim_one.db import create_session
+
         kept = (
             f"audit {self.retention.audit_days or 'unlimited'} days, "
             f"calls {self.retention.call_log_days or 'unlimited'} days"
         )
         removed = ", ".join(f"{table}={count}" for table, count in counts.items())
-        await audit.record(
-            actions.AUDIT_RETENTION_SWEEP,
-            actor=audit.system_actor("audit-retention"),
-            outcome="failed" if failed else "success",
-            detail=f"removed: {removed}; kept: {kept}"
-            + (f"; failed: {', '.join(failed)}" if failed else ""),
-        )
+        recorded = True
+        try:
+            async with create_session() as db:
+                await audit.record(
+                    actions.AUDIT_RETENTION_SWEEP,
+                    actor=audit.system_actor("audit-retention"),
+                    outcome="failed" if failed else "success",
+                    detail=f"removed: {removed}; kept: {kept}"
+                    + (f"; failed: {', '.join(failed)}" if failed else ""),
+                    db=db,
+                )
+                await db.commit()
+        except Exception as exc:
+            # Only the error's type: its text can echo the row.
+            logger.error(
+                "Audit retention: the sweep's record was not written: %s", type(exc).__name__
+            )
+            recorded = False
         if failed:
             logger.warning("Audit retention sweep failed for: %s", ", ".join(failed))
         if any(counts.values()):
             logger.info("Audit retention sweep removed: %s (kept: %s)", removed, kept)
         else:
             logger.debug("Audit retention sweep: nothing to remove")
+        return recorded
 
     # ------------------------------------------------------------------
     # Background loop

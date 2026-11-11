@@ -213,31 +213,116 @@ def _occurrences(needle: str, files: list[Path]) -> list[str]:
 # The append-only record tables, by model and by table name.
 _RECORD_MODELS = frozenset({"AuditLog", "LoginHistory", "ReviewLog", "ConnectorCallLog"})
 _RECORD_TABLES = frozenset({"audit_logs", "login_history", "review_log", "connector_call_logs"})
+_Q = r"[\"'`\[]?"
 _RAW_WRITE = re.compile(
-    r"\b(?:delete\s+from|update|truncate(?:\s+table)?)\s+[\"'`]?(?:"
+    r"\b(?:delete\s+from|update|truncate(?:\s+table)?|drop\s+table(?:\s+if\s+exists)?"
+    r"|alter\s+table(?:\s+if\s+exists)?)"
+    r"(?:\s+only)?\s+"
+    # An optional schema: ``public.audit_logs``, ``"public"."audit_logs"``.
+    + rf"(?:{_Q}\w+{_Q}\s*\.\s*)?{_Q}(?:"
     + "|".join(sorted(_RECORD_TABLES))
     + r")\b",
     re.IGNORECASE,
 )
+# SQLAlchemy's statement builders, and the session methods that change rows
+# of a model given as their first argument.
+_DML = frozenset({"delete", "update", "Delete", "Update"})
+_BULK = frozenset({"bulk_update_mappings", "bulk_save_objects"})
 
 
-def _append_only_offences(source: str) -> list[str]:
+def _dml_names(tree: ast.AST) -> dict[str, str]:
+    """The names ``delete`` and ``update`` are called by in *tree*: ``{"sa_update": "update"}``."""
+    names = {verb: verb for verb in _DML}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("sqlalchemy"):
+            for alias in node.names:
+                if alias.name in _DML:
+                    names[alias.asname or alias.name] = alias.name.lower()
+    return {name: verb.lower() for name, verb in names.items()}
+
+
+def _verb_of(func: ast.expr, dml: dict[str, str]) -> str | None:
+    if isinstance(func, ast.Name):
+        return dml.get(func.id)
+    if isinstance(func, ast.Attribute) and func.attr in _DML:
+        return func.attr.lower()
+    return None
+
+
+def generic_writers(source: str) -> dict[str, frozenset[int | str]]:
+    """Functions of *source* that ``delete()`` / ``update()`` a model they are given.
+
+    ``{"_delete_older": {0, "model"}}``: the position (a method's ``self``
+    not counted) and the name of each parameter that reaches a
+    ``delete(param)`` / ``update(param)`` in the body.
+    """
+    tree = ast.parse(source)
+    dml = _dml_names(tree)
+    found: dict[str, frozenset[int | str]] = {}
+    for fn in ast.walk(tree):
+        if not isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        params = [a.arg for a in [*fn.args.posonlyargs, *fn.args.args]]
+        # A method is called without its ``self``.
+        if params[:1] in (["self"], ["cls"]):
+            params = params[1:]
+        named = params + [a.arg for a in fn.args.kwonlyargs]
+        reached: set[int | str] = set()
+        for node in ast.walk(fn):
+            if not isinstance(node, ast.Call) or _verb_of(node.func, dml) is None:
+                continue
+            target = node.args[0] if node.args else None
+            if isinstance(node.func, ast.Attribute) and not node.args:
+                target = node.func.value  # ``param.__table__.delete()``
+            while isinstance(target, ast.Attribute):
+                target = target.value
+            if isinstance(target, ast.Name) and target.id in named:
+                reached.add(target.id)
+                if target.id in params:
+                    reached.add(params.index(target.id))
+        if reached:
+            found[fn.name] = frozenset(reached)
+    return found
+
+
+def _append_only_offences(
+    source: str, helpers: dict[str, frozenset[int | str]] | None = None
+) -> list[str]:
     """Where *source* changes or removes rows of the four record tables.
 
     Read from the syntax tree, so aliases and line breaks do not hide it:
 
-    - ``delete(X)`` / ``update(X)`` (also ``sa.delete``) whose first argument
-      is one of the models, under any imported name or a name it is assigned
-      to, as ``module.Model``, or its ``__table__``;
+    - ``delete(X)`` / ``update(X)`` (also ``sa.delete``, and either under
+      any name it is imported as: ``update as sa_update``), and
+      ``session.bulk_update_mappings(X, ...)``, whose first argument is one
+      of the models, under any imported name or a name it is assigned to,
+      as ``module.Model``, or its ``__table__``;
     - ``X.__table__.delete()`` / ``.update()``, and
-      ``metadata.tables["audit_logs"].delete()``;
+      ``metadata.tables["audit_logs"].delete()``, also through a name the
+      table is assigned to;
     - ``session.delete(row)`` in a module that imports one of the models,
       unless what ``row`` is can be seen to be another model (its
       annotation, or what it was assigned from in the same function);
-    - raw SQL: ``DELETE FROM`` / ``UPDATE`` / ``TRUNCATE`` on a table name.
+    - an attribute assigned on, or ``setattr`` of, what can be seen to be a
+      row of one of the models (``row = await db.get(AuditLog, i)``;
+      ``row.detail = None``): the session writes the change at the commit;
+    - a call that hands one of the models to a function that deletes or
+      updates the model it is given (*helpers*, from
+      :func:`generic_writers` of every module; the module's own are added);
+    - raw SQL: ``DELETE FROM`` / ``UPDATE`` / ``TRUNCATE`` / ``DROP TABLE``
+      / ``ALTER TABLE`` on a table name, with or without a schema and
+      ``ONLY``, across line breaks and implicitly joined string pieces.
+
+    What it cannot see: a table or model name built at run time
+    (``"audit" + "_logs"``, ``getattr(models, name)``), and a row handed in
+    from another module in a module that imports none of the models.
     """
     tree = ast.parse(source)
+    dml = _dml_names(tree)
+    known = dict(helpers or {})
+    known.update(generic_writers(source))
     aliases: set[str] = set(_RECORD_MODELS)
+    tables: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
             for name in node.names:
@@ -251,38 +336,95 @@ def _append_only_offences(source: str) -> list[str]:
         or (isinstance(node, ast.Attribute) and node.attr in _RECORD_MODELS)
         for node in ast.walk(tree)
     )
-    # ``Model = AuditLog``, followed until nothing new is bound.
+    # ``Model = AuditLog``, ``t = Base.metadata.tables["audit_logs"]``,
+    # followed until nothing new is bound.
     changed = True
     while changed:
         changed = False
         for node in ast.walk(tree):
-            if (
+            if not (
                 isinstance(node, ast.Assign)
                 and len(node.targets) == 1
                 and isinstance(node.targets[0], ast.Name)
-                and node.targets[0].id not in aliases
-                and _is_record_model(node.value, aliases)
             ):
-                aliases.add(node.targets[0].id)
+                continue
+            bound = node.targets[0].id
+            if bound not in tables and (
+                _is_table(node.value, aliases)
+                or (isinstance(node.value, ast.Name) and node.value.id in tables)
+            ):
+                tables.add(bound)
+                changed = True
+            elif bound not in aliases and _is_record_model(node.value, aliases):
+                aliases.add(bound)
                 changed = True
 
+    def is_table(node: ast.expr) -> bool:
+        return _is_table(node, aliases) or (isinstance(node, ast.Name) and node.id in tables)
+
     hits: list[str] = []
-    for lineno, line in enumerate(source.splitlines(), start=1):
-        if _RAW_WRITE.search(line):
-            hits.append(f"{lineno}: raw SQL on a record table")
-    functions = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]
+    raw_lines: set[int] = set()
+    for match in _RAW_WRITE.finditer(source):
+        raw_lines.add(source.count("\n", 0, match.start()) + 1)
     for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and _RAW_WRITE.search(node.value)
+        ):
+            raw_lines.add(node.lineno)
+    hits.extend(f"{lineno}: raw SQL on a record table" for lineno in sorted(raw_lines))
+
+    functions = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]
+
+    def scope_of(node: ast.AST) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+        """The innermost function *node* is in."""
+        return max(
+            (f for f in functions if any(n is node for n in ast.walk(f))),
+            key=lambda f: f.lineno,
+            default=None,
+        )
+
+    def is_a_record(node: ast.expr, at: ast.AST) -> bool:
+        return _what_it_is(node, scope_of(at), aliases) == "record"
+
+    for node in ast.walk(tree):
+        # ``row.detail = None`` on a loaded record.
+        if isinstance(node, ast.Assign | ast.AugAssign | ast.AnnAssign):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            hits.extend(
+                f"{node.lineno}: attribute set on a record"
+                for target in targets
+                if isinstance(target, ast.Attribute)
+                and isinstance(target.value, ast.Name)
+                and is_a_record(target.value, node)
+            )
         if not isinstance(node, ast.Call):
             continue
         func = node.func
-        verb = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
-        if verb not in {"delete", "update"}:
+        callee = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+        if callee == "setattr" and node.args and is_a_record(node.args[0], node):
+            hits.append(f"{node.lineno}: setattr() on a record")
             continue
-        if node.args and _is_record_model(node.args[0], aliases, table=True):
+        if callee in _BULK and node.args and _is_record_model(node.args[0], aliases):
+            hits.append(f"{node.lineno}: {callee}() of a record table")
+            continue
+        if callee in known:
+            reached = known[callee]
+            handed = [arg for i, arg in enumerate(node.args) if i in reached] + [
+                kw.value for kw in node.keywords if kw.arg in reached
+            ]
+            if any(_is_record_model(arg, aliases, table=True) or is_table(arg) for arg in handed):
+                hits.append(f"{node.lineno}: {callee}() is handed a record table")
+                continue
+        verb = _verb_of(func, dml)
+        if verb is None:
+            continue
+        if (
+            node.args
+            and (_is_record_model(node.args[0], aliases, table=True) or is_table(node.args[0]))
+        ) or (isinstance(func, ast.Attribute) and is_table(func.value)):
             hits.append(f"{node.lineno}: {verb}() of a record table")
-        elif isinstance(func, ast.Attribute) and _is_record_model(func.value, aliases, table=True):
-            if _is_table(func.value, aliases):
-                hits.append(f"{node.lineno}: {verb}() of a record table")
         elif (
             verb == "delete"
             and imports_a_model
@@ -291,15 +433,9 @@ def _append_only_offences(source: str) -> list[str]:
             and not node.keywords
             # ``@router.delete("/path")``
             and not isinstance(node.args[0], ast.Constant)
+            and _what_it_is(node.args[0], scope_of(node), aliases) != "other"
         ):
-            # The innermost function the call is in.
-            scope = max(
-                (f for f in functions if any(n is node for n in ast.walk(f))),
-                key=lambda f: f.lineno,
-                default=None,
-            )
-            if _what_it_is(node.args[0], scope, aliases) != "other":
-                hits.append(f"{node.lineno}: session.delete() of what may be a record")
+            hits.append(f"{node.lineno}: session.delete() of what may be a record")
     return hits
 
 
@@ -821,11 +957,18 @@ class TestAuditRowsHaveOneWriter:
         user deletion, which takes the deleted user's identity out of the
         rows that stay. See :func:`_append_only_offences` for what is read."""
         allowed = {"core/audit/retention.py", "web/services/user_deletion.py"}
+        files = [py for py in sorted(SRC.rglob("*.py")) if "migrations" not in py.parts]
+        # A function anywhere (the sweep's own included) that deletes or
+        # updates the model it is handed may not be handed a record table.
+        helpers: dict[str, frozenset[int | str]] = {}
+        for py in files:
+            for name, reached in generic_writers(py.read_text(encoding="utf-8")).items():
+                helpers[name] = helpers.get(name, frozenset()) | reached
         offenders = [
             f"{py.relative_to(SRC)}:{hit}"
-            for py in sorted(SRC.rglob("*.py"))
-            if "migrations" not in py.parts and str(py.relative_to(SRC)) not in allowed
-            for hit in _append_only_offences(py.read_text(encoding="utf-8"))
+            for py in files
+            if str(py.relative_to(SRC)) not in allowed
+            for hit in _append_only_offences(py.read_text(encoding="utf-8"), helpers)
         ]
         assert not offenders, "audit records are append-only:\n  " + "\n  ".join(offenders)
 
@@ -885,6 +1028,108 @@ class TestAuditRowsHaveOneWriter:
                 "    await db.execute(text('update \"review_log\" set actor_username = 1'))\n",
                 id="raw-update",
             ),
+            pytest.param(
+                "from sqlalchemy import update as sa_update\n"
+                "from fim_one.db.models import AuditLog\n"
+                "async def _g(db):\n"
+                "    await db.execute(sa_update(AuditLog).values(detail=None))\n",
+                id="update-imported-under-another-name",
+            ),
+            pytest.param(
+                "from sqlalchemy import delete as sa_delete\n"
+                "from fim_one.db.models import LoginHistory\n"
+                "async def _g(db):\n    await db.execute(sa_delete(LoginHistory))\n",
+                id="delete-imported-under-another-name",
+            ),
+            pytest.param(
+                "from fim_one.db.models.audit_log import AuditLog\n"
+                "async def _g(db, i):\n    row = await db.get(AuditLog, i)\n"
+                "    row.detail = None\n    await db.commit()\n",
+                id="attribute-set-on-a-loaded-row",
+            ),
+            pytest.param(
+                "from sqlalchemy import select\nfrom fim_one.db.models import ReviewLog\n"
+                "async def _g(db):\n"
+                "    for entry in (await db.execute(select(ReviewLog))).scalars():\n"
+                "        entry.note += '!'\n",
+                id="attribute-changed-on-each-selected-row",
+            ),
+            pytest.param(
+                "from fim_one.db.models.audit_log import AuditLog\n"
+                "async def _g(db, i):\n    row = await db.get(AuditLog, i)\n"
+                "    setattr(row, 'detail', None)\n",
+                id="setattr-on-a-loaded-row",
+            ),
+            pytest.param(
+                'from sqlalchemy import text\n'
+                'async def _g(db):\n    await db.execute(text("DELETE FROM public.audit_logs"))\n',
+                id="raw-sql-with-a-schema",
+            ),
+            pytest.param(
+                'from sqlalchemy import text\n'
+                'async def _g(db):\n'
+                '    await db.execute(text(\'DELETE FROM "public"."login_history"\'))\n',
+                id="raw-sql-with-a-quoted-schema",
+            ),
+            pytest.param(
+                'from sqlalchemy import text\n'
+                'async def _g(db):\n    await db.execute(text("""DELETE FROM\n'
+                '        audit_logs WHERE 1 = 1"""))\n',
+                id="raw-sql-over-two-lines",
+            ),
+            pytest.param(
+                'from sqlalchemy import text\n'
+                'async def _g(db):\n    await db.execute(text("DELETE FROM "\n'
+                '                          "review_log"))\n',
+                id="raw-sql-in-joined-pieces",
+            ),
+            pytest.param(
+                'from sqlalchemy import text\n'
+                'async def _g(db):\n'
+                '    await db.execute(text("UPDATE ONLY audit_logs SET detail = NULL"))\n',
+                id="raw-update-only",
+            ),
+            pytest.param(
+                'from sqlalchemy import text\n'
+                'async def _g(db):\n    await db.execute(text("DROP TABLE login_history"))\n',
+                id="raw-drop-table",
+            ),
+            pytest.param(
+                'from sqlalchemy import text\n'
+                'async def _g(db):\n'
+                '    await db.execute(text("TRUNCATE connector_call_logs"))\n',
+                id="raw-truncate",
+            ),
+            pytest.param(
+                "from fim_one.db.base import Base\n"
+                "async def _g(db):\n    t = Base.metadata.tables['audit_logs']\n"
+                "    await db.execute(t.delete())\n",
+                id="table-from-metadata-bound-to-a-name",
+            ),
+            pytest.param(
+                "from fim_one.db.models.audit_log import AuditLog\n"
+                "async def _g(db):\n"
+                "    await db.run_sync(\n"
+                "        lambda s: s.bulk_update_mappings(AuditLog, [{'id': '1'}])\n"
+                "    )\n",
+                id="bulk-update-mappings",
+            ),
+            pytest.param(
+                "from sqlalchemy import delete\n"
+                "async def _wipe(db, model):\n    await db.execute(delete(model))\n"
+                "async def _g(db):\n"
+                "    from fim_one.db.models.audit_log import AuditLog\n"
+                "    await _wipe(db, AuditLog)\n",
+                id="generic-helper-handed-a-record-model",
+            ),
+            pytest.param(
+                "from sqlalchemy import update\n"
+                "async def _touch(db, *, model):\n    await db.execute(update(model))\n"
+                "async def _g(db):\n"
+                "    from fim_one.db.models import ConnectorCallLog\n"
+                "    await _touch(db, model=ConnectorCallLog)\n",
+                id="generic-helper-handed-a-record-model-by-keyword",
+            ),
         ],
     )
     def test_the_gate_sees_each_spelling(self, source: str) -> None:
@@ -903,6 +1148,19 @@ class TestAuditRowsHaveOneWriter:
             "from fim_one.db.models import AuditLog\n"
             "async def _g(db, row: 'Agent'):\n    values = {}\n    values.update(a=1)\n"
             "    await db.delete(row)\n",
+            # Building a new record, and editing another model's row.
+            "from fim_one.db.models import AuditLog, ApiKey\n"
+            "from sqlalchemy import update as sa_update\n"
+            "async def _g(db, i):\n    key = await db.get(ApiKey, i)\n    key.name = 'x'\n"
+            "    setattr(key, 'name', 'y')\n    await db.execute(sa_update(ApiKey))\n",
+            # A helper that deletes what it is given, handed another model.
+            "from sqlalchemy import delete\n"
+            "async def _wipe(db, model):\n    await db.execute(delete(model))\n"
+            "async def _g(db):\n    from fim_one.db.models import ApiKey\n"
+            "    await _wipe(db, ApiKey)\n",
+            # Prose that mentions a table.
+            "# the sweep removes rows from audit_logs and login_history\n"
+            "def _g():\n    return 'records of audit_logs'\n",
         ],
     )
     def test_the_gate_lets_other_tables_be(self, source: str) -> None:
@@ -910,12 +1168,19 @@ class TestAuditRowsHaveOneWriter:
 
     def test_the_sweep_is_the_only_generic_delete(self) -> None:
         """The sweep deletes through one helper that takes the table as an
-        argument, which the needles above cannot see: no other module may
-        hold a ``delete(model)`` of its own and be handed an audit table."""
+        argument; the gate follows such helpers (``generic_writers``), and
+        the sweep is the module that hands it the record tables."""
         retention = (SRC / "core" / "audit" / "retention.py").read_text(encoding="utf-8")
-        assert retention.count("delete(model)") == 1
+        assert "_delete_older" in generic_writers(retention)
         for model in ("AuditLog", "LoginHistory", "ReviewLog", "ConnectorCallLog"):
             assert f"_delete_older({model}," in retention, model
+        # Imported elsewhere and handed a record table, it is an offence.
+        borrowed = (
+            "from fim_one.core.audit.retention import _delete_older\n"
+            "from fim_one.db.models import AuditLog\n"
+            "async def _g(db, cut):\n    await _delete_older(AuditLog, AuditLog.created_at, cut)\n"
+        )
+        assert _append_only_offences(borrowed, generic_writers(retention))
 
     def test_write_audit_is_defined_once(self) -> None:
         files = [py for py in sorted(SRC.rglob("*.py")) if "migrations" not in py.parts]
