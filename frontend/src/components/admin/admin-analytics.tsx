@@ -424,10 +424,10 @@ function ByAgentSection({
               {data.map((item, i) => (
                 <tr key={i} className="hover:bg-muted/20 transition-colors">
                   <td className="px-4 py-3 font-medium text-foreground">{item.agent_name}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{item.owner || "--"}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{(item.conversations ?? 0).toLocaleString()}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{item.owner_username || "--"}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{(item.total_conversations ?? 0).toLocaleString()}</td>
                   <td className="px-4 py-3 text-right tabular-nums">{formatTokens(item.total_tokens ?? 0)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{formatTokens(item.avg_tokens_per_conv ?? 0)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{formatTokens(item.avg_tokens_per_conversation ?? 0)}</td>
                 </tr>
               ))}
             </tbody>
@@ -602,7 +602,7 @@ function ByWorkflowSection({
               {data.map((item, i) => (
                 <tr key={i} className="hover:bg-muted/20 transition-colors">
                   <td className="px-4 py-3 font-medium text-foreground">{item.workflow_name}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{item.owner || "--"}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{item.owner_username || "--"}</td>
                   <td className="px-4 py-3 text-right tabular-nums">{(item.total_runs ?? 0).toLocaleString()}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
@@ -657,7 +657,7 @@ function CostProjectionSection({
     )
   }
 
-  if (!data || (data.projected_tokens === 0 && data.daily_avg === 0)) {
+  if (!data || (data.projected_30d_tokens === 0 && data.daily_avg_tokens === 0)) {
     return (
       <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
         {te("noCostData")}
@@ -675,15 +675,15 @@ function CostProjectionSection({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-md border border-border bg-muted/30 p-4">
           <p className="text-xs font-medium text-muted-foreground">{te("projectedTokens")}</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums">{formatTokens(data.projected_tokens ?? 0)}</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums">{formatTokens(data.projected_30d_tokens ?? 0)}</p>
         </div>
         <div className="rounded-md border border-border bg-muted/30 p-4">
           <p className="text-xs font-medium text-muted-foreground">{te("dailyAverage")}</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums">{formatTokens(data.daily_avg ?? 0)}</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums">{formatTokens(data.daily_avg_tokens ?? 0)}</p>
         </div>
         <div className="rounded-md border border-border bg-muted/30 p-4">
           <p className="text-xs font-medium text-muted-foreground">{te("trailingTotal")}</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums">{formatTokens(data.trailing_total ?? 0)}</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums">{formatTokens(data.trailing_7d_tokens ?? 0)}</p>
         </div>
       </div>
     </div>
