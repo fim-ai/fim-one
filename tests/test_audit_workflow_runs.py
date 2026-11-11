@@ -1265,3 +1265,38 @@ class TestAContinuationCancelledWhileReadmittedIsNotFailed:
         (run,) = await _runs(world)
         assert run.status != "failed", run.error
         assert await world.events("workflow.run_closed") == []
+
+
+class TestTheFirstCancellerIsRecorded:
+    """Recheck R3. Two people cancel the same executing run (its runner and
+    the workflow's author, in one server process): the record names the
+    first, and there is one."""
+
+    async def test_two_cancellers(
+        self, world: World, service: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from fim_one.core.audit.writer import actor_of
+        from fim_one.core.workflow.run_service import RunMode
+        from fim_one.core.workflow.types import NodeResult, NodeStatus
+
+        reached = asyncio.Event()
+
+        async def step(_executor: Any, node: Any, *_args: Any, **_kwargs: Any) -> Any:
+            reached.set()
+            await asyncio.sleep(1)
+            return NodeResult(node_id=node.id, status=NodeStatus.COMPLETED, output={})
+
+        monkeypatch.setattr("fim_one.core.workflow.nodes.ConditionBranchExecutor.execute", step)
+        alice, root = await world.user("alice"), await world.user("root", admin=True)
+        workflow = await _workflow(world, alice, WITH_A_BRANCH)
+        started = await service.start_run(
+            workflow, caller_id=alice.id, inputs={}, mode=RunMode.INTERACTIVE
+        )
+        await asyncio.wait_for(reached.wait(), timeout=5)
+
+        assert service.cancel_run(started.run_id, by=actor_of(alice))
+        assert service.cancel_run(started.run_id, by=actor_of(root))
+        await asyncio.wait_for(started.wait(), timeout=10)
+
+        (row,) = await world.events("workflow.run_cancelled")
+        assert (row.actor_id, row.actor_kind) == (alice.id, "user")
