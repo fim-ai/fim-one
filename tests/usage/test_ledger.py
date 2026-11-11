@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -110,6 +112,35 @@ class TestWriting:
         assert await write_entries([_entry(total=10)]) is True
         assert attempts == 2
         assert await _used(factory, "alice") == 10
+
+    async def test_a_write_whose_acknowledgement_was_lost_is_not_stored_twice(
+        self, factory: Factory, monkeypatch: pytest.MonkeyPatch  # noqa: F811
+    ) -> None:
+        """The first commit went through, then the connection broke before it said so."""
+        own_session = ledger._own_session
+        attempts = 0
+
+        @asynccontextmanager
+        async def _ack_lost() -> AsyncIterator[Any]:
+            nonlocal attempts
+            attempts += 1
+            async with own_session() as session:
+                if attempts == 1:
+                    commit = session.commit
+
+                    async def _committed_then_lost() -> None:
+                        await commit()
+                        raise ConnectionError("connection lost after the commit")
+
+                    session.commit = _committed_then_lost
+                yield session
+
+        monkeypatch.setattr(ledger, "_own_session", _ack_lost)
+
+        assert await write_entries([_entry(total=10), _entry(total=4, model="fast")]) is True
+        assert attempts == 2
+        assert await _used(factory, "alice") == 14
+        assert len(await _rows(factory)) == 2
 
     async def test_a_write_that_cannot_be_made_is_logged_with_its_numbers_and_never_raises(
         self,

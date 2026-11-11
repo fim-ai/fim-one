@@ -7,6 +7,7 @@ Rows are only inserted. A correction is a further row of kind
 from __future__ import annotations
 
 import logging
+import uuid
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -63,11 +64,12 @@ def _own_session() -> Any:
     return create_session()
 
 
-def _rows(entries: Iterable[UsageEntry]) -> list[Any]:
+def _rows(entries: Iterable[tuple[str, UsageEntry]]) -> list[Any]:
     from fim_one.db.models.usage_ledger import UsageLedger
 
     return [
         UsageLedger(
+            id=row_id,
             user_id=entry.user_id,
             org_id=entry.org_id,
             source_type=_fit(entry.source_type, 20),
@@ -84,7 +86,7 @@ def _rows(entries: Iterable[UsageEntry]) -> list[Any]:
             estimated=bool(entry.estimated),
             kind=entry.kind,
         )
-        for entry in entries
+        for row_id, entry in entries
     ]
 
 
@@ -96,6 +98,10 @@ async def write_entries(entries: Sequence[UsageEntry]) -> bool:
     written to the log at ERROR with its numbers, so the usage can be
     restored with an ``adjustment`` row. Returns whether the rows were stored.
 
+    The retry cannot write a row twice: each row's id is chosen here, once,
+    and the second attempt leaves out the ids already stored (a commit that
+    succeeded but whose acknowledgement was lost).
+
     Rows of kind ``usage`` are never negative: an entry that is not
     positive is dropped.
     """
@@ -104,11 +110,27 @@ async def write_entries(entries: Sequence[UsageEntry]) -> bool:
     ]
     if not wanted:
         return True
+    from sqlalchemy import select
+
+    from fim_one.db.models.usage_ledger import UsageLedger
+
+    pending = [(str(uuid.uuid4()), entry) for entry in wanted]
     failure: Exception | None = None
-    for _attempt in range(2):
+    for attempt in range(2):
         try:
             async with _own_session() as session:
-                session.add_all(_rows(wanted))
+                if attempt:
+                    stored = set(
+                        (
+                            await session.execute(
+                                select(UsageLedger.id).where(
+                                    UsageLedger.id.in_([row_id for row_id, _ in pending])
+                                )
+                            )
+                        ).scalars()
+                    )
+                    pending = [(row_id, entry) for row_id, entry in pending if row_id not in stored]
+                session.add_all(_rows(pending))
                 await session.commit()
             return True
         except Exception as exc:
