@@ -77,17 +77,20 @@ async def _person(user_id: str | None, db: AsyncSession | None) -> tuple[str | N
     from fim_one.db.models import User
 
     query = select(User.username, User.email, User.is_admin).where(User.id == user_id)
-    try:
-        if db is not None:
+    if db is not None:
+        # The caller's session: an error belongs to the caller's
+        # transaction and is not hidden here; nothing pending is flushed.
+        with db.no_autoflush:
             row = (await db.execute(query)).first()
-        else:
+    else:
+        try:
             from fim_one.db import create_session
 
             async with create_session() as own:
                 row = (await own.execute(query)).first()
-    except Exception as exc:
-        logger.warning("No label for the actor of a run record: %s", type(exc).__name__)
-        return None, False
+        except Exception as exc:
+            logger.warning("No label for the actor of a run record: %s", type(exc).__name__)
+            return None, False
     if row is None:
         return None, False
     return (row[0] or row[1]), bool(row[2])

@@ -1069,3 +1069,42 @@ class TestOnePersonCannotUseUpTheRefusalBudget:
             ("", "25"),
             ("org-a", "5"),
         ]
+
+
+class TestTheStartRecordDoesNotHideAFailedInsert:
+    """Review F4. Looking up the actor's name in the session that inserts
+    the run flushed the pending run row, and the lookup's error handling
+    swallowed what that flush raised; the commit then failed with an
+    unrelated PendingRollbackError."""
+
+    async def test_a_run_id_that_exists_fails_with_the_integrity_error(
+        self, world: World, service: Any
+    ) -> None:
+        from datetime import UTC, datetime
+
+        from sqlalchemy.exc import IntegrityError
+
+        from fim_one.core.workflow.run_audit import record_started
+
+        alice = await world.user("alice")
+        workflow = await _workflow(world, alice)
+        fields = {
+            "id": "run-1",
+            "workflow_id": "wf-1",
+            "user_id": alice.id,
+            "blueprint_snapshot": PLAIN,
+            "inputs": {},
+            "status": "completed",
+            "mode": "interactive",
+            "started_at": datetime.now(UTC),
+        }
+        await service._insert_run(**fields)
+
+        async def announce(db: Any) -> None:
+            await record_started(
+                workflow, user_id=alice.id, mode="interactive", run_id="run-1", db=db
+            )
+
+        with pytest.raises(IntegrityError):
+            await service._insert_run(started=announce, **fields)
+        assert await world.events("workflow.run_started") == []

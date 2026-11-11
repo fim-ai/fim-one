@@ -1814,9 +1814,11 @@ class WorkflowRunService:
         from fim_one.db.models import WorkflowRun
 
         async with create_session() as db:
-            db.add(WorkflowRun(**self._stamped(fields, db)))
             if started is not None:
+                # Before the run row is added: its look-ups must not flush
+                # the row early (an error of the insert would surface there).
                 await started(db)
+            db.add(WorkflowRun(**self._stamped(fields, db)))
             await db.commit()
 
     @staticmethod
@@ -1903,9 +1905,9 @@ class WorkflowRunService:
             await self._refuse_if_running(workflow_id, db)
             if take_slot is not None:
                 await take_slot()
-            db.add(WorkflowRun(**self._stamped(fields, db)))
             if started is not None:
-                await started(db)
+                await started(db)  # before the run row: see _insert_run
+            db.add(WorkflowRun(**self._stamped(fields, db)))
             await db.commit()
 
     async def _mark_failed(self, run_id: str, error: str) -> None:
