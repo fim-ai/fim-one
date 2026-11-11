@@ -252,3 +252,39 @@ class TestPerAgent:
                 )
             )[0]
             assert (helper["total_tokens"], helper["total_conversations"]) == (tokens, count)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/admin/analytics/cost-projection: Analytics, cost projection
+# ---------------------------------------------------------------------------
+
+
+class TestCostProjection:
+    PATH = "/api/admin/analytics/cost-projection"
+
+    async def test_survives(
+        self, usage: Usage, provider: Provider, alice: User, root: User, runs: Any  # noqa: F811
+    ) -> None:
+        billed = await _everything(usage, provider, alice)
+        before = await _get(usage, self.PATH, root)
+        assert before["trailing_7d_tokens"] == provider.billed
+        assert before["projected_30d_tokens"] == provider.billed // 7 * 30
+
+        await _delete_everything(usage, alice, billed)
+
+        after = await _get(usage, self.PATH, root)
+        assert {**after, "trailing_7d_conversations": 2} == before
+        assert after["trailing_7d_conversations"] == 0
+
+    async def test_backfilled(self, usage: Usage, backfilled: Backfilled, root: User) -> None:  # noqa: F811
+        projection = await _get(usage, self.PATH, root)
+        since = datetime.now(UTC) - timedelta(days=7)
+        old_tokens, old_count = (
+            await backfilled.old(
+                "SELECT COALESCE(SUM(total_tokens), 0), COUNT(*) FROM conversations"
+                " WHERE created_at >= :since",
+                since=since,
+            )
+        )[0]
+        assert projection["trailing_7d_tokens"] == old_tokens + await backfilled.runs_since(since)
+        assert projection["trailing_7d_conversations"] == old_count

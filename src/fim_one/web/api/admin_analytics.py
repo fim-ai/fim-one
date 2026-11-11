@@ -310,15 +310,13 @@ async def cost_projection(
     """Project token cost for next 30 days based on trailing 7-day average."""
     cutoff_7d = datetime.now(timezone.utc) - timedelta(days=7)
 
-    result = await db.execute(
-        select(
-            func.coalesce(func.sum(Conversation.total_tokens), 0).label("total_tokens"),
-            func.count(Conversation.id).label("total_conversations"),
-        ).where(Conversation.created_at >= cutoff_7d)
-    )
-    row = result.one()
-    trailing_tokens = row.total_tokens
-    trailing_conversations = row.total_conversations
+    # Tokens: everything the usage ledger recorded in the last 7 days.
+    trailing_tokens = await usage_ledger.used_between(db, since=cutoff_7d)
+    trailing_conversations = (
+        await db.execute(
+            select(func.count(Conversation.id)).where(Conversation.created_at >= cutoff_7d)
+        )
+    ).scalar_one()
 
     daily_avg = trailing_tokens // 7 if trailing_tokens > 0 else 0
     projected_30d = daily_avg * 30
