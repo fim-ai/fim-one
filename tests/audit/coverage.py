@@ -83,12 +83,8 @@ class Gap(NamedTuple):
 # Work outside this branch that a gap may be left to, with the reason.
 # Nothing else may own a gap.
 DEFERRED_OWNERS: dict[str, str] = {
-    "T10 P7": (
-        "workflow run events (a run started, refused, cancelled or closed) are "
-        "recorded in the run service, where every way of starting a run passes: one "
-        "record per run whatever the entry, with the run id. A record in each route "
-        "would miss the schedule and the agent tool and would have to be removed again."
-    ),
+    # Empty since T10 P7 recorded the workflow run events (run started,
+    # refused, cancelled, closed) in the run service.
 }
 
 
@@ -360,6 +356,13 @@ AUDITED: dict[Route, tuple[str, ...]] = {
     ("POST", "/api/notifications/test"): ("notifications.instance_test",),
     ("POST", "/api/channels/{channel_id}/callback"): ("confirmation.approve", "confirmation.reject"),
     ("POST", "/api/confirmations/{confirmation_id}/respond"): ("confirmation.approve", "confirmation.reject"),
+    # Runs: recorded by the run service, where every entry passes (RECORDED_IN).
+    ("POST", "/api/workflows/{workflow_id}/run"): ("workflow.run_started",),
+    ("POST", "/api/workflows/{workflow_id}/batch-run"): ("workflow.run_started",),
+    ("POST", "/api/workflows/trigger"): ("workflow.run_started",),
+    ("POST", "/api/workflows/trigger/{api_key}"): ("workflow.run_started",),
+    ("POST", "/api/workflows/{workflow_id}/test-node"): ("workflow.run_started",),
+    ("POST", "/api/workflows/{workflow_id}/runs/{run_id}/cancel"): ("workflow.run_cancelled",),
 }
 
 EXEMPT: dict[Route, str] = {
@@ -433,44 +436,7 @@ EXEMPT: dict[Route, str] = {
     ("POST", "/api/billing/portal"): PAYMENT_REDIRECT,
 }
 
-KNOWN_GAPS: dict[Route, Gap] = {
-    # T10 P7: workflow run events. What the request changes is a run, and
-    # the run row records it today (who, which entry, the outcome) for as
-    # long as run retention keeps it.
-    ("POST", "/api/workflows/{workflow_id}/run"): Gap(
-        "T10 P7",
-        "workflow.run_started / workflow.run_refused",
-        "starts a run by hand; recorded once in the run service with every other entry",
-    ),
-    ("POST", "/api/workflows/{workflow_id}/batch-run"): Gap(
-        "T10 P7",
-        "workflow.run_started / workflow.run_refused",
-        "starts one run per item; each is a run event of the run service",
-    ),
-    ("POST", "/api/workflows/trigger"): Gap(
-        "T10 P7",
-        "workflow.run_started / workflow.run_refused",
-        "starts a run for a trigger key; the run event carries the key's prefix "
-        "(an unknown key is already recorded: workflow.trigger_key_invalid)",
-    ),
-    ("POST", "/api/workflows/trigger/{api_key}"): Gap(
-        "T10 P7",
-        "workflow.run_started / workflow.run_refused",
-        "the deprecated spelling of the trigger route; same run event",
-    ),
-    ("POST", "/api/workflows/{workflow_id}/test-node"): Gap(
-        "T10 P7",
-        "workflow.run_started / workflow.run_refused",
-        "runs one step for real (its connector or MCP call is in the call log); "
-        "a run event like any other start",
-    ),
-    ("POST", "/api/workflows/{workflow_id}/runs/{run_id}/cancel"): Gap(
-        "T10 P7",
-        "workflow.run_cancelled",
-        "ends a run; recorded with the other ways a run ends (failed, timed out, "
-        "closed as stale)",
-    ),
-}
+KNOWN_GAPS: dict[Route, Gap] = {}
 
 
 # GET routes that leave a record: an export, a look at someone else's data.
@@ -495,27 +461,7 @@ AUDITED_READS: dict[Route, tuple[str, ...]] = {
 }
 
 # Read routes and other entry points that should leave a record and do not yet.
-KNOWN_NON_ROUTE_GAPS: dict[str, Gap] = {
-    # Workflow run events: who started which run through which entry, and
-    # the runs the platform refused or closed on its own. T10 P7 records
-    # them in the run service, where every entry (the Run button, a batch,
-    # a trigger key, a schedule, an agent's tool) passes.
-    "a scheduled run starting; a run started by an agent's run_workflow tool": Gap(
-        "T10 P7", "workflow.run_started"
-    ),
-    "a run refused at admission, or a waiting run refused when it is continued": Gap(
-        "T10 P7", "workflow.run_refused"
-    ),
-    "a run closed because its server process stopped (stale heartbeat)": Gap(
-        "T10 P7", "workflow.run_closed"
-    ),
-    "a trigger call with a valid key whose workflow owner is switched off": Gap(
-        "T10 P7", "workflow.run_refused"
-    ),
-    "a request closed because its run was deleted, cancelled or failed": Gap(
-        "T10 P7", "workflow.run_cancelled / workflow.run_closed"
-    ),
-}
+KNOWN_NON_ROUTE_GAPS: dict[str, Gap] = {}
 
 # Records written outside any route: action -> the test that shows it
 # (``tests/<file>.py::<Class>::<test>``).
@@ -552,11 +498,25 @@ NON_ROUTE_ACTIONS: dict[str, str] = {
         "tests/test_audit_refusals.py::TestABlockedAddress::"
         "test_ip_block_recorded_once_per_window"
     ),
-    # Written where the trigger routes look the key up. The routes themselves
-    # are listed under KNOWN_GAPS for the run they start (T10 P7).
+    # Written where the trigger routes look the key up, before any run: the
+    # routes are under AUDITED for the run they start.
     "workflow.trigger_key_invalid": (
         "tests/test_audit_refusals.py::TestAnUnknownTriggerKey::"
         "test_recorded_once_per_address_with_only_the_start_of_the_key"
+    ),
+    # A refused run: the run, batch-run, trigger and test-node routes answer
+    # 4xx, a schedule and the agent tool have no route, and a waiting run is
+    # refused when it would continue. All through the run service (run_audit.py).
+    "workflow.run_refused": (
+        "tests/test_audit_workflow_runs.py::TestARunThatIsRefused::"
+        "test_the_run_button_over_quota"
+    ),
+    # The platform ending a run on its own: the recovery sweep (a server
+    # process that stopped), a run that cannot be continued, a run that ends
+    # with approval requests still open.
+    "workflow.run_closed": (
+        "tests/test_audit_workflow_runs.py::TestARunThePlatformCloses::"
+        "test_a_run_whose_process_stopped"
     ),
     # Only the connector builder's test tool sends this request; no route does.
     "connector.action_test": (
@@ -579,6 +539,15 @@ RECORDED_IN: dict[Route, tuple[str, ...]] = {
         "fim_one.core.assembly.confirmation",
     ),
     ("POST", "/api/channels/{channel_id}/callback"): ("fim_one.core.assembly.confirmation",),
+    # Every way of starting a run passes the run service, which records it.
+    ("POST", "/api/workflows/{workflow_id}/run"): ("fim_one.core.workflow.run_audit",),
+    ("POST", "/api/workflows/{workflow_id}/batch-run"): ("fim_one.core.workflow.run_audit",),
+    ("POST", "/api/workflows/trigger"): ("fim_one.core.workflow.run_audit",),
+    ("POST", "/api/workflows/trigger/{api_key}"): ("fim_one.core.workflow.run_audit",),
+    ("POST", "/api/workflows/{workflow_id}/test-node"): ("fim_one.core.workflow.run_audit",),
+    ("POST", "/api/workflows/{workflow_id}/runs/{run_id}/cancel"): (
+        "fim_one.core.workflow.run_audit",
+    ),
     # The schema form's saves and the database builder tools share the recorder.
     ("PUT", "/api/connectors/{connector_id}/schemas/bulk"): ("fim_one.core.audit.resources",),
     ("PUT", "/api/connectors/{connector_id}/schemas/{schema_id}"): (
@@ -685,13 +654,20 @@ OTHER_WRITERS: dict[str, str] = {
     "core/tool/connector/database/drivers/postgresql.py": (
         "commits on the connector's own database, not this one"
     ),
-    "core/workflow/run_service.py": "workflow runs: run events, T10 P7",
-    "core/workflow/run_recovery.py": "closes stale runs: run events, T10 P7",
-    "core/workflow/run_cleanup.py": (
-        "the retention sweep deletes old runs: run events, T10 P7 (the administrators' "
-        "manual clean-up is recorded: workflow.cleanup_runs)"
+    "core/workflow/run_service.py": (
+        "workflow runs; records workflow.run_started with the run record (run_audit.py)"
     ),
-    "core/workflow/scheduler.py": "starts scheduled runs: run events, T10 P7",
+    "core/workflow/run_recovery.py": (
+        "closes runs whose process stopped; records workflow.run_closed (run_audit.py)"
+    ),
+    "core/workflow/run_cleanup.py": (
+        "the retention sweep deletes ended runs; each one's start stays in the audit "
+        "log (workflow.run_started), and what it consumed in the usage ledger (the "
+        "administrators' manual clean-up is recorded: workflow.cleanup_runs)"
+    ),
+    "core/workflow/scheduler.py": (
+        "starts scheduled runs through the run service, which records workflow.run_started"
+    ),
     "web/audit_events.py": "helpers that record",
     "web/auth.py": "an API key's last-used time and request count: a counter, by design",
     "web/services/billing_flag.py": (
@@ -730,6 +706,7 @@ PROOF_TESTS = (
     "tests/test_audit_resources.py",
     "tests/test_audit_sign_in.py",
     "tests/test_audit_trigger_keys_schedules.py",
+    "tests/test_audit_workflow_runs.py",
     "tests/test_csv_safe.py",
     "tests/audit/test_route_smoke.py",
 )

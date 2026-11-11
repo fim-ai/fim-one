@@ -248,6 +248,26 @@ WORKFLOW_UNPUBLISH_BY_ADMIN = "workflow.unpublish_by_admin"
 # The author removed run records: one, or all of a workflow's.
 WORKFLOW_RUN_DELETE = "workflow.run_delete"
 WORKFLOW_RUNS_CLEAR = "workflow.runs_clear"
+# A run was admitted, from any entry: the Run button, a batch item, a trigger
+# key, a schedule, an agent's run_workflow tool, a single-step test. Written
+# by the run service (``core/workflow/run_audit.py``) with the run record;
+# the detail is the entry.
+WORKFLOW_RUN_STARTED = "workflow.run_started"
+# The run service would not run it: the detail is the refusal's code (the
+# workflow is switched off, the quota is used up, too many runs at once, an
+# input does not fit, ...), for a run about to start or one about to
+# continue after its approval. Through the refusal throttle: one per
+# workflow, person, entry and code in ten minutes, the next saying how many
+# were left out. Items of a batch not started: one per reason, with the count.
+WORKFLOW_RUN_REFUSED = "workflow.run_refused"
+# Someone stopped a run (its runner, or the workflow's author); the detail
+# says whether it was running or waiting for a decision.
+WORKFLOW_RUN_CANCELLED = "workflow.run_cancelled"
+# The platform ended a run on its own: its server process stopped (no
+# heartbeat), it could not be read back to continue after its approval, or
+# it ended with approval requests still open, which were closed with it.
+# The actor is the system.
+WORKFLOW_RUN_CLOSED = "workflow.run_closed"
 # Subscribing to a resource published to an organization or the Market, and
 # giving the subscription up.
 MARKET_SUBSCRIBE = "market.subscribe"

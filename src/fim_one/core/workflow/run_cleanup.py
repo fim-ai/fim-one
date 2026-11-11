@@ -16,6 +16,7 @@ from sqlalchemy import CursorResult, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.core.assembly.confirmation import close_requests_of_runs
+from fim_one.core.utils import cancel_requested
 from fim_one.db.models.workflow import Workflow, WorkflowRun
 
 logger = logging.getLogger(__name__)
@@ -225,4 +226,10 @@ class WorkflowRunCleaner:
                 logger.info("Workflow run cleaner stopped")
                 break
             except Exception:
+                if cancel_requested():
+                    logger.info("Workflow run cleaner stopped")
+                    break
                 logger.exception("Workflow run cleanup failed")
+            if cancel_requested():
+                logger.info("Workflow run cleaner stopped")
+                break

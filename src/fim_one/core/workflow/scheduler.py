@@ -25,6 +25,8 @@ from typing import Any
 
 from croniter import croniter  # type: ignore[import-untyped]
 
+from fim_one.core.utils import cancel_requested
+
 logger = logging.getLogger("fim_one.scheduler")
 
 # Default interval between scheduler ticks (seconds)
@@ -69,7 +71,13 @@ class WorkflowScheduler:
                 try:
                     await self._tick()
                 except Exception:
+                    if cancel_requested():
+                        logger.info("Workflow scheduler cancelled")
+                        break
                     logger.exception("Scheduler tick failed — will retry next cycle")
+                if cancel_requested():
+                    logger.info("Workflow scheduler cancelled")
+                    break
 
                 # Sleep for the remaining interval (subtract tick duration)
                 elapsed = time.monotonic() - tick_start
@@ -150,6 +158,8 @@ class WorkflowScheduler:
                 if self._is_due(wf, now_utc):
                     await self._dispatch_run(wf)
             except Exception:
+                if cancel_requested():
+                    raise
                 logger.exception(
                     "Error evaluating schedule for workflow %s (%s)",
                     wf.id,

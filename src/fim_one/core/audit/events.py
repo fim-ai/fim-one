@@ -19,7 +19,9 @@ Outcome = Literal["success", "denied", "failed"]
 # ``admin`` is a platform administrator, ``user`` anyone else signed in;
 # ``system`` is the platform acting on its own (a sweep, a billing event);
 # ``anonymous`` is a caller nobody was established for; ``external`` is a
-# person known only to an outside system (a channel member with no account).
+# caller known only to an outside system or by a key: a channel member with
+# no account, the holder of a workflow trigger key (with ``user_id`` the
+# account the key acts for).
 ActorKind = Literal["user", "admin", "system", "anonymous", "external"]
 
 

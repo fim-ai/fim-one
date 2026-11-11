@@ -63,6 +63,7 @@ from fim_one.core.assembly.quota import AssemblyRunGate
 from fim_one.core.assembly.sandbox import release_sandbox, workflow_run_sandbox_id
 from fim_one.core.usage.meter import OpenMeter, UsageScope, open_meter
 
+from . import run_audit
 from .node_gates import (
     HUMAN_INTERVENTION_DISABLED,
     HUMAN_INTERVENTION_DISABLED_DETAIL,
@@ -425,6 +426,11 @@ class StartedRun:
         self._holds_slot = holds_slot
         self._queue: asyncio.Queue[tuple[str, dict[str, Any]]] = asyncio.Queue()
         self._driver: asyncio.Task[None] | None = None
+        # Who asked first to stop it, and from where; recorded if it is
+        # stored as cancelled (the driver runs in the context of whoever
+        # started the run, not of the request that cancels it).
+        self.cancelled_by: Any = None
+        self._cancel_request: Any = None
 
     def start(self) -> None:
         if self._driver is None:
@@ -435,8 +441,16 @@ class StartedRun:
         """True once the run has been persisted and its slot released."""
         return self._driver is not None and self._driver.done()
 
-    def cancel(self) -> None:
-        """Ask the engine to stop; the run is persisted as cancelled."""
+    def cancel(self, *, by: Any = None) -> None:
+        """Ask the engine to stop; the run is persisted as cancelled.
+
+        *by* is the audit actor asking; the first one is kept.
+        """
+        if by is not None and self.cancelled_by is None:
+            from fim_one.core.audit.context import current_request_meta
+
+            self.cancelled_by = by
+            self._cancel_request = current_request_meta() or run_audit.NO_REQUEST
         self.cancel_event.set()
 
     async def wait(self) -> RunOutcome:
@@ -655,6 +669,15 @@ class StartedRun:
                             out.waiting = []
                             suspended = False
                             closed_elsewhere = True
+                        elif out.status == "cancelled" and self.cancelled_by is not None:
+                            # Stored as cancelled here, once: who asked.
+                            await run_audit.record_cancelled(
+                                self.run_id,
+                                actor=self.cancelled_by,
+                                was="running",
+                                workflow=self.workflow,
+                                request=self._cancel_request,
+                            )
                     finally:
                         # Only this object's registration: by now the run may
                         # have been continued, by a new StartedRun under the
@@ -779,12 +802,17 @@ class WorkflowRunService:
             weakref.WeakValueDictionary()
         )
 
-    def cancel_run(self, run_id: str) -> bool:
-        """Signal a run executing in this process to stop; False if not here."""
+    def cancel_run(self, run_id: str, *, by: Any = None) -> bool:
+        """Signal a run executing in this process to stop; False if not here.
+
+        *by* (an audit actor) is recorded with ``workflow.run_cancelled``
+        when the run is then stored as cancelled; a run that ends some other
+        way first is not recorded as cancelled.
+        """
         started = self._active_runs.get(run_id)
         if started is None:
             return False
-        started.cancel()
+        started.cancel(by=by)
         return True
 
     @staticmethod
@@ -943,7 +971,7 @@ class WorkflowRunService:
         """Runs executing in this process right now."""
         return list(self._active_runs)
 
-    async def cancel_stored_run(self, run_id: str) -> bool:
+    async def cancel_stored_run(self, run_id: str, *, by: Any = None) -> bool:
         """Cancel a run that is not executing in this process, on its record.
 
         A run waiting for a decision is closed here and now: its open
@@ -955,6 +983,9 @@ class WorkflowRunService:
         ended = await self._end_stored_run(
             run_id, ("pending", "running", "waiting"), "cancelled", "Execution cancelled"
         )
+        if ended is not None and by is not None:
+            # This call closed it: of several, one gets here.
+            await run_audit.record_cancelled(run_id, actor=by, was=ended)
         return ended is not None
 
     async def _end_stored_run(
@@ -965,6 +996,7 @@ class WorkflowRunService:
         error: str,
         *,
         stale_seconds: float | None = None,
+        closed_because: str | None = None,
     ) -> str | None:
         """Close a run on its record alone; the status it had, or ``None``.
 
@@ -984,6 +1016,9 @@ class WorkflowRunService:
         same transaction. A run that was waiting loses its sandbox here; a
         run that was executing somewhere keeps it until that process, or
         the sweep's later pass over unused directories, removes it.
+
+        *closed_because* is for the platform closing the run on its own:
+        the caller that closes it records ``workflow.run_closed`` with it.
         """
         from sqlalchemy import CursorResult, func, select, update
 
@@ -1045,11 +1080,19 @@ class WorkflowRunService:
         if previous == "waiting":
             # Nothing was executing it: nobody else will remove its files.
             await release_sandbox(workflow_run_sandbox_id(run_id))
+        if previous is not None and closed_because:
+            # After the run's own clean-up: the record waits for it, not
+            # the other way round.
+            await run_audit.record_closed(run_id, closed_because)
         if previous is not None and status == "failed":
             # The one caller that closed the run tells the owner, once.
             try:
                 await self._announce_closed(run_id, error)
             except Exception:
+                from fim_one.core.utils import cancel_requested
+
+                if cancel_requested():
+                    raise
                 logger.exception("Could not announce that run %s failed", run_id)
         return previous
 
@@ -1212,6 +1255,76 @@ class WorkflowRunService:
             return exc
         return None
 
+    async def admit_batch(
+        self, workflow: Any, caller_id: str, items: list[dict[str, Any]]
+    ) -> tuple[tuple[CallContext, Any], list[dict[str, Any]]]:
+        """Admit a batch once for all its items; ``(authorized, checked inputs)``.
+
+        The batch counts as one start against runs-per-minute
+        (:meth:`authorize` with *admit_batch*), and every item's inputs are
+        checked before any starts: a batch with one bad row is refused
+        whole, naming the row. A refused batch is one refusal record.
+        """
+        try:
+            authorized = await self.authorize(
+                workflow, caller_id, RunMode.BATCH, admit_batch=True
+            )
+            checked: list[dict[str, Any]] = []
+            for index, item in enumerate(items):
+                try:
+                    checked.append(self.check_inputs(authorized[1], item))
+                except RunRefusedError as exc:
+                    raise RunRefusedError(
+                        exc.error_code,
+                        exc.status_code,
+                        f"Item {index + 1}: {exc.detail}",
+                        {**(exc.detail_args or {}), "index": index},
+                    ) from None
+        except RunRefusedError as exc:
+            await self.record_refused(workflow, caller_id, RunMode.BATCH, exc)
+            raise
+        return authorized, checked
+
+    async def record_refused(
+        self,
+        workflow: Any,
+        caller_id: str | None,
+        mode: RunMode,
+        exc: RunRefusedError,
+        *,
+        run_id: str | None = None,
+        request: Any = None,
+    ) -> None:
+        """Record that a run through *mode* was refused; never raises.
+
+        Also for refusals decided before the service is reached (a trigger
+        key whose author is switched off), so that every refused run is
+        recorded the same way.
+        """
+        user_id = workflow.user_id if mode in AUTHOR_MODES else caller_id
+        await run_audit.record_refused(
+            workflow,
+            user_id=user_id,
+            mode=mode.value,
+            error_code=exc.error_code,
+            run_id=run_id,
+            request=request,
+        )
+
+    async def record_items_not_started(
+        self, workflow: Any, caller_id: str, reasons: dict[str, int], total: int
+    ) -> None:
+        """One refusal record per reason for the items of a batch not started."""
+        for code, count in reasons.items():
+            if count:
+                await run_audit.record_refused(
+                    workflow,
+                    user_id=caller_id,
+                    mode=RunMode.BATCH.value,
+                    error_code=code,
+                    not_started=(count, total),
+                )
+
     # -- runs -----------------------------------------------------------------
 
     async def start_run(
@@ -1259,6 +1372,7 @@ class WorkflowRunService:
                 # is made with the insert, in _insert_single_flight_run.
                 await self._refuse_if_running(workflow.id)
         except RunRefusedError as exc:
+            await self.record_refused(workflow, caller_id, mode, exc)
             if record_refusal:
                 await self._record_refusal(workflow, caller_id, mode, inputs, exc)
             raise
@@ -1267,6 +1381,13 @@ class WorkflowRunService:
         run_id = str(uuid.uuid4())
         fields = self._run_fields(run_id, workflow, principal, mode, inputs)
         record_created = False
+
+        async def announce(db: Any) -> None:
+            # In the transaction that inserts the run record.
+            await run_audit.record_started(
+                workflow, user_id=principal.user_id, mode=mode.value, run_id=run_id, db=db
+            )
+
         try:
             if single_flight:
                 await self._insert_single_flight_run(
@@ -1277,11 +1398,12 @@ class WorkflowRunService:
                         if acquire_slot
                         else None
                     ),
+                    started=announce,
                 )
             else:
                 if acquire_slot:
                     await self._acquire_slot(principal.user_id, run_id, mode)
-                await self._insert_run(**fields)
+                await self._insert_run(started=announce, **fields)
             record_created = True
 
             from fim_one.db import create_session
@@ -1330,7 +1452,11 @@ class WorkflowRunService:
             # its slot even if the caller goes away before reading events.
             started.start()
             return started
-        except BaseException:
+        except BaseException as exc:
+            if isinstance(exc, RunRefusedError):
+                # No slot free, over runs-per-minute, or another run of a
+                # single-flight workflow in flight: decided as it starts.
+                await asyncio.shield(self.record_refused(workflow, caller_id, mode, exc))
             if acquire_slot:
                 # Also reached when no slot was taken (refused, or lost the
                 # single-flight race); releasing is then a no-op.
@@ -1414,6 +1540,14 @@ class WorkflowRunService:
             logger.warning(
                 "Workflow run %s is not continued: %s", run_id, refused.error_code
             )
+            await self.record_refused(
+                workflow,
+                run.user_id,
+                mode,
+                refused,
+                run_id=run_id,
+                request=run_audit.NO_REQUEST,
+            )
             await self._end_stored_run(
                 run_id,
                 ("running",),
@@ -1423,8 +1557,21 @@ class WorkflowRunService:
             )
             return None
         except Exception:
+            from fim_one.core.utils import cancel_requested
+
+            if cancel_requested():
+                # Cancelled (shutdown), not the run's own failure. It stays
+                # claimed and unstamped; the recovery sweep closes it as
+                # interrupted, as it does any run whose process stopped.
+                raise
             logger.exception("Workflow run %s could not be continued", run_id)
-            await self._end_stored_run(run_id, ("running",), "failed", RUN_NOT_RESUMABLE_ERROR)
+            await self._end_stored_run(
+                run_id,
+                ("running",),
+                "failed",
+                RUN_NOT_RESUMABLE_ERROR,
+                closed_because="not_resumable",
+            )
             return None
         self._active_runs[run_id] = started
         started.start()
@@ -1512,9 +1659,14 @@ class WorkflowRunService:
         The one seam between "a decision was made" and "the run goes on";
         a task queue would take its place here.
         """
+        import contextvars
+
         from fim_one.core.utils import spawn_background
 
-        spawn_background(self._resume_logged(run_id))
+        # Not in the context of the request that made the decision: the run
+        # is its runner's, and the approver's address, sign-in, rate-limit
+        # identity and meters are not its own.
+        spawn_background(self._resume_logged(run_id), context=contextvars.Context())
 
     async def _resume_logged(self, run_id: str) -> None:
         try:
@@ -1547,13 +1699,21 @@ class WorkflowRunService:
         from .nodes import get_executor
         from .variable_store import VariableStore
 
-        user_id, auth = run_identity(workflow, caller_id, RunMode.TEST_NODE)
-        if has_disabled_node([node]):
-            raise RunRefusedError(
-                HUMAN_INTERVENTION_DISABLED, 409, HUMAN_INTERVENTION_DISABLED_DETAIL
-            )
-        ctx = await self._admit(workflow, user_id, auth, RunMode.TEST_NODE)
+        try:
+            user_id, auth = run_identity(workflow, caller_id, RunMode.TEST_NODE)
+            if has_disabled_node([node]):
+                raise RunRefusedError(
+                    HUMAN_INTERVENTION_DISABLED, 409, HUMAN_INTERVENTION_DISABLED_DETAIL
+                )
+            ctx = await self._admit(workflow, user_id, auth, RunMode.TEST_NODE)
+        except RunRefusedError as exc:
+            await self.record_refused(workflow, caller_id, RunMode.TEST_NODE, exc)
+            raise
         principal = ctx.principal
+        # There is no run record to commit it with.
+        await run_audit.record_started(
+            workflow, user_id=principal.user_id, mode=RunMode.TEST_NODE.value, run_id=None
+        )
 
         env_vars = {**author_env_vars(workflow, ctx), **env_overrides}
         store = VariableStore(env_vars=env_vars)
@@ -1659,11 +1819,18 @@ class WorkflowRunService:
                 "Workflow already has a running execution. Please wait for it to complete.",
             )
 
-    async def _insert_run(self, **fields: Any) -> None:
+    async def _insert_run(
+        self, *, started: Callable[[Any], Awaitable[None]] | None = None, **fields: Any
+    ) -> None:
+        """Insert a run record; *started* adds the record of its start to the same commit."""
         from fim_one.db import create_session
         from fim_one.db.models import WorkflowRun
 
         async with create_session() as db:
+            if started is not None:
+                # Before the run row is added: its look-ups must not flush
+                # the row early (an error of the insert would surface there).
+                await started(db)
             db.add(WorkflowRun(**self._stamped(fields, db)))
             await db.commit()
 
@@ -1715,6 +1882,7 @@ class WorkflowRunService:
         fields: dict[str, Any],
         *,
         take_slot: Callable[[], Awaitable[None]] | None,
+        started: Callable[[Any], Awaitable[None]] | None = None,
     ) -> None:
         """Insert a run record unless the workflow already has a run in flight.
 
@@ -1750,6 +1918,8 @@ class WorkflowRunService:
             await self._refuse_if_running(workflow_id, db)
             if take_slot is not None:
                 await take_slot()
+            if started is not None:
+                await started(db)  # before the run row: see _insert_run
             db.add(WorkflowRun(**self._stamped(fields, db)))
             await db.commit()
 
@@ -1848,7 +2018,7 @@ class WorkflowRunService:
                     return None
                 # Ended here, or closed elsewhere: either way nobody is
                 # asked to decide for it any more.
-                await close_requests_of_runs(db, [out.run_id])
+                left_open = await close_requests_of_runs(db, [out.run_id])
                 if not written:
                     # How the run ended is someone else's entry; what it
                     # spent here is still spent, and counts toward quota.
@@ -1865,6 +2035,13 @@ class WorkflowRunService:
                     )
                 await db.commit()
                 if written:
+                    if left_open and out.status != "cancelled":
+                        # Whoever was asked to decide no longer sees the
+                        # request. A cancel is recorded by who cancelled.
+                        await run_audit.record_closed(
+                            out.run_id,
+                            f"ended {out.status}; {left_open} open approval request(s) closed",
+                        )
                     return None
                 stored = (
                     await db.execute(

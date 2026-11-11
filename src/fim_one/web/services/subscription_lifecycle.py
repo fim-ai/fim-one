@@ -21,6 +21,7 @@ from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.core.audit import actions
+from fim_one.core.utils import cancel_requested
 from fim_one.db.models import Subscription, User
 from fim_one.web.audit_events import record_plan_change
 from fim_one.web.services.billing_flag import (
@@ -138,7 +139,13 @@ async def _run_loop(interval_seconds: int) -> None:
             logger.info("Subscription lifecycle loop stopped")
             break
         except Exception:
+            if cancel_requested():
+                logger.info("Subscription lifecycle loop stopped")
+                break
             logger.exception("Subscription lifecycle sweep failed")
+        if cancel_requested():
+            logger.info("Subscription lifecycle loop stopped")
+            break
 
 
 def start_lifecycle_loop(

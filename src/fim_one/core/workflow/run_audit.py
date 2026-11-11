@@ -1,0 +1,294 @@
+"""The audit records of workflow runs, written by the run service.
+
+Every way of starting a run passes :class:`~.run_service.WorkflowRunService`;
+it calls these, so each run admitted has one ``workflow.run_started`` and
+each refusal one ``workflow.run_refused``, whatever the entry.
+
+- **who**: the person the run is for (:func:`~.run_service.run_identity`).
+  A trigger-key run is the key holder's (``actor_kind`` ``external``,
+  labelled with the key's prefix, ``actor_id`` the author's account); a
+  scheduled run is the system acting for the author (``actor_kind``
+  ``system``, ``actor_id`` the author). A run from a signed-in request
+  says how the request was signed in (session or API key, and which key).
+- **when it cannot fail the run**: the start is added to the session that
+  inserts the run record and committed with it; every column is cut to
+  its size and the table has no foreign keys, so the record fails only
+  when the run record would. A refusal has no run record: it is written in
+  a session of its own and a failure is logged.
+- **how many refusals**: through the refusal throttle
+  (``core/audit/refusals.py``): one record per workflow, person, key and
+  reason in ten minutes; the rest are counted into the kind's summary
+  record. A retry loop or a holder of a trigger key cannot fill the table.
+
+Run inputs, outputs and step results are never part of a record.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING, Any
+
+from fim_one.core.audit import actions
+from fim_one.core.audit import writer as audit
+from fim_one.core.audit.context import current_request_auth
+from fim_one.core.audit.events import Actor, EventContext, RequestMeta
+from fim_one.core.audit.refusals import admit_refusal
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+__all__ = [
+    "NO_REQUEST",
+    "record_cancelled",
+    "record_closed",
+    "record_refused",
+    "record_started",
+    "refusal_code",
+    "run_actor",
+]
+
+logger = logging.getLogger(__name__)
+
+# Entries whose run is the author's and has no person asking.
+_TRIGGER = "trigger"
+_SCHEDULE = "schedule"
+# Refusal records one account (a person, or the author of trigger-key and
+# scheduled runs) may have written one by one in a window; the rest are
+# counted into the summary.
+REFUSALS_PER_PERSON = 20
+# A run continued after an approval is not started by the request that
+# made the decision: its records carry no request.
+NO_REQUEST = RequestMeta(ip=None, user_agent=None, request_id=None)
+
+
+def refusal_code(error_code: str) -> str:
+    """The code of a refusal, without the free text a few codes carry.
+
+    ``invalid_blueprint: <the parser's message>`` names steps of the
+    blueprint; only the part before the colon is kept.
+    """
+    return error_code.split(":", 1)[0].strip()[:64] or "refused"
+
+
+async def _person(user_id: str | None, db: AsyncSession | None) -> tuple[str | None, bool]:
+    """``(username or email, is administrator)`` of *user_id*; ``(None, False)`` if unknown."""
+    if not user_id:
+        return None, False
+    from sqlalchemy import select
+
+    from fim_one.db.models import User
+
+    query = select(User.username, User.email, User.is_admin).where(User.id == user_id)
+    if db is not None:
+        # The caller's session: an error belongs to the caller's
+        # transaction and is not hidden here; nothing pending is flushed.
+        with db.no_autoflush:
+            row = (await db.execute(query)).first()
+    else:
+        try:
+            from fim_one.db import create_session
+
+            async with create_session() as own:
+                row = (await own.execute(query)).first()
+        except Exception as exc:
+            logger.warning("No label for the actor of a run record: %s", type(exc).__name__)
+            return None, False
+    if row is None:
+        return None, False
+    return (row[0] or row[1]), bool(row[2])
+
+
+async def run_actor(
+    user_id: str | None,
+    mode: str,
+    workflow: Any,
+    *,
+    from_request: bool = True,
+    db: AsyncSession | None = None,
+) -> Actor:
+    """Who a run of *workflow* through entry *mode* is recorded as.
+
+    How they signed in is the current request's, when there is one and
+    *from_request*; otherwise unknown (``None``), never assumed.
+    """
+    label, is_admin = await _person(user_id, db)
+    if mode == _SCHEDULE:
+        return Actor(user_id=user_id, label=label, kind="system", auth="schedule")
+    if mode == _TRIGGER:
+        # Whoever called is known only by the key: not the author, and
+        # never an administrator because the author is one. The run is
+        # the author's account's (actor_id), the caller the key's holder.
+        prefix = getattr(workflow, "api_key_prefix", None)
+        return Actor(
+            user_id=user_id,
+            label=f"trigger key {prefix}" if prefix else "trigger key",
+            kind="external",
+            auth="trigger_key",
+            credential_ref=prefix,
+        )
+    signed_in = current_request_auth() if from_request else None
+    return Actor(
+        user_id=user_id,
+        label=label,
+        kind="admin" if is_admin else "user",
+        auth=signed_in[0] if signed_in else None,
+        credential_ref=signed_in[1] if signed_in else None,
+    )
+
+
+async def record_started(
+    workflow: Any,
+    *,
+    user_id: str,
+    mode: str,
+    run_id: str | None,
+    db: AsyncSession | None = None,
+) -> None:
+    """``workflow.run_started`` for a run admitted through entry *mode*.
+
+    With *db*, added to the session that inserts the run record (the
+    caller commits both). Without (a single-step test, which has no run
+    record), written on its own; a failure is logged.
+    """
+    actor = await run_actor(user_id, mode, workflow, db=db)
+    await audit.record(
+        actions.WORKFLOW_RUN_STARTED,
+        actor=actor,
+        org_id=getattr(workflow, "org_id", None),
+        target_type="workflow",
+        target_id=workflow.id,
+        target_label=getattr(workflow, "name", None),
+        detail=mode,
+        context=EventContext(workflow_run_id=run_id) if run_id else None,
+        db=db,
+    )
+
+
+async def record_refused(
+    workflow: Any,
+    *,
+    user_id: str | None,
+    mode: str,
+    error_code: str,
+    run_id: str | None = None,
+    not_started: tuple[int, int] | None = None,
+    request: RequestMeta | None = None,
+) -> bool:
+    """``workflow.run_refused`` (``denied``) for a run the service would not run.
+
+    The detail is the refusal's code. *not_started* is ``(count, of)`` for
+    the items of a batch that were not started for this reason: one record
+    for all of them, not throttled (a batch is admitted at most at the
+    runs-per-minute rate). Any other refusal passes the refusal throttle:
+    one record per workflow, person, entry and code in ten minutes, the
+    rest counted into the next summary record. Written in a session of its
+    own; never raises. Returns whether a record was written.
+    """
+    code = refusal_code(error_code)
+    try:
+        if not_started is None and not admit_refusal(
+            actions.WORKFLOW_RUN_REFUSED,
+            f"{workflow.id}|{user_id or '-'}|{mode}|{code}",
+            # Counted by the account the run is for (a trigger key's or a
+            # schedule's is the author's): however many workflows it has,
+            # one account cannot use up the instance's budget.
+            group=f"user:{user_id}" if user_id else f"workflow:{workflow.id}",
+            per_group=REFUSALS_PER_PERSON,
+            org=getattr(workflow, "org_id", None),
+        ):
+            return False
+        actor = await run_actor(user_id, mode, workflow, from_request=request is not NO_REQUEST)
+        detail = code
+        if not_started is not None:
+            detail = f"{code}: {not_started[0]} of {not_started[1]} items not started"
+        await audit.record(
+            actions.WORKFLOW_RUN_REFUSED,
+            actor=actor,
+            org_id=getattr(workflow, "org_id", None),
+            target_type="workflow",
+            target_id=workflow.id,
+            target_label=getattr(workflow, "name", None),
+            outcome="denied",
+            detail=detail,
+            context=EventContext(workflow_run_id=run_id) if run_id else None,
+            request=request,
+        )
+    except Exception as exc:
+        logger.error("Could not record a refused run: %s", type(exc).__name__)
+        return False
+    return True
+
+
+async def _workflow_of_run(run_id: str) -> tuple[str | None, str | None, str | None]:
+    """``(workflow id, organization, name)`` of run *run_id*; ``None``s if gone."""
+    from sqlalchemy import select
+
+    from fim_one.db import create_session
+    from fim_one.db.models import Workflow, WorkflowRun
+
+    async with create_session() as db:
+        row = (
+            await db.execute(
+                select(Workflow.id, Workflow.org_id, Workflow.name)
+                .join(WorkflowRun, WorkflowRun.workflow_id == Workflow.id)
+                .where(WorkflowRun.id == run_id)
+            )
+        ).first()
+    return (row[0], row[1], row[2]) if row else (None, None, None)
+
+
+async def record_cancelled(
+    run_id: str,
+    *,
+    actor: Actor,
+    was: str,
+    workflow: Any = None,
+    request: RequestMeta | None = None,
+) -> None:
+    """``workflow.run_cancelled``: *actor* stopped run *run_id*, which was *was*.
+
+    Called where the run is stored as cancelled, by whoever stored it, so
+    once per run whatever the number of requests. Written on its own after
+    that; never raises.
+    """
+    try:
+        if workflow is not None:
+            target = (workflow.id, getattr(workflow, "org_id", None), workflow.name)
+        else:
+            target = await _workflow_of_run(run_id)
+        await audit.record(
+            actions.WORKFLOW_RUN_CANCELLED,
+            actor=actor,
+            org_id=target[1],
+            target_type="workflow",
+            target_id=target[0],
+            target_label=target[2],
+            detail=f"was {was}",
+            context=EventContext(workflow_run_id=run_id),
+            request=request,
+        )
+    except Exception as exc:
+        logger.error("Could not record a cancelled run: %s", type(exc).__name__)
+
+
+async def record_closed(run_id: str, detail: str) -> None:
+    """``workflow.run_closed``: the platform ended run *run_id* on its own.
+
+    The system is the actor; *detail* says why (a code, or what was closed
+    with the run). Written on its own after the run is closed; never raises.
+    """
+    try:
+        target = await _workflow_of_run(run_id)
+        await audit.record(
+            actions.WORKFLOW_RUN_CLOSED,
+            actor=audit.system_actor("workflow runs"),
+            org_id=target[1],
+            target_type="workflow",
+            target_id=target[0],
+            target_label=target[2],
+            outcome="failed",
+            detail=detail,
+            context=EventContext(workflow_run_id=run_id),
+        )
+    except Exception as exc:
+        logger.error("Could not record a closed run: %s", type(exc).__name__)

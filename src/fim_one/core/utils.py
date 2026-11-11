@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import json
 import logging
 import re
@@ -19,8 +20,47 @@ logger = logging.getLogger(__name__)
 _BACKGROUND_TASKS: set[asyncio.Task[Any]] = set()
 
 
+def cancel_requested() -> bool:
+    """Whether the current task has been asked to stop.
+
+    A cancellation that arrives while a database call is awaited can come
+    out of the driver's clean-up as an ordinary error: SQLAlchemy on
+    aiosqlite cancels the connection's termination as well, and the
+    rollback that follows raises ``ValueError: no active connection``. A
+    background loop that logs ordinary errors and goes on would then never
+    stop, and the shutdown that awaits it would wait for ever. Such a loop
+    asks this when a pass fails, and stops if it is true.
+    """
+    task = asyncio.current_task()
+    return task is not None and task.cancelling() > 0
+
+
+async def stop_background(
+    task: asyncio.Task[Any], *, timeout: float, name: str, cancel: bool = True
+) -> bool:
+    """Cancel *task* (unless *cancel* is off) and wait at most *timeout* seconds for it.
+
+    For the application's shutdown: a background loop that does not end
+    is logged and left behind, so the shutdown goes on (closing the HTTP
+    client, writing the usage still metered, closing the database) instead
+    of waiting for it. Returns whether it ended.
+    """
+    if cancel and not task.done():
+        task.cancel()
+    done, _ = await asyncio.wait({task}, timeout=timeout)
+    if not done:
+        logger.error("%s did not stop within %.0f s; shutting down without it", name, timeout)
+        return False
+    if not task.cancelled() and task.exception() is not None:
+        logger.error("%s ended with an error: %r", name, task.exception())
+    return True
+
+
 def spawn_background(
-    coro: Coroutine[Any, Any, Any], *, name: str | None = None
+    coro: Coroutine[Any, Any, Any],
+    *,
+    name: str | None = None,
+    context: contextvars.Context | None = None,
 ) -> asyncio.Task[Any]:
     """Schedule a fire-and-forget coroutine with a guaranteed strong reference.
 
@@ -33,8 +73,11 @@ def spawn_background(
 
     Tasks that are awaited or stored by the caller do *not* need this helper —
     they already have a strong reference.
+
+    *context* is the task's context; by default a copy of the caller's (a
+    request's caller, address and meters included).
     """
-    task = asyncio.create_task(coro, name=name)
+    task = asyncio.create_task(coro, name=name, context=context)
     _BACKGROUND_TASKS.add(task)
 
     def _on_done(t: asyncio.Task[Any]) -> None:
