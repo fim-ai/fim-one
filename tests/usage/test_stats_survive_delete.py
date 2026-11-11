@@ -382,3 +382,63 @@ class TestMetricsOverview:
                 "total_input": total - fast + await backfilled.runs_since(since),
                 "total_output": fast,
             }, period
+
+
+# ---------------------------------------------------------------------------
+# GET /api/metrics/token-usage: the metrics API's tokens per day and model
+# ---------------------------------------------------------------------------
+
+
+class TestMetricsTokenUsage:
+    PATH = "/api/metrics/token-usage?period={period}"
+
+    async def _usage(self, usage: Usage, period: str, by: User) -> dict[str, Any]:  # noqa: F811
+        body: dict[str, Any] = (await _get(usage, self.PATH.format(period=period), by))["data"]
+        return body
+
+    async def test_survives(
+        self, usage: Usage, provider: Provider, alice: User, root: User, runs: Any  # noqa: F811
+    ) -> None:
+        billed = await _everything(usage, provider, alice)
+        before = await self._usage(usage, "24h", root)
+        assert before["total"]["input"] + before["total"]["output"] == provider.billed
+        assert set(before["by_model"]) == {"main-model", "fast-model"}
+
+        await _delete_everything(usage, alice, billed)
+
+        for period in ("24h", "7d", "30d"):
+            assert await self._usage(usage, period, root) == before, period
+
+    async def test_backfilled(self, usage: Usage, backfilled: Backfilled, root: User) -> None:  # noqa: F811
+        """The totals are as before, the runs added to the input. By model,
+        the main part is under the conversation's model as before; the
+        fast part, carried over without a model, is now under "unknown"
+        (it was under the conversation's model)."""
+        since = datetime.now(UTC) - timedelta(days=30)
+        found = await self._usage(usage, "30d", root)
+        main = dict(
+            await backfilled.old(
+                "SELECT COALESCE(model_name, 'unknown'), SUM(total_tokens - fast_llm_tokens)"
+                " FROM conversations WHERE created_at >= :since"
+                " GROUP BY COALESCE(model_name, 'unknown')",
+                since=since,
+            )
+        )
+        fast = await backfilled.old_one(
+            "SELECT SUM(fast_llm_tokens) FROM conversations WHERE created_at >= :since",
+            since=since,
+        )
+        run_tokens = await backfilled.runs_since(since)
+        assert found["total"] == {
+            "input": sum(main.values()) + run_tokens,
+            "output": fast,
+        }
+        expected = {model: {"input": tokens, "output": 0} for model, tokens in main.items()}
+        unknown = expected.setdefault("unknown", {"input": 0, "output": 0})
+        unknown["input"] += run_tokens
+        unknown["output"] += fast
+        assert found["by_model"] == {
+            model: tokens for model, tokens in expected.items() if any(tokens.values())
+        }
+        days = [row["date"] for row in found["daily"]]
+        assert days == sorted(days)

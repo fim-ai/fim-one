@@ -227,38 +227,27 @@ async def get_token_usage(
         period = "7d"
     cutoff = _period_cutoff(period)
 
-    # -- Daily breakdown by model_name ---------------------------------------
-    # Conversation.model_name may be NULL; we coalesce to "unknown".
-    daily_rows = (
-        await db.execute(
-            select(
-                func.date(Conversation.created_at).label("day"),
-                func.coalesce(Conversation.model_name, "unknown").label("model"),
-                func.coalesce(
-                    func.sum(Conversation.total_tokens - Conversation.fast_llm_tokens),
-                    0,
-                ).label("input_tokens"),
-                func.coalesce(
-                    func.sum(Conversation.fast_llm_tokens), 0
-                ).label("output_tokens"),
-            )
-            .where(Conversation.created_at >= cutoff)
-            .group_by(
-                func.date(Conversation.created_at),
-                func.coalesce(Conversation.model_name, "unknown"),
-            )
-            .order_by(func.date(Conversation.created_at))
-        )
-    ).all()
+    # -- Daily breakdown by model --------------------------------------------
+    # From the usage ledger, by the day it was recorded and the model it was
+    # consumed on ("unknown" when the row has none: the rows carried over
+    # from before the ledger for runs and for the conversations' fast-model
+    # tokens). "input" and "output" are the split described in the overview.
+    split: dict[tuple[str, str], list[int]] = {}
+    for usage_slice in await usage_ledger.used_by(
+        db, ["day", "model", "background"], since=cutoff
+    ):
+        key = (str(usage_slice.day), usage_slice.model or "unknown")
+        tokens = split.setdefault(key, [0, 0])
+        tokens[1 if usage_slice.background else 0] += usage_slice.total_tokens
 
     daily = [
         DailyTokenUsage(
-            date=str(r.day),
-            input_tokens=int(r.input_tokens),
-            output_tokens=int(r.output_tokens),
-            model=r.model,
+            date=day,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            model=model,
         )
-        for r in daily_rows
+        for (day, model), (input_tokens, output_tokens) in sorted(split.items())
     ]
 
     # -- Aggregate by model ---------------------------------------------------
