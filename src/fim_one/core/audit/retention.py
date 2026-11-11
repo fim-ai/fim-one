@@ -28,6 +28,7 @@ inside functions.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import random
@@ -160,32 +161,56 @@ class AuditRetentionSweeper:
         ``None`` when nothing was done: retention is off, another process
         is sweeping, or a sweep already ran within the interval.
         """
-        from sqlalchemy import text
-
         from fim_one.db import create_session
 
         if not self.retention.sweeps:
             return None
         moment = _aware(now) if now is not None else datetime.now(UTC)
 
-        async with create_session() as guard:
-            if guard.get_bind().dialect.name == "postgresql":
-                # Held until this session ends its transaction, below.
-                held = await guard.scalar(
-                    text("SELECT pg_try_advisory_xact_lock(hashtext(:name))"),
-                    {"name": _LOCK_NAME},
-                )
-                if not held:
-                    logger.debug("Audit retention: another process is sweeping")
-                    return None
-            try:
-                if not await self._due(moment):
-                    return None
-                counts = await self._remove_expired(moment)
-                await self._leave_a_record(counts)
-            finally:
-                await guard.rollback()
+        async with contextlib.AsyncExitStack() as stack:
+            async with create_session() as probe:
+                bind = probe.bind
+            on_postgres = bind is not None and bind.dialect.name == "postgresql"
+            if on_postgres and not await self._take_lock(stack, bind):
+                logger.debug("Audit retention: another process is sweeping")
+                return None
+            if not await self._due(moment):
+                return None
+            counts = await self._remove_expired(moment)
+            await self._leave_a_record(counts)
         return counts
+
+    @staticmethod
+    async def _take_lock(stack: contextlib.AsyncExitStack, bind: Any) -> bool:
+        """Take the sweep's advisory lock for as long as *stack* is open.
+
+        A session-level lock on a connection of its own in autocommit: the
+        connection sits idle outside any transaction, so it holds no
+        snapshot back from VACUUM. The lock goes with ``pg_advisory_unlock``
+        at the end, or with the connection if that drops.
+        """
+        from sqlalchemy import text
+
+        conn = await stack.enter_async_context(bind.connect())
+        await conn.execution_options(isolation_level="AUTOCOMMIT")
+        held = await conn.scalar(
+            text("SELECT pg_try_advisory_lock(hashtext(:name))"), {"name": _LOCK_NAME}
+        )
+        if not held:
+            return False
+
+        async def release() -> None:
+            try:
+                await conn.execute(
+                    text("SELECT pg_advisory_unlock(hashtext(:name))"), {"name": _LOCK_NAME}
+                )
+            except Exception:
+                # Not back into the pool still holding the lock.
+                logger.warning("Audit retention: could not release the lock", exc_info=True)
+                await conn.invalidate()
+
+        stack.push_async_callback(release)
+        return True
 
     async def _due(self, moment: datetime) -> bool:
         from sqlalchemy import func, select

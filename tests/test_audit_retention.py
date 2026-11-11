@@ -403,3 +403,47 @@ class TestWhatReadsTheseTablesStillWorks:
         assert timedelta(days=sweeper.retention.audit_days) > timedelta(
             minutes=auth_api._2FA_FAILURE_WINDOW_MINUTES
         )
+
+
+class TestTheLockOnPostgres:
+    async def test_no_session_of_the_sweep_holds_a_snapshot_while_it_runs(
+        self, factory: Factory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An open transaction pins ``backend_xmin`` and VACUUM removes nothing
+        database-wide; the lock is held on a connection outside any transaction."""
+        if factory.kw["bind"].dialect.name != "postgresql":
+            pytest.skip("advisory locks are PostgreSQL's")
+        await _add(factory, *[_event(900) for _ in range(3)])
+        seen: list[Any] = []
+        second: list[Any] = []
+        original = AuditRetentionSweeper._delete_older
+
+        async def watched(self: AuditRetentionSweeper, model: Any, cutoff: datetime) -> int:
+            if not seen:
+                async with factory() as db:
+                    rows = await db.execute(
+                        text(
+                            "SELECT pid, state, backend_xmin FROM pg_stat_activity "
+                            "WHERE datname = current_database() AND pid <> pg_backend_pid() "
+                            "AND state LIKE 'idle in transaction%'"
+                        )
+                    )
+                    seen.append(list(rows.all()))
+                second.append(await AuditRetentionSweeper(Retention()).sweep(now=NOW))
+            return await original(self, model, cutoff)
+
+        monkeypatch.setattr(AuditRetentionSweeper, "_delete_older", watched)
+
+        counts = await AuditRetentionSweeper(Retention()).sweep(now=NOW)
+
+        assert counts is not None and counts["audit_logs"] == 3
+        assert seen == [[]]
+        assert second == [None]  # the lock was held
+        # Released afterwards: the lock can be taken again.
+        async with factory() as db:
+            assert await db.scalar(
+                text("SELECT pg_try_advisory_lock(hashtext('fim_one.audit_retention_sweep'))")
+            )
+            await db.execute(
+                text("SELECT pg_advisory_unlock(hashtext('fim_one.audit_retention_sweep'))")
+            )
