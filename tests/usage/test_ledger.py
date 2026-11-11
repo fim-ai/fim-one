@@ -229,6 +229,33 @@ class TestReading:
             }
             assert await used_by_users_since(db, EVER, user_ids=[]) == {}
 
+    async def test_a_row_at_the_instant_the_window_begins_is_in_it(
+        self, factory: Factory  # noqa: F811
+    ) -> None:
+        """The window is ``created_at >= since``: the first instant in, the one before out."""
+        from fim_one.core.usage.ledger import used_by_day, used_by_origin, usage_per_user_subquery
+
+        since = datetime(2026, 11, 1, tzinfo=UTC)
+        async with factory() as db:
+            db.add_all(
+                [
+                    UsageLedger(user_id="alice", source_type="conversation", entry="chat",
+                                total_tokens=7, created_at=since),
+                    UsageLedger(user_id="alice", source_type="conversation", entry="chat",
+                                total_tokens=100, created_at=since - timedelta(microseconds=1)),
+                ]
+            )  # fmt: skip
+            await db.commit()
+
+        assert await _used(factory, "alice", since) == 7
+        assert await _used(factory, "alice", since + timedelta(microseconds=1)) == 0
+        async with factory() as db:
+            assert await used_by_users_since(db, since) == {"alice": 7}
+            assert [total for _day, total in await used_by_day(db, "alice", since)] == [7]
+            assert [b.total_tokens for b in await used_by_origin(db, "alice", since)] == [7]
+            per_user = usage_per_user_subquery(since)
+            assert (await db.execute(select(per_user.c.total_tokens))).scalars().all() == [7]
+
     async def test_used_is_never_reported_below_zero(self, factory: Factory) -> None:  # noqa: F811
         await write_entries([_entry(total=10), _entry(total=-50, kind="adjustment")])
 
