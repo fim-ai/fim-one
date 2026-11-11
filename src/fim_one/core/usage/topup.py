@@ -17,6 +17,19 @@ Run again, it finds nothing left to add.
 
 The added usage counts in the quota window in which the command is run:
 when it was consumed is not known.
+
+Run it with the application stopped. A turn writes its conversation's
+total and its ledger rows in two steps; run against a live application,
+the command can see a total whose ledger rows are not written yet and add
+the difference, which is then counted twice.
+
+It compares sums per conversation or run, so it can recover less than was
+missing. The ledger also holds usage that ``total_tokens`` never reported
+(interrupted turns, delegated agents), and that extra hides a gap of the
+same size. Example: a conversation reports 180; its ledger rows add up to
+170, 20 of them a delegated agent's; 30 are missing, and 10 are recorded.
+Which of a conversation's rows the total covers is not recorded, so the
+command cannot tell the two apart.
 """
 
 from __future__ import annotations
