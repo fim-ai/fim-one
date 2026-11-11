@@ -23,8 +23,10 @@ the reason.
 
 from __future__ import annotations
 
+import ast
 import importlib
 import re
+import warnings
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, ClassVar
@@ -515,6 +517,131 @@ class TestDashboard:
 # ---------------------------------------------------------------------------
 
 
+# Columns kept per row, for that row's own page.
+_PER_ROW_COLUMNS = frozenset({"total_tokens", "fast_llm_tokens"})
+_LEDGER = "UsageLedger"
+_RAW_SUM = re.compile(r"SUM\(\s*(total_tokens|fast_llm_tokens)\b", re.IGNORECASE)
+# Helpers whose result is a subquery over the ledger.
+_LEDGER_SUBQUERY = re.compile(r"^usage_per_\w+_subquery$")
+
+
+class _SumFinder(ast.NodeVisitor):
+    """Finds aggregates over a per-row token column in one module.
+
+    A column is ``X.total_tokens``, ``X.c.total_tokens``,
+    ``X.__table__.c.total_tokens`` or ``getattr(X, "total_tokens")`` (and the
+    same for ``fast_llm_tokens``) where ``X`` is not the usage ledger, or a
+    variable bound to one. An aggregate is a call to ``sum`` / ``avg`` under
+    any prefix and in any case (``func.sum``, ``func.SUM``,
+    ``sqlalchemy.sql.functions.sum``, the builtin ``sum``), anywhere in its
+    arguments. Raw SQL is a string with ``SUM(total_tokens``. Each hit is
+    reported as ``Model.column``, the model resolved through import aliases,
+    ``aliased(Model)`` and plain assignment.
+    """
+
+    def __init__(self) -> None:
+        self.names: dict[str, str] = {}  # local name -> model it stands for
+        self.columns: dict[str, str] = {}  # variable -> "Model.column" it holds
+        self.found: set[str] = set()
+
+    # -- binding ---------------------------------------------------------
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        for alias in node.names:
+            if alias.asname:
+                self.names[alias.asname] = alias.name
+
+    def _model(self, node: ast.AST) -> str | None:
+        """The model *node* stands for, or ``None`` for the ledger."""
+        if isinstance(node, ast.Name):
+            name = self.names.get(node.id, node.id)
+            return None if name == _LEDGER else name
+        if isinstance(node, ast.Attribute):
+            if node.attr in {"c", "__table__", "columns"}:
+                return self._model(node.value)
+            return None if node.attr == _LEDGER else node.attr
+        if isinstance(node, ast.Call):
+            return self._model(node.func)
+        return "?"
+
+    def _column(self, node: ast.AST) -> str | None:
+        """``Model.column`` when *node* is a per-row column, else ``None``."""
+        if isinstance(node, ast.Attribute) and node.attr in _PER_ROW_COLUMNS:
+            model = self._model(node.value)
+            return f"{model}.{node.attr}" if model else None
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "getattr"
+            and len(node.args) >= 2
+            and isinstance(node.args[1], ast.Constant)
+            and node.args[1].value in _PER_ROW_COLUMNS
+        ):
+            model = self._model(node.args[0])
+            return f"{model}.{node.args[1].value}" if model else None
+        if isinstance(node, ast.Name) and node.id in self.columns:
+            return self.columns[node.id]
+        return None
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
+        value = node.value
+        column = self._column(value)
+        for target in targets:
+            if column:
+                self.columns[target] = column
+                continue
+            if (
+                isinstance(value, ast.Call)
+                and isinstance(value.func, ast.Name | ast.Attribute)
+                and (value.func.id if isinstance(value.func, ast.Name) else value.func.attr)
+                == "aliased"
+                and value.args
+            ):
+                inner = self._model(value.args[0])
+                self.names[target] = inner or _LEDGER
+            elif isinstance(value, ast.Call) and _LEDGER_SUBQUERY.match(
+                getattr(value.func, "attr", getattr(value.func, "id", ""))
+            ):
+                self.names[target] = _LEDGER
+            elif isinstance(value, ast.Name):
+                self.names[target] = self.names.get(value.id, value.id)
+        self.generic_visit(node)
+
+    # -- aggregates ------------------------------------------------------
+
+    @staticmethod
+    def _is_aggregate(call: ast.Call) -> bool:
+        func = call.func
+        name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", "")
+        return name.lower() in {"sum", "avg"}
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if self._is_aggregate(node):
+            for inner in ast.walk(node):
+                if inner is node:
+                    continue
+                column = self._column(inner)
+                if column:
+                    self.found.add(column)
+        self.generic_visit(node)
+
+    def visit_Constant(self, node: ast.Constant) -> None:
+        if isinstance(node.value, str):
+            for column in _RAW_SUM.findall(node.value):
+                self.found.add(f"SQL.{column}")
+
+
+def _sums_in(source: str) -> set[str]:
+    finder = _SumFinder()
+    with warnings.catch_warnings():  # escape sequences in the sources' own strings
+        warnings.simplefilter("ignore", SyntaxWarning)
+        warnings.simplefilter("ignore", DeprecationWarning)
+        tree = ast.parse(source)
+    finder.visit(tree)
+    return finder.found
+
+
 class TestNothingSumsThePerRowTotals:
     """A conversation's, a run's or an evaluation run's own ``total_tokens``
     (and a conversation's ``fast_llm_tokens``) is what that one row used,
@@ -522,9 +649,6 @@ class TestNothingSumsThePerRowTotals:
     many of them reads the usage ledger instead."""
 
     SRC = Path(fim_one.__file__).parent
-    SUMMING = re.compile(
-        r"func\.sum\(\s*[^)]*?\b(\w*(?:Conv|WorkflowRun|EvalRun)\w*)\.(total_tokens|fast_llm_tokens)"
-    )
     # (file, column summed) -> why it stays.
     EXEMPT: ClassVar[dict[tuple[str, str], str]] = {
         ("web/api/admin_eval.py", "EvalRun.total_tokens"): (
@@ -537,24 +661,53 @@ class TestNothingSumsThePerRowTotals:
     def _sums(self) -> set[tuple[str, str]]:
         found = set()
         for path in self.SRC.rglob("*.py"):
-            for model, column in self.SUMMING.findall(path.read_text(encoding="utf-8")):
-                found.add((str(path.relative_to(self.SRC)), f"{model}.{column}"))
+            for column in _sums_in(path.read_text(encoding="utf-8")):
+                found.add((str(path.relative_to(self.SRC)), column))
         return found
 
     def test_only_the_exempt_sums_remain(self) -> None:
         assert self._sums() == set(self.EXEMPT)
 
-    def test_the_pattern_finds_the_old_queries(self) -> None:
-        for old in (
-            "select(func.coalesce(func.sum(Conversation.total_tokens), 0))",
-            "func.sum(Conversation.total_tokens - Conversation.fast_llm_tokens)",
-            "func.sum(Conversation.fast_llm_tokens)",
-            "func.sum(ConvModel.total_tokens)",
-            "func.sum(\n    WorkflowRun.total_tokens\n)",
-        ):
-            assert self.SUMMING.search(old), old
-        for fine in (
+    @pytest.mark.parametrize(
+        ("source", "column"),
+        [
+            ("select(func.coalesce(func.sum(Conversation.total_tokens), 0))",
+             "Conversation.total_tokens"),
+            ("func.sum(Conversation.total_tokens - Conversation.fast_llm_tokens)",
+             "Conversation.fast_llm_tokens"),
+            ("func.sum(\n    WorkflowRun.total_tokens\n)", "WorkflowRun.total_tokens"),
+            ("conv = aliased(Conversation)\nfunc.sum(conv.total_tokens)",
+             "Conversation.total_tokens"),
+            ("from fim_one.db.models.workflow import WorkflowRun as Run\n"
+             "func.sum(Run.total_tokens)", "WorkflowRun.total_tokens"),
+            ("col = Conversation.total_tokens\nselect(func.sum(col))",
+             "Conversation.total_tokens"),
+            ("func.sum(Conversation.__table__.c.total_tokens)", "Conversation.total_tokens"),
+            ("func.sum(getattr(Conversation, 'total_tokens'))", "Conversation.total_tokens"),
+            ("func.sum(func.abs(x) + Conversation.total_tokens)", "Conversation.total_tokens"),
+            ("func.SUM(Conversation.total_tokens)", "Conversation.total_tokens"),
+            ("func.avg(Conversation.total_tokens)", "Conversation.total_tokens"),
+            ("sum(c.total_tokens for c in convs)", "c.total_tokens"),
+            ("text('SELECT SUM(total_tokens) FROM conversations')", "SQL.total_tokens"),
+            ("sqlalchemy.sql.functions.sum(Conversation.fast_llm_tokens)",
+             "Conversation.fast_llm_tokens"),
+        ],
+    )  # fmt: skip
+    def test_the_checker_finds_each_spelling(self, source: str, column: str) -> None:
+        assert column in _sums_in(source), source
+
+    @pytest.mark.parametrize(
+        "source",
+        [
             "func.sum(UsageLedger.total_tokens)",
+            "from fim_one.db.models.usage_ledger import UsageLedger as L\nfunc.sum(L.total_tokens)",
+            "row = aliased(UsageLedger)\nfunc.sum(row.total_tokens)",
+            "sub = usage_ledger.usage_per_agent_subquery()\nfunc.sum(sub.c.total_tokens)",
             "func.sum(case((WorkflowRun.status == 'completed', 1), else_=0))",
-        ):
-            assert not self.SUMMING.search(fine), fine
+            # A single row's own figure, for its own page.
+            "select(Conversation.total_tokens).where(Conversation.id == cid)",
+            "return {'total_tokens': conv.total_tokens}",
+        ],
+    )
+    def test_the_checker_passes_ledger_sums_and_single_rows(self, source: str) -> None:
+        assert not _sums_in(source), source
