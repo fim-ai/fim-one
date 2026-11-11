@@ -21,7 +21,9 @@ import {
   History,
   Loader2,
   RefreshCw,
+  ScrollText,
 } from "lucide-react"
+import { OrgAuditSheet } from "@/components/settings/org-audit-sheet"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -1128,9 +1130,10 @@ interface OrgCardProps {
   onManageMembers: (org: UserOrg) => void
   onManageReviews: (org: UserOrg) => void
   onViewReviewHistory: (org: UserOrg) => void
+  onViewAuditLog: (org: UserOrg) => void
 }
 
-function OrgCard({ org, onEdit, onDelete, onLeave, onManageMembers, onManageReviews, onViewReviewHistory }: OrgCardProps) {
+function OrgCard({ org, onEdit, onDelete, onLeave, onManageMembers, onManageReviews, onViewReviewHistory, onViewAuditLog }: OrgCardProps) {
   const t = useTranslations("organizations")
   const tc = useTranslations("common")
 
@@ -1256,6 +1259,12 @@ function OrgCard({ org, onEdit, onDelete, onLeave, onManageMembers, onManageRevi
             </DropdownMenuItem>
           )}
           {isAdminOrOwner && (
+            <DropdownMenuItem onClick={() => onViewAuditLog(org)}>
+              <ScrollText className="mr-2 h-4 w-4" />
+              {t("auditLog")}
+            </DropdownMenuItem>
+          )}
+          {isAdminOrOwner && (
             <DropdownMenuItem onClick={() => onEdit(org)}>
               <Settings className="mr-2 h-4 w-4" />
               {tc("edit")}
@@ -1315,6 +1324,7 @@ export function OrganizationSettings() {
   const [reviewsOpen, setReviewsOpen] = useState(false)
   const [reviewHistoryTarget, setReviewHistoryTarget] = useState<UserOrg | null>(null)
   const [reviewHistoryOpen, setReviewHistoryOpen] = useState(false)
+  const [auditTarget, setAuditTarget] = useState<UserOrg | null>(null)
 
   const loadOrgs = useCallback(async () => {
     setLoading(true)
@@ -1423,6 +1433,7 @@ export function OrganizationSettings() {
               onManageMembers={handleManageMembers}
               onManageReviews={handleManageReviews}
               onViewReviewHistory={handleViewReviewHistory}
+              onViewAuditLog={setAuditTarget}
             />
           ))}
         </div>
@@ -1508,6 +1519,13 @@ export function OrganizationSettings() {
           initialOrgId={reviewHistoryTarget?.id ?? adminOrOwnerOrgs[0]?.id ?? ""}
         />
       )}
+
+      {/* Audit log sheet */}
+      <OrgAuditSheet
+        open={auditTarget !== null}
+        onClose={() => setAuditTarget(null)}
+        org={auditTarget}
+      />
     </div>
   )
 }

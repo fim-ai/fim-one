@@ -254,6 +254,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
     )
     cleanup_task = asyncio.create_task(cleaner.run_loop())
 
+    # Audit records older than their retention period go once a day
+    # (AUDIT_RETENTION_DAYS, CALL_LOG_RETENTION_DAYS; 0 keeps them for ever).
+    from fim_one.core.audit.retention import AuditRetentionSweeper
+
+    audit_retention_task = asyncio.create_task(AuditRetentionSweeper().run_loop())
+
     # Workflow runs: continue a suspended run when its request is decided,
     # stamp the runs this process executes, and recover what a dead process
     # or a missed decision left behind (sweep at startup and periodically).
@@ -314,6 +320,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
     cleanup_task.cancel()
     try:
         await cleanup_task
+    except asyncio.CancelledError:
+        pass
+
+    audit_retention_task.cancel()
+    try:
+        await audit_retention_task
     except asyncio.CancelledError:
         pass
 

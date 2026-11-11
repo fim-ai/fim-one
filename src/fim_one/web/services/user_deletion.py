@@ -25,19 +25,33 @@ dev database mirrors Postgres.  Every ``User`` relationship is ``lazy="raise"``
 SQLAlchemy *must* eagerly load each cascade collection before deleting the user
 or the lazy-load raises.  :func:`purge_user_data` therefore deep-preloads the
 full owned-resource tree.  Tables that have a FK to ``users`` but **no** ORM
-relationship on ``User`` (api keys, login history, eval data, call logs,
-subscriptions, org memberships, workflow runs) are removed with explicit,
+relationship on ``User`` (api keys, eval data, subscriptions, org
+memberships, workflow runs) are removed with explicit,
 FK-safe-ordered ``DELETE`` statements *before* the ORM cascade runs.
+
+Records that outlive the account
+--------------------------------
+The audit log, the sign-in history, review trails, call records and the
+usage ledger are kept until their retention period ends
+(``core/audit/retention.py``); none has a foreign key to ``users``. What
+identifies the person is taken out of them here
+(:func:`_deidentify_records`): the username and the email address become
+``deleted-user-<first 8 characters of the id>``, and the address and device
+of their own requests are cleared. The user id stays: with the account
+gone it names nobody, and it keeps a deleted user's records apart from
+each other's and from those of an account that never existed.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 from pathlib import Path
+from typing import Any
 
-from sqlalchemy import delete, or_, select, update
+from sqlalchemy import and_, delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -45,7 +59,6 @@ from fim_one.core.assembly.confirmation import close_requests_of_runs
 from fim_one.db.models.api_key import ApiKey
 from fim_one.db.models.audit_log import AuditLog
 from fim_one.db.models.connector import Connector
-from fim_one.db.models.connector_call_log import ConnectorCallLog
 from fim_one.db.models.conversation import Conversation
 from fim_one.db.models.database_schema import DatabaseSchema
 from fim_one.db.models.email_verification import EmailVerification
@@ -54,6 +67,7 @@ from fim_one.db.models.knowledge_base import KnowledgeBase
 from fim_one.db.models.login_history import LoginHistory
 from fim_one.db.models.organization import Organization, OrgMembership
 from fim_one.db.models.resource_subscription import ResourceSubscription
+from fim_one.db.models.review_log import ReviewLog
 from fim_one.db.models.user import User
 from fim_one.db.models.workflow import Workflow, WorkflowRun, WorkflowVersion
 from fim_one.web.exceptions import AppError
@@ -78,6 +92,126 @@ def _vector_store_base() -> Path:
     return Path(os.environ.get("VECTOR_STORE_DIR", "./data/vector_store"))
 
 
+DELETED_USER_PREFIX = "deleted-user-"
+
+
+def deleted_user_label(user_id: str) -> str:
+    """What a deleted user is called in the records that outlive the account."""
+    return f"{DELETED_USER_PREFIX}{user_id[:8]}"
+
+
+def is_reserved_username(name: str | None) -> bool:
+    """Whether *name* reads as a deleted user's label; no account may take one."""
+    return name is not None and name.strip().lower().startswith(DELETED_USER_PREFIX)
+
+
+# Keys of an audit row's ``changes`` that hold a name of the account the
+# row is about.
+_IDENTITY_KEYS = frozenset({"username", "email", "display_name"})
+
+
+def _patterns(quoted: list[str | None]) -> tuple[re.Pattern[str], ...]:
+    """Each of *quoted* as a word of its own, longest first; short ones are left."""
+    kept = sorted({name for name in quoted if name and len(name) >= 3}, key=len, reverse=True)
+    return tuple(re.compile(rf"(?<![\w@.-]){re.escape(name)}(?![\w@-])") for name in kept)
+
+
+def _without_names(value: Any, names: tuple[re.Pattern[str], ...], label: str) -> Any:
+    """*value* (text, or the lists and mappings of a JSON column) with every name replaced."""
+    if isinstance(value, str):
+        for name in names:
+            value = name.sub(label, value)
+        return value
+    if isinstance(value, dict):
+        return {key: _without_names(item, names, label) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_without_names(item, names, label) for item in value]
+    return value
+
+
+async def _deidentify_records(
+    db: AsyncSession, user_id: str, *, username: str | None, email: str, display_name: str | None
+) -> None:
+    """Take a user's identity out of the records that stay after the account.
+
+    Rows are kept, with the user id. In ``login_history`` the username and
+    email become the deleted-user label and the address and device are
+    cleared. In ``audit_logs`` the same is done to the rows the user is the
+    actor of; rows the user is the target of get the label as the target's
+    name. In either kind the email address is replaced wherever it is
+    quoted; the username and display name where they are a value under a
+    name key of ``changes`` or the whole of ``detail``. In ``review_log`` the actor's name is replaced. Call records
+    and the usage ledger hold an id and nothing else of the user.
+
+    An address on a row somebody else is the actor of (an administrator who
+    reset this user's password) is that person's, and stays.
+    """
+    label = deleted_user_label(user_id)
+
+    await db.execute(
+        update(LoginHistory)
+        .where(LoginHistory.user_id == user_id)
+        .values(username=label, email=label, ip_address=None, user_agent=None)
+    )
+    # A sign-in attempt with this address from before the account existed:
+    # the address typed is the user's, where it came from is not known to be.
+    await db.execute(
+        update(LoginHistory)
+        .where(LoginHistory.user_id.is_(None), LoginHistory.email == email)
+        .values(email=label)
+    )
+
+    is_actor = AuditLog.actor_id == user_id
+    is_target = and_(AuditLog.target_type == "user", AuditLog.target_id == user_id)
+    await db.execute(
+        update(AuditLog)
+        .where(is_actor)
+        .values(actor_label=label, ip_address=None, user_agent=None)
+    )
+    await db.execute(update(AuditLog).where(is_target).values(target_label=label))
+
+    # The email address is replaced wherever it stands: nothing else looks
+    # like it. A username or display name can be an ordinary word ("member",
+    # "admin", "true") that is also a role or a flag in the same row, so it
+    # is replaced only where a writer puts a name: under a name key of
+    # ``changes``, or as the whole of ``detail``. Longest first, so a
+    # username that is the start of the email address does not leave the
+    # rest of the address behind.
+    addresses = _patterns([email])
+    names = _patterns([username, email, display_name])
+    whole = {name for name in (username, display_name) if name}
+    rows = await db.execute(
+        select(AuditLog.id, AuditLog.detail, AuditLog.changes, is_target.label("about_user")).where(
+            or_(is_actor, is_target),
+            or_(AuditLog.detail.isnot(None), AuditLog.changes.isnot(None)),
+        )
+    )
+    for row_id, detail, changes, about_user in rows.all():
+        new_detail = label if detail in whole else _without_names(detail, addresses, label)
+        new_changes = changes
+        if isinstance(changes, dict):
+            new_changes = {
+                # The old and the new value of a name of this account.
+                key: {"changed": True}
+                if about_user and key in _IDENTITY_KEYS
+                else _without_names(change, names if key in _IDENTITY_KEYS else addresses, label)
+                for key, change in changes.items()
+            }
+        # Only what changed is written: a row without ``changes`` keeps its
+        # SQL NULL (writing ``None`` to a JSON column stores the JSON null).
+        values: dict[str, Any] = {}
+        if new_detail != detail:
+            values["detail"] = new_detail
+        if new_changes != changes:
+            values["changes"] = new_changes
+        if values:
+            await db.execute(update(AuditLog).where(AuditLog.id == row_id).values(**values))
+
+    await db.execute(
+        update(ReviewLog).where(ReviewLog.actor_id == user_id).values(actor_username=label)
+    )
+
+
 class PurgedUser(dict[str, int]):
     """What :func:`purge_user_data` staged: the summary, and the files to remove.
 
@@ -95,6 +229,8 @@ class PurgedUser(dict[str, int]):
     ) -> None:
         super().__init__(summary)
         self.user_id = user_id
+        # What the caller's own record of the deletion calls the user.
+        self.label = deleted_user_label(user_id)
         self.conversation_ids = conversation_ids
         self.knowledge_base_ids = knowledge_base_ids
 
@@ -236,8 +372,6 @@ async def purge_user_data(db: AsyncSession, user_id: str) -> PurgedUser:
     await db.execute(delete(EvalDataset).where(EvalDataset.user_id == user_id))
 
     await db.execute(delete(ApiKey).where(ApiKey.user_id == user_id))
-    await db.execute(delete(LoginHistory).where(LoginHistory.user_id == user_id))
-    await db.execute(delete(ConnectorCallLog).where(ConnectorCallLog.user_id == user_id))
     await db.execute(
         delete(ResourceSubscription).where(ResourceSubscription.user_id == user_id)
     )
@@ -275,15 +409,11 @@ async def purge_user_data(db: AsyncSession, user_id: str) -> PurgedUser:
         .values(invited_by=None)
     )
 
-    # The usage ledger (``usage_ledger``) is left as it is: it has no
-    # foreign key, and what the account consumed stays counted in the
-    # organization's and the platform's totals after the account is gone.
-    # Its ``user_id`` then names nobody. (What is shown of a deleted user in
-    # the records that outlive them is decided with the other logs.)
-
-    # Preserve audit history but remove the actor reference.
-    await db.execute(
-        update(AuditLog).where(AuditLog.actor_id == user_id).values(actor_id=None)
+    # The records that outlive the account (audit log, sign-in history,
+    # review trails, call records, usage ledger) keep their rows and the
+    # user id, and lose what identifies the person.
+    await _deidentify_records(
+        db, user_id, username=user.username, email=user_email, display_name=user.display_name
     )
 
     # 5. Delete the user — ORM cascade removes the owned-resource tree

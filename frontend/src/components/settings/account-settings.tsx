@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useTranslations, useLocale } from "next-intl"
+import { SecurityEventsSection } from "@/components/settings/security-events-section"
 import { Copy, Check, Download, Loader2, Monitor, ShieldCheck, ShieldOff } from "lucide-react"
 import { useDateFormatter } from "@/hooks/use-date-formatter"
 import { QRCodeSVG } from "qrcode.react"
@@ -736,6 +737,9 @@ export function AccountSettings() {
 
       {/* Active Sessions */}
       <SessionsSection />
+
+      {/* Security events of this account */}
+      <SecurityEventsSection />
 
       <Separator />
 

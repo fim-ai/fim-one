@@ -19,6 +19,7 @@ from fim_one.db.models.email_verification import EmailVerification
 from fim_one.web.auth import create_oauth_state
 from fim_one.web.oauth import OAuthProvider, OAuthUserInfo
 from tests.audit.harness import CLIENT_IP, PASSWORD, USER_AGENT, World, world  # noqa: F401
+from tests.totp import current_code
 
 
 @pytest.fixture()
@@ -130,7 +131,7 @@ class TestOAuthSignIn:
         await world.call(
             "POST",
             "/api/auth/login/verify-2fa",
-            json={"temp_token": temp_token, "code": pyotp.TOTP(secret).now()},
+            json={"temp_token": temp_token, "code": current_code(secret)},
         )
 
         first, second = await world.logins()
@@ -364,7 +365,7 @@ class TestAFirstStepThatStillOwesTheSecondFactor:
         await world.call(
             "POST",
             "/api/auth/login/verify-2fa",
-            json={"temp_token": first.json()["temp_token"], "code": pyotp.TOTP(secret).now()},
+            json={"temp_token": first.json()["temp_token"], "code": current_code(secret)},
         )
         stats = (await world.call("GET", "/api/admin/login-history/stats", by=root)).json()
         assert (stats["total_attempts"], stats["successful"], stats["failed"]) == (2, 1, 0)

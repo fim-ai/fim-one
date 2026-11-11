@@ -67,6 +67,19 @@ class TestChangingAUser:
         assert await world.events() == []
 
 
+    async def test_deleting_one_names_them_by_the_label_only(self, world: World) -> None:
+        """The deletion's own record outlives the account like every other."""
+        root = await world.user("root", admin=True)
+        zed = await world.user("zedekiah")
+
+        await world.call("DELETE", f"/api/admin/users/{zed.id}", by=root)
+
+        row = await world.one("user.delete", actor=root, target=("user", zed.id))
+        label = f"deleted-user-{zed.id[:8]}"
+        assert row.target_label == label
+        world.assert_absent(row, "zedekiah")
+
+
 class TestSomeoneElsesOrganization:
     async def test_changing_it(self, world: World) -> None:
         root = await world.user("root", admin=True)

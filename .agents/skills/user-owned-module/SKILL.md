@@ -64,13 +64,27 @@ The copies at `.claude/skills/user-owned-module/SKILL.md` and
 ## Tables that keep their rows
 
 Records that must outlive the account have no FK to `users` and are not
-deleted by `purge_user_data()`. A new table of this kind is listed here, with
-what becomes of the user's identity in it.
+deleted by `purge_user_data()`. They are removed when their retention
+period ends (`core/audit/retention.py`), or never. What identifies the
+person is taken out of them by `_deidentify_records()` in the same module:
+the username and the email address become
+`deleted-user-<first 8 characters of the id>` (`deleted_user_label()`), and
+the address and device of the user's own requests are cleared. The user id
+stays in every one of them. A new table of this kind is listed here, with
+what becomes of the user's identity in it, and gets a case in
+`tests/test_user_deletion.py`.
 
 | Table | What stays | Identity |
 |---|---|---|
-| `audit_logs` | every row | `admin_id` (the actor) set to NULL; the label stays |
-| `usage_ledger` | every row | `user_id` stays, naming a user that no longer exists |
+| `audit_logs` | every row, with `admin_id` (the actor) | rows the user is the actor of: `admin_username` becomes the label, `ip_address` and `user_agent` are cleared. Rows the user is the target of: `target_label` becomes the label. In both, the username, display name and email quoted in `detail` or `changes` are replaced, and a changed `username` / `email` / `display_name` of the account says only that it changed |
+| `login_history` | every row, with `user_id` | `username` and `email` become the label; `ip_address` and `user_agent` are cleared |
+| `review_log` | every row, with `actor_id` | `actor_username` becomes the label |
+| `connector_call_logs` | every row, with `user_id` | holds no name and no address |
+| `usage_ledger` | every row, with `user_id` | holds no name and no address |
+
+The caller's own record of the deletion (`user.delete`,
+`account.self_delete`) is written after `purge_user_data()` and names the
+user by `PurgedUser.label`.
 
 ## Test it
 

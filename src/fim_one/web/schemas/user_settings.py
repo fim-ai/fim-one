@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -74,6 +75,37 @@ class SessionInfo(BaseModel):
 class SessionListResponse(BaseModel):
     items: list[SessionInfo]
     total: int
+
+
+# ---------------------------------------------------------------------------
+# Security events (audit records of the user's own account)
+# ---------------------------------------------------------------------------
+
+
+class SecurityEventInfo(BaseModel):
+    id: str
+    created_at: str
+    # An audit action name: ``auth.password_change``, ``api_key.create``, ...
+    action: str
+    outcome: str = "success"
+    target_label: str | None = None
+    changes: dict[str, Any] | None = None
+    detail: str | None = None
+    # True when a platform administrator did this to the account. Such an
+    # event carries no name, no detail and no address: those are the
+    # administrator's.
+    by_administrator: bool = False
+    # The user's own address and device, on their own actions.
+    ip_address: str | None = None
+    user_agent: str | None = None
+
+
+class SecurityEventListResponse(BaseModel):
+    items: list[SecurityEventInfo]
+    total: int
+    page: int
+    size: int
+    pages: int
 
 
 # ---------------------------------------------------------------------------

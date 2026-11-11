@@ -12,7 +12,6 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 
-import pyotp
 import pytest
 import pytest_asyncio
 from fastapi.responses import JSONResponse
@@ -34,6 +33,7 @@ from fim_one.web.exceptions import AppError
 from fim_one.web.oauth import OAuthUserInfo
 from fim_one.web.schemas.auth import LoginWithCodeRequest, TokenResponse
 from fim_one.web.schemas.user_settings import TwoFactorVerifyRequest
+from tests.totp import current_code
 
 
 @pytest_asyncio.fixture()
@@ -158,12 +158,12 @@ class TestSecondFactorAttemptLimit:
         user = await _user(session, totp=True)
         await self._fail(session, user, 5)
         with pytest.raises(AppError) as exc:
-            await self._verify(session, user, pyotp.TOTP("JBSWY3DPEHPK3PXP").now())
+            await self._verify(session, user, current_code("JBSWY3DPEHPK3PXP"))
         assert exc.value.error_code == "2fa_too_many_attempts"
 
     @pytest.mark.asyncio
     async def test_valid_code_after_four_failures(self, session: AsyncSession) -> None:
         user = await _user(session, totp=True)
         await self._fail(session, user, 4)
-        resp = await self._verify(session, user, pyotp.TOTP("JBSWY3DPEHPK3PXP").now())
+        resp = await self._verify(session, user, current_code("JBSWY3DPEHPK3PXP"))
         assert isinstance(resp, TokenResponse)

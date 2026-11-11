@@ -27,6 +27,7 @@ from fim_one.web.exceptions import AppError
 from fim_one.web.api.admin import SETTING_REGISTRATION_ENABLED, SETTING_REGISTRATION_MODE
 from fim_one.web.api.admin_utils import get_setting
 from fim_one.web.services.default_plan import get_default_plan_id
+from fim_one.web.services.user_deletion import is_reserved_username
 from fim_one.web.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     REFRESH_TOKEN_EXPIRE_DAYS,
@@ -432,6 +433,9 @@ async def _handle_login(
                 )
 
             base_username = user_info.username or f"{provider_name}_user"
+            if is_reserved_username(base_username):
+                # A provider login that reads as a deleted user's label.
+                base_username = f"{provider_name}_user"
             username = base_username
             suffix = 0
             while True:

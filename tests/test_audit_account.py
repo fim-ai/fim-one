@@ -24,6 +24,7 @@ from fim_one.db.models.email_verification import EmailVerification
 from fim_one.web.auth import create_oauth_state
 from fim_one.web.oauth import OAuthProvider, OAuthUserInfo
 from tests.audit.harness import PASSWORD, World, world  # noqa: F401
+from tests.totp import current_code
 
 NEW_PASSWORD = "a brand new passphrase 42"
 
@@ -164,7 +165,7 @@ class TestTwoFactor:
         alice = await world.user("alice", password=PASSWORD, totp_secret=secret)
 
         response = await world.call(
-            "POST", "/api/auth/2fa/enable", by=alice, json={"code": pyotp.TOTP(secret).now()}
+            "POST", "/api/auth/2fa/enable", by=alice, json={"code": current_code(secret)}
         )
 
         row = await world.one("auth.two_factor_enable", actor=alice, target=("user", alice.id))
@@ -331,8 +332,12 @@ class TestDeletingTheAccount:
 
         await world.call("DELETE", "/api/auth/account", by=dave)
 
-        row = await world.one("account.self_delete", actor=dave, target=("user", dave.id))
-        assert (row.auth_method, row.actor_kind) == ("session", "user")
+        # The record outlives the account: it names the user by the
+        # deleted-user label and carries no address (tests/test_user_deletion.py).
+        row = await world.one(
+            "account.self_delete", actor=None, target=("user", dave.id), ip=None
+        )
+        assert (row.actor_id, row.auth_method, row.actor_kind) == (dave.id, "session", "user")
         assert await world.get(User, dave.id) is None
 
 

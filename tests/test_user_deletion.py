@@ -13,12 +13,16 @@ lazy-raise cascade from blowing up under FK enforcement.
 
 from __future__ import annotations
 
+import json
+import os
 import uuid
 from collections.abc import AsyncGenerator, Generator
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
-from sqlalchemy import event, func, select
+from sqlalchemy import event, func, select, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -75,10 +79,44 @@ def _reset_cred_key(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, No
     enc._cred_fernet_instance = None
 
 
-@pytest.fixture()
-async def db() -> AsyncGenerator[AsyncSession, None]:
-    """In-memory SQLite async session with PRAGMA foreign_keys=ON."""
+def _backends() -> list[Any]:
+    return [
+        pytest.param("sqlite", id="sqlite"),
+        pytest.param(
+            "postgresql",
+            id="postgresql",
+            marks=pytest.mark.skipif(
+                not os.environ.get("FIM_TEST_PG_URL"), reason="FIM_TEST_PG_URL not set"
+            ),
+        ),
+    ]
+
+
+@pytest.fixture(params=_backends())
+async def db(request: pytest.FixtureRequest) -> AsyncGenerator[AsyncSession, None]:
+    """A session on an empty database: in-memory SQLite with foreign keys
+    enforced, and PostgreSQL as well when ``FIM_TEST_PG_URL`` is set."""
     import fim_one.db.models  # noqa: F401 — register all models on Base.metadata
+
+    if request.param == "postgresql":
+        url = make_url(os.environ["FIM_TEST_PG_URL"]).set(drivername="postgresql+asyncpg")
+        schema = f"user_deletion_{uuid.uuid4().hex[:12]}"
+        admin = create_async_engine(url)
+        async with admin.begin() as conn:
+            await conn.execute(text(f'CREATE SCHEMA "{schema}"'))
+        engine = create_async_engine(url, connect_args={"server_settings": {"search_path": schema}})
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            factory = async_sessionmaker(engine, expire_on_commit=False)
+            async with factory() as session:
+                yield session
+        finally:
+            await engine.dispose()
+            async with admin.begin() as conn:
+                await conn.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+            await admin.dispose()
+        return
 
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
@@ -162,22 +200,16 @@ async def test_purge_fully_loaded_user_removes_everything(db: AsyncSession) -> N
     schema = DatabaseSchema(id=_uid(), connector_id=connector.id, table_name="t")
     db.add(schema)
     await db.flush()
-    col = SchemaColumn(
-        id=_uid(), schema_id=schema.id, column_name="c", data_type="text"
-    )
+    col = SchemaColumn(id=_uid(), schema_id=schema.id, column_name="c", data_type="text")
 
     # --- ModelConfig ---
-    mc = ModelConfig(
-        id=_uid(), user_id=user_id, name="m", provider="openai", model_name="gpt"
-    )
+    mc = ModelConfig(id=_uid(), user_id=user_id, name="m", provider="openai", model_name="gpt")
 
     # --- MCPServer ---
     mcp = MCPServer(id=_uid(), user_id=user_id, name="mcp")
 
     # --- UserOAuthBinding ---
-    oauth = UserOAuthBinding(
-        id=_uid(), user_id=user_id, provider="google", oauth_id=_uid()
-    )
+    oauth = UserOAuthBinding(id=_uid(), user_id=user_id, provider="google", oauth_id=_uid())
 
     # --- Workflow ---
     wf = Workflow(id=_uid(), user_id=user_id, name="wf", blueprint={"nodes": [], "edges": []})
@@ -191,7 +223,7 @@ async def test_purge_fully_loaded_user_removes_everything(db: AsyncSession) -> N
     )
 
     # --- Subscription (needs a BillingPlan) ---
-    plan = BillingPlan(slug=f"pro-{_uid()}", name="Pro", monthly_token_quota=1000)
+    plan = BillingPlan(slug=f"pro-{_uid()[:8]}", name="Pro", monthly_token_quota=1000)
     db.add(plan)
     await db.flush()
     now = _now()
@@ -207,9 +239,7 @@ async def test_purge_fully_loaded_user_removes_everything(db: AsyncSession) -> N
     )
 
     # --- ApiKey ---
-    apikey = ApiKey(
-        id=_uid(), user_id=user_id, name="k", key_prefix="ab", key_hash=_uid()
-    )
+    apikey = ApiKey(id=_uid(), user_id=user_id, name="k", key_prefix="ab", key_hash=_uid())
 
     # --- LoginHistory ---
     login = LoginHistory(id=_uid(), user_id=user_id, success=True)
@@ -254,22 +284,35 @@ async def test_purge_fully_loaded_user_removes_everything(db: AsyncSession) -> N
     )
 
     # --- EmailVerification (matched by email) ---
-    ev = EmailVerification(
-        id=_uid(), email=user_email, code="123456", expires_at=_now()
-    )
+    ev = EmailVerification(id=_uid(), email=user_email, code="123456", expires_at=_now())
 
     # --- OrgMembership: user is a MEMBER of the OTHER user's org ---
     membership = OrgMembership(id=_uid(), org_id=org_id, user_id=user_id, role="member")
 
     # --- AuditLog whose actor is this user ---
-    audit = AuditLog(
-        id=_uid(), actor_id=user_id, actor_label="u", action="something"
-    )
+    audit = AuditLog(id=_uid(), actor_id=user_id, actor_label="u", action="something")
 
     db.add_all(
         [
-            msg, kbdoc, action, col, mc, mcp, oauth, wf, skill, notif, sub,
-            apikey, login, caseresult, calllog, rsub, ev, membership, audit,
+            msg,
+            kbdoc,
+            action,
+            col,
+            mc,
+            mcp,
+            oauth,
+            wf,
+            skill,
+            notif,
+            sub,
+            apikey,
+            login,
+            caseresult,
+            calllog,
+            rsub,
+            ev,
+            membership,
+            audit,
         ]
     )
     await db.commit()
@@ -299,12 +342,10 @@ async def test_purge_fully_loaded_user_removes_everything(db: AsyncSession) -> N
     assert await _count(db, NotificationPreference, id=notif.id) == 0
     assert await _count(db, Subscription, id=sub.id) == 0
     assert await _count(db, ApiKey, id=apikey.id) == 0
-    assert await _count(db, LoginHistory, id=login.id) == 0
     assert await _count(db, EvalDataset, id=ds.id) == 0
     assert await _count(db, EvalCase, id=case.id) == 0
     assert await _count(db, EvalRun, id=run.id) == 0
     assert await _count(db, EvalCaseResult, id=caseresult.id) == 0
-    assert await _count(db, ConnectorCallLog, id=calllog.id) == 0
     assert await _count(db, ResourceSubscription, id=rsub.id) == 0
     assert await _count(db, EmailVerification, id=ev.id) == 0
     assert await _count(db, OrgMembership, id=membership.id) == 0
@@ -313,12 +354,11 @@ async def test_purge_fully_loaded_user_removes_everything(db: AsyncSession) -> N
     # The other user's organization (and the other user) still exist.
     assert await _count(db, Organization, id=org_id) == 1
     assert await _count(db, User, id=other_id) == 1
-    # The audit log row survives but its actor reference is nulled.
-    assert await _count(db, AuditLog, id=audit.id) == 1
-    surviving_audit = (
-        await db.execute(select(AuditLog).where(AuditLog.id == audit.id))
-    ).scalar_one()
-    assert surviving_audit.actor_id is None
+    # The records that outlive the account keep their rows and the user's
+    # id (what is taken out of them: the tests at the end of this file).
+    assert await _count(db, AuditLog, id=audit.id, actor_id=user_id) == 1
+    assert await _count(db, LoginHistory, id=login.id, user_id=user_id) == 1
+    assert await _count(db, ConnectorCallLog, id=calllog.id, user_id=user_id) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -376,9 +416,7 @@ async def test_purge_nulls_invited_by_and_version_author(db: AsyncSession) -> No
     )
 
     # WorkflowVersion on another user's workflow, authored by U.
-    wf = Workflow(
-        id=_uid(), user_id=other_id, name="wf", blueprint={"nodes": [], "edges": []}
-    )
+    wf = Workflow(id=_uid(), user_id=other_id, name="wf", blueprint={"nodes": [], "edges": []})
     db.add(wf)
     await db.flush()
     version = WorkflowVersion(
@@ -397,16 +435,12 @@ async def test_purge_nulls_invited_by_and_version_author(db: AsyncSession) -> No
     assert await _count(db, User, id=u_id) == 0
 
     surviving_membership = (
-        await db.execute(
-            select(OrgMembership).where(OrgMembership.id == membership.id)
-        )
+        await db.execute(select(OrgMembership).where(OrgMembership.id == membership.id))
     ).scalar_one()
     assert surviving_membership.invited_by is None
 
     surviving_version = (
-        await db.execute(
-            select(WorkflowVersion).where(WorkflowVersion.id == version.id)
-        )
+        await db.execute(select(WorkflowVersion).where(WorkflowVersion.id == version.id))
     ).scalar_one()
     assert surviving_version.created_by is None
 
@@ -424,3 +458,268 @@ async def test_purge_missing_user_raises(db: AsyncSession) -> None:
 
     assert exc_info.value.error_code == "user_not_found"
     assert exc_info.value.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Test 5 — the records that outlive the account lose what identifies the user
+# ---------------------------------------------------------------------------
+
+
+async def _person(db: AsyncSession, name: str, **fields: object) -> User:
+    user = User(id=str(uuid.uuid4()), username=name, email=f"{name}@example.test", **fields)
+    db.add(user)
+    await db.flush()
+    return user
+
+
+async def _fresh(db: AsyncSession, model: type, row_id: str) -> Any:
+    """The row as the database has it now, not as the session remembers it."""
+    query = select(model).where(model.id == row_id)  # type: ignore[attr-defined]
+    return (await db.execute(query.execution_options(populate_existing=True))).scalar_one_or_none()
+
+
+def _everything(row: object) -> str:
+    """Every stored column of *row* as one searchable string."""
+    columns = row.__mapper__.column_attrs  # type: ignore[attr-defined]
+    return json.dumps({c.key: getattr(row, c.key) for c in columns}, default=str)
+
+
+@pytest.mark.asyncio
+async def test_sign_in_history_stays_without_name_or_address(db: AsyncSession) -> None:
+    """The rows were deleted with the account: a user could erase the trace
+    of their own sign-ins by deleting it."""
+    carol = await _person(db, "carol")
+    other = await _person(db, "other")
+    label = f"deleted-user-{carol.id[:8]}"
+    mine = LoginHistory(
+        id=_uid(), user_id=carol.id, username="carol", email=carol.email,
+        ip_address="198.51.100.5", user_agent="CarolBrowser/1", success=False,
+        failure_reason="wrong_password", method="password",
+    )  # fmt: skip
+    # Typed before the account existed: no user id, her address.
+    before = LoginHistory(
+        id=_uid(), user_id=None, email=carol.email, ip_address="203.0.113.50", success=False
+    )
+    theirs = LoginHistory(
+        id=_uid(), user_id=other.id, username="other", email=other.email,
+        ip_address="198.51.100.6", user_agent="OtherBrowser/1", success=True,
+    )  # fmt: skip
+    db.add_all([mine, before, theirs])
+    await db.commit()
+
+    await purge_user_data(db, carol.id)
+    await db.commit()
+
+    kept = await _fresh(db, LoginHistory, mine.id)
+    assert kept is not None, "the sign-in row was deleted with the account"
+    assert (kept.user_id, kept.username, kept.email) == (carol.id, label, label)
+    assert kept.ip_address is None and kept.user_agent is None
+    # What happened stays.
+    assert (kept.success, kept.failure_reason, kept.method) == (False, "wrong_password", "password")
+    earlier = await _fresh(db, LoginHistory, before.id)
+    assert earlier is not None and earlier.email == label
+    assert earlier.ip_address == "203.0.113.50"
+    untouched = await _fresh(db, LoginHistory, theirs.id)
+    assert untouched is not None
+    assert (untouched.username, untouched.ip_address) == ("other", "198.51.100.6")
+    for row in (kept, earlier):
+        assert "carol" not in _everything(row)
+
+
+@pytest.mark.asyncio
+async def test_call_records_and_the_usage_ledger_stay_as_they_are(db: AsyncSession) -> None:
+    """Call records were deleted with the account, so an organization's
+    record of what was called through its agents shrank with every member
+    who left."""
+    from fim_one.db.models.usage_ledger import UsageLedger
+
+    carol = await _person(db, "carol")
+    call = ConnectorCallLog(
+        id=_uid(), connector_id=_uid(), connector_name="CRM", action_name="list",
+        user_id=carol.id, org_id="org-a", request_method="GET", request_url="https://x",
+        success=True,
+    )  # fmt: skip
+    usage = UsageLedger(
+        id=_uid(), user_id=carol.id, org_id="org-a", source_type="conversation",
+        entry="chat", total_tokens=120,
+    )  # fmt: skip
+    db.add_all([call, usage])
+    await db.commit()
+
+    await purge_user_data(db, carol.id)
+    await db.commit()
+
+    kept_call = await _fresh(db, ConnectorCallLog, call.id)
+    assert kept_call is not None, "the call record was deleted with the account"
+    assert (kept_call.user_id, kept_call.org_id, kept_call.connector_name) == (
+        carol.id, "org-a", "CRM",
+    )  # fmt: skip
+    kept_usage = await _fresh(db, UsageLedger, usage.id)
+    assert kept_usage is not None
+    assert (kept_usage.user_id, kept_usage.total_tokens) == (carol.id, 120)
+
+
+@pytest.mark.asyncio
+async def test_audit_rows_name_the_user_by_the_label_and_lose_their_address(
+    db: AsyncSession,
+) -> None:
+    """Only the actor id was cleared: the username stayed in the actor
+    label, the target label, detail lines and changes, with the address."""
+    carol = await _person(db, "carol", display_name="Carol Danvers")
+    root = await _person(db, "root", is_admin=True)
+    label = f"deleted-user-{carol.id[:8]}"
+
+    def event(action: str, **fields: object) -> AuditLog:
+        row = AuditLog(id=_uid(), action=action, **fields)
+        db.add(row)
+        return row
+
+    own = event(
+        "auth.username_change", actor_id=carol.id, actor_label="carol", actor_kind="user",
+        target_type="user", target_id=carol.id, target_label="carol",
+        changes={"username": {"from": "caz", "to": "carol"}},
+        ip_address="198.51.100.5", user_agent="CarolBrowser/1",
+    )  # fmt: skip
+    in_org = event(
+        "agent.update", actor_id=carol.id, actor_label="carol", actor_kind="user",
+        org_id="org-a", target_type="agent", target_id="a1", target_label="Helper",
+        detail="published to carol@example.test",
+        changes={"is_active": {"from": False, "to": True}, "notify": {"from": None, "to": "carol@example.test"}},
+        ip_address="198.51.100.5", user_agent="CarolBrowser/1",
+    )  # fmt: skip
+    by_admin = event(
+        "user.update", actor_id=root.id, actor_label="root", actor_kind="admin",
+        target_type="user", target_id=carol.id, target_label="carol",
+        detail="carol",
+        changes={"email": {"from": "c@old.test", "to": "carol@example.test"}},
+        ip_address="198.51.100.99", user_agent="RootBrowser/9",
+    )  # fmt: skip
+    role = event(
+        "org.member_role_change", actor_id=root.id, actor_label="root", actor_kind="user",
+        org_id="org-a", target_type="user", target_id=carol.id, target_label="carol",
+        changes={"role": {"from": "member", "to": "admin"}}, ip_address="198.51.100.99",
+    )  # fmt: skip
+    # Somebody else's rows, one of them about a user whose name starts the same.
+    unrelated = event(
+        "settings.update", actor_id=root.id, actor_label="root", actor_kind="admin",
+        detail="carolina joined; scarol left", ip_address="198.51.100.99",
+    )  # fmt: skip
+    plain = event("auth.sessions_revoke", actor_id=carol.id, actor_label="carol",
+                  ip_address="198.51.100.5")  # fmt: skip
+    await db.commit()
+
+    await purge_user_data(db, carol.id)
+    await db.commit()
+
+    rows = {
+        name: await _fresh(db, AuditLog, row.id)
+        for name, row in {
+            "own": own, "in_org": in_org, "by_admin": by_admin, "role": role,
+            "unrelated": unrelated, "plain": plain,
+        }.items()
+    }  # fmt: skip
+    assert all(row is not None for row in rows.values())
+    for name in ("own", "in_org", "by_admin", "role", "plain"):
+        text = _everything(rows[name])
+        assert "carol" not in text.lower().replace(label, ""), f"{name}: {text}"
+        assert "198.51.100.5" not in text and "CarolBrowser" not in text, name
+
+    # Her own rows: her id, the label, no address.
+    assert (rows["own"].actor_id, rows["own"].actor_label) == (carol.id, label)
+    assert rows["own"].target_label == label and rows["own"].ip_address is None
+    assert rows["own"].changes == {"username": {"changed": True}}
+    assert rows["in_org"].detail == f"published to {label}"
+    assert rows["in_org"].changes == {
+        "is_active": {"from": False, "to": True},
+        "notify": {"from": None, "to": label},
+    }
+    # No ``changes`` before, none after: SQL NULL, not the JSON null.
+    assert rows["plain"].changes is None
+    assert (
+        await db.execute(
+            select(func.count()).select_from(AuditLog).where(
+                AuditLog.id == plain.id, AuditLog.changes.is_(None)
+            )
+        )
+    ).scalar_one() == 1  # fmt: skip
+    # An administrator's rows about her: the administrator and their
+    # address stay, her names go.
+    assert (rows["by_admin"].actor_label, rows["by_admin"].ip_address) == ("root", "198.51.100.99")
+    assert rows["by_admin"].user_agent == "RootBrowser/9"
+    assert rows["by_admin"].target_label == label
+    assert rows["by_admin"].detail == label
+    assert rows["by_admin"].changes == {"email": {"changed": True}}
+    # What changed that is not a name of hers is kept.
+    assert rows["role"].changes == {"role": {"from": "member", "to": "admin"}}
+    assert rows["role"].target_label == label
+    # Rows she is neither the actor nor the target of are not rewritten.
+    assert rows["unrelated"].detail == "carolina joined; scarol left"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["member", "admin", "true"])
+async def test_a_username_that_is_an_ordinary_word_leaves_the_rest_of_the_row(
+    db: AsyncSession, name: str
+) -> None:
+    """A username was replaced wherever it stood as a word, so deleting a
+    user called ``member`` rewrote the roles in the rows about them."""
+    person = await _person(db, name, display_name="Admin")
+    root = await _person(db, "root", is_admin=True)
+    label = f"deleted-user-{person.id[:8]}"
+    role = AuditLog(
+        id=_uid(), action="org.member_role_change", actor_id=root.id, actor_label="root",
+        actor_kind="user", org_id="org-a", target_type="user", target_id=person.id,
+        target_label=name, changes={"role": {"from": "member", "to": "admin"}},
+        detail="role=admin; was member",
+    )  # fmt: skip
+    own = AuditLog(
+        id=_uid(), action="workflow.schedule_update", actor_id=person.id, actor_label=name,
+        actor_kind="user", target_type="workflow", target_id="w1", target_label="Nightly",
+        changes={"enabled": {"from": "false", "to": "true"}, "role": {"from": "admin", "to": "member"}},
+        detail="schedule_enabled=true; by admin",
+    )  # fmt: skip
+    renamed = AuditLog(
+        id=_uid(), action="auth.username_change", actor_id=person.id, actor_label=name,
+        actor_kind="user", target_type="user", target_id=person.id, target_label=name,
+        changes={"username": {"from": "old", "to": name}},
+    )  # fmt: skip
+    db.add_all([role, own, renamed])
+    await db.commit()
+
+    await purge_user_data(db, person.id)
+    await db.commit()
+
+    role_now = await _fresh(db, AuditLog, role.id)
+    assert role_now.target_label == label
+    assert role_now.changes == {"role": {"from": "member", "to": "admin"}}
+    assert role_now.detail == "role=admin; was member"
+    own_now = await _fresh(db, AuditLog, own.id)
+    assert own_now.actor_label == label
+    assert own_now.changes == {
+        "enabled": {"from": "false", "to": "true"},
+        "role": {"from": "admin", "to": "member"},
+    }
+    assert own_now.detail == "schedule_enabled=true; by admin"
+    renamed_now = await _fresh(db, AuditLog, renamed.id)
+    assert renamed_now.changes == {"username": {"changed": True}}
+
+
+@pytest.mark.asyncio
+async def test_the_review_trail_names_the_user_by_the_label(db: AsyncSession) -> None:
+    from fim_one.db.models.review_log import ReviewLog
+
+    carol = await _person(db, "carol")
+    entry = ReviewLog(
+        org_id="org-a", resource_type="agent", resource_id="a1", resource_name="Helper",
+        action="approved", actor_id=carol.id, actor_username="carol", note="fine",
+    )  # fmt: skip
+    db.add(entry)
+    await db.commit()
+
+    await purge_user_data(db, carol.id)
+    await db.commit()
+
+    kept = await _fresh(db, ReviewLog, entry.id)
+    assert kept is not None
+    assert (kept.actor_id, kept.actor_username) == (carol.id, f"deleted-user-{carol.id[:8]}")
+    assert (kept.action, kept.note) == ("approved", "fine")

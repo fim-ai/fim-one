@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Integer, String, Text
+from sqlalchemy import Boolean, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from fim_one.db.base import Base, TimestampMixin, UUIDPKMixin
@@ -19,6 +19,9 @@ class ConnectorCallLog(UUIDPKMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "connector_call_logs"
+    # Created by migration b2d4e6f8a901; declared so that a database built
+    # with ``create_all`` has it too. The retention sweep reads by age.
+    __table_args__ = (Index("ix_connector_call_logs_created_at", "created_at"),)
 
     # ``connector_id``, ``conversation_id`` and ``user_id`` are plain ids, not
     # foreign keys: a call record is an activity record, and it stays when
