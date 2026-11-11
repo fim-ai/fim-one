@@ -33,7 +33,13 @@ class UsageLedger(Base):
 
     __tablename__ = "usage_ledger"
     __table_args__ = (
-        Index("ix_usage_ledger_user_created", "user_id", "created_at"),
+        # What the quota check sums; on PostgreSQL read from the index alone.
+        Index(
+            "ix_usage_ledger_user_created",
+            "user_id",
+            "created_at",
+            postgresql_include=["total_tokens"],
+        ),
         Index("ix_usage_ledger_org_created", "org_id", "created_at"),
         Index("ix_usage_ledger_source", "source_type", "source_id"),
     )

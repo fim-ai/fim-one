@@ -7,7 +7,11 @@ so it shrank whenever a conversation, a run or a workflow was deleted.
 or deleted; no column is a foreign key.
 
 Schema: the table and three indexes, ``(user_id, created_at)``,
-``(org_id, created_at)`` and ``(source_type, source_id)``.
+``(org_id, created_at)`` and ``(source_type, source_id)``. The first is
+what every quota check reads, a sum of ``total_tokens`` over one user's
+window, so on PostgreSQL it also holds ``total_tokens`` (``INCLUDE``) and
+the sum is read from the index alone. SQLite has no ``INCLUDE``; there it
+is the plain composite.
 
 Backfill: so that every user's "used" is the same the moment after this
 migration as the moment before, the existing totals are carried over as
@@ -80,6 +84,8 @@ _INDEXES: dict[str, list[str]] = {
     "ix_usage_ledger_org_created": ["org_id", "created_at"],
     "ix_usage_ledger_source": ["source_type", "source_id"],
 }
+# Index -> column the sum reads, kept in the index so it is read from there.
+_COVERED = {"ix_usage_ledger_user_created": "total_tokens"}
 # Rounds of carrying over again the users whose totals differ.
 RECONCILE_ROUNDS = 5
 # Source rows read per query. A conversation gives up to two ledger rows.
@@ -357,6 +363,12 @@ def _backfill_and_reconcile(bind: sa.Connection) -> None:
         )
 
 
+def _create_index(name: str, columns: list[str]) -> None:
+    covered = _COVERED.get(name)
+    # ``postgresql_include`` is ignored by every other dialect.
+    op.create_index(name, _TABLE, columns, postgresql_include=[covered] if covered else [])
+
+
 def upgrade() -> None:
     bind = op.get_bind()
 
@@ -389,7 +401,7 @@ def upgrade() -> None:
         )
     for name, columns in _INDEXES.items():
         if not index_exists(bind, _TABLE, name):
-            op.create_index(name, _TABLE, columns)
+            _create_index(name, columns)
 
     if bind.dialect.name == "postgresql":
         # Commits the table (and whatever the migration run did before), then

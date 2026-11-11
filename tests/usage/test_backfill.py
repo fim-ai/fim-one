@@ -458,3 +458,27 @@ class TestWithTheSourcesStillBeingWritten:
 def module_row_id(kind: str, source_id: str) -> str:
     return str(_module()._row_id(kind, source_id))
 
+
+class TestTheQuotaIndex:
+    def test_on_postgresql_the_sum_is_read_from_the_index(
+        self, before: sa.Engine, current_db: sa.Engine  # noqa: F811
+    ) -> None:
+        if before.dialect.name != "postgresql":
+            pytest.skip("SQLite has no INCLUDE; there the index is the plain composite")
+        from fim_one.db.models.usage_ledger import UsageLedger
+
+        definition = (
+            "SELECT indexdef FROM pg_indexes WHERE schemaname = current_schema()"
+            " AND indexname = 'ix_usage_ledger_user_created'"
+        )
+        _migrate(before, _C2P3, "upgrade")
+        with before.connect() as conn:
+            migrated = conn.execute(text(definition)).scalar_one()
+        with before.begin() as conn:
+            conn.execute(text(f"DROP TABLE {_LEDGER}"))
+        UsageLedger.__table__.create(before)  # type: ignore[attr-defined]
+        with before.connect() as conn:
+            modelled = conn.execute(text(definition)).scalar_one()
+
+        assert "(user_id, created_at) INCLUDE (total_tokens)" in migrated
+        assert modelled == migrated
