@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import case, distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.usage import ledger as usage_ledger
 from fim_one.db import get_session
 from fim_one.db.models import (
     Connector,
@@ -166,27 +167,18 @@ async def get_metrics_overview(
     ).scalar_one()
 
     # -- Token usage ---------------------------------------------------------
-    # Conversation.total_tokens stores aggregate (input + output).
-    # Conversation.fast_llm_tokens tracks the "fast" model portion.
-    # We approximate: input = total_tokens - fast_llm_tokens (main model),
-    #                 output = fast_llm_tokens (fast model).
-    # This is a rough split -- exact per-message input/output is not stored.
-    total_tokens = (
-        await db.execute(
-            select(func.coalesce(func.sum(Conversation.total_tokens), 0))
-            .where(Conversation.created_at >= cutoff)
-        )
-    ).scalar_one()
-
-    fast_tokens = (
-        await db.execute(
-            select(func.coalesce(func.sum(Conversation.fast_llm_tokens), 0))
-            .where(Conversation.created_at >= cutoff)
-        )
-    ).scalar_one()
-
-    total_input = total_tokens - fast_tokens
-    total_output = fast_tokens
+    # From the usage ledger: everything recorded in the period, deleted
+    # conversations and runs included. The split is not input and output:
+    # "input" is the turns' own work, "output" the work done after them
+    # (entry "background": titles; on the rows carried over from before the
+    # ledger, the conversations' fast-model tokens), as it was before.
+    total_input = 0
+    total_output = 0
+    for usage_slice in await usage_ledger.used_by(db, ["background"], since=cutoff):
+        if usage_slice.background:
+            total_output += usage_slice.total_tokens
+        else:
+            total_input += usage_slice.total_tokens
 
     # -- Active users --------------------------------------------------------
     active_users = (

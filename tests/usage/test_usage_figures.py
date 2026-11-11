@@ -225,7 +225,7 @@ class TestNothingElseSumsTheOldTotals:
     # File -> how many sums it may hold. A new one anywhere fails this test.
     STATISTICS = {
         "web/api/dashboard.py": 4,
-        "web/api/metrics.py": 2,
+        "web/api/metrics.py": 1,  # tokens per day and model
     }
 
     def test_sums_over_conversation_totals(self) -> None:

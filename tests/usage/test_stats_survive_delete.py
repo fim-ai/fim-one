@@ -338,3 +338,47 @@ class TestDailyTrend:
             expected[str(day)] = (tokens_then + int(tokens), count, users)
         assert trend == expected
         assert list(trend) == sorted(trend)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/metrics/overview: the metrics API's summary
+# ---------------------------------------------------------------------------
+
+
+class TestMetricsOverview:
+    PATH = "/api/metrics/overview?period={period}"
+
+    async def _tokens(self, usage: Usage, period: str, by: User) -> dict[str, int]:  # noqa: F811
+        body = await _get(usage, self.PATH.format(period=period), by)
+        tokens: dict[str, int] = body["data"]["token_usage"]
+        return tokens
+
+    async def test_survives(
+        self, usage: Usage, provider: Provider, alice: User, root: User, runs: Any  # noqa: F811
+    ) -> None:
+        billed = await _everything(usage, provider, alice)
+        before = await self._tokens(usage, "24h", root)
+        assert before["total_input"] + before["total_output"] == provider.billed
+        # The title written after each turn is the work done after it.
+        background = await usage.recorded(entry="background")
+        assert before["total_output"] == background
+
+        await _delete_everything(usage, alice, billed)
+
+        for period in ("24h", "7d", "30d"):
+            assert await self._tokens(usage, period, root) == before, period
+
+    async def test_backfilled(self, usage: Usage, backfilled: Backfilled, root: User) -> None:  # noqa: F811
+        for period, days in (("7d", 7), ("30d", 30)):
+            since = datetime.now(UTC) - timedelta(days=days)
+            total, fast = (
+                await backfilled.old(
+                    "SELECT COALESCE(SUM(total_tokens), 0), COALESCE(SUM(fast_llm_tokens), 0)"
+                    " FROM conversations WHERE created_at >= :since",
+                    since=since,
+                )
+            )[0]
+            assert await self._tokens(usage, period, root) == {
+                "total_input": total - fast + await backfilled.runs_since(since),
+                "total_output": fast,
+            }, period
