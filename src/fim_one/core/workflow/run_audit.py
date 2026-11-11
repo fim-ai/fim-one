@@ -197,21 +197,56 @@ async def record_refused(
     return True
 
 
-async def record_cancelled(workflow: Any, *, run_id: str, actor: Actor, was: str) -> None:
+async def _workflow_of_run(run_id: str) -> tuple[str | None, str | None, str | None]:
+    """``(workflow id, organization, name)`` of run *run_id*; ``None``s if gone."""
+    from sqlalchemy import select
+
+    from fim_one.db import create_session
+    from fim_one.db.models import Workflow, WorkflowRun
+
+    async with create_session() as db:
+        row = (
+            await db.execute(
+                select(Workflow.id, Workflow.org_id, Workflow.name)
+                .join(WorkflowRun, WorkflowRun.workflow_id == Workflow.id)
+                .where(WorkflowRun.id == run_id)
+            )
+        ).first()
+    return (row[0], row[1], row[2]) if row else (None, None, None)
+
+
+async def record_cancelled(
+    run_id: str,
+    *,
+    actor: Actor,
+    was: str,
+    workflow: Any = None,
+    request: RequestMeta | None = None,
+) -> None:
     """``workflow.run_cancelled``: *actor* stopped run *run_id*, which was *was*.
 
-    Written on its own once the run is closed; a failure is logged.
+    Called where the run is stored as cancelled, by whoever stored it, so
+    once per run whatever the number of requests. Written on its own after
+    that; never raises.
     """
-    await audit.record(
-        actions.WORKFLOW_RUN_CANCELLED,
-        actor=actor,
-        org_id=getattr(workflow, "org_id", None),
-        target_type="workflow",
-        target_id=workflow.id,
-        target_label=getattr(workflow, "name", None),
-        detail=f"was {was}",
-        context=EventContext(workflow_run_id=run_id),
-    )
+    try:
+        if workflow is not None:
+            target = (workflow.id, getattr(workflow, "org_id", None), workflow.name)
+        else:
+            target = await _workflow_of_run(run_id)
+        await audit.record(
+            actions.WORKFLOW_RUN_CANCELLED,
+            actor=actor,
+            org_id=target[1],
+            target_type="workflow",
+            target_id=target[0],
+            target_label=target[2],
+            detail=f"was {was}",
+            context=EventContext(workflow_run_id=run_id),
+            request=request,
+        )
+    except Exception as exc:
+        logger.error("Could not record a cancelled run: %s", type(exc).__name__)
 
 
 async def record_closed(run_id: str, detail: str) -> None:
@@ -220,27 +255,15 @@ async def record_closed(run_id: str, detail: str) -> None:
     The system is the actor; *detail* says why (a code, or what was closed
     with the run). Written on its own after the run is closed; never raises.
     """
-    from sqlalchemy import select
-
-    from fim_one.db import create_session
-    from fim_one.db.models import Workflow, WorkflowRun
-
     try:
-        async with create_session() as db:
-            row = (
-                await db.execute(
-                    select(Workflow.id, Workflow.org_id, Workflow.name)
-                    .join(WorkflowRun, WorkflowRun.workflow_id == Workflow.id)
-                    .where(WorkflowRun.id == run_id)
-                )
-            ).first()
+        target = await _workflow_of_run(run_id)
         await audit.record(
             actions.WORKFLOW_RUN_CLOSED,
             actor=audit.system_actor("workflow runs"),
-            org_id=row[1] if row else None,
+            org_id=target[1],
             target_type="workflow",
-            target_id=row[0] if row else None,
-            target_label=row[2] if row else None,
+            target_id=target[0],
+            target_label=target[2],
             outcome="failed",
             detail=detail,
             context=EventContext(workflow_run_id=run_id),

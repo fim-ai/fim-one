@@ -785,3 +785,124 @@ class TestARunThePlatformCloses:
         await world.call("POST", "/api/workflows/wf-1/run", by=alice, json={"inputs": {}})
 
         assert await world.events("workflow.run_closed") == []
+
+
+class TestACancelIsRecordedWhenTheRunEndsCancelled:
+    """Review F1: the record is written where the run is stored as
+    cancelled, once, with who asked. Asking again, or asking a run that
+    ends some other way first, records nothing more."""
+
+    async def _executing(
+        self, world: World, service: Any, monkeypatch: pytest.MonkeyPatch, step: Any
+    ) -> tuple[User, Any]:
+        """A run executing its first step (*step*), with the End step after it."""
+        from fim_one.core.workflow.run_service import RunMode
+
+        monkeypatch.setattr("fim_one.core.workflow.nodes.ConditionBranchExecutor.execute", step)
+        alice = await world.user("alice")
+        workflow = await _workflow(world, alice, WITH_A_BRANCH)
+        started = await service.start_run(
+            workflow, caller_id=alice.id, inputs={}, mode=RunMode.INTERACTIVE
+        )
+        return alice, started
+
+    async def test_asking_three_times_is_one_record(
+        self, world: World, service: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        reached = asyncio.Event()
+
+        async def end(_executor: Any, node: Any, *_args: Any, **_kwargs: Any) -> Any:
+            from fim_one.core.workflow.types import NodeResult, NodeStatus
+
+            reached.set()
+            await asyncio.sleep(1)
+            return NodeResult(node_id=node.id, status=NodeStatus.COMPLETED, output={})
+
+        alice, started = await self._executing(world, service, monkeypatch, end)
+        await asyncio.wait_for(reached.wait(), timeout=5)
+
+        for _ in range(3):
+            await world.call("POST", f"/api/workflows/wf-1/runs/{started.run_id}/cancel", by=alice)
+        outcome = await asyncio.wait_for(started.wait(), timeout=10)
+
+        assert outcome.status == "cancelled"
+        row = await world.one("workflow.run_cancelled", actor=alice, target=("workflow", "wf-1"))
+        assert (row.workflow_run_id, row.detail) == (started.run_id, "was running")
+
+    async def test_a_run_that_ends_otherwise_is_not_recorded_as_cancelled(
+        self, world: World, service: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Asked to stop by its last step, the run is stored as whatever
+        the engine decides; recorded as cancelled only if stored so."""
+        from fim_one.core.workflow.types import NodeResult, NodeStatus
+
+        holder: dict[str, Any] = {}
+
+        async def end(_executor: Any, node: Any, *_args: Any, **_kwargs: Any) -> Any:
+            # The person presses Cancel while the last step runs.
+            await world.call(
+                "POST", f"/api/workflows/wf-1/runs/{holder['run_id']}/cancel", by=alice
+            )
+            return NodeResult(node_id=node.id, status=NodeStatus.COMPLETED, output={})
+
+        monkeypatch.setattr("fim_one.core.workflow.nodes.EndExecutor.execute", end)
+        from fim_one.core.workflow.run_service import RunMode
+
+        alice = await world.user("alice")
+        workflow = await _workflow(world, alice)
+        started = await service.start_run(
+            workflow, caller_id=alice.id, inputs={}, mode=RunMode.INTERACTIVE
+        )
+        holder["run_id"] = started.run_id
+        await asyncio.wait_for(started.wait(), timeout=10)
+
+        (run,) = await _runs(world)
+        rows = await world.events("workflow.run_cancelled")
+        assert len(rows) == (1 if run.status == "cancelled" else 0), run.status
+
+    async def test_someone_elses_run_is_not_found_and_not_recorded(
+        self, world: World, service: Any
+    ) -> None:
+        alice, mallory = await world.user("alice"), await world.user("mallory")
+        await _workflow(world, alice)
+        await world.add(
+            WorkflowRun(
+                id="run-1",
+                workflow_id="wf-1",
+                user_id=alice.id,
+                blueprint_snapshot=PLAIN,
+                inputs={},
+                status="waiting",
+                mode="interactive",
+            )
+        )
+
+        await world.call(
+            "POST", "/api/workflows/wf-1/runs/run-1/cancel", by=mallory, expect=(403, 404)
+        )
+
+        assert await world.events("workflow.run_cancelled") == []
+
+    async def test_a_stored_run_cancelled_twice_is_one_record(
+        self, world: World, service: Any
+    ) -> None:
+        alice = await world.user("alice")
+        await _workflow(world, alice)
+        await world.add(
+            WorkflowRun(
+                id="run-1",
+                workflow_id="wf-1",
+                user_id=alice.id,
+                blueprint_snapshot=PLAIN,
+                inputs={},
+                status="running",
+                mode="interactive",
+            )
+        )
+
+        await world.call("POST", "/api/workflows/wf-1/runs/run-1/cancel", by=alice)
+        await world.call(
+            "POST", "/api/workflows/wf-1/runs/run-1/cancel", by=alice, expect=(400, 409)
+        )
+
+        assert len(await world.events("workflow.run_cancelled")) == 1

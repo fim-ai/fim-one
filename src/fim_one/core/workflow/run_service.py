@@ -426,6 +426,11 @@ class StartedRun:
         self._holds_slot = holds_slot
         self._queue: asyncio.Queue[tuple[str, dict[str, Any]]] = asyncio.Queue()
         self._driver: asyncio.Task[None] | None = None
+        # Who asked first to stop it, and from where; recorded if it is
+        # stored as cancelled (the driver runs in the context of whoever
+        # started the run, not of the request that cancels it).
+        self.cancelled_by: Any = None
+        self._cancel_request: Any = None
 
     def start(self) -> None:
         if self._driver is None:
@@ -436,8 +441,16 @@ class StartedRun:
         """True once the run has been persisted and its slot released."""
         return self._driver is not None and self._driver.done()
 
-    def cancel(self) -> None:
-        """Ask the engine to stop; the run is persisted as cancelled."""
+    def cancel(self, *, by: Any = None) -> None:
+        """Ask the engine to stop; the run is persisted as cancelled.
+
+        *by* is the audit actor asking; the first one is kept.
+        """
+        if by is not None and self.cancelled_by is None:
+            from fim_one.core.audit.context import current_request_meta
+
+            self.cancelled_by = by
+            self._cancel_request = current_request_meta() or run_audit.NO_REQUEST
         self.cancel_event.set()
 
     async def wait(self) -> RunOutcome:
@@ -656,6 +669,15 @@ class StartedRun:
                             out.waiting = []
                             suspended = False
                             closed_elsewhere = True
+                        elif out.status == "cancelled" and self.cancelled_by is not None:
+                            # Stored as cancelled here, once: who asked.
+                            await run_audit.record_cancelled(
+                                self.run_id,
+                                actor=self.cancelled_by,
+                                was="running",
+                                workflow=self.workflow,
+                                request=self._cancel_request,
+                            )
                     finally:
                         # Only this object's registration: by now the run may
                         # have been continued, by a new StartedRun under the
@@ -780,12 +802,17 @@ class WorkflowRunService:
             weakref.WeakValueDictionary()
         )
 
-    def cancel_run(self, run_id: str) -> bool:
-        """Signal a run executing in this process to stop; False if not here."""
+    def cancel_run(self, run_id: str, *, by: Any = None) -> bool:
+        """Signal a run executing in this process to stop; False if not here.
+
+        *by* (an audit actor) is recorded with ``workflow.run_cancelled``
+        when the run is then stored as cancelled; a run that ends some other
+        way first is not recorded as cancelled.
+        """
         started = self._active_runs.get(run_id)
         if started is None:
             return False
-        started.cancel()
+        started.cancel(by=by)
         return True
 
     @staticmethod
@@ -944,7 +971,7 @@ class WorkflowRunService:
         """Runs executing in this process right now."""
         return list(self._active_runs)
 
-    async def cancel_stored_run(self, run_id: str) -> bool:
+    async def cancel_stored_run(self, run_id: str, *, by: Any = None) -> bool:
         """Cancel a run that is not executing in this process, on its record.
 
         A run waiting for a decision is closed here and now: its open
@@ -956,6 +983,9 @@ class WorkflowRunService:
         ended = await self._end_stored_run(
             run_id, ("pending", "running", "waiting"), "cancelled", "Execution cancelled"
         )
+        if ended is not None and by is not None:
+            # This call closed it: of several, one gets here.
+            await run_audit.record_cancelled(run_id, actor=by, was=ended)
         return ended is not None
 
     async def _end_stored_run(
