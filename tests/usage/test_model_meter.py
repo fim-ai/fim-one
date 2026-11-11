@@ -723,6 +723,48 @@ class TestACallCancelledBeforeItYieldsAnything:
         assert item.prompt_tokens == estimate_prompt_tokens(MESSAGES)
         assert item.completion_tokens == estimate_tokens("".join(fragments))
 
+    async def test_a_completed_tool_call_round_counts_its_arguments_once(
+        self, monkeypatch: pytest.MonkeyPatch, meter: UsageMeter
+    ) -> None:
+        """Read to the end, no count from the provider: the yielded call, not its raw text too."""
+        code = "import pandas as pd\n" + "df = df[df['amount'] > 1000]\n" * 50
+        raw = json.dumps({"code": code})
+        fragments = [raw[i : i + 40] for i in range(0, len(raw), 40)]
+
+        def _chunk(delta: Any, finish_reason: str | None = None) -> Any:
+            return SimpleNamespace(
+                choices=[SimpleNamespace(delta=delta, finish_reason=finish_reason)], usage=None
+            )
+
+        async def _tool_round(**_kwargs: Any) -> Any:
+            async def _chunks() -> AsyncIterator[Any]:
+                for number, fragment in enumerate(fragments):
+                    function = SimpleNamespace(
+                        name="python_exec" if number == 0 else None, arguments=fragment
+                    )
+                    call = SimpleNamespace(
+                        index=0, id="call_1" if number == 0 else None, function=function
+                    )
+                    yield _chunk(
+                        SimpleNamespace(content=None, reasoning_content=None, tool_calls=[call])
+                    )
+                yield _chunk(
+                    SimpleNamespace(content=None, reasoning_content=None, tool_calls=None),
+                    "tool_calls",
+                )
+
+            return _chunks()
+
+        monkeypatch.setattr("litellm.acompletion", _tool_round)
+
+        chunks = [chunk async for chunk in _llm().stream_chat(MESSAGES)]
+
+        (call,) = [call for chunk in chunks for call in chunk.tool_calls or ()]
+        assert call.arguments == {"code": code}
+        (item,) = meter.drain()
+        assert item.estimated is True
+        assert item.completion_tokens == estimate_tokens(json.dumps(call.arguments, default=str))
+
     async def test_a_native_responses_tool_call_round_counts_its_arguments_too(
         self, monkeypatch: pytest.MonkeyPatch, meter: UsageMeter
     ) -> None:
