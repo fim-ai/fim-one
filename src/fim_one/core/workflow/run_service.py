@@ -1077,11 +1077,13 @@ class WorkflowRunService:
                     await db.rollback()
             if previous is not None:
                 break
-        if previous is not None and closed_because:
-            await run_audit.record_closed(run_id, closed_because)
         if previous == "waiting":
             # Nothing was executing it: nobody else will remove its files.
             await release_sandbox(workflow_run_sandbox_id(run_id))
+        if previous is not None and closed_because:
+            # After the run's own clean-up: the record waits for it, not
+            # the other way round.
+            await run_audit.record_closed(run_id, closed_because)
         if previous is not None and status == "failed":
             # The one caller that closed the run tells the owner, once.
             try:
