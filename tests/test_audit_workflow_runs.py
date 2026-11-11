@@ -776,6 +776,46 @@ class TestARunThePlatformCloses:
             "system",
         )
 
+    async def test_a_cancelled_run_with_an_approval_open_is_not_also_closed(
+        self, world: World, service: Any
+    ) -> None:
+        """Review F5b: a cancel is recorded by who cancelled
+        (workflow.run_cancelled); the approvals closed with it are not a
+        second event."""
+        from fim_one.core.workflow.run_service import RunOutcome
+        from fim_one.db.models.channel import ConfirmationRequest
+
+        alice = await world.user("alice")
+        await _workflow(world, alice)
+        await world.add(
+            WorkflowRun(
+                id="run-1",
+                workflow_id="wf-1",
+                user_id=alice.id,
+                blueprint_snapshot=PLAIN,
+                inputs={},
+                status="running",
+                mode="interactive",
+            ),
+        )
+        await world.add(
+            ConfirmationRequest(
+                id="req-1",
+                kind="workflow_approval",
+                workflow_run_id="run-1",
+                user_id=alice.id,
+                status="pending",
+                payload={},
+            )
+        )
+
+        await service._persist(RunOutcome(run_id="run-1", status="cancelled"), started_at=None)
+
+        async with world.factory() as db:
+            request = await db.get(ConfirmationRequest, "req-1")
+        assert request is not None and request.status == "expired"
+        assert await world.events("workflow.run_closed") == []
+
     async def test_a_run_that_ends_with_nothing_open_records_nothing(
         self, world: World, service: Any
     ) -> None:
