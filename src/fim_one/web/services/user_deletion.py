@@ -229,10 +229,14 @@ async def _deidentify_records(
     email become the deleted-user label and the address and device are
     cleared. In ``audit_logs`` the same is done to the rows the user is the
     actor of; rows the user is the target of get the label as the target's
-    name. In either kind the email address is replaced wherever it is
-    quoted; the username and display name where they are a value under a
-    name key of ``changes`` or the whole of ``detail``. In ``review_log`` the actor's name is replaced. Call records
-    and the usage ledger hold an id and nothing else of the user.
+    name, and their recorded old and new names (``username``, ``email``,
+    ``display_name`` in ``changes``) become ``{"changed": true}``. In
+    either kind the email address is replaced wherever it is quoted, and
+    the username and display name where they are the whole of ``detail``.
+    A name under a name key of a row about somebody else is that person's
+    and stays, even when it equals one of the user's. In ``review_log`` the
+    actor's name is replaced. Call records and the usage ledger hold an id
+    and nothing else of the user.
 
     An address on a row somebody else is the actor of (an administrator who
     reset this user's password) is that person's, and stays.
@@ -269,15 +273,13 @@ async def _deidentify_records(
     await db.execute(update(AuditLog).where(is_target).values(target_label=label))
 
     # The email address is replaced wherever it stands: nothing else looks
-    # like it. A username or display name can be an ordinary word ("member",
-    # "admin", "true") that is also a role or a flag in the same row, so it
-    # is replaced only where a writer puts a name: under a name key of
-    # ``changes``, or as the whole of ``detail``. The addresses are every
-    # one the account has had, in any case.
+    # like it. The addresses are every one the account has had, in any
+    # case. A username or display name can be an ordinary word ("member",
+    # "admin", "true") that is also a role or a flag in the same row, or
+    # the name of the other user a row is about, so it is replaced only as
+    # the whole of ``detail``; the name keys of ``changes`` on a row about
+    # the user are replaced as a whole below.
     addresses = _patterns(all_addresses, any_case=True)
-    # Addresses first: a username that is the start of an address does not
-    # leave the rest of the address behind.
-    names = addresses + _patterns([username, display_name, *earlier_names])
     whole = {name for name in (username, display_name, *earlier_names) if name}
     rows = await db.execute(
         select(AuditLog.id, AuditLog.detail, AuditLog.changes, is_target.label("about_user")).where(
@@ -293,7 +295,7 @@ async def _deidentify_records(
                 # The old and the new value of a name of this account.
                 key: {"changed": True}
                 if about_user and key in _IDENTITY_KEYS
-                else _without_names(change, names if key in _IDENTITY_KEYS else addresses, label)
+                else _without_names(change, addresses, label)
                 for key, change in changes.items()
             }
         # Only what changed is written: a row without ``changes`` keeps its

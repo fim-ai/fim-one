@@ -652,6 +652,18 @@ async def test_audit_rows_name_the_user_by_the_label_and_lose_their_address(
     )  # fmt: skip
     plain = event("auth.sessions_revoke", actor_id=carol.id, actor_label="carol",
                   ip_address="198.51.100.5")  # fmt: skip
+    # She, as an administrator, renamed bob to a name equal to her own and
+    # gave him her address: the names are bob's now and stay; her address
+    # goes wherever it is.
+    on_bob = event(
+        "user.update", actor_id=carol.id, actor_label="carol", actor_kind="admin",
+        target_type="user", target_id="bob-id", target_label="bob",
+        changes={
+            "display_name": {"from": "Bob", "to": "Carol Danvers"},
+            "username": {"from": "bobby", "to": "carol"},
+            "email": {"from": "bob@example.test", "to": "Carol@Example.test"},
+        },
+    )  # fmt: skip
     await db.commit()
 
     await purge_user_data(db, carol.id)
@@ -661,7 +673,7 @@ async def test_audit_rows_name_the_user_by_the_label_and_lose_their_address(
         name: await _fresh(db, AuditLog, row.id)
         for name, row in {
             "own": own, "in_org": in_org, "by_admin": by_admin, "role": role,
-            "unrelated": unrelated, "plain": plain,
+            "unrelated": unrelated, "plain": plain, "on_bob": on_bob,
         }.items()
     }  # fmt: skip
     assert all(row is not None for row in rows.values())
@@ -698,6 +710,14 @@ async def test_audit_rows_name_the_user_by_the_label_and_lose_their_address(
     # What changed that is not a name of hers is kept.
     assert rows["role"].changes == {"role": {"from": "member", "to": "admin"}}
     assert rows["role"].target_label == label
+    # A row she acted in about somebody else: her label as the actor, the
+    # other user's names as they were, her address replaced.
+    assert (rows["on_bob"].actor_label, rows["on_bob"].target_label) == (label, "bob")
+    assert rows["on_bob"].changes == {
+        "display_name": {"from": "Bob", "to": "Carol Danvers"},
+        "username": {"from": "bobby", "to": "carol"},
+        "email": {"from": "bob@example.test", "to": label},
+    }
     # Rows she is neither the actor nor the target of are not rewritten.
     assert rows["unrelated"].detail == "carolina joined; scarol left"
 
