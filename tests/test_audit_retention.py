@@ -543,6 +543,42 @@ class TestATableThatFails:
         assert record.detail.endswith("failed: login_history")
 
 
+    @pytest.mark.parametrize(
+        ("table", "rows"),
+        [
+            ("audit_logs", lambda: [_event(900) for _ in range(3)]),
+            ("login_history", lambda: [_login(900) for _ in range(3)]),
+            ("review_log", lambda: [_review(900) for _ in range(3)]),
+            ("confirmation_payloads", lambda: [_request(900) for _ in range(3)]),
+            ("connector_call_logs", lambda: [_call(900) for _ in range(3)]),
+        ],
+    )
+    async def test_what_a_failing_table_removed_before_it_failed_is_counted(
+        self, factory: Factory, monkeypatch: pytest.MonkeyPatch, table: str, rows: Any
+    ) -> None:
+        """Only the sign-in history was checked; a table whose running count
+        was lost would report 0 for the rows it had removed."""
+        await _add(factory, *rows())
+        pauses = 0
+
+        async def pause(_seconds: float) -> None:
+            # Only this table has rows: its second pause, after two batches of one.
+            nonlocal pauses
+            pauses += 1
+            if pauses == 2:
+                raise RuntimeError("database away")
+
+        monkeypatch.setattr("fim_one.core.audit.retention.asyncio.sleep", pause)
+
+        counts = await AuditRetentionSweeper(Retention(), batch_size=1).sweep(now=NOW)
+
+        assert counts is not None and counts[table] == 2
+        [record] = await _sweeps(factory)
+        assert record.detail is not None
+        assert f"{table}=2" in record.detail
+        assert record.detail.endswith(f"failed: {table}")
+
+
 class TestWhenTheDatabaseGoesAwayDuringASweep:
     """Every table failed and the record could not be written: the process
     waited 21.6 hours before it tried again."""
