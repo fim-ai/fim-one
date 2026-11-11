@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable, Mapping
 from typing import TYPE_CHECKING, Any, Literal
+from urllib.parse import urlsplit, urlunsplit
 
 from .mcp_address import strip_url_secrets
 
@@ -24,6 +25,27 @@ __all__ = ["RecordKind", "call_recorder"]
 logger = logging.getLogger(__name__)
 
 RecordKind = Literal["connector", "database", "mcp"]
+
+
+def _where_it_went(url: Any) -> Any:
+    """*url* without user-info, query string and fragment.
+
+    A connector's base URL may carry a credential (``https://user:pass@host``,
+    ``…?api_key=…``). The record keeps where the call went, and organization
+    administrators read it; what authenticated the call is not part of that.
+    Synthetic ``db://`` and ``mcp://`` addresses have none of the three and
+    come back as they are.
+    """
+    if not isinstance(url, str) or not url:
+        return url
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return url.split("?", 1)[0].split("#", 1)[0]
+    if not (parts.query or parts.fragment or "@" in parts.netloc):
+        return url
+    host = parts.netloc.rsplit("@", 1)[-1]
+    return urlunsplit((parts.scheme, host, parts.path, "", ""))
 
 
 def _fit(value: Any, limit: int) -> str:
@@ -84,7 +106,7 @@ def call_recorder(
                         entry=ctx.entry,
                         credential_source=_source_of(connector_id or mcp_server_id),
                         request_method=_fit(call.get("request_method"), 10),
-                        request_url=_fit(call.get("request_url"), 1000),
+                        request_url=_fit(_where_it_went(call.get("request_url")), 1000),
                         response_status=call.get("response_status"),
                         response_time_ms=call.get("response_time_ms"),
                         success=call.get("success", False),
