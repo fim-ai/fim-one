@@ -1185,3 +1185,39 @@ class TestATriggerKeyRunIsTheKeyHoldersNotTheAuthors:
             root.id,
         )
         assert (row.auth_method, row.credential_ref) == ("trigger_key", key[:10])
+
+
+class TestOneAuthorsManyKeysCannotUseUpTheBudgetEither:
+    """Recheck R1. Trigger-key and schedule refusals were grouped by
+    workflow, so one author with 700 switched-off trigger-key workflows
+    still used up the instance's budget. They are the author's account's."""
+
+    @pytest.mark.parametrize("mode", ["trigger", "schedule"])
+    async def test_700_workflows_of_one_author_then_another_persons_refusal(
+        self, world: World, mode: str
+    ) -> None:
+        from types import SimpleNamespace
+
+        from fim_one.core.workflow.run_audit import record_refused
+
+        author, bob = await world.user("author"), await world.user("bob")
+        for index in range(700):
+            workflow = SimpleNamespace(
+                id=f"wf-{index:04d}",
+                user_id=author.id,
+                org_id=None,
+                name=f"w{index}",
+                api_key_prefix=f"wf_{index:07d}",
+            )
+            await record_refused(
+                workflow, user_id=author.id, mode=mode, error_code="workflow_inactive"
+            )
+
+        other = SimpleNamespace(
+            id="wf-bob", user_id=bob.id, org_id=None, name="b", api_key_prefix=None
+        )
+        assert await record_refused(
+            other, user_id=bob.id, mode="interactive", error_code="token_quota_exceeded"
+        )
+        rows = await world.events("workflow.run_refused")
+        assert len([row for row in rows if row.actor_id == author.id]) == 20

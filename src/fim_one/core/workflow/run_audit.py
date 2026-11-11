@@ -52,8 +52,9 @@ logger = logging.getLogger(__name__)
 # Entries whose run is the author's and has no person asking.
 _TRIGGER = "trigger"
 _SCHEDULE = "schedule"
-# Refusal records one person (or one trigger key's workflow) may have
-# written one by one in a window; the rest are counted into the summary.
+# Refusal records one account (a person, or the author of trigger-key and
+# scheduled runs) may have written one by one in a window; the rest are
+# counted into the summary.
 REFUSALS_PER_PERSON = 20
 # A run continued after an approval is not started by the request that
 # made the decision: its records carry no request.
@@ -188,13 +189,10 @@ async def record_refused(
         if not_started is None and not admit_refusal(
             actions.WORKFLOW_RUN_REFUSED,
             f"{workflow.id}|{user_id or '-'}|{mode}|{code}",
-            # A key holder or a schedule is counted by its workflow, anyone
-            # else as a person: neither can use up the instance's budget.
-            group=(
-                f"workflow:{workflow.id}"
-                if mode in (_TRIGGER, _SCHEDULE) or not user_id
-                else f"user:{user_id}"
-            ),
+            # Counted by the account the run is for (a trigger key's or a
+            # schedule's is the author's): however many workflows it has,
+            # one account cannot use up the instance's budget.
+            group=f"user:{user_id}" if user_id else f"workflow:{workflow.id}",
             per_group=REFUSALS_PER_PERSON,
             org=getattr(workflow, "org_id", None),
         ):
