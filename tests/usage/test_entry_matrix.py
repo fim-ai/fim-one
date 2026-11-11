@@ -19,6 +19,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from fim_one.db.models import User
 from fim_one.db.models.usage_ledger import UsageLedger
 
@@ -452,9 +454,6 @@ WITH_APPROVAL = _blueprint(
     _node("human_1", "humanIntervention", "HUMAN_INTERVENTION", title="Go on?", timeout_hours=1),
     _llm("llm_2"),
 )
-
-
-import pytest  # noqa: E402
 
 
 @pytest.fixture()

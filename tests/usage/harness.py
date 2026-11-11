@@ -38,8 +38,6 @@ from fim_one.web.auth import create_access_token
 
 __all__ = ["Usage", "usage", "events"]
 
-_PG = os.environ.get("FIM_TEST_PG_URL")
-
 
 def events(body: str) -> list[tuple[str, Any]]:
     """The events of a server-sent stream, as ``(name, data)``."""
@@ -294,5 +292,5 @@ async def usage(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> AsyncIterator
         yield Usage(app=create_app())
         await usage_meter.flush_all()
     finally:
-        set_strict_metering(None)
+        set_strict_metering(False)
         await shutdown_db()

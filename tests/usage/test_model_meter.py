@@ -151,7 +151,7 @@ class TestWithNoMeterOpen:
             with pytest.raises(UnmeteredUsageError):
                 report_usage("m", {"total_tokens": 9})
         finally:
-            set_strict_metering(None)
+            set_strict_metering(False)
 
     async def test_a_call_answers_as_before(self, provider: Provider) -> None:
         assert current_meter.get() is None

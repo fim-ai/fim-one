@@ -18,7 +18,6 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import logging
-import os
 import threading
 import time
 from collections.abc import Callable, Mapping
@@ -290,26 +289,19 @@ class UnmeteredUsageError(RuntimeError):
     """A model call reported usage with no meter open (strict metering only)."""
 
 
-_STRICT_ENV = "FIM_USAGE_METER_STRICT"
-_strict_override: bool | None = None
+_strict = False
 _unattributed_lock = threading.Lock()
 _unattributed_tokens = 0
 
 
-def set_strict_metering(strict: bool | None) -> None:
-    """Make a report with no open meter raise (``None``: back to the environment).
+def set_strict_metering(strict: bool) -> None:
+    """Make a report with no open meter raise.
 
     For tests that hold every entry point to opening a meter. Outside them
     such a report is counted (:func:`unattributed_tokens`) and logged.
     """
-    global _strict_override
-    _strict_override = strict
-
-
-def _strict() -> bool:
-    if _strict_override is not None:
-        return _strict_override
-    return os.environ.get(_STRICT_ENV, "").strip().lower() in {"1", "true", "yes"}
+    global _strict
+    _strict = strict
 
 
 def unattributed_tokens() -> int:
@@ -340,7 +332,7 @@ def _report_to(
     global _unattributed_tokens
     with _unattributed_lock:
         _unattributed_tokens += total
-    if _strict():
+    if _strict:
         raise UnmeteredUsageError(
             f"model {model!r} consumed {total} tokens with no usage meter open: "
             "the entry point that made this call must open one (core.usage.meter)"
