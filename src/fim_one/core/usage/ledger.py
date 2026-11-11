@@ -11,7 +11,7 @@ import uuid
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,11 +21,16 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "UsageBucket",
     "UsageEntry",
+    "UsageSlice",
+    "usage_per_agent_subquery",
+    "usage_per_user_subquery",
+    "used_between",
+    "used_by",
     "used_by_day",
     "used_by_origin",
+    "used_by_user_between",
     "used_by_users_since",
     "used_since",
-    "usage_per_user_subquery",
     "write_entries",
 ]
 
@@ -221,13 +226,16 @@ def usage_per_user_subquery(since: datetime | None = None) -> Any:
 async def used_by_day(db: AsyncSession, user_id: str, since: datetime) -> list[tuple[str, int]]:
     """*user_id*'s usage from *since* on per day it was recorded, oldest first.
 
-    The day is the UTC date, as ``YYYY-MM-DD``.
+    The day is the UTC date, as ``YYYY-MM-DD``. A day is the plain sum of
+    its rows, negative when its adjustments outweigh its usage, so the days
+    add up to the window's total; clamp the total, not the days.
     """
     from sqlalchemy import func, select
 
+    from fim_one.db.dates import utc_date
     from fim_one.db.models.usage_ledger import UsageLedger
 
-    day = func.date(UsageLedger.created_at)
+    day = utc_date(UsageLedger.created_at)
     rows = (
         await db.execute(
             select(day, func.coalesce(func.sum(UsageLedger.total_tokens), 0))
@@ -236,7 +244,7 @@ async def used_by_day(db: AsyncSession, user_id: str, since: datetime) -> list[t
             .order_by(day)
         )
     ).all()
-    return [(str(found), max(int(total or 0), 0)) for found, total in rows]
+    return [(str(found), int(total or 0)) for found, total in rows]
 
 
 @dataclass(frozen=True)
@@ -277,3 +285,162 @@ async def used_by_origin(db: AsyncSession, user_id: str, since: datetime) -> lis
         )
         for agent_id, source_type, entry, total in rows
     ]
+
+
+# ---------------------------------------------------------------------------
+# Platform-wide figures (the statistics pages)
+# ---------------------------------------------------------------------------
+
+Dimension = Literal["day", "model", "agent", "background"]
+_DIMENSIONS: tuple[Dimension, ...] = ("day", "model", "agent", "background")
+
+
+@dataclass(frozen=True)
+class UsageSlice:
+    """Usage that shares the values of the dimensions it was grouped by.
+
+    A dimension not grouped by is ``None``. ``day`` is the UTC date the
+    usage was recorded, as ``YYYY-MM-DD`` (:class:`~fim_one.db.dates.utc_date`,
+    whatever the database session's time zone). ``background`` is whether
+    it was the work done after a turn (entry ``background``: the title, and
+    on backfilled rows every fast-model token of the conversation, which
+    carry no model).
+    """
+
+    total_tokens: int
+    day: str | None = None
+    model: str | None = None
+    agent_id: str | None = None
+    background: bool | None = None
+
+
+def _window(query: Any, since: datetime | None, until: datetime | None) -> Any:
+    from fim_one.db.models.usage_ledger import UsageLedger
+
+    if since is not None:
+        query = query.where(UsageLedger.created_at >= since)
+    if until is not None:
+        query = query.where(UsageLedger.created_at < until)
+    return query
+
+
+async def used_between(
+    db: AsyncSession,
+    *,
+    since: datetime | None = None,
+    until: datetime | None = None,
+) -> int:
+    """Tokens recorded by everyone from *since* (inclusive) to *until*
+    (exclusive); either bound may be left open. Never negative.
+
+    One user's figure is :func:`used_by_user_between`.
+    """
+    from sqlalchemy import func, select
+
+    from fim_one.db.models.usage_ledger import UsageLedger
+
+    query = _window(select(func.coalesce(func.sum(UsageLedger.total_tokens), 0)), since, until)
+    return max(int((await db.execute(query)).scalar_one() or 0), 0)
+
+
+async def used_by_user_between(
+    db: AsyncSession,
+    user_id: str,
+    *,
+    since: datetime | None = None,
+    until: datetime | None = None,
+) -> int:
+    """Tokens recorded against *user_id* from *since* (inclusive) to *until*
+    (exclusive); either bound may be left open. Never negative.
+
+    Raises ``ValueError`` without a user id, so a missing id cannot turn
+    into everyone's figure.
+    """
+    from sqlalchemy import func, select
+
+    from fim_one.db.models.usage_ledger import UsageLedger
+
+    if not user_id:
+        raise ValueError("a per-user usage read needs a user id")
+    query = _window(
+        select(func.coalesce(func.sum(UsageLedger.total_tokens), 0)).where(
+            UsageLedger.user_id == user_id
+        ),
+        since,
+        until,
+    )
+    return max(int((await db.execute(query)).scalar_one() or 0), 0)
+
+
+async def used_by(
+    db: AsyncSession,
+    by: Sequence[Dimension],
+    *,
+    since: datetime | None = None,
+    until: datetime | None = None,
+) -> list[UsageSlice]:
+    """Tokens recorded by everyone in the window, grouped by the dimensions
+    in *by*. Ordered by day when grouped by day.
+
+    A slice is the plain sum of its rows, negative when its adjustments
+    outweigh its usage, so the slices add up to :func:`used_between` over
+    the same window. Clamp the totals shown, not the slices.
+    """
+    from sqlalchemy import case, func, select
+
+    from fim_one.db.dates import utc_date
+    from fim_one.db.models.usage_ledger import UsageLedger
+
+    unknown = [name for name in by if name not in _DIMENSIONS]
+    if unknown:
+        raise ValueError(f"cannot group usage by {unknown}")
+    columns: dict[str, Any] = {
+        "day": utc_date(UsageLedger.created_at),
+        "model": UsageLedger.model,
+        "agent": UsageLedger.agent_id,
+        "background": case((UsageLedger.entry == "background", 1), else_=0),
+    }
+    keys = [name for name in _DIMENSIONS if name in by]
+    grouped = [columns[name] for name in keys]
+    query = _window(
+        select(*grouped, func.coalesce(func.sum(UsageLedger.total_tokens), 0)),
+        since,
+        until,
+    )
+    if grouped:
+        query = query.group_by(*grouped)
+    if "day" in keys:
+        query = query.order_by(columns["day"])
+    slices = []
+    for row in (await db.execute(query)).all():
+        values = dict(zip(keys, row[:-1], strict=True))
+        slices.append(
+            UsageSlice(
+                total_tokens=int(row[-1] or 0),
+                day=str(values["day"]) if "day" in values else None,
+                model=values.get("model"),
+                agent_id=values.get("agent"),
+                background=bool(values["background"]) if "background" in values else None,
+            )
+        )
+    return slices
+
+
+def usage_per_agent_subquery(since: datetime | None = None) -> Any:
+    """A subquery of ``(agent_id, total_tokens)``: what was recorded through
+    each agent from *since* on (over all time when ``None``), for joining to agents."""
+    from sqlalchemy import func, select
+
+    from fim_one.db.models.usage_ledger import UsageLedger
+
+    query = (
+        select(
+            UsageLedger.agent_id.label("agent_id"),
+            func.coalesce(func.sum(UsageLedger.total_tokens), 0).label("total_tokens"),
+        )
+        .where(UsageLedger.agent_id.is_not(None))
+        .group_by(UsageLedger.agent_id)
+    )
+    if since is not None:
+        query = query.where(UsageLedger.created_at >= since)
+    return query.subquery()

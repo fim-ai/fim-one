@@ -278,6 +278,121 @@ class TestReading:
         assert "ix_usage_ledger_user_created" in str(plan)
 
 
+class TestPlatformFigures:
+    """The reads the statistics pages use: everyone's rows, grouped."""
+
+    async def _seed(self, factory: Factory) -> datetime:  # noqa: F811
+        day = datetime(2026, 11, 10, 12, tzinfo=UTC)
+        async with factory() as db:
+            db.add_all(
+                [
+                    UsageLedger(user_id="alice", source_type="conversation", entry="chat",
+                                agent_id="agent-1", model="main-model", total_tokens=100,
+                                created_at=day - timedelta(days=1)),
+                    UsageLedger(user_id="alice", source_type="conversation", entry="background",
+                                agent_id="agent-1", model=None, kind="backfill",
+                                total_tokens=7, created_at=day - timedelta(days=1)),
+                    UsageLedger(user_id="bob", source_type="workflow_run", entry="manual",
+                                model="main-model", total_tokens=20, created_at=day),
+                    UsageLedger(user_id=None, source_type="endpoint", entry="unbound",
+                                model="fast-model", total_tokens=3, created_at=day),
+                    UsageLedger(user_id="bob", source_type="conversation", entry="chat",
+                                agent_id="agent-2", model="main-model", total_tokens=-5,
+                                kind="adjustment", created_at=day),
+                ]
+            )  # fmt: skip
+            await db.commit()
+        return day
+
+    async def test_totals_in_a_window(self, factory: Factory) -> None:  # noqa: F811
+        from fim_one.core.usage.ledger import used_between, used_by_user_between
+
+        day = await self._seed(factory)
+        async with factory() as db:
+            assert await used_between(db) == 125
+            assert await used_between(db, since=day) == 18
+            assert await used_between(db, until=day) == 107
+            assert await used_by_user_between(db, "alice") == 107
+            assert await used_by_user_between(db, "alice", since=day) == 0
+            assert await used_by_user_between(db, "bob", until=day) == 0
+            assert await used_by_user_between(db, "bob", since=day) == 15
+
+    async def test_a_per_user_read_without_a_user_is_refused(
+        self, factory: Factory  # noqa: F811
+    ) -> None:
+        """Everyone's figure is its own function: a missing id raises
+        instead of reading every user's rows."""
+        from fim_one.core.usage.ledger import used_between, used_by, used_by_user_between
+
+        await self._seed(factory)
+        async with factory() as db:
+            for missing in (None, ""):
+                with pytest.raises(ValueError):
+                    await used_by_user_between(db, missing)  # type: ignore[arg-type]
+            with pytest.raises(TypeError):
+                await used_between(db, user_id="alice")  # type: ignore[call-arg]
+            with pytest.raises(TypeError):
+                await used_by(db, ["day"], user_id="alice")  # type: ignore[call-arg]
+
+    async def test_grouped_by_day_model_and_background(self, factory: Factory) -> None:  # noqa: F811
+        from fim_one.core.usage.ledger import UsageSlice, used_by
+
+        await self._seed(factory)
+        async with factory() as db:
+            assert await used_by(db, ["day"]) == [
+                UsageSlice(total_tokens=107, day="2026-11-09"),
+                UsageSlice(total_tokens=18, day="2026-11-10"),
+            ]
+            by_model = await used_by(db, ["model", "background"])
+            assert sorted(by_model, key=lambda s: (s.model or "", s.background)) == [
+                UsageSlice(total_tokens=7, model=None, background=True),
+                UsageSlice(total_tokens=3, model="fast-model", background=False),
+                UsageSlice(total_tokens=115, model="main-model", background=False),
+            ]
+            assert await used_by(db, []) == [UsageSlice(total_tokens=125)]
+            with pytest.raises(ValueError):
+                await used_by(db, ["user"])  # type: ignore[list-item]
+
+    async def test_days_are_utc_dates_whatever_the_session_zone(
+        self, factory: Factory  # noqa: F811
+    ) -> None:
+        """17:30 UTC on 10 November is 01:30 on the 11th in Shanghai: with the
+        PostgreSQL session there, ``DATE(created_at)`` says the 11th, and the
+        dashboard's zero-filled UTC days would drop the row. The days read
+        here are the UTC date on every dialect."""
+        from fim_one.core.usage.ledger import UsageSlice, used_by, used_by_day
+        from fim_one.db.dates import utc_date
+
+        at = datetime(2026, 11, 10, 17, 30, tzinfo=UTC)
+        async with factory() as db:
+            db.add(UsageLedger(user_id="alice", source_type="conversation", entry="chat",
+                               total_tokens=9, created_at=at))  # fmt: skip
+            await db.commit()
+        async with factory() as db:
+            if db.get_bind().dialect.name == "postgresql":
+                await db.execute(text("SET TIME ZONE 'Asia/Shanghai'"))
+                session_day = (
+                    await db.execute(text("SELECT DATE(created_at) FROM usage_ledger"))
+                ).scalar_one()
+                assert str(session_day) == "2026-11-11"
+            assert await used_by(db, ["day"]) == [UsageSlice(total_tokens=9, day="2026-11-10")]
+            assert await used_by_day(db, "alice", at - timedelta(days=1)) == [("2026-11-10", 9)]
+            day = (await db.execute(select(utc_date(UsageLedger.created_at)))).scalar_one()
+            assert str(day) == "2026-11-10"
+
+    async def test_per_agent(self, factory: Factory) -> None:  # noqa: F811
+        from fim_one.core.usage.ledger import usage_per_agent_subquery
+
+        day = await self._seed(factory)
+        async with factory() as db:
+            every = usage_per_agent_subquery()
+            found = dict((await db.execute(select(every.c.agent_id, every.c.total_tokens))).all())
+            assert found == {"agent-1": 107, "agent-2": -5}
+            recent = usage_per_agent_subquery(day)
+            rows = (await db.execute(select(recent.c.agent_id, recent.c.total_tokens))).all()
+            assert dict(rows) == {"agent-2": -5}
+
+
 class TestOnlyTheLedgerWritesAndNothingRewrites:
     SRC = Path(fim_one.__file__).parent
 

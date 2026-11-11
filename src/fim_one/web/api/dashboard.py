@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.usage import ledger as usage_ledger
 from fim_one.db import get_session
+from fim_one.db.dates import utc_date
 from fim_one.db.models import Agent, Connector, ConnectorCallLog, Conversation, KnowledgeBase, User
 from fim_one.db.models.resource_subscription import ResourceSubscription
 from fim_one.db.models.workflow import Workflow, WorkflowRun, history_run_clause
@@ -144,13 +146,9 @@ async def get_dashboard_stats(
     )
     total_conversations: int = total_conv_result.scalar_one()
 
-    # total_tokens: sum of tokens across all user conversations
-    total_tokens_result = await db.execute(
-        select(func.coalesce(func.sum(Conversation.total_tokens), 0))
-        .select_from(Conversation)
-        .where(Conversation.user_id == current_user.id)
-    )
-    total_tokens: int = total_tokens_result.scalar_one()
+    # total_tokens: everything the usage ledger holds against the user,
+    # deleted conversations, runs and the helper endpoints included
+    total_tokens = await usage_ledger.used_by_user_between(db, current_user.id)
 
     # total_agents: non-builder agents owned by the user
     total_agents_result = await db.execute(
@@ -238,28 +236,13 @@ async def get_dashboard_stats(
 
     conversations_week_trend = _week_trend(curr_week_conv, prev_week_conv)
 
-    # Current week tokens
-    curr_tok_result = await db.execute(
-        select(func.coalesce(func.sum(Conversation.total_tokens), 0))
-        .select_from(Conversation)
-        .where(
-            Conversation.user_id == current_user.id,
-            Conversation.created_at >= week_start,
-        )
+    # Current and previous week tokens, from the usage ledger
+    curr_week_tokens = await usage_ledger.used_by_user_between(
+        db, current_user.id, since=week_start
     )
-    curr_week_tokens: int = curr_tok_result.scalar_one()
-
-    # Previous week tokens
-    prev_tok_result = await db.execute(
-        select(func.coalesce(func.sum(Conversation.total_tokens), 0))
-        .select_from(Conversation)
-        .where(
-            Conversation.user_id == current_user.id,
-            Conversation.created_at >= two_weeks_start,
-            Conversation.created_at < week_start,
-        )
+    prev_week_tokens = await usage_ledger.used_by_user_between(
+        db, current_user.id, since=two_weeks_start, until=week_start
     )
-    prev_week_tokens: int = prev_tok_result.scalar_one()
 
     tokens_week_trend = _week_trend(curr_week_tokens, prev_week_tokens)
 
@@ -414,21 +397,25 @@ async def get_dashboard_stats(
     # ------------------------------------------------------------------
 
     activity_cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    # Conversations started per day; tokens per day from the usage ledger.
+    # Days are UTC dates on both, and so is the "today" the series is
+    # zero-filled back from, whatever the server's or the database's zone.
+    conv_day = utc_date(Conversation.created_at)
     trend_rows = await db.execute(
         select(
-            func.date(Conversation.created_at).label("day"),
+            conv_day.label("day"),
             func.count().label("cnt"),
-            func.coalesce(func.sum(Conversation.total_tokens), 0).label("tok"),
         )
         .where(
             Conversation.user_id == current_user.id,
             Conversation.created_at >= activity_cutoff,
         )
-        .group_by(func.date(Conversation.created_at))
-        .order_by(func.date(Conversation.created_at))
+        .group_by(conv_day)
+        .order_by(conv_day)
     )
+    tokens_by_day = dict(await usage_ledger.used_by_day(db, current_user.id, activity_cutoff))
 
-    today_date = date.today()
+    today_date = datetime.now(UTC).date()
     # Build ordered map from oldest to newest (6 days ago → today)
     date_map: dict[str, dict[str, int]] = {
         str(today_date - timedelta(days=i)): {"count": 0, "tokens": 0}
@@ -438,7 +425,9 @@ async def get_dashboard_stats(
         key = str(row.day)
         if key in date_map:
             date_map[key]["count"] = row.cnt
-            date_map[key]["tokens"] = row.tok
+    for key, tokens in tokens_by_day.items():
+        if key in date_map:
+            date_map[key]["tokens"] = tokens
 
     activity_trend = [
         DashboardDayStat(date=d, count=v["count"], tokens=v["tokens"])

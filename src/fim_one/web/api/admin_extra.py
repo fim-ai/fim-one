@@ -19,6 +19,7 @@ from fim_one.core.audit import writer as audit
 from fim_one.core.usage import ledger as usage_ledger
 from fim_one.web.csv_safe import safe_writer
 from fim_one.db import get_session
+from fim_one.db.dates import utc_date
 from fim_one.web.auth import get_current_admin
 from fim_one.web.exceptions import AppError
 from fim_one.db.models import (
@@ -206,28 +207,36 @@ async def analytics_trends(
     """Daily token usage trend for the last 30 days."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=30)
 
+    # Tokens per day from the usage ledger; conversations started and the
+    # users who started them per day from the conversations that exist.
+    # Both by the UTC date, so the two series share their day keys.
+    tokens_by_day = {
+        str(usage_slice.day): usage_slice.total_tokens
+        for usage_slice in await usage_ledger.used_by(db, ["day"], since=cutoff)
+    }
     query = (
         select(
-            func.date(Conversation.created_at).label("day"),
-            func.coalesce(func.sum(Conversation.total_tokens), 0).label("total_tokens"),
+            utc_date(Conversation.created_at).label("day"),
             func.count().label("conversation_count"),
             func.count(distinct(Conversation.user_id)).label("active_users"),
         )
         .where(Conversation.created_at >= cutoff)
-        .group_by(func.date(Conversation.created_at))
-        .order_by(func.date(Conversation.created_at))
+        .group_by(utc_date(Conversation.created_at))
     )
+    activity = {str(row.day): row for row in (await db.execute(query)).all()}
 
-    result = await db.execute(query)
-    return [
-        DailyTrend(
-            date=str(row.day),
-            total_tokens=row.total_tokens,
-            conversation_count=row.conversation_count,
-            active_users=row.active_users,
+    trend = []
+    for day in sorted(set(tokens_by_day) | set(activity)):
+        row = activity.get(day)
+        trend.append(
+            DailyTrend(
+                date=day,
+                total_tokens=tokens_by_day.get(day, 0),
+                conversation_count=row.conversation_count if row else 0,
+                active_users=row.active_users if row else 0,
+            )
         )
-        for row in result.all()
-    ]
+    return trend
 
 
 # ---------------------------------------------------------------------------

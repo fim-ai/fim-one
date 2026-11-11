@@ -1475,8 +1475,8 @@ export interface AdminNotificationEvent {
   created_at: string
 }
 export interface AdminAnalyticsByAgent {
-  agent_name: string; owner: string | null; conversations: number
-  total_tokens: number; avg_tokens_per_conv: number
+  agent_id: string; agent_name: string; owner_id: string | null; owner_username: string | null
+  total_conversations: number; total_tokens: number; avg_tokens_per_conversation: number | null
 }
 export interface AdminAnalyticsByConnector {
   kind?: CallLogKind
@@ -1484,11 +1484,13 @@ export interface AdminAnalyticsByConnector {
   avg_response_time_ms: number; error_count: number
 }
 export interface AdminAnalyticsByWorkflow {
-  workflow_name: string; owner: string | null; total_runs: number
-  success_rate: number; avg_duration_ms: number
+  workflow_id: string; workflow_name: string; owner_id: string | null
+  owner_username: string | null; total_runs: number; success_count: number
+  success_rate: number | null; avg_duration_ms: number | null
 }
 export interface AdminCostProjection {
-  projected_tokens: number; daily_avg: number; trailing_total: number
+  trailing_7d_tokens: number; daily_avg_tokens: number; projected_30d_tokens: number
+  trailing_7d_conversations: number
 }
 
 export interface MarketResourceItem {

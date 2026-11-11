@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.usage import ledger as usage_ledger
 from fim_one.db import get_session
 from fim_one.db.models import (
     Agent,
@@ -108,12 +109,11 @@ async def analytics_by_agent(
     """Per-agent analytics: conversations, tokens, avg tokens/conversation."""
     cutoff = _period_to_cutoff(period)
 
-    # Aggregate conversations per agent
+    # Conversations per agent: those created in the period that still exist.
     conv_sub = (
         select(
             Conversation.agent_id,
             func.count(Conversation.id).label("total_conversations"),
-            func.coalesce(func.sum(Conversation.total_tokens), 0).label("total_tokens"),
         )
         .where(
             Conversation.agent_id.isnot(None),
@@ -122,6 +122,9 @@ async def analytics_by_agent(
         .group_by(Conversation.agent_id)
         .subquery()
     )
+    # Tokens per agent: what the usage ledger recorded through it in the
+    # period, deleted conversations included.
+    usage_sub = usage_ledger.usage_per_agent_subquery(cutoff)
 
     stmt = (
         select(
@@ -130,11 +133,12 @@ async def analytics_by_agent(
             Agent.user_id,
             User.username,
             func.coalesce(conv_sub.c.total_conversations, 0).label("total_conversations"),
-            func.coalesce(conv_sub.c.total_tokens, 0).label("total_tokens"),
+            func.coalesce(usage_sub.c.total_tokens, 0).label("total_tokens"),
         )
         .outerjoin(conv_sub, Agent.id == conv_sub.c.agent_id)
+        .outerjoin(usage_sub, Agent.id == usage_sub.c.agent_id)
         .outerjoin(User, Agent.user_id == User.id)
-        .order_by(func.coalesce(conv_sub.c.total_tokens, 0).desc())
+        .order_by(func.coalesce(usage_sub.c.total_tokens, 0).desc(), Agent.id)
         .limit(top_n)
     )
 
@@ -306,15 +310,13 @@ async def cost_projection(
     """Project token cost for next 30 days based on trailing 7-day average."""
     cutoff_7d = datetime.now(timezone.utc) - timedelta(days=7)
 
-    result = await db.execute(
-        select(
-            func.coalesce(func.sum(Conversation.total_tokens), 0).label("total_tokens"),
-            func.count(Conversation.id).label("total_conversations"),
-        ).where(Conversation.created_at >= cutoff_7d)
-    )
-    row = result.one()
-    trailing_tokens = row.total_tokens
-    trailing_conversations = row.total_conversations
+    # Tokens: everything the usage ledger recorded in the last 7 days.
+    trailing_tokens = await usage_ledger.used_between(db, since=cutoff_7d)
+    trailing_conversations = (
+        await db.execute(
+            select(func.count(Conversation.id)).where(Conversation.created_at >= cutoff_7d)
+        )
+    ).scalar_one()
 
     daily_avg = trailing_tokens // 7 if trailing_tokens > 0 else 0
     projected_30d = daily_avg * 30
