@@ -36,13 +36,19 @@ How it runs:
   writer);
 - restartable: a row's id is derived from its source's id (``uuid5``), and
   the insert is an upsert, so running it again writes nothing twice and
-  brings a row up to date if its source changed in between.
+  brings a row up to date if its source changed in between. A row that is
+  already as its source says is not written again, so a second run over a
+  large table rewrites nothing.
 
 At the end the backfilled totals are compared with the source tables per
-user (:data:`RECONCILE_SQL`). A difference means the sources changed while
-the backfill ran, or an earlier, interrupted run carried over a source that
-has been deleted since; such leftovers are removed and the backfill is run
-once more, and a difference that remains fails the migration.
+user (:data:`RECONCILE_SQL`). A difference means a conversation or run was
+written while the backfill ran (an instance of the previous release still
+serving), or an earlier, interrupted run carried over a source that has
+been deleted since. Only the users that differ are carried over again,
+their leftovers removed, in up to :data:`RECONCILE_ROUNDS` short rounds;
+a difference that remains after them fails the migration. What an instance
+of the previous release adds after the migration has finished has no
+ledger row; ``python -m fim_one.core.usage.topup`` records it.
 
 Downgrade drops the table, and with it what was metered since.
 
@@ -74,6 +80,8 @@ _INDEXES: dict[str, list[str]] = {
     "ix_usage_ledger_org_created": ["org_id", "created_at"],
     "ix_usage_ledger_source": ["source_type", "source_id"],
 }
+# Rounds of carrying over again the users whose totals differ.
+RECONCILE_ROUNDS = 5
 # Source rows read per query. A conversation gives up to two ledger rows.
 BATCH = 2000
 # Ledger rows per INSERT: fourteen values a row, under SQLite's limit of
@@ -184,6 +192,18 @@ _COLUMNS = (
 _REFRESHED = ("created_at", "user_id", "entry", "model", "total_tokens")
 
 
+def _changed_sql(dialect: str) -> str:
+    """The condition under which an upsert rewrites the row that is there.
+
+    Null-safe: ``IS DISTINCT FROM`` on PostgreSQL, ``IS NOT`` on SQLite.
+    """
+    if dialect == "postgresql":
+        mine = ", ".join(f"{_TABLE}.{name}" for name in _REFRESHED)
+        theirs = ", ".join(f"excluded.{name}" for name in _REFRESHED)
+        return f"({mine}) IS DISTINCT FROM ({theirs})"
+    return " OR ".join(f"{_TABLE}.{name} IS NOT excluded.{name}" for name in _REFRESHED)
+
+
 def _upsert(bind: sa.Connection, rows: list[dict[str, Any]]) -> None:
     """Insert *rows*, or bring the ones already there up to date.
 
@@ -205,7 +225,9 @@ def _upsert(bind: sa.Connection, rows: list[dict[str, Any]]) -> None:
                 cursor,
                 f"INSERT INTO {_TABLE} ({', '.join(_COLUMNS)}) VALUES %s"
                 " ON CONFLICT (id) DO UPDATE SET "
-                + ", ".join(f"{name} = excluded.{name}" for name in _REFRESHED),
+                + ", ".join(f"{name} = excluded.{name}" for name in _REFRESHED)
+                + " WHERE "
+                + _changed_sql("postgresql"),
                 [tuple(row[name] for name in _COLUMNS) for row in rows],
                 page_size=_STATEMENT_ROWS,
             )
@@ -229,42 +251,51 @@ def _upsert(bind: sa.Connection, rows: list[dict[str, Any]]) -> None:
             statement.on_conflict_do_update(
                 index_elements=["id"],
                 set_={name: getattr(excluded, name) for name in _REFRESHED},
+                where=sa.text(_changed_sql(bind.dialect.name)),
             )
         )
 
 
-def _copy(bind: sa.Connection, select_sql: str, make_rows: Any) -> int:
-    """Carry one source table over, a batch at a time in id order."""
+_CONVERSATIONS_SQL = (
+    "SELECT id, user_id, created_at, total_tokens, fast_llm_tokens, model_name,"
+    " mode, agent_id FROM conversations"
+    " WHERE id > :last AND total_tokens > 0{owner} ORDER BY id LIMIT :batch"
+)
+_RUNS_SQL = (
+    "SELECT id, user_id, created_at, total_tokens, mode, workflow_id FROM workflow_runs"
+    " WHERE id > :last AND total_tokens > 0{owner} ORDER BY id LIMIT :batch"
+)
+
+
+def _copy(
+    bind: sa.Connection,
+    select_sql: str,
+    make_rows: Any,
+    params: dict[str, Any] | None = None,
+) -> set[str]:
+    """Carry one source table over, a batch at a time in id order.
+
+    Returns the ids of the rows written.
+    """
     last = ""
-    written = 0
+    written: set[str] = set()
     while True:
-        batch = bind.execute(sa.text(select_sql), {"last": last, "batch": BATCH}).all()
+        batch = bind.execute(
+            sa.text(select_sql), {"last": last, "batch": BATCH, **(params or {})}
+        ).all()
         if not batch:
             return written
         rows = [row for source in batch for row in make_rows(source)]
         _upsert(bind, rows)
-        written += len(rows)
+        written.update(row["id"] for row in rows)
         last = batch[-1].id
 
 
-def _backfill(bind: sa.Connection) -> int:
-    written = 0
+def _backfill(bind: sa.Connection) -> None:
     if table_exists(bind, "conversations"):
-        written += _copy(
-            bind,
-            "SELECT id, user_id, created_at, total_tokens, fast_llm_tokens, model_name,"
-            " mode, agent_id FROM conversations"
-            " WHERE id > :last AND total_tokens > 0 ORDER BY id LIMIT :batch",
-            _conversation_rows,
-        )
+        _copy(bind, _CONVERSATIONS_SQL.format(owner=""), _conversation_rows)
     if table_exists(bind, "workflow_runs"):
-        written += _copy(
-            bind,
-            "SELECT id, user_id, created_at, total_tokens, mode, workflow_id FROM workflow_runs"
-            " WHERE id > :last AND total_tokens > 0 ORDER BY id LIMIT :batch",
-            _run_rows,
-        )
-    return written
+        _copy(bind, _RUNS_SQL.format(owner=""), _run_rows)
 
 
 def _differences(bind: sa.Connection) -> list[Any]:
@@ -273,30 +304,44 @@ def _differences(bind: sa.Connection) -> list[Any]:
     return list(bind.execute(sa.text(RECONCILE_SQL)).all())
 
 
-def _drop_leftovers(bind: sa.Connection) -> None:
-    """Backfilled rows whose conversation or run is gone.
+def _carry_over_again(bind: sa.Connection, user_id: str | None) -> None:
+    """Bring one user's backfilled rows to what their sources say now.
 
-    Only an earlier, interrupted run of this migration can have left one
-    (nothing else writes kind ``backfill``): the old sum no longer sees
-    that source, so "used" must not either.
+    Their sources are carried over again, and the backfilled rows of theirs
+    that no source gives any more are removed: those of a conversation or
+    run deleted (or emptied) since an earlier, interrupted run, and a fast
+    or main row its conversation no longer splits off.
     """
-    for source_type, table in (("conversation", "conversations"), ("workflow_run", "workflow_runs")):
+    if user_id is None:
+        owner, params, mine = " AND user_id IS NULL", {}, "user_id IS NULL"
+    else:
+        owner, params, mine = " AND user_id = :user", {"user": user_id}, "user_id = :user"
+    current = _copy(bind, _CONVERSATIONS_SQL.format(owner=owner), _conversation_rows, params)
+    current |= _copy(bind, _RUNS_SQL.format(owner=owner), _run_rows, params)
+    there = bind.execute(
+        sa.text(f"SELECT id FROM {_TABLE} WHERE kind = 'backfill' AND {mine}"), params
+    ).scalars()
+    stale = [row_id for row_id in there if row_id not in current]
+    for start in range(0, len(stale), _STATEMENT_ROWS):
         bind.execute(
-            sa.text(
-                f"DELETE FROM {_TABLE} WHERE kind = 'backfill' AND source_type = :source_type"
-                f" AND NOT EXISTS (SELECT 1 FROM {table} s"
-                f" WHERE s.id = {_TABLE}.source_id AND s.total_tokens > 0)"
+            sa.text(f"DELETE FROM {_TABLE} WHERE id IN :ids AND kind = 'backfill'").bindparams(
+                sa.bindparam("ids", expanding=True)
             ),
-            {"source_type": source_type},
+            {"ids": stale[start : start + _STATEMENT_ROWS]},
         )
 
 
 def _backfill_and_reconcile(bind: sa.Connection) -> None:
     _backfill(bind)
     differences = _differences(bind)
-    if differences:
-        _drop_leftovers(bind)
-        _backfill(bind)
+    # Each round covers only the users that differ, so it takes as long as
+    # their sources do, not the table: a writer still running gets a short
+    # window to fall between the carry-over and the check.
+    for _ in range(RECONCILE_ROUNDS):
+        if not differences:
+            return
+        for user_id in sorted({row.user_id for row in differences}, key=lambda u: u or ""):
+            _carry_over_again(bind, user_id)
         differences = _differences(bind)
     if differences:
         shown = ", ".join(
@@ -306,8 +351,9 @@ def _backfill_and_reconcile(bind: sa.Connection) -> None:
         )
         raise RuntimeError(
             f"usage_ledger backfill does not match its sources for {len(differences)} user(s)"
-            f" ({shown}). Conversations or workflow runs were written while the migration ran;"
-            " stop the application and run the migration again."
+            f" ({shown}) after {RECONCILE_ROUNDS} rounds of carrying them over again."
+            " Conversations or workflow runs are still being written: stop the instances"
+            " of the previous release and run the migration again."
         )
 
 

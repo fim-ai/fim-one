@@ -339,3 +339,122 @@ class TestTheBackfill:
             assert conn.execute(
                 text(f"SELECT kind, total_tokens FROM {_LEDGER} WHERE id = 'live-1'")
             ).one() == ("usage", 55)
+
+
+def _write_meanwhile(engine: sa.Engine, bind: Any, sql: str) -> None:
+    """A write by an instance of the previous release, committed while the migration runs.
+
+    On PostgreSQL from a connection of its own; SQLite's in-memory database
+    has one connection, and the migration's reads see what it writes.
+    """
+    if engine.dialect.name == "postgresql":
+        with engine.begin() as conn:
+            conn.execute(text(sql))
+    else:
+        bind.execute(text(sql))
+
+
+class TestWithTheSourcesStillBeingWritten:
+    """An instance of the previous release still serving adds to the totals as it runs."""
+
+    def _watch(
+        self, module: Any, monkeypatch: pytest.MonkeyPatch, write: Any
+    ) -> list[tuple[bool, list[str]]]:
+        """Record each upsert (after the first check?, its sources) and write after each."""
+        upserts: list[tuple[bool, list[str]]] = []
+        checked = False
+        upsert, differences = module._upsert, module._differences
+
+        def _upserting(bind: Any, rows: list[dict[str, Any]]) -> None:
+            upsert(bind, rows)
+            upserts.append((checked, [row["source_id"] for row in rows]))
+            write(bind, len(upserts))
+
+        def _checking(bind: Any) -> list[Any]:
+            nonlocal checked
+            checked = True
+            return differences(bind)
+
+        monkeypatch.setattr(module, "_upsert", _upserting)
+        monkeypatch.setattr(module, "_differences", _checking)
+        return upserts
+
+    def test_only_the_users_that_differ_are_carried_over_again(
+        self, before: sa.Engine, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        module = _module()
+        monkeypatch.setattr(module, "BATCH", 2)
+
+        def _grows_once(bind: Any, count: int) -> None:
+            if count == 1:  # conv-a1 has just been carried over
+                _write_meanwhile(
+                    before, bind,
+                    "UPDATE conversations SET total_tokens = 1500 WHERE id = 'conv-a1'",
+                )  # fmt: skip
+
+        upserts = self._watch(module, monkeypatch, _grows_once)
+
+        _migrate(before, _C2P3, "upgrade")
+
+        everything = datetime(2000, 1, 1, tzinfo=UTC)
+        assert _sums(before, _LEDGER_SQL, everything) == _sums(
+            before, _OLD_SOURCE_SQL, everything
+        )
+        again = {source for checked, sources in upserts if checked for source in sources}
+        assert again == {"conv-a1", "conv-a2", "conv-old", "run-r1"}  # alice's, not bob's
+
+    def test_a_writer_that_does_not_stop_fails_it_after_a_few_short_rounds(
+        self, before: sa.Engine, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        module = _module()
+
+        def _always(bind: Any, count: int) -> None:
+            _write_meanwhile(
+                before, bind,
+                "UPDATE workflow_runs SET total_tokens = total_tokens + 1 WHERE id = 'run-r2'",
+            )  # fmt: skip
+
+        upserts = self._watch(module, monkeypatch, _always)
+
+        with pytest.raises(RuntimeError, match="still being written"):
+            _migrate(before, _C2P3, "upgrade")
+
+        again = [sources for checked, sources in upserts if checked]
+        # Each round: bob's conversations and his runs, nobody else's.
+        assert len(again) == 2 * module.RECONCILE_ROUNDS
+        assert {source for sources in again for source in sources} == {
+            "conv-b1", "conv-b2", "run-r2", "run-r3",
+        }  # fmt: skip
+
+    def test_a_second_run_rewrites_no_row_that_is_up_to_date(self, before: sa.Engine) -> None:
+        _migrate(before, _C2P3, "upgrade")
+        with before.begin() as conn:
+            if before.dialect.name == "postgresql":
+                versions = f"SELECT id, xmin::text FROM {_LEDGER} ORDER BY id"
+            else:
+                conn.execute(text("CREATE TABLE rewrites (id TEXT)"))
+                conn.execute(
+                    text(
+                        f"CREATE TRIGGER count_rewrites AFTER UPDATE ON {_LEDGER}"
+                        " BEGIN INSERT INTO rewrites VALUES (new.id); END"
+                    )
+                )
+                versions = "SELECT id FROM rewrites ORDER BY id"
+            conn.execute(text("UPDATE conversations SET total_tokens = 81 WHERE id = 'conv-b1'"))
+        with before.connect() as conn:
+            first = conn.execute(text(versions)).all()
+
+        _migrate(before, _C2P3, "upgrade")
+
+        with before.connect() as conn:
+            second = conn.execute(text(versions)).all()
+        if before.dialect.name == "postgresql":
+            changed = {row_id for (row_id, version) in set(second) - set(first)}
+        else:
+            changed = {row_id for (row_id,) in second}
+        assert changed == {module_row_id("conversation", "conv-b1")}
+
+
+def module_row_id(kind: str, source_id: str) -> str:
+    return str(_module()._row_id(kind, source_id))
+
