@@ -96,6 +96,7 @@ export default defineConfig({
       env: {
         E2E_API_PORT: String(apiPort),
         E2E_STUB_PORT: String(stubPort),
+        E2E_WEB_PORT: String(webPort),
         E2E_STATE_DIR: path.join(__dirname, ".e2e-state"),
       },
       reuseExistingServer: false,

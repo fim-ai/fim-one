@@ -181,6 +181,9 @@ def configure_environment(state_dir: Path, stub_port: int) -> None:
             # The approval node stays behind its switch, off as shipped.
             "WORKFLOW_HUMAN_INTERVENTION_ENABLED": kept.get("E2E_HUMAN_INTERVENTION", "false"),
             "LOG_LEVEL": kept.get("E2E_LOG_LEVEL", "WARNING"),
+            # The chat streams from the browser straight to the backend, a
+            # cross-origin request: the app under test is an allowed origin.
+            "CORS_ORIGINS": f"http://127.0.0.1:{kept.get('E2E_WEB_PORT', '3765')}",
         }
     )
 
