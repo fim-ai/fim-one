@@ -231,12 +231,13 @@ def _for_org(row: EventRow) -> EventRow:
     """*row* as an organization's administrator is shown it.
 
     No address and no device: not in their own fields, and not where the
-    row quotes them (a detail line, a value in ``changes``).
+    row quotes them (the target's name, a detail line, a value in ``changes``).
     """
     return replace(
         row,
         ip_address=None,
         user_agent=None,
+        target_label=_without(row.target_label, row.ip_address, row.user_agent),
         detail=_without(row.detail, row.ip_address, row.user_agent),
         changes=_changes_without(row.changes, row.ip_address, row.user_agent),
         extra={k: v for k, v in row.extra.items() if k not in _ADDRESS_KEYS},

@@ -224,6 +224,18 @@ class TestAnOrganizationsAdministrators:
 
         assert by_bob["total"] == 0 and by_action["total"] == 0 and mine["total"] == 1
 
+    async def test_no_address_in_the_target_label_either(self, world: World, cast: Cast) -> None:
+        await _event(
+            actions.AGENT_UPDATE, cast.mia, ip=ANN_IP, org_id=cast.acme.id,
+            target_type="agent", target_id="agent-2", target_label=f"Helper ({ANN_IP}, {ANN_UA})",
+        )  # fmt: skip
+
+        found = await _events_for_org(world, cast, target_id="agent-2")
+
+        [row] = found.items
+        assert row.target_label is not None and row.target_label.startswith("Helper (")
+        assert ANN_IP not in row.target_label and ANN_UA not in row.target_label
+
     @pytest.mark.parametrize("source", ["review", "call"])
     async def test_an_address_filter_is_ignored_for_every_source(
         self, world: World, cast: Cast, source: str
