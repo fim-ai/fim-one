@@ -58,8 +58,10 @@ class _Contexts:
     follows the ``__context__`` chain of a cancelled task with no end to it,
     so the event loop spins and the process stops answering every request.
 
-    Here each context is closed on its own, with no error handed on, and the
-    first failure is raised once all of them have been closed.
+    Here each context is closed on its own, with no error handed on, and one
+    failure is raised once all of them have been closed: an ordinary error
+    if there was one (a server that refused the connection), otherwise the
+    cancellation. The others are logged.
     """
 
     def __init__(self) -> None:
@@ -71,19 +73,35 @@ class _Contexts:
         return value
 
     async def aclose(self) -> None:
-        first: BaseException | None = None
+        failures: list[BaseException] = []
         while self._entered:
             context = self._entered.pop()
             try:
                 await context.__aexit__(None, None, None)
             except BaseException as exc:
-                if first is None:
-                    first = exc
-                else:
-                    logger.debug("Another MCP connection failed to close: %r", exc)
-        if first is not None:
-            # Outside the handler above, so that it is linked to nothing.
-            raise first
+                failures.append(exc)
+        if not failures:
+            return
+        # A transport whose server refused it cancels its own session, which
+        # fails first, with that cancellation; the reason comes after, from
+        # the transport. The reason is what the caller can act on.
+        raised = next((f for f in failures if isinstance(f, Exception)), failures[0])
+        for other in failures:
+            if other is not raised and isinstance(other, Exception):
+                # Not ``exc_info``: a connection error quotes the URL it
+                # failed for, which can carry a credential.
+                logger.warning(
+                    "Another MCP connection failed to close\n%s",
+                    _traceback_without_url_secrets(other),
+                )
+        # Outside the handler above, so that it is linked to nothing.
+        raise raised
+
+
+def _traceback_without_url_secrets(exc: BaseException) -> str:
+    from fim_one.core.assembly.mcp_address import traceback_without_url_secrets
+
+    return traceback_without_url_secrets(exc)
 
 
 class MCPClient:

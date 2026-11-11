@@ -4190,12 +4190,18 @@ async def _react_turn_metered(
                 _confirmation_pump_task.cancel()
                 with suppress(asyncio.CancelledError, Exception):
                     await _confirmation_pump_task
-            if user_mcp_client:
-                await user_mcp_client.disconnect_all()
-            if conversation_id:
-                await get_broker().unregister(conversation_id)
-            if db_session:
-                await db_session.close()
+            # Each step runs whatever the one before it raised: closing the
+            # connections of a turn that is being cancelled raises.
+            try:
+                if user_mcp_client:
+                    await user_mcp_client.disconnect_all()
+            finally:
+                try:
+                    if conversation_id:
+                        await get_broker().unregister(conversation_id)
+                finally:
+                    if db_session:
+                        await db_session.close()
 
     return StreamingResponse(
         _metered_body(generate(), turn_meter),
@@ -5516,12 +5522,18 @@ async def _dag_turn_metered(
                 _dag_confirmation_pump_task.cancel()
                 with suppress(asyncio.CancelledError, Exception):
                     await _dag_confirmation_pump_task
-            if dag_user_mcp_client:
-                await dag_user_mcp_client.disconnect_all()
-            if conversation_id:
-                await get_broker().unregister(conversation_id)
-            if db_session:
-                await db_session.close()
+            # Each step runs whatever the one before it raised: closing the
+            # connections of a turn that is being cancelled raises.
+            try:
+                if dag_user_mcp_client:
+                    await dag_user_mcp_client.disconnect_all()
+            finally:
+                try:
+                    if conversation_id:
+                        await get_broker().unregister(conversation_id)
+                finally:
+                    if db_session:
+                        await db_session.close()
 
     return StreamingResponse(
         _metered_body(generate(), turn_meter),
