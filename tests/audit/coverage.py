@@ -520,6 +520,11 @@ KNOWN_NON_ROUTE_GAPS: dict[str, Gap] = {
 # Records written outside any route: action -> the test that shows it
 # (``tests/<file>.py::<Class>::<test>``).
 NON_ROUTE_ACTIONS: dict[str, str] = {
+    # The daily retention sweep, a background task.
+    "audit.retention_sweep": (
+        "tests/test_audit_retention.py::TestASweep::"
+        "test_it_leaves_one_record_with_what_went_from_each_table"
+    ),
     # In the code of the email-change route, which answers 501 today (EXEMPT,
     # ``disabled``); the test holds that it does nothing and records nothing.
     "auth.email_change": (
@@ -665,6 +670,7 @@ TOOL_WRITERS_EXEMPT: dict[str, str] = {
 # what it writes. A new module that commits must be listed (``test_coverage``).
 OTHER_WRITERS: dict[str, str] = {
     "core/audit/writer.py": "the audit writer itself",
+    "core/audit/retention.py": "the retention sweep; records audit.retention_sweep",
     "core/assembly/calls.py": "the call record (connector_call_logs), its own table",
     "core/assembly/confirmation.py": (
         "approval requests; decisions and expiries are recorded (confirmation.*)"

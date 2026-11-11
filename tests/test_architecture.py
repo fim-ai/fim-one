@@ -635,22 +635,34 @@ class TestAuditRowsHaveOneWriter:
         )
 
     def test_audit_rows_are_never_changed_or_deleted(self) -> None:
-        """Append-only: no code path edits or removes an audit record. The
-        one exception is user deletion, which removes the user's own sign-in
-        rows and clears their id from audit rows, as it always has."""
+        """Append-only: no code path edits or removes an audit record, a
+        sign-in, a review entry or a call record. Two exceptions: the
+        retention sweep, which removes what is older than its period, and
+        user deletion, which takes the deleted user's identity out of the
+        rows that stay."""
         files = [py for py in sorted(SRC.rglob("*.py")) if "migrations" not in py.parts]
         needles = [
             f"{verb}({model})"
             for verb in ("update", "delete")
-            for model in ("AuditLog", "LoginHistory", "ReviewLog")
+            for model in ("AuditLog", "LoginHistory", "ReviewLog", "ConnectorCallLog")
         ]
+        allowed = {"core/audit/retention.py", "web/services/user_deletion.py"}
         offenders = [
             hit
             for needle in needles
             for hit in _occurrences(needle, files)
-            if hit.split(":", 1)[0] != "web/services/user_deletion.py"
+            if hit.split(":", 1)[0] not in allowed
         ]
         assert not offenders, "audit records are append-only:\n  " + "\n  ".join(offenders)
+
+    def test_the_sweep_is_the_only_generic_delete(self) -> None:
+        """The sweep deletes through one helper that takes the table as an
+        argument, which the needles above cannot see: no other module may
+        hold a ``delete(model)`` of its own and be handed an audit table."""
+        retention = (SRC / "core" / "audit" / "retention.py").read_text(encoding="utf-8")
+        assert retention.count("delete(model)") == 1
+        for model in ("AuditLog", "LoginHistory", "ReviewLog", "ConnectorCallLog"):
+            assert f"_delete_older({model}," in retention, model
 
     def test_write_audit_is_defined_once(self) -> None:
         files = [py for py in sorted(SRC.rglob("*.py")) if "migrations" not in py.parts]

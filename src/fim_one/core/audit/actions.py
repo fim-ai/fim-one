@@ -313,6 +313,12 @@ WORKFLOW_TRIGGER_KEY_INVALID = "workflow.trigger_key_invalid"
 # and this is the action of the summary record that reports the count.
 AUTH_LOGIN_UNKNOWN_ACCOUNT = "auth.login_unknown_account"
 
+# -- The audit records themselves ---------------------------------------------------
+# The daily sweep removed the records older than their retention period
+# (``core/audit/retention.py``). The actor is the system; the detail says how
+# many rows went from each table.
+AUDIT_RETENTION_SWEEP = "audit.retention_sweep"
+
 ACTIONS: frozenset[str] = frozenset(ADMIN_ACTIONS) | frozenset(
     value
     for name, value in dict(globals()).items()

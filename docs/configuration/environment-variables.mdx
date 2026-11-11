@@ -520,6 +520,15 @@ Background cleanup task that automatically purges old workflow runs. Per-workflo
 | `WORKFLOW_RUN_MAX_PER_WORKFLOW` | No | `100` | Keep at most this many runs per workflow (oldest deleted first) |
 | `WORKFLOW_RUN_CLEANUP_INTERVAL_HOURS` | No | `24` | How often the background cleanup task runs, in hours |
 
+## Audit Record Retention
+
+A daily background sweep removes audit records older than their retention period, in small batches. Every sweep leaves one `audit.retention_sweep` entry in the audit log with the number of rows removed from each table. With several replicas, one of them sweeps. The usage ledger is never swept. The first sweep runs within ten minutes of the first start on a version that has it: set a variable to `0` beforehand to keep older records.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `AUDIT_RETENTION_DAYS` | No | `365` | How long the audit log, the sign-in history and organizations' review trails are kept. A value from 1 to 179 is raised to `180`. At the same age the arguments stored with a decided approval request are cleared; the request and its decision stay. `0` keeps everything for ever |
+| `CALL_LOG_RETENTION_DAYS` | No | `180` | How long the records of calls to connectors, databases and MCP servers are kept. `0` keeps them for ever |
+
 ### Channel Confirmation Request Expiry
 
 Background sweeper that marks pending approval requests (chat confirmations, workflow approvals, Approval Playground cards) as expired once their own deadline has passed, so a click days later on a forgotten card doesn't flip agent state that has already been torn down. The TTL applies only to requests recorded before the deadline column existed.
