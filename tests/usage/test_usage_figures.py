@@ -74,13 +74,19 @@ class TestTheUsageCard:
 
         assert card["total_tokens"] == card["window_tokens"] == provider.billed
         assert card["window_tokens"] == await usage.quota_used(alice)
-        by_agent = {row["agent_name"]: (row["agent_id"], row["tokens"]) for row in card["by_agent"]}
+        by_agent = {
+            row["agent_name"] or row["origin"]: (row["agent_id"], row["tokens"])
+            for row in card["by_agent"]
+        }
+        # An agent by its name; the rest by a key the client translates.
         assert by_agent == {
             "Helper": (billed["agent_row"].id, billed["agent"]),
-            "Direct Chat": (None, billed["direct"]),
-            "Workflows": (None, billed["workflow"]),
-            "AI assist": (None, billed["assist"]),
+            "direct_chat": (None, billed["direct"]),
+            "workflows": (None, billed["workflow"]),
+            "ai_assist": (None, billed["assist"]),
         }
+        assert {row["origin"] for row in card["by_agent"] if row["agent_id"]} == {None}
+        assert {row["agent_name"] for row in card["by_agent"] if not row["agent_id"]} == {None}
         assert sum(tokens for _, tokens in by_agent.values()) == card["total_tokens"]
         assert card["daily"] == [
             {"date": datetime.now(UTC).date().isoformat(), "tokens": provider.billed}
@@ -105,13 +111,13 @@ class TestTheUsageCard:
         assert (card["total_tokens"], card["window_tokens"], card["daily"]) == (
             before["total_tokens"], before["window_tokens"], before["daily"],
         )  # fmt: skip
-        by_agent = {row["agent_name"]: row["tokens"] for row in card["by_agent"]}
+        by_agent = {row["agent_name"] or row["origin"]: row["tokens"] for row in card["by_agent"]}
         # The agent is gone and so is its name; what went through it is not.
         assert by_agent == {
-            "Deleted agents": billed["agent"],
-            "Direct Chat": billed["direct"],
-            "Workflows": billed["workflow"],
-            "AI assist": billed["assist"],
+            "deleted_agents": billed["agent"],
+            "direct_chat": billed["direct"],
+            "workflows": billed["workflow"],
+            "ai_assist": billed["assist"],
         }
 
     async def test_a_period_counts_what_was_consumed_in_it(

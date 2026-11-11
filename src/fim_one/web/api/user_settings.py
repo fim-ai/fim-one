@@ -348,26 +348,27 @@ def _parse_period(period: str) -> int:
     return mapping.get(period, 7)
 
 
-# What usage that came through no agent is listed as on the usage card.
-_DIRECT_CHAT = "Direct Chat"
-_NO_AGENT_LABELS = {
-    "workflow_run": "Workflows",
-    "eval_run": "Evaluations",
+# What usage that came through no agent is listed as on the usage card: a
+# stable key, which the client translates.
+_DIRECT_CHAT = "direct_chat"
+_NO_AGENT_ORIGINS = {
+    "workflow_run": "workflows",
+    "eval_run": "evaluations",
 }
 _CHAT_ENTRIES = frozenset({"chat", "dag", "auto", "react", "background"})
 
 
-def _origin_label(bucket: ledger.UsageBucket) -> str:
-    """The card's name for usage that no (existing) agent accounts for."""
+def _origin(bucket: ledger.UsageBucket) -> str:
+    """The card's key for usage that no (existing) agent accounts for."""
     if bucket.agent_id is not None:
         # Recorded through an agent that has since been deleted.
-        return "Deleted agents"
-    if bucket.source_type in _NO_AGENT_LABELS:
-        return _NO_AGENT_LABELS[bucket.source_type]
+        return "deleted_agents"
+    if bucket.source_type in _NO_AGENT_ORIGINS:
+        return _NO_AGENT_ORIGINS[bucket.source_type]
     if bucket.source_type == "conversation" or bucket.entry in _CHAT_ENTRIES:
         return _DIRECT_CHAT
     # AI-assisted builders, KB and DB chat, document ingestion.
-    return "AI assist"
+    return "ai_assist"
 
 
 async def _usage_by_agent(db: AsyncSession, user_id: str, since: datetime) -> list[AgentUsage]:
@@ -383,16 +384,21 @@ async def _usage_by_agent(db: AsyncSession, user_id: str, since: datetime) -> li
         rows = await db.execute(select(Agent.id, Agent.name).where(Agent.id.in_(agent_ids)))
         names = {agent_id: name for agent_id, name in rows.all()}
 
-    totals: dict[tuple[str | None, str], int] = {}
+    # (agent id, agent name, origin): an agent's row, or an origin's.
+    totals: dict[tuple[str | None, str | None, str | None], int] = {}
     for bucket in buckets:
         if bucket.agent_id and bucket.agent_id in names:
-            key: tuple[str | None, str] = (bucket.agent_id, names[bucket.agent_id])
+            key: tuple[str | None, str | None, str | None] = (
+                bucket.agent_id,
+                names[bucket.agent_id],
+                None,
+            )
         else:
-            key = (None, _origin_label(bucket))
+            key = (None, None, _origin(bucket))
         totals[key] = totals.get(key, 0) + bucket.total_tokens
     return [
-        AgentUsage(agent_id=agent_id, agent_name=name, tokens=tokens)
-        for (agent_id, name), tokens in sorted(totals.items(), key=lambda item: -item[1])
+        AgentUsage(agent_id=agent_id, agent_name=name, origin=origin, tokens=tokens)
+        for (agent_id, name, origin), tokens in sorted(totals.items(), key=lambda item: -item[1])
         if tokens > 0
     ]
 

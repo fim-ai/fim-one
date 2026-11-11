@@ -118,7 +118,13 @@ class DailyUsage(BaseModel):
 
 class AgentUsage(BaseModel):
     agent_id: str | None = None
-    agent_name: str
+    # The agent's name; ``None`` on a row that no existing agent accounts
+    # for, which has ``origin`` instead.
+    agent_name: str | None = None
+    # What usage through no (existing) agent was, as a stable key the client
+    # translates: ``direct_chat``, ``workflows``, ``evaluations``,
+    # ``ai_assist`` or ``deleted_agents``.
+    origin: str | None = None
     tokens: int
 
 

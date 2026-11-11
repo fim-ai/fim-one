@@ -403,6 +403,13 @@
     "agentName": "Agent",
     "agentTokens": "Tokens",
     "agentPercent": "% of Total",
+    "origins": {
+      "direct_chat": "Direct Chat",
+      "workflows": "Workflows",
+      "evaluations": "Evaluations",
+      "ai_assist": "AI assist",
+      "deleted_agents": "Deleted agents"
+    },
     "noUsageData": "No usage data available.",
     "loadFailed": "Failed to load usage data"
   },
