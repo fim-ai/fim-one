@@ -172,6 +172,90 @@ describe("useWorkflowDocument", () => {
     expect(result.current.isDirty).toBe(false)
   })
 
+  // A save reads edits the canvas has not reported yet. Once reports that
+  // change nothing were ignored, nothing marked such an edit unsaved when
+  // the save failed, and nothing tried it again.
+  describe("a failed save of an edit the canvas had not reported", () => {
+    it("Save: stays unsaved and saves itself after the pause", async () => {
+      let onCanvas = canvasOf("first")
+      const { result, onBlueprintChanged } = await mountDocument(canvasOf("first"), {
+        readCanvas: () => onCanvas,
+      })
+      vi.useFakeTimers()
+      onBlueprintChanged.mockClear()
+      onCanvas = canvasOf("typed just now")
+      api.update.mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      await act(() => result.current.save())
+      expect(result.current.isDirty).toBe(true)
+      expect(onBlueprintChanged).toHaveBeenCalledTimes(1)
+      // The canvas's report of the same edit comes in afterwards.
+      act(() => result.current.changeBlueprint(canvasOf("typed just now")))
+      expect(result.current.isDirty).toBe(true)
+      await act(() => vi.advanceTimersByTimeAsync(5100))
+      expect(api.update).toHaveBeenCalledTimes(2)
+      expect(api.update.mock.calls[1][1].blueprint).toEqual(canvasOf("typed just now"))
+      expect(result.current.isDirty).toBe(false)
+    })
+
+    it("Run: the run does not start, and the edit stays unsaved and is saved again", async () => {
+      let onCanvas = canvasOf("first")
+      const { result } = await mountDocument(canvasOf("first"), { readCanvas: () => onCanvas })
+      vi.useFakeTimers()
+      onCanvas = canvasOf("typed just now")
+      api.update.mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      let ok: boolean | undefined
+      await act(async () => {
+        ok = await result.current.saveBeforeRun()
+      })
+      expect(ok).toBe(false)
+      expect(result.current.isDirty).toBe(true)
+      act(() => result.current.changeBlueprint(canvasOf("typed just now")))
+      await act(() => vi.advanceTimersByTimeAsync(5100))
+      expect(api.update).toHaveBeenCalledTimes(2)
+      expect(result.current.isDirty).toBe(false)
+    })
+
+    it("automatic save: tried again once the canvas reports the edit", async () => {
+      let onCanvas = canvasOf("first")
+      const { result } = await mountDocument(canvasOf("first"), { readCanvas: () => onCanvas })
+      vi.useFakeTimers()
+      onCanvas = canvasOf("A")
+      act(() => result.current.changeBlueprint(canvasOf("A")))
+      await act(() => vi.advanceTimersByTimeAsync(4900))
+      onCanvas = canvasOf("B")
+      api.update.mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      await act(() => vi.advanceTimersByTimeAsync(150))
+      expect(api.update).toHaveBeenCalledTimes(1)
+      act(() => result.current.changeBlueprint(canvasOf("B")))
+      expect(result.current.isDirty).toBe(true)
+      await act(() => vi.advanceTimersByTimeAsync(5100))
+      expect(api.update).toHaveBeenCalledTimes(2)
+      expect(api.update.mock.calls[1][1].blueprint).toEqual(canvasOf("B"))
+      expect(result.current.isDirty).toBe(false)
+    })
+
+    it("a save that keeps failing is not retried by validation badges in a loop", async () => {
+      let onCanvas = canvasOf("first")
+      const { result, onBlueprintChanged } = await mountDocument(canvasOf("first"), {
+        readCanvas: () => onCanvas,
+      })
+      vi.useFakeTimers()
+      onBlueprintChanged.mockClear()
+      api.update.mockRejectedValue(new TypeError("Failed to fetch"))
+      onCanvas = canvasOf("second")
+      act(() => result.current.changeBlueprint(canvasOf("second")))
+      for (let i = 0; i < 6; i++) {
+        await act(() => vi.advanceTimersByTimeAsync(2300))
+        act(() => result.current.changeBlueprint(canvasOf("second")))
+      }
+      expect(onBlueprintChanged).toHaveBeenCalledTimes(1)
+      // One save after the pause, one retry for the report that followed it;
+      // reports while a save is pending do not add more.
+      expect(api.update.mock.calls.length).toBeLessThanOrEqual(3)
+      expect(result.current.isDirty).toBe(true)
+    })
+  })
+
   describe("loading", () => {
     // The server sends the blueprint to the owner only. The editor was
     // handed null and failed with "Cannot read properties of null".
