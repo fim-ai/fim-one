@@ -836,6 +836,21 @@ async def _resolve_trigger_workflow(raw_key: str | None, db: AsyncSession) -> Wo
     try:
         return await resolve_trigger_key(raw_key, db)
     except TriggerKeyRejectedError as exc:
+        if exc.workflow is not None:
+            # A valid key: the refusal is a refused run of its workflow,
+            # recorded as the run service records the others.
+            from fim_one.core.workflow.run_service import (
+                RunMode,
+                RunRefusedError,
+                get_run_service,
+            )
+
+            await get_run_service().record_refused(
+                exc.workflow,
+                None,
+                RunMode.TRIGGER,
+                RunRefusedError(exc.error_code, 401, exc.detail),
+            )
         if exc.error_code == "invalid_api_key":
             # Nobody is authenticated: counted by the caller's address, one
             # record per address and ten minutes. Of the key, only enough
@@ -1917,6 +1932,7 @@ async def batch_run_workflow(
     wf = await _get_accessible_workflow(workflow_id, current_user.id, db)
 
     from fim_one.core.workflow.run_service import (
+        RUN_WAITING_LIMIT,
         RunMode,
         RunRefusedError,
         get_run_service,
@@ -1926,22 +1942,7 @@ async def batch_run_workflow(
     # Checked once for the whole batch, which counts as one start against
     # runs-per-minute; each item then runs as the caller.
     try:
-        authorized = await service.authorize(
-            wf, current_user.id, RunMode.BATCH, admit_batch=True
-        )
-        # Every item's inputs are checked before any item starts: a batch
-        # with one bad row is refused whole, naming the row.
-        checked: list[dict[str, Any]] = []
-        for index, item in enumerate(body.inputs):
-            try:
-                checked.append(service.check_inputs(authorized[1], item))
-            except RunRefusedError as exc:
-                raise RunRefusedError(
-                    exc.error_code,
-                    exc.status_code,
-                    f"Item {index + 1}: {exc.detail}",
-                    {**(exc.detail_args or {}), "index": index},
-                ) from None
+        authorized, checked = await service.admit_batch(wf, current_user.id, body.inputs)
     except RunRefusedError as exc:
         raise _refused(exc) from None
 
@@ -1960,12 +1961,17 @@ async def batch_run_workflow(
     # query. An item still running when the cap is reached finishes.
     quota = await _batch_quota_at_start(current_user.id)
     consumed = 0
+    # Items not started, by reason; recorded once per reason after the batch.
+    not_started_for: dict[str, int] = {RUN_WAITING_LIMIT: not_started}
 
     async def _run_single(index: int, inputs: dict[str, Any]) -> BatchRunResultItem:
         """Execute one workflow run within the batch."""
         nonlocal consumed
         async with semaphore:
             if quota is not None and quota.exhausted_after(consumed):
+                not_started_for[TOKEN_QUOTA_EXCEEDED] = (
+                    not_started_for.get(TOKEN_QUOTA_EXCEEDED, 0) + 1
+                )
                 return BatchRunResultItem(
                     run_id="",
                     inputs=inputs,
@@ -2044,6 +2050,7 @@ async def batch_run_workflow(
                 duration_ms=0,
             )
         )
+    await service.record_items_not_started(wf, current_user.id, not_started_for, len(checked))
 
     response = WorkflowBatchRunResponse(
         batch_id=batch_id,

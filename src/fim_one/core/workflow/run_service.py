@@ -1213,6 +1213,76 @@ class WorkflowRunService:
             return exc
         return None
 
+    async def admit_batch(
+        self, workflow: Any, caller_id: str, items: list[dict[str, Any]]
+    ) -> tuple[tuple[CallContext, Any], list[dict[str, Any]]]:
+        """Admit a batch once for all its items; ``(authorized, checked inputs)``.
+
+        The batch counts as one start against runs-per-minute
+        (:meth:`authorize` with *admit_batch*), and every item's inputs are
+        checked before any starts: a batch with one bad row is refused
+        whole, naming the row. A refused batch is one refusal record.
+        """
+        try:
+            authorized = await self.authorize(
+                workflow, caller_id, RunMode.BATCH, admit_batch=True
+            )
+            checked: list[dict[str, Any]] = []
+            for index, item in enumerate(items):
+                try:
+                    checked.append(self.check_inputs(authorized[1], item))
+                except RunRefusedError as exc:
+                    raise RunRefusedError(
+                        exc.error_code,
+                        exc.status_code,
+                        f"Item {index + 1}: {exc.detail}",
+                        {**(exc.detail_args or {}), "index": index},
+                    ) from None
+        except RunRefusedError as exc:
+            await self.record_refused(workflow, caller_id, RunMode.BATCH, exc)
+            raise
+        return authorized, checked
+
+    async def record_refused(
+        self,
+        workflow: Any,
+        caller_id: str | None,
+        mode: RunMode,
+        exc: RunRefusedError,
+        *,
+        run_id: str | None = None,
+        request: Any = None,
+    ) -> None:
+        """Record that a run through *mode* was refused; never raises.
+
+        Also for refusals decided before the service is reached (a trigger
+        key whose author is switched off), so that every refused run is
+        recorded the same way.
+        """
+        user_id = workflow.user_id if mode in AUTHOR_MODES else caller_id
+        await run_audit.record_refused(
+            workflow,
+            user_id=user_id,
+            mode=mode.value,
+            error_code=exc.error_code,
+            run_id=run_id,
+            request=request,
+        )
+
+    async def record_items_not_started(
+        self, workflow: Any, caller_id: str, reasons: dict[str, int], total: int
+    ) -> None:
+        """One refusal record per reason for the items of a batch not started."""
+        for code, count in reasons.items():
+            if count:
+                await run_audit.record_refused(
+                    workflow,
+                    user_id=caller_id,
+                    mode=RunMode.BATCH.value,
+                    error_code=code,
+                    not_started=(count, total),
+                )
+
     # -- runs -----------------------------------------------------------------
 
     async def start_run(
@@ -1260,6 +1330,7 @@ class WorkflowRunService:
                 # is made with the insert, in _insert_single_flight_run.
                 await self._refuse_if_running(workflow.id)
         except RunRefusedError as exc:
+            await self.record_refused(workflow, caller_id, mode, exc)
             if record_refusal:
                 await self._record_refusal(workflow, caller_id, mode, inputs, exc)
             raise
@@ -1339,7 +1410,11 @@ class WorkflowRunService:
             # its slot even if the caller goes away before reading events.
             started.start()
             return started
-        except BaseException:
+        except BaseException as exc:
+            if isinstance(exc, RunRefusedError):
+                # No slot free, over runs-per-minute, or another run of a
+                # single-flight workflow in flight: decided as it starts.
+                await asyncio.shield(self.record_refused(workflow, caller_id, mode, exc))
             if acquire_slot:
                 # Also reached when no slot was taken (refused, or lost the
                 # single-flight race); releasing is then a no-op.
@@ -1422,6 +1497,14 @@ class WorkflowRunService:
         except RunRefusedError as refused:
             logger.warning(
                 "Workflow run %s is not continued: %s", run_id, refused.error_code
+            )
+            await self.record_refused(
+                workflow,
+                run.user_id,
+                mode,
+                refused,
+                run_id=run_id,
+                request=run_audit.NO_REQUEST,
             )
             await self._end_stored_run(
                 run_id,
@@ -1556,12 +1639,16 @@ class WorkflowRunService:
         from .nodes import get_executor
         from .variable_store import VariableStore
 
-        user_id, auth = run_identity(workflow, caller_id, RunMode.TEST_NODE)
-        if has_disabled_node([node]):
-            raise RunRefusedError(
-                HUMAN_INTERVENTION_DISABLED, 409, HUMAN_INTERVENTION_DISABLED_DETAIL
-            )
-        ctx = await self._admit(workflow, user_id, auth, RunMode.TEST_NODE)
+        try:
+            user_id, auth = run_identity(workflow, caller_id, RunMode.TEST_NODE)
+            if has_disabled_node([node]):
+                raise RunRefusedError(
+                    HUMAN_INTERVENTION_DISABLED, 409, HUMAN_INTERVENTION_DISABLED_DETAIL
+                )
+            ctx = await self._admit(workflow, user_id, auth, RunMode.TEST_NODE)
+        except RunRefusedError as exc:
+            await self.record_refused(workflow, caller_id, RunMode.TEST_NODE, exc)
+            raise
         principal = ctx.principal
         # There is no run record to commit it with.
         await run_audit.record_started(

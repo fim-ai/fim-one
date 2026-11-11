@@ -689,6 +689,7 @@
       "workflow__run_delete": "Delete Workflow Run",
       "workflow__runs_clear": "Clear Workflow Runs",
       "workflow__run_started": "Workflow Run Started",
+      "workflow__run_refused": "Workflow Run Refused",
       "market__subscribe": "Subscribe to Resource",
       "market__unsubscribe": "Unsubscribe from Resource",
       "billing__plan_change": "Plan Changed by Billing",

@@ -280,3 +280,303 @@ class TestARunThatStarts:
         # A test leaves no run record to point at.
         assert (row.detail, row.workflow_run_id) == ("test_node", None)
         assert await _runs(world) == []
+
+
+EMPTY = {"schema_version": 2, "nodes": [], "edges": []}
+
+
+async def _over_quota(world: World, user: User) -> None:
+    """*user* has used more than the default quota of 50 tokens."""
+    from fim_one.core.usage.ledger import UsageEntry, write_entries
+    from fim_one.db.models import SystemSetting
+
+    await world.add(SystemSetting(key="default_token_quota", value="50"))
+    await write_entries(
+        [
+            UsageEntry(
+                user_id=user.id,
+                org_id=None,
+                source_type="conversation",
+                source_id="c-1",
+                entry="chat",
+                model="m",
+                total_tokens=60,
+            )
+        ]
+    )
+
+
+class TestARunThatIsRefused:
+    async def test_the_run_button_over_quota(self, world: World, service: Any) -> None:
+        alice = await world.user("alice")
+        org = await world.org("acme", alice)
+        await _workflow(world, alice, org_id=org.id)
+        await _over_quota(world, alice)
+
+        answer = await world.call(
+            "POST", "/api/workflows/wf-1/run", by=alice, json={"inputs": {}}, expect=429
+        )
+
+        code = answer.json()["error_code"]
+        row = await world.one(
+            "workflow.run_refused",
+            actor=alice,
+            org=org,
+            target=("workflow", "wf-1"),
+            outcome="denied",
+        )
+        assert (row.detail, row.workflow_run_id) == (code, None)
+        assert await _runs(world) == []
+        assert await world.events("workflow.run_started") == []
+
+    async def test_a_retry_loop_leaves_one_record_and_a_count(
+        self, world: World, service: Any
+    ) -> None:
+        alice = await world.user("alice")
+        await _workflow(world, alice, EMPTY)
+
+        for _ in range(5):
+            await world.call(
+                "POST", "/api/workflows/wf-1/run", by=alice, json={"inputs": {}}, expect=400
+            )
+
+        (row,) = await world.events("workflow.run_refused")
+        assert row.detail == "blueprint_empty"
+        assert await refusals.write_summary("workflow.run_refused")
+        _, summary = await world.events("workflow.run_refused")
+        assert (summary.actor_kind, summary.outcome) == ("system", "denied")
+        assert summary.detail.startswith("4 more refusal(s)")
+
+    async def test_no_slot_free_is_decided_as_the_run_starts(
+        self, world: World, service: Any
+    ) -> None:
+        from fim_one.core.workflow.rate_limiter import WorkflowRateLimiter
+
+        service.rate_limiter = WorkflowRateLimiter(max_runs_per_minute=0)
+        alice = await world.user("alice")
+        await _workflow(world, alice)
+
+        await world.call(
+            "POST", "/api/workflows/wf-1/run", by=alice, json={"inputs": {}}, expect=429
+        )
+
+        (row,) = await world.events("workflow.run_refused")
+        assert row.detail == "workflow_rate_limited"
+        assert await _runs(world) == []
+
+    async def test_the_fault_in_a_blueprint_is_not_recorded(
+        self, world: World, service: Any
+    ) -> None:
+        alice = await world.user("alice")
+        broken = {"schema_version": 2, "nodes": [{"id": "s3cret_step", "type": "nope"}]}
+        await _workflow(world, alice, broken)
+
+        await world.call(
+            "POST", "/api/workflows/wf-1/run", by=alice, json={"inputs": {}}, expect=400
+        )
+
+        (row,) = await world.events("workflow.run_refused")
+        assert row.detail == "invalid_blueprint"
+        world.assert_absent(row, "s3cret_step")
+
+    async def test_a_batch_refused_whole_is_one_record(self, world: World, service: Any) -> None:
+        alice = await world.user("alice")
+        await _workflow(world, alice, EMPTY)
+
+        await world.call(
+            "POST",
+            "/api/workflows/wf-1/batch-run",
+            by=alice,
+            json={"inputs": [{}, {}, {}]},
+            expect=400,
+        )
+
+        row = await world.one(
+            "workflow.run_refused", actor=alice, target=("workflow", "wf-1"), outcome="denied"
+        )
+        assert row.detail == "blueprint_empty"
+
+    async def test_items_of_a_batch_not_started_are_one_record_per_reason(
+        self, world: World, service: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("WORKFLOW_HUMAN_INTERVENTION_ENABLED", "true")
+        monkeypatch.setenv("WORKFLOW_MAX_WAITING_RUNS_PER_USER", "1")
+        alice = await world.user("alice")
+        approval = _node(
+            "human_1",
+            "humanIntervention",
+            "HUMAN_INTERVENTION",
+            title="Go on?",
+            timeout_hours=1,
+        )
+        await _workflow(world, alice, _blueprint(approval))
+
+        answer = await world.call(
+            "POST",
+            "/api/workflows/wf-1/batch-run",
+            by=alice,
+            json={"inputs": [{}, {}, {}, {}]},
+        )
+
+        statuses = [item["status"] for item in answer.json()["data"]["results"]]
+        assert statuses.count("failed") == 3
+        assert len(await world.events("workflow.run_started")) == 1
+        (row,) = await world.events("workflow.run_refused")
+        assert row.detail == "workflow_waiting_limit_reached: 3 of 4 items not started"
+
+    async def test_a_trigger_key_of_a_workflow_switched_off(
+        self, world: World, service: Any
+    ) -> None:
+        author = await world.user("author")
+        await _workflow(world, author, is_active=False)
+        key = (await world.call("POST", "/api/workflows/wf-1/generate-api-key", by=author)).json()[
+            "data"
+        ]["api_key"]
+
+        await world.call(
+            "POST",
+            "/api/workflows/trigger",
+            json={"inputs": {}},
+            headers={"Authorization": f"Bearer {key}"},
+            expect=403,
+        )
+
+        (row,) = await world.events("workflow.run_refused")
+        assert (row.actor_id, row.auth_method, row.credential_ref, row.detail) == (
+            author.id,
+            "trigger_key",
+            key[:10],
+            "workflow_inactive",
+        )
+        world.assert_absent(row, key)
+
+    async def test_a_trigger_key_whose_author_is_switched_off(
+        self, world: World, service: Any
+    ) -> None:
+        from sqlalchemy import update
+
+        author = await world.user("author")
+        await _workflow(world, author)
+        key = (await world.call("POST", "/api/workflows/wf-1/generate-api-key", by=author)).json()[
+            "data"
+        ]["api_key"]
+        async with world.factory() as db:
+            await db.execute(update(User).where(User.id == author.id).values(is_active=False))
+            await db.commit()
+
+        await world.call(
+            "POST",
+            "/api/workflows/trigger",
+            json={"inputs": {}},
+            headers={"Authorization": f"Bearer {key}"},
+            expect=401,
+        )
+
+        (row,) = await world.events("workflow.run_refused")
+        assert (row.actor_id, row.credential_ref, row.detail, row.outcome) == (
+            author.id,
+            key[:10],
+            "workflow_owner_inactive",
+            "denied",
+        )
+        # The key was valid: this is not an unknown key.
+        assert await world.events("workflow.trigger_key_invalid") == []
+
+    async def test_a_schedule_of_a_workflow_switched_off(self, world: World, service: Any) -> None:
+        from fim_one.core.workflow.scheduler import WorkflowScheduler
+
+        author = await world.user("author")
+        workflow = await _workflow(
+            world, author, is_active=False, schedule_cron="* * * * *", schedule_enabled=True
+        )
+
+        await WorkflowScheduler()._execute_workflow(workflow)
+
+        (row,) = await world.events("workflow.run_refused")
+        assert (row.actor_id, row.actor_kind, row.detail, row.ip_address) == (
+            author.id,
+            "system",
+            "workflow_inactive",
+            None,
+        )
+
+    async def test_an_agents_tool_refused_a_workflow_that_waits(
+        self, world: World, service: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from fim_one.core.tool.builtin.run_workflow import RunWorkflowTool
+
+        monkeypatch.setenv("WORKFLOW_HUMAN_INTERVENTION_ENABLED", "true")
+        alice = await world.user("alice")
+        approval = _node("human_1", "humanIntervention", "HUMAN_INTERVENTION", title="Go on?")
+        await _workflow(world, alice, _blueprint(approval))
+
+        answer = await RunWorkflowTool(["wf-1"], user_id=alice.id).run(name="nightly")
+
+        assert answer.startswith("[Error]")
+        (row,) = await world.events("workflow.run_refused")
+        assert (row.actor_id, row.detail) == (alice.id, "workflow_has_approval_step")
+
+    async def test_a_single_step_test_over_quota(self, world: World, service: Any) -> None:
+        alice = await world.user("alice")
+        await _workflow(world, alice, WITH_A_BRANCH)
+        await _over_quota(world, alice)
+
+        await world.call(
+            "POST",
+            "/api/workflows/wf-1/test-node",
+            by=alice,
+            json={"node_id": "cond_1", "variables": {}},
+            expect=429,
+        )
+
+        (row,) = await world.events("workflow.run_refused")
+        assert row.detail == "token_quota_exceeded"
+        assert await world.events("workflow.run_started") == []
+
+    async def test_a_run_refused_when_it_would_continue(self, world: World, service: Any) -> None:
+        """A trigger-key run waits for an approval; meanwhile the workflow is
+        switched off. Continuing it is refused, and recorded against the run."""
+        author = await world.user("author")
+        await _workflow(world, author, is_active=False)
+        await world.add(
+            WorkflowRun(
+                id="run-1",
+                workflow_id="wf-1",
+                user_id=author.id,
+                blueprint_snapshot=PLAIN,
+                inputs={},
+                status="waiting",
+                mode="trigger",
+            )
+        )
+
+        assert await service.resume_run("run-1") is None
+
+        (run,) = await _runs(world)
+        assert run.status == "failed"
+        (row,) = await world.events("workflow.run_refused")
+        assert (row.workflow_run_id, row.detail, row.credential_ref) == (
+            "run-1",
+            "workflow_inactive",
+            None,
+        )
+        # Not the request that made the decision.
+        assert row.ip_address is None
+
+    async def test_a_record_that_cannot_be_written_still_refuses(
+        self, world: World, service: Any
+    ) -> None:
+        from unittest.mock import patch
+
+        alice = await world.user("alice")
+        await _workflow(world, alice, EMPTY)
+
+        def _broken() -> Any:
+            raise RuntimeError("audit database unavailable")
+
+        with patch("fim_one.core.audit.writer._own_session", _broken):
+            answer = await world.call(
+                "POST", "/api/workflows/wf-1/run", by=alice, json={"inputs": {}}, expect=400
+            )
+
+        assert answer.json()["error_code"] == "blueprint_empty"

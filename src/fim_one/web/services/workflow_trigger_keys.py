@@ -49,13 +49,14 @@ class TriggerKeyRejectedError(Exception):
 
     ``error_code`` is ``invalid_api_key`` for an unknown key and
     ``workflow_owner_inactive`` when the workflow's author is disabled. Both
-    map to 401.
+    map to 401. ``workflow`` is the workflow a valid key belongs to.
     """
 
-    def __init__(self, error_code: str, detail: str) -> None:
+    def __init__(self, error_code: str, detail: str, workflow: Workflow | None = None) -> None:
         super().__init__(detail)
         self.error_code = error_code
         self.detail = detail
+        self.workflow = workflow
 
 
 async def resolve_trigger_key(raw_key: str | None, db: AsyncSession) -> Workflow:
@@ -80,6 +81,6 @@ async def resolve_trigger_key(raw_key: str | None, db: AsyncSession) -> Workflow
     ).scalar_one_or_none()
     if not owner_active:
         raise TriggerKeyRejectedError(
-            "workflow_owner_inactive", "The workflow owner's account is disabled"
+            "workflow_owner_inactive", "The workflow owner's account is disabled", wf
         )
     return wf

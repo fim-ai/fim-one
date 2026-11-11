@@ -253,6 +253,13 @@ WORKFLOW_RUNS_CLEAR = "workflow.runs_clear"
 # by the run service (``core/workflow/run_audit.py``) with the run record;
 # the detail is the entry.
 WORKFLOW_RUN_STARTED = "workflow.run_started"
+# The run service would not run it: the detail is the refusal's code (the
+# workflow is switched off, the quota is used up, too many runs at once, an
+# input does not fit, ...), for a run about to start or one about to
+# continue after its approval. Through the refusal throttle: one per
+# workflow, person, entry and code in ten minutes, the next saying how many
+# were left out. Items of a batch not started: one per reason, with the count.
+WORKFLOW_RUN_REFUSED = "workflow.run_refused"
 # Subscribing to a resource published to an organization or the Market, and
 # giving the subscription up.
 MARKET_SUBSCRIBE = "market.subscribe"

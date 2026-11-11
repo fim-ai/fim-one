@@ -479,14 +479,8 @@ KNOWN_NON_ROUTE_GAPS: dict[str, Gap] = {
     # the runs the platform refused or closed on its own. T10 P7 records
     # them in the run service, where every entry (the Run button, a batch,
     # a trigger key, a schedule, an agent's tool) passes.
-    "a run refused at admission, or a waiting run refused when it is continued": Gap(
-        "T10 P7", "workflow.run_refused"
-    ),
     "a run closed because its server process stopped (stale heartbeat)": Gap(
         "T10 P7", "workflow.run_closed"
-    ),
-    "a trigger call with a valid key whose workflow owner is switched off": Gap(
-        "T10 P7", "workflow.run_refused"
     ),
     "a request closed because its run was deleted, cancelled or failed": Gap(
         "T10 P7", "workflow.run_cancelled / workflow.run_closed"
@@ -533,6 +527,13 @@ NON_ROUTE_ACTIONS: dict[str, str] = {
     "workflow.trigger_key_invalid": (
         "tests/test_audit_refusals.py::TestAnUnknownTriggerKey::"
         "test_recorded_once_per_address_with_only_the_start_of_the_key"
+    ),
+    # A refused run: the run, batch-run, trigger and test-node routes answer
+    # 4xx, a schedule and the agent tool have no route, and a waiting run is
+    # refused when it would continue. All through the run service (run_audit.py).
+    "workflow.run_refused": (
+        "tests/test_audit_workflow_runs.py::TestARunThatIsRefused::"
+        "test_the_run_button_over_quota"
     ),
     # Only the connector builder's test tool sends this request; no route does.
     "connector.action_test": (

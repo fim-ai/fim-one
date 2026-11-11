@@ -30,18 +30,31 @@ from typing import TYPE_CHECKING, Any
 from fim_one.core.audit import actions
 from fim_one.core.audit import writer as audit
 from fim_one.core.audit.context import current_request_auth
-from fim_one.core.audit.events import Actor, EventContext
+from fim_one.core.audit.events import Actor, EventContext, RequestMeta
+from fim_one.core.audit.refusals import admit_refusal
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-__all__ = ["record_started", "run_actor"]
+__all__ = ["NO_REQUEST", "record_refused", "record_started", "refusal_code", "run_actor"]
 
 logger = logging.getLogger(__name__)
 
 # Entries whose run is the author's and has no person asking.
 _TRIGGER = "trigger"
 _SCHEDULE = "schedule"
+# A run continued after an approval is not started by the request that
+# made the decision: its records carry no request.
+NO_REQUEST = RequestMeta(ip=None, user_agent=None, request_id=None)
+
+
+def refusal_code(error_code: str) -> str:
+    """The code of a refusal, without the free text a few codes carry.
+
+    ``invalid_blueprint: <the parser's message>`` names steps of the
+    blueprint; only the part before the colon is kept.
+    """
+    return error_code.split(":", 1)[0].strip()[:64] or "refused"
 
 
 async def _person(user_id: str | None, db: AsyncSession | None) -> tuple[str | None, bool]:
@@ -125,3 +138,52 @@ async def record_started(
         context=EventContext(workflow_run_id=run_id) if run_id else None,
         db=db,
     )
+
+
+async def record_refused(
+    workflow: Any,
+    *,
+    user_id: str | None,
+    mode: str,
+    error_code: str,
+    run_id: str | None = None,
+    not_started: tuple[int, int] | None = None,
+    request: RequestMeta | None = None,
+) -> bool:
+    """``workflow.run_refused`` (``denied``) for a run the service would not run.
+
+    The detail is the refusal's code. *not_started* is ``(count, of)`` for
+    the items of a batch that were not started for this reason: one record
+    for all of them, not throttled (a batch is admitted at most at the
+    runs-per-minute rate). Any other refusal passes the refusal throttle:
+    one record per workflow, person, entry and code in ten minutes, the
+    rest counted into the next summary record. Written in a session of its
+    own; never raises. Returns whether a record was written.
+    """
+    code = refusal_code(error_code)
+    try:
+        if not_started is None and not admit_refusal(
+            actions.WORKFLOW_RUN_REFUSED,
+            f"{workflow.id}|{user_id or '-'}|{mode}|{code}",
+        ):
+            return False
+        actor = await run_actor(user_id, mode, workflow)
+        detail = code
+        if not_started is not None:
+            detail = f"{code}: {not_started[0]} of {not_started[1]} items not started"
+        await audit.record(
+            actions.WORKFLOW_RUN_REFUSED,
+            actor=actor,
+            org_id=getattr(workflow, "org_id", None),
+            target_type="workflow",
+            target_id=workflow.id,
+            target_label=getattr(workflow, "name", None),
+            outcome="denied",
+            detail=detail,
+            context=EventContext(workflow_run_id=run_id) if run_id else None,
+            request=request,
+        )
+    except Exception as exc:
+        logger.error("Could not record a refused run: %s", type(exc).__name__)
+        return False
+    return True
