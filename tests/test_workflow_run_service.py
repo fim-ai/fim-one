@@ -29,12 +29,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from fim_one.core.tool.builtin.run_workflow import RunWorkflowTool
+from fim_one.core.model.usage import report_usage
+from fim_one.core.usage.meter import wait_for_writes
 from fim_one.core.workflow import run_service as rs
 from fim_one.core.workflow.scheduler import WorkflowScheduler
 from fim_one.db.base import Base
 from fim_one.db.models.channel import ConfirmationRequest
 from fim_one.db.models.organization import Organization, OrgMembership
 from fim_one.db.models.resource_subscription import ResourceSubscription
+from fim_one.db.models.usage_ledger import UsageLedger
 from fim_one.db.models.user import User
 from fim_one.db.models.workflow import Workflow, WorkflowRun
 from fim_one.web.api import workflows as wf_api
@@ -132,6 +135,8 @@ class _RecordingEngine:
     ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
         self._kwargs["context"] = context
         self._kwargs["inputs"] = _inputs
+        # As the model client does for the calls a step makes.
+        report_usage("test-model", {"total_tokens": 42})
         yield "node_completed", {"node_id": "llm_1", "status": "completed"}
         yield "run_completed", {"status": "completed", "outputs": {"ok": 1}, "total_tokens": 42}
 
@@ -141,6 +146,7 @@ class _TokenSpendingExecutor:
         from fim_one.core.workflow.types import NodeResult, NodeStatus
 
         await context.usage_tracker.record({"total_tokens": 42})
+        report_usage("test-model", {"total_tokens": 42})
         return NodeResult(node_id=node.id, status=NodeStatus.COMPLETED, output="ok")
 
 
@@ -347,11 +353,22 @@ async def test_run_limit_comes_from_the_workflow(entry: str, world: World) -> No
 async def test_tokens_billed_to_the_principal(entry: str, world: World) -> None:
     result = await _drive(entry, world)
     assert result.refused is None
-    (run,) = await _runs(world)
-    assert run.total_tokens == 42
-    assert run.user_id == _expected_principal(entry, world)
-    assert run.mode == entry
-    if entry != "test_node":
+    # What counts against the quota: the usage ledger, in the principal's name.
+    await wait_for_writes()
+    async with world.factory() as s:
+        (used,) = (await s.execute(select(UsageLedger))).scalars().all()
+    assert (used.user_id, used.total_tokens) == (_expected_principal(entry, world), 42)
+    assert (used.entry, used.source_type) == (entry, "workflow_run")
+    assert (used.workflow_id, used.org_id) == (world.wf.id, world.wf.org_id)
+    if entry == "test_node":
+        # A single-step test leaves no run record.
+        assert await _runs(world) == []
+    else:
+        (run,) = await _runs(world)
+        assert run.total_tokens == 42
+        assert run.user_id == _expected_principal(entry, world)
+        assert run.mode == entry
+        assert used.source_id == run.id
         (built,) = world.engines
         assert built["user_id"] == _expected_principal(entry, world)
         ctx = built["context"]

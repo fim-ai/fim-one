@@ -1538,8 +1538,9 @@ class WorkflowRunService:
         """Execute one node in isolation; return its result and the variables.
 
         Same principal, gate and env rules as a full run. There is no
-        ``db_session_factory``, so an approval node is auto-approved. Token
-        usage is recorded as a ``test_node`` run so it counts toward quota.
+        ``db_session_factory``, so an approval node is auto-approved. What
+        the step consumes is recorded in the usage ledger (entry
+        ``test_node``) and counts toward the quota; no run record is made.
         """
         from fim_one.core.model.usage import UsageTracker
 
@@ -1616,21 +1617,10 @@ class WorkflowRunService:
             finally:
                 await usage.close()
 
-        total_tokens = int(usage_tracker.get_summary().total_tokens or 0)
-        if total_tokens > 0:
-            now = datetime.now(UTC)
-            await self._insert_run(
-                workflow_id=workflow.id,
-                user_id=principal.user_id,
-                blueprint_snapshot={"nodes": [], "edges": [], "test_node": node.id},
-                inputs=None,
-                status="completed" if result.status == NodeStatus.COMPLETED else "failed",
-                mode=RunMode.TEST_NODE,
-                started_at=now,
-                completed_at=now,
-                duration_ms=result.duration_ms,
-                total_tokens=total_tokens,
-            )
+        # No run record is written for a test. One used to be, with nothing
+        # in it but the tokens, so that the test counted toward the quota:
+        # the quota reads the usage ledger now, where the scope above has
+        # put what the step consumed.
         return result, await store.snapshot()
 
     # -- internals ------------------------------------------------------------

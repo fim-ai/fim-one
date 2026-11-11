@@ -640,6 +640,8 @@ class TestWorkflows:
         (row,) = await _run_rows(usage, "test_node")
         assert row.total_tokens == UNIT == sum(r.total_tokens for r in rows)
         assert row.source_id is not None and row.source_id.startswith("test-")
+        # The test is in the ledger; it leaves no run record behind.
+        assert await _stored_runs() == []
 
     async def test_a_run_that_waited_records_each_part_once(
         self, usage: Usage, provider: Provider, runs: Any  # noqa: F811
