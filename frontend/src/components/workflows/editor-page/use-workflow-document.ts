@@ -376,8 +376,16 @@ export function useWorkflowDocument({
       .get(workflowId)
       .then((data) => {
         if (cancelled) return
+        // The server sends the blueprint to the workflow's owner only.
+        // Anyone else cannot edit it: back to the list, as for an agent or
+        // connector someone else owns, saying why.
+        if (!data.blueprint) {
+          toast.error(t("workflowOwnerOnly"))
+          router.replace("/workflows")
+          return
+        }
         setWorkflow(data)
-        const bp = data.blueprint ?? emptyBlueprint()
+        const bp = data.blueprint
         blueprintRef.current = bp
         savedRef.current = currentSnapshot()
         setIsDirty(false)

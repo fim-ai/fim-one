@@ -173,6 +173,22 @@ describe("useWorkflowDocument", () => {
   })
 
   describe("loading", () => {
+    // The server sends the blueprint to the owner only. The editor was
+    // handed null and failed with "Cannot read properties of null".
+    it("sends someone who may not edit the workflow back to the list, saying why", async () => {
+      api.get.mockResolvedValue({ ...workflowWith(canvasOf("first")), user_id: "u-other", blueprint: null })
+      const blueprintRef: MutableRefObject<WorkflowBlueprint> = { current: emptyBlueprint() }
+      const onBlueprintChanged = vi.fn()
+      const { result } = renderHook(() =>
+        useWorkflowDocument({ workflowId: "wf1", userId: user.id, blueprintRef, onBlueprintChanged }),
+      )
+      await waitFor(() => expect(result.current.isLoadingWorkflow).toBe(false))
+      expect(result.current.workflow).toBeNull()
+      expect(toast.error).toHaveBeenCalledWith("workflowOwnerOnly")
+      expect(router.replace).toHaveBeenCalledWith("/workflows")
+      expect(onBlueprintChanged).not.toHaveBeenCalled()
+    })
+
     it("waits for a signed-in user", async () => {
       api.get.mockResolvedValue(workflowWith(canvasOf("first")))
       const blueprintRef: MutableRefObject<WorkflowBlueprint> = { current: emptyBlueprint() }

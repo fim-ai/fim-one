@@ -16,6 +16,7 @@
   "workflowCreateFailed": "Failed to create workflow",
   "workflowUpdated": "Workflow saved",
   "workflowUpdateFailed": "Failed to save workflow",
+  "workflowOwnerOnly": "Only the owner of this workflow can open it in the editor.",
   "disabledStepsToRemove": "Steps to remove: {nodes}",
   "invalidFieldInStep": "{step}, {field}: {message}",
   "invalidFieldOutsideStep": "{field}: {message}",
