@@ -1286,6 +1286,48 @@ async def _in_background_scope(turn_meter: OpenMeter, work: Coroutine[Any, Any, 
         await work
 
 
+# Seconds a cancelled turn is given to wind down before the stream's
+# clean-up goes on without it.
+_TURN_STOP_GRACE = 5.0
+
+
+def _log_turn_task_outcome(task: asyncio.Task[Any], what: str) -> None:
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.warning("The %s failed while it was being stopped: %r", what, exc)
+
+
+async def _stop_turn_task(task: asyncio.Task[Any] | None, what: str) -> None:
+    """Cancel the task that runs the turn when its stream ends before it does.
+
+    A client that goes away ends the stream wherever it is waiting, not
+    necessarily where it polls ``request.is_disconnected()``. Left running,
+    the task keeps calling the model and tools for a turn nobody reads, on
+    connections the clean-up below has closed, after the meter has closed.
+
+    Cancelled once, then given ``_TURN_STOP_GRACE`` to wind down. A task
+    that takes longer is left to finish on its own: the clean-up that
+    follows does not wait on it.
+    """
+    if task is None or task.done():
+        return
+    logger.info("Stream ended before the %s finished — cancelling it", what)
+    # The wait below is cut short when the stream's own task is being
+    # cancelled, and gives up on a task that is slow to stop: either way
+    # the task's outcome is read here, so a failure is not lost.
+    task.add_done_callback(lambda t: _log_turn_task_outcome(t, what))
+    task.cancel()
+    # ``asyncio.wait`` rather than ``wait_for``: on a timeout ``wait_for``
+    # cancels a second time, which interrupts the task's own clean-up, and
+    # then waits for the task without limit.
+    with suppress(asyncio.CancelledError):
+        await asyncio.wait({task}, timeout=_TURN_STOP_GRACE)
+    if not task.done():
+        logger.warning("The %s is still running after it was cancelled", what)
+
+
 async def _metered_body(
     body: AsyncGenerator[str, None], turn_meter: OpenMeter
 ) -> AsyncGenerator[str, None]:
@@ -3285,6 +3327,7 @@ async def _react_turn_metered(
         # while the DB poll is still blocked.  Scope falls back to the
         # conversation for agent-less playground runs so question cards
         # work without an agent binding.  Cancelled below at teardown.
+        run_task: asyncio.Task[Any] | None = None
         _confirmation_pump_task = _start_confirmation_pump(
             (agent_cfg or {}).get("agent_id"),
             conversation_id,
@@ -3701,15 +3744,9 @@ async def _react_turn_metered(
                     item = await asyncio.wait_for(progress_queue.get(), timeout=0.5)
                 except TimeoutError:
                     if await request.is_disconnected():
-                        logger.info("Client disconnected — cancelling ReAct task")
-                        run_task.cancel()
-                        try:
-                            with suppress(asyncio.CancelledError, TimeoutError):
-                                await asyncio.wait_for(run_task, timeout=5.0)
-                        except Exception:
-                            logger.exception("Unexpected error while cancelling ReAct task")
-                        # Pump task is cancelled in the outer ``finally``;
-                        # the early return here is still safe.
+                        logger.info("Client disconnected")
+                        # The turn's task and the pump are cancelled in the
+                        # outer ``finally``.
                         return
                     now = time.time()
                     if now - last_keepalive >= 15.0:
@@ -4186,6 +4223,11 @@ async def _react_turn_metered(
             yield _emit(sse_events, "error", _run_failed_payload(exc, elapsed))
             yield _sse("end", {})
         finally:
+            await _stop_turn_task(run_task, "ReAct task")
+            # Step titles still being written are decoration for a stream
+            # that has ended.
+            for _title_task in list(step_title_tasks):
+                _title_task.cancel()
             if _confirmation_pump_task is not None:
                 _confirmation_pump_task.cancel()
                 with suppress(asyncio.CancelledError, Exception):
@@ -4579,6 +4621,7 @@ async def _dag_turn_metered(
 
         # Inline confirmation pump: the same entry as the ReAct handler,
         # so a chat with no agent is served under its conversation here too.
+        exec_task: asyncio.Task[Any] | None = None
         _dag_confirmation_pump_task = _start_confirmation_pump(
             (agent_cfg or {}).get("agent_id"),
             conversation_id,
@@ -4843,13 +4886,8 @@ async def _dag_turn_metered(
                         item = await asyncio.wait_for(progress_queue.get(), timeout=0.5)
                     except TimeoutError:
                         if await request.is_disconnected():
-                            logger.info("Client disconnected — cancelling DAG exec task")
-                            exec_task.cancel()
-                            try:
-                                with suppress(asyncio.CancelledError, TimeoutError):
-                                    await asyncio.wait_for(exec_task, timeout=5.0)
-                            except Exception:
-                                logger.exception("Unexpected error while cancelling DAG exec task")
+                            logger.info("Client disconnected")
+                            # The exec task is cancelled in the outer ``finally``.
                             return
                         # Drain inject queue during execution for real-time feedback.
                         if dag_interrupt_queue is not None:
@@ -5518,6 +5556,7 @@ async def _dag_turn_metered(
             yield _emit(sse_events, "error", _run_failed_payload(exc, elapsed))
             yield _sse("end", {})
         finally:
+            await _stop_turn_task(exec_task, "DAG exec task")
             if _dag_confirmation_pump_task is not None:
                 _dag_confirmation_pump_task.cancel()
                 with suppress(asyncio.CancelledError, Exception):
