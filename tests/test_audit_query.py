@@ -59,6 +59,13 @@ class TestThePlatformList:
     async def test_the_existing_fields_and_order_are_as_before(self, world: World) -> None:
         admin = await world.user("root", admin=True)
         await _event("settings.update", admin, detail="first")
+        # The database stamps rows to the second; the first a minute earlier,
+        # or the order of two rows written in the same second is the ids'.
+        async with world.factory() as db:
+            await db.execute(
+                update(AuditLog).values(created_at=datetime.now(UTC) - timedelta(minutes=1))
+            )
+            await db.commit()
         await _event("model.create", admin, target_type="model", target_id="m1", detail="second")
 
         body = (await world.call("GET", "/api/admin/audit-log", by=admin)).json()

@@ -26,7 +26,6 @@ from collections.abc import Iterator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pyotp
 import pytest
 
 from fim_one.core.audit import refusals
@@ -38,6 +37,7 @@ from fim_one.web.auth import create_oauth_state
 from fim_one.web.ip_rules import parse_rules
 from fim_one.web.oauth import OAuthProvider, OAuthUserInfo
 from tests.audit.harness import CLIENT_IP, World, _row_text, world  # noqa: F401
+from tests.totp import current_code
 
 ANY = tuple(range(200, 600))
 DYN: dict[str, str] = {}  # secrets the server generated: keys, codes, tokens
@@ -156,7 +156,7 @@ async def test_no_secret_reaches_a_row_the_export_or_the_list(world: World, gith
         secret = r.json().get("secret", "")
         DYN["totp_secret"] = secret
         r2 = await do(world, "A8 2fa enable", "POST", "/api/auth/2fa/enable", by=alice,
-                      json={"code": pyotp.TOTP(secret).now()})
+                      json={"code": current_code(secret)})
         if r2 is not None and r2.status_code == 200:
             for i, c in enumerate(r2.json().get("backup_codes", [])[:3]):
                 DYN[f"backup_code_{i}"] = c
