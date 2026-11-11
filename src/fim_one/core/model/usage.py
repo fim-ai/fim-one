@@ -411,16 +411,41 @@ class UsageReporter:
             self._meter.stream_progress(tokens)
 
 
-# Tokens per character, by kind of character, fitted against the
-# ``o200k_base`` encoding on English and Chinese prose, JSON, tool schemas
-# and Python source (each within 0.8x-1.2x of the real count). Letters run
-# about four to a token; digits and punctuation, which dominate JSON and
-# code, about two; CJK and other non-ASCII text about one each. Whitespace
-# is absorbed into the tokens around it.
-_TOKENS_PER_LETTER = 0.25
-_TOKENS_PER_DIGIT = 0.55
-_TOKENS_PER_PUNCTUATION = 0.65
-_TOKENS_PER_OTHER = 0.85
+# Tokens per character, by kind of character, fitted against OpenAI's
+# ``o200k_base`` encoding. On English, Chinese, Japanese and Korean prose,
+# Python and TypeScript source, JSON (compact and indented), SQL, HTML,
+# logs, Cyrillic, Greek, Arabic, Hebrew, Thai and Devanagari text, emoji,
+# base64, hex, random identifiers, digit runs, markdown tables and
+# whitespace, each comes within 0.83x-1.45x of the real count
+# (``tests/usage/test_model_meter.py`` holds the reference counts).
+#
+# - An ASCII letter about 0.23: English words run about one token each.
+#   A letter case or letter-digit change after fewer than three characters
+#   of the same kind (``aB3x``, never ``userId``) adds 1.3: random strings
+#   such as ids, base64 and hex break into tokens of one or two characters.
+# - A digit 0.45 (numbers split three digits at a time), plus 1.4 when it
+#   follows a space, which the encoding keeps apart from a number.
+# - Punctuation 0.7.
+# - A space after a non-space is part of the next token and costs nothing;
+#   any further space or tab 0.05, and a newline 1.35.
+# - CJK, kana and hangul 0.85 a character; letters of other alphabets 0.34
+#   (Latin with accents, Greek, Cyrillic) or 0.4 (Hebrew, Arabic, Thai,
+#   Devanagari and the rest); emoji 1.25; any other character 0.65.
+_TOKENS_PER_LETTER = 0.23
+_TOKENS_PER_SHORT_CHANGE = 1.3
+_TOKENS_PER_DIGIT = 0.45
+_TOKENS_PER_DIGIT_AFTER_SPACE = 1.4
+_TOKENS_PER_PUNCTUATION = 0.7
+_TOKENS_PER_SPACE = 0.05
+_TOKENS_PER_NEWLINE = 1.35
+_TOKENS_PER_CJK = 0.85
+_TOKENS_PER_NEAR_SCRIPT = 0.34
+_TOKENS_PER_FAR_SCRIPT = 0.4
+_TOKENS_PER_EMOJI = 1.25
+_TOKENS_PER_OTHER = 0.65
+# A run of one kind (lower, upper, digit) shorter than this ends in a change
+# that costs extra.
+_SHORT_RUN = 3
 # What a message costs beyond its content (role and separators), what a
 # tool call in the history costs beyond its arguments (id, name, framing),
 # and a flat figure per image: about what a 1024x1024 picture costs at high
@@ -430,33 +455,100 @@ _TOKENS_PER_MESSAGE = 4
 _TOKENS_PER_TOOL_CALL = 12
 _TOKENS_PER_IMAGE = 1100
 
+# The kind of each ASCII character: lower, upper, digit, space, newline,
+# punctuation.
+_ASCII_KIND = "".join(
+    "l" if chr(o).islower()
+    else "u" if chr(o).isupper()
+    else "d" if chr(o).isdigit()
+    else "n" if chr(o) == "\n"
+    else "s" if chr(o).isspace() or o < 32
+    else "p"
+    for o in range(128)
+)  # fmt: skip
+
+
+def _non_ascii_kind(ch: str, code: int) -> str:
+    """CJK ``c``, emoji ``e``, a near (``a``) or far (``f``) alphabet, space, other ``x``."""
+    if (
+        0x2E80 <= code <= 0x9FFF
+        or 0xAC00 <= code <= 0xD7AF
+        or 0x1100 <= code <= 0x11FF
+        or 0xF900 <= code <= 0xFAFF
+        or 0xFF00 <= code <= 0xFFEF
+        or 0x20000 <= code <= 0x3FFFF
+    ):
+        return "c"
+    if code >= 0x1F000 or 0x2600 <= code <= 0x27BF or code in (0x200D, 0xFE0F):
+        return "e"
+    if ch.isalpha():
+        return "a" if code < 0x0530 else "f"
+    if ch.isspace():
+        return "s"
+    return "x"
+
 
 class TextTokenCounter:
-    """A running :func:`estimate_tokens` over text that arrives in pieces."""
+    """A running :func:`estimate_tokens` over text that arrives in pieces.
 
-    __slots__ = ("_digits", "_letters", "_other", "_punctuation")
+    The pieces are counted as one text: a word or a number split across
+    two pieces costs what it would whole.
+    """
+
+    __slots__ = ("_counts", "_kind", "_run")
 
     def __init__(self) -> None:
-        self._letters = self._digits = self._punctuation = self._other = 0
+        # By kind (see ``_ASCII_KIND`` and ``_non_ascii_kind``); ``!`` counts
+        # short changes, ``0`` digits after a space.
+        self._counts: dict[str, int] = dict.fromkeys("ludsnpceafx!0", 0)
+        self._kind = "p"  # of the character before
+        self._run = 0  # characters of that kind in a row (letters and digits)
 
     def add(self, text: str | None) -> None:
+        counts, kind, run = self._counts, self._kind, self._run
+        ascii_kind = _ASCII_KIND
         for ch in text or ():
-            if ord(ch) >= 128:
-                self._other += 1
-            elif ch.isalpha():
-                self._letters += 1
-            elif ch.isdigit():
-                self._digits += 1
-            elif not ch.isspace():
-                self._punctuation += 1
+            code = ord(ch)
+            now = ascii_kind[code] if code < 128 else _non_ascii_kind(ch, code)
+            if now in "lud":
+                if kind in "lud":
+                    # ``Ab``: a capital starting a word is not a change.
+                    if now == kind or (kind == "u" and now == "l" and run == 1):
+                        run += 1
+                    else:
+                        if run < _SHORT_RUN:
+                            counts["!"] += 1
+                        run = 1
+                else:
+                    if now == "d" and kind == "s":
+                        counts["0"] += 1
+                    run = 1
+                counts[now] += 1
+            elif now == "s":
+                # The first space after a word goes into the next token.
+                if kind in "sn":
+                    counts["s"] += 1
+            else:
+                counts[now] += 1
+            kind = now
+        self._kind, self._run = kind, run
 
     def tokens(self) -> int:
         """The estimate so far, rounded up."""
+        c = self._counts
         exact = (
-            self._letters * _TOKENS_PER_LETTER
-            + self._digits * _TOKENS_PER_DIGIT
-            + self._punctuation * _TOKENS_PER_PUNCTUATION
-            + self._other * _TOKENS_PER_OTHER
+            (c["l"] + c["u"]) * _TOKENS_PER_LETTER
+            + c["!"] * _TOKENS_PER_SHORT_CHANGE
+            + c["d"] * _TOKENS_PER_DIGIT
+            + c["0"] * _TOKENS_PER_DIGIT_AFTER_SPACE
+            + c["p"] * _TOKENS_PER_PUNCTUATION
+            + c["s"] * _TOKENS_PER_SPACE
+            + c["n"] * _TOKENS_PER_NEWLINE
+            + c["c"] * _TOKENS_PER_CJK
+            + c["a"] * _TOKENS_PER_NEAR_SCRIPT
+            + c["f"] * _TOKENS_PER_FAR_SCRIPT
+            + c["e"] * _TOKENS_PER_EMOJI
+            + c["x"] * _TOKENS_PER_OTHER
         )
         return math.ceil(exact)
 
