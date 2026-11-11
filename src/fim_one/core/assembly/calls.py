@@ -12,7 +12,6 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable, Mapping
 from typing import TYPE_CHECKING, Any, Literal
-from urllib.parse import urlsplit, urlunsplit
 
 from .mcp_address import strip_url_secrets
 
@@ -28,24 +27,34 @@ RecordKind = Literal["connector", "database", "mcp"]
 
 
 def _where_it_went(url: Any) -> Any:
-    """*url* without user-info, query string and fragment.
+    """*url* as the record keeps it: where the call went, not what authenticated it.
 
-    A connector's base URL may carry a credential (``https://user:pass@host``,
-    ``…?api_key=…``). The record keeps where the call went, and organization
-    administrators read it; what authenticated the call is not part of that.
-    Synthetic ``db://`` and ``mcp://`` addresses have none of the three and
-    come back as they are.
+    A connector's base URL or an action's path may carry a credential: in
+    the user-info (``https://user:pass@host``), the query string or the
+    fragment, which are cut, or in the path (``/bot123456789:AAH…/send``,
+    ``;jsessionid=…``, ``a%3Fapi_key=…``), where a segment shaped like a
+    token is written ``***`` (:func:`strip_url_secrets`). A UUID segment is
+    one of those shapes: hosted webhooks and MCP servers keep their secret
+    there, and a resource id that is a UUID cannot be told from one.
+    Organization administrators read these records.
+
+    An address without a scheme (``user:pass@host/a``) is read as one with
+    it. The synthetic ``db://<connector>/<action>`` and
+    ``mcp://<server>/<tool>`` addresses are built from names and kept as
+    they are.
     """
     if not isinstance(url, str) or not url:
         return url
-    try:
-        parts = urlsplit(url)
-    except ValueError:
-        return url.split("?", 1)[0].split("#", 1)[0]
-    if not (parts.query or parts.fragment or "@" in parts.netloc):
+    if url.startswith(_SYNTHETIC):
         return url
-    host = parts.netloc.rsplit("@", 1)[-1]
-    return urlunsplit((parts.scheme, host, parts.path, "", ""))
+    if "://" not in url and not any(char.isspace() for char in url):
+        stripped = strip_url_secrets(f"{_ASSUMED}{url}") or ""
+        return stripped.removeprefix(_ASSUMED)
+    return strip_url_secrets(url)
+
+
+_SYNTHETIC = ("db://", "mcp://")
+_ASSUMED = "https://"
 
 
 def _fit(value: Any, limit: int) -> str:
