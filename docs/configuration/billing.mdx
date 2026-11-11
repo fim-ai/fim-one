@@ -171,7 +171,7 @@ This is the authoritative reference for every numeric rule that decides what a u
 
 ### What counts as a token
 
-Token consumption is metered in the model client, from the provider's `usage` object on every call, and written to the **usage ledger** (`usage_ledger`): an append-only table with one row per turn, run or request and model. A user's "used" is the sum of their ledger rows since their window began. The quota check, the Usage card in Settings, Admin → Users and the user export all read that sum.
+Token consumption is metered in the model client, from the provider's `usage` object on every call, and written to the **usage ledger** (`usage_ledger`): an append-only table with one row per turn, run or request and model. A user's "used" is the sum of their ledger rows since their window began. The quota check, the Usage card in Settings, Admin → Users and the user export all read that sum. The token figures of the platform statistics (Admin → Overview, Analytics, the metrics API) and of each user's dashboard are read from the same ledger, by the time the usage was recorded; the evaluation center's tokens consumed is the one figure still summed from the evaluation runs.
 
 - **Counted**: prompt tokens + completion tokens of every model call made on the user's account (the provider's own `total_tokens` when it reports one)
 - **Counted**: every model call of a chat turn, not only the answer: the agent's tool rounds, routing in Auto mode, domain classification, step titles, context compaction, follow-up suggestions, the conversation title, and the calls of an agent the turn delegated to with `call_agent`
