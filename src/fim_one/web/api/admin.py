@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import io
 import json
@@ -26,12 +26,13 @@ from sqlalchemy import func, literal_column, or_, select, text, update as sa_upd
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from fim_one.core.audit import query as audit_query
 from fim_one.core.audit import writer as audit
 from fim_one.core.usage import ledger as usage_ledger
 from fim_one.web.csv_safe import safe_writer
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_admin, hash_password, hash_password_async
-from fim_one.db.models import Agent, AuditLog, Connector, ConnectorCallLog, Conversation, InviteCode, KnowledgeBase, MCPServer as MCPServerModel, Message, ModelConfig, Organization, SystemSetting, User
+from fim_one.db.models import Agent, Connector, ConnectorCallLog, Conversation, InviteCode, KnowledgeBase, MCPServer as MCPServerModel, Message, ModelConfig, Organization, SystemSetting, User
 from fim_one.db.models.billing import BillingPlan, Subscription
 from fim_one.db.models.review_log import ReviewLog
 from fim_one.web.schemas.billing import (
@@ -1255,40 +1256,75 @@ class AuditLogEntry(BaseModel):
     outcome: str = "success"
     changes: dict[str, Any] | None = None
     ip_address: str | None = None
+    user_agent: str | None = None
+    # Which table the row is from (``audit`` / ``login`` / ``review`` /
+    # ``call``) and what only that table has.
+    source: str = "audit"
+    extra: dict[str, Any] = {}
 
 
 _AUDIT_EXPORT_LIMIT = 10_000
+_AUDIT_SOURCES = "^(" + "|".join(audit_query.SOURCES) + ")$"
 
 
-def _build_audit_filters(
-    action: str | None,
-    admin_id: str | None,
-    date_from: str | None,
-    date_to: str | None,
-) -> list[Any]:
-    """Build SQLAlchemy filter clauses for audit log queries."""
-    filters = []
-    if action:
-        filters.append(AuditLog.action == action)
-    if admin_id:
-        filters.append(AuditLog.actor_id == admin_id)
-    if date_from:
-        try:
-            dt_from = datetime.strptime(date_from, "%Y-%m-%d").replace(
-                hour=0, minute=0, second=0
-            )
-            filters.append(AuditLog.created_at >= dt_from)
-        except ValueError:
-            pass  # ignore invalid date strings
-    if date_to:
-        try:
-            dt_to = datetime.strptime(date_to, "%Y-%m-%d").replace(
-                hour=23, minute=59, second=59
-            )
-            filters.append(AuditLog.created_at <= dt_to)
-        except ValueError:
-            pass  # ignore invalid date strings
-    return filters
+def _parse_day(value: str | None) -> date | None:
+    """``YYYY-MM-DD`` as a date; anything else is no filter."""
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _audit_filter(
+    *,
+    source: str = "audit",
+    action: str | None = None,
+    admin_id: str | None = None,
+    org_id: str | None = None,
+    target_type: str | None = None,
+    target_id: str | None = None,
+    outcome: str | None = None,
+    ip_address: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> audit_query.EventFilter:
+    """The filter the audit endpoints' query parameters ask for."""
+    return audit_query.EventFilter(
+        source=cast(audit_query.Source, source),
+        action=action or None,
+        actor_id=admin_id or None,
+        org_id=org_id or None,
+        target_type=target_type or None,
+        target_id=target_id or None,
+        outcome=outcome or None,
+        ip_address=ip_address or None,
+        date_from=_parse_day(date_from),
+        date_to=_parse_day(date_to),
+    )
+
+
+def _audit_entry(row: audit_query.EventRow) -> dict[str, Any]:
+    return AuditLogEntry(
+        id=row.id,
+        admin_id=row.actor_id or "",
+        admin_username=row.actor_label,
+        action=row.action,
+        target_type=row.target_type,
+        target_id=row.target_id,
+        target_label=row.target_label,
+        detail=row.detail,
+        created_at=row.created_at.isoformat() if row.created_at else "",
+        actor_kind=row.actor_kind,
+        org_id=row.org_id,
+        outcome=row.outcome,
+        changes=row.changes,
+        ip_address=row.ip_address,
+        user_agent=row.user_agent,
+        source=row.source,
+        extra=row.extra,
+    ).model_dump()
 
 
 class AuditActionGroup(BaseModel):
@@ -1319,6 +1355,12 @@ async def export_audit_log(
     admin_id: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    org_id: str | None = None,
+    target_type: str | None = None,
+    target_id: str | None = None,
+    outcome: str | None = None,
+    ip_address: str | None = None,
+    source: str = Query("audit", pattern=_AUDIT_SOURCES),
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> StreamingResponse:
@@ -1327,20 +1369,16 @@ async def export_audit_log(
     When more match, the file ends with a line that says so and the
     response says it in ``X-Export-Truncated`` / ``X-Export-Total``.
     """
-    filters = _build_audit_filters(action, admin_id, date_from, date_to)
-    query = select(AuditLog).order_by(AuditLog.created_at.desc())
-    for f in filters:
-        query = query.where(f)
-    query = query.limit(_AUDIT_EXPORT_LIMIT)
-
-    result = await db.execute(query)
-    rows = result.scalars().all()
-    total = len(rows)
-    if total >= _AUDIT_EXPORT_LIMIT:
-        count_query = select(func.count()).select_from(AuditLog)
-        for f in filters:
-            count_query = count_query.where(f)
-        total = (await db.execute(count_query)).scalar_one()
+    filters = _audit_filter(
+        source=source, action=action, admin_id=admin_id, org_id=org_id,
+        target_type=target_type, target_id=target_id, outcome=outcome,
+        ip_address=ip_address, date_from=date_from, date_to=date_to,
+    )  # fmt: skip
+    page = await audit_query.list_events(
+        db, scope="platform", filters=filters, limit=_AUDIT_EXPORT_LIMIT
+    )
+    rows = page.items
+    total = page.total
     truncated = total > len(rows)
 
     buf = io.StringIO()
@@ -1361,7 +1399,7 @@ async def export_audit_log(
             r.detail or "",
             r.actor_kind or "",
             r.org_id or "",
-            r.outcome or "success",
+            r.outcome,
             json.dumps(r.changes, ensure_ascii=False, sort_keys=True) if r.changes else "",
             r.ip_address or "",
         ])
@@ -1397,6 +1435,21 @@ async def export_audit_log(
     )
 
 
+async def _audit_page(
+    db: AsyncSession, filters: audit_query.EventFilter, page: int, size: int
+) -> PaginatedResponse:
+    found = await audit_query.list_events(
+        db, scope="platform", filters=filters, offset=(page - 1) * size, limit=size
+    )
+    return PaginatedResponse(
+        items=[_audit_entry(row) for row in found.items],
+        total=found.total,
+        page=page,
+        size=size,
+        pages=math.ceil(found.total / size) if found.total > 0 else 1,
+    )
+
+
 @router.get("/audit-log", response_model=PaginatedResponse)
 async def list_audit_log(
     page: int = Query(1, ge=1),
@@ -1405,57 +1458,53 @@ async def list_audit_log(
     admin_id: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    org_id: str | None = None,
+    target_type: str | None = None,
+    target_id: str | None = None,
+    outcome: str | None = None,
+    ip_address: str | None = None,
+    source: str = Query("audit", pattern=_AUDIT_SOURCES),
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> PaginatedResponse:
-    """Return paginated audit log entries, newest first. Requires admin privileges."""
-    filters = _build_audit_filters(action, admin_id, date_from, date_to)
+    """Return paginated audit log entries, newest first. Requires admin privileges.
 
-    count_query = select(func.count()).select_from(AuditLog)
-    for f in filters:
-        count_query = count_query.where(f)
-    total_result = await db.execute(count_query)
-    total: int = total_result.scalar_one()
+    ``source`` picks the table: ``audit`` (events, the default), ``login``
+    (sign-ins), ``review`` (review trails) or ``call`` (call records).
+    """
+    filters = _audit_filter(
+        source=source, action=action, admin_id=admin_id, org_id=org_id,
+        target_type=target_type, target_id=target_id, outcome=outcome,
+        ip_address=ip_address, date_from=date_from, date_to=date_to,
+    )  # fmt: skip
+    return await _audit_page(db, filters, page, size)
 
-    data_query = (
-        select(AuditLog)
-        .order_by(AuditLog.created_at.desc())
-        .offset((page - 1) * size)
-        .limit(size)
-    )
-    for f in filters:
-        data_query = data_query.where(f)
 
-    rows_result = await db.execute(data_query)
-    rows = rows_result.scalars().all()
+@router.get("/call-log", response_model=PaginatedResponse)
+async def list_call_log(
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=200),
+    user_id: str | None = None,
+    org_id: str | None = None,
+    kind: str | None = Query(None, pattern="^(connector|database|mcp)$"),
+    resource_id: str | None = None,
+    outcome: str | None = Query(None, pattern="^(success|failed)$"),
+    date_from: str | None = None,
+    date_to: str | None = None,
+    current_user: User = Depends(get_current_admin),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> PaginatedResponse:
+    """The calls tools made to connectors, databases and MCP servers, one row each.
 
-    items = [
-        AuditLogEntry(
-            id=r.id,
-            admin_id=r.actor_id or "",
-            admin_username=r.actor_label,
-            action=r.action,
-            target_type=r.target_type,
-            target_id=r.target_id,
-            target_label=r.target_label,
-            detail=r.detail,
-            created_at=r.created_at.isoformat() if r.created_at else "",
-            actor_kind=r.actor_kind,
-            org_id=r.org_id,
-            outcome=r.outcome or "success",
-            changes=r.changes,
-            ip_address=r.ip_address,
-        ).model_dump()
-        for r in rows
-    ]
-
-    return PaginatedResponse(
-        items=items,
-        total=total,
-        page=page,
-        size=size,
-        pages=math.ceil(total / size) if total > 0 else 1,
-    )
+    Newest first. A row says who, through which organization, what was
+    called, the request line (no query string), the status and how long it
+    took; never the arguments.
+    """
+    filters = _audit_filter(
+        source="call", admin_id=user_id, org_id=org_id, target_type=kind,
+        target_id=resource_id, outcome=outcome, date_from=date_from, date_to=date_to,
+    )  # fmt: skip
+    return await _audit_page(db, filters, page, size)
 
 
 # ---------------------------------------------------------------------------
