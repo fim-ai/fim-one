@@ -224,7 +224,6 @@ class TestNothingElseSumsTheOldTotals:
     SRC = Path(fim_one.__file__).parent
     # File -> how many sums it may hold. A new one anywhere fails this test.
     STATISTICS = {
-        "web/api/admin.py": 5,  # the platform overview: totals, by model, by agent
         "web/api/admin_analytics.py": 2,
         "web/api/admin_extra.py": 1,  # the 30-day trend
         "web/api/dashboard.py": 4,

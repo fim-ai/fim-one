@@ -317,8 +317,6 @@ async def get_stats(
     stats_stmt = select(
         select(func.count()).select_from(User).scalar_subquery().label("total_users"),
         select(func.count()).select_from(Conversation).scalar_subquery().label("total_conversations"),
-        select(func.coalesce(func.sum(Conversation.total_tokens), 0)).scalar_subquery().label("total_tokens"),
-        select(func.coalesce(func.sum(Conversation.fast_llm_tokens), 0)).scalar_subquery().label("total_fast_llm_tokens"),
         select(func.count()).select_from(Message).scalar_subquery().label("total_messages"),
         select(func.count()).select_from(Agent).scalar_subquery().label("total_agents"),
         select(func.count()).select_from(KnowledgeBase).scalar_subquery().label("total_kbs"),
@@ -327,8 +325,6 @@ async def get_stats(
     stats_row = stats_result.one()
     total_users: int = stats_row.total_users
     total_conversations: int = stats_row.total_conversations
-    total_tokens: int = stats_row.total_tokens
-    total_fast_llm_tokens: int = stats_row.total_fast_llm_tokens
     total_messages: int = stats_row.total_messages
     total_agents: int = stats_row.total_agents
     total_kbs: int = stats_row.total_kbs
@@ -365,30 +361,29 @@ async def get_stats(
         for label, count in label_counts.most_common(10)
     ]
 
-    # Tokens by model (same grouping logic, but SUM(total_tokens))
-    _token_model_col = func.coalesce(Conversation.model_name, literal_column("'Unknown'"))
-    token_model_rows = await db.execute(
-        select(
-            _token_model_col.label("model"),
-            func.coalesce(
-                func.sum(Conversation.total_tokens - Conversation.fast_llm_tokens), 0
-            ).label("tokens"),
-        )
-        .group_by(_token_model_col)
-        .order_by(func.sum(Conversation.total_tokens - Conversation.fast_llm_tokens).desc())
-        .limit(20)
-    )
+    # Tokens: everything the usage ledger holds, so deleting a conversation,
+    # a run or a workflow does not take its tokens out of these figures.
+    # By the model each was consumed on; the rows carried over from the
+    # conversations' fast-model totals have no model and form the fast slice.
+    # The fast figure is the work done after the turns (entry "background").
+    fast_label = f"Fast LLM ({fast_llm_model})" if fast_llm_model else "Fast LLM"
+    total_tokens = 0
+    total_fast_llm_tokens = 0
     token_label_counts: Counter[str] = Counter()
-    for r in token_model_rows.all():
-        token_label_counts[_model_label(r[0])] += r[1]
+    for usage_slice in await usage_ledger.used_by(db, ["model", "background"]):
+        total_tokens += usage_slice.total_tokens
+        if usage_slice.background:
+            total_fast_llm_tokens += usage_slice.total_tokens
+        if usage_slice.model is None and usage_slice.background:
+            label = fast_label
+        else:
+            label = _model_label(usage_slice.model or "Unknown")
+        token_label_counts[label] += usage_slice.total_tokens
     tokens_by_model = [
         ModelStat(model=label, count=count)
         for label, count in token_label_counts.most_common(10)
+        if count > 0
     ]
-    # Add fast LLM tokens as a separate pie chart entry
-    if total_fast_llm_tokens > 0:
-        fast_label = f"Fast LLM ({fast_llm_model})" if fast_llm_model else "Fast LLM"
-        tokens_by_model.append(ModelStat(model=fast_label, count=total_fast_llm_tokens))
 
     # Top agents by conversation count (top 5), joined to get agent name
     agent_rows = await db.execute(
@@ -446,17 +441,12 @@ async def get_stats(
     )
     today_conversations: int = today_conv_result.scalar_one()
 
-    # Tokens by agent (top 10)
+    # Tokens by agent (top 10), from the usage ledger
+    per_agent = usage_ledger.usage_per_agent_subquery()
     tokens_by_agent_rows = await db.execute(
-        select(
-            Conversation.agent_id,
-            Agent.name,
-            func.sum(Conversation.total_tokens).label("total"),
-        )
-        .join(Agent, Agent.id == Conversation.agent_id)
-        .where(Conversation.agent_id.isnot(None))
-        .group_by(Conversation.agent_id, Agent.name)
-        .order_by(func.sum(Conversation.total_tokens).desc())
+        select(Agent.id, Agent.name, per_agent.c.total_tokens)
+        .join(per_agent, per_agent.c.agent_id == Agent.id)
+        .order_by(per_agent.c.total_tokens.desc(), Agent.id)
         .limit(10)
     )
     tokens_by_agent = [
