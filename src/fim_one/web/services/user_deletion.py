@@ -92,9 +92,17 @@ def _vector_store_base() -> Path:
     return Path(os.environ.get("VECTOR_STORE_DIR", "./data/vector_store"))
 
 
+DELETED_USER_PREFIX = "deleted-user-"
+
+
 def deleted_user_label(user_id: str) -> str:
     """What a deleted user is called in the records that outlive the account."""
-    return f"deleted-user-{user_id[:8]}"
+    return f"{DELETED_USER_PREFIX}{user_id[:8]}"
+
+
+def is_reserved_username(name: str | None) -> bool:
+    """Whether *name* reads as a deleted user's label; no account may take one."""
+    return name is not None and name.strip().lower().startswith(DELETED_USER_PREFIX)
 
 
 # Keys of an audit row's ``changes`` that hold a name of the account the

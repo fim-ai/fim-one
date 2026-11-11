@@ -64,7 +64,7 @@ from fim_one.db.models.oauth_binding import UserOAuthBinding
 from fim_one.db.models.organization import OrgMembership
 from fim_one.db.models.skill import Skill
 from fim_one.db.models.workflow import Workflow
-from fim_one.web.services.user_deletion import purge_user_data
+from fim_one.web.services.user_deletion import is_reserved_username, purge_user_data
 from fim_one.web.schemas.auth import (
     ChangePasswordRequest,
     ForgotPasswordRequest,
@@ -1006,6 +1006,8 @@ async def update_profile(
         if not body.username or not body.username.strip():
             raise AppError("username_empty")
         new_username = body.username.strip()
+        if is_reserved_username(new_username) and new_username != user.username:
+            raise AppError("username_reserved")
         # Only apply cooldown & uniqueness check if username is actually changing
         if new_username != user.username:
             # First-time username setup (NULL) skips cooldown

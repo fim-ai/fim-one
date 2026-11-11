@@ -45,7 +45,7 @@ from fim_one.web.schemas.billing import (
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse
 from fim_one.web.schemas.model_config import ModelConfigResponse
 from fim_one.web.services.call_log_stats import any_database, is_mcp, kind_of
-from fim_one.web.services.user_deletion import purge_user_data
+from fim_one.web.services.user_deletion import is_reserved_username, purge_user_data
 
 # ---------------------------------------------------------------------------
 # Settings helpers (delegated to admin_utils, re-exported for compatibility)
@@ -676,6 +676,8 @@ async def create_user(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> AdminUserInfo:
     """Create a new user. Requires admin privileges."""
+    if is_reserved_username(body.username):
+        raise AppError("username_reserved")
     # Check username uniqueness (only if provided)
     if body.username is not None:
         result = await db.execute(select(User).where(User.username == body.username))

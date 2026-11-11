@@ -161,6 +161,8 @@ export function GeneralSettings() {
         ""
       if (msg.includes("username_taken")) {
         setUsernameError(t("usernameTaken"))
+      } else if (msg.includes("username_reserved")) {
+        setUsernameError(t("usernameReserved"))
       } else if (msg.includes("username_cooldown")) {
         const days = (err as { errorArgs?: Record<string, unknown> })?.errorArgs?.days ?? 7
         setUsernameError(t("usernameCooldown", { days: String(days) }))

@@ -9,6 +9,7 @@
   "invite_code_expired": "Invite code has expired.",
   "invite_code_exhausted": "Invite code has been fully used.",
   "username_taken": "Username already taken.",
+  "username_reserved": "Usernames starting with \"deleted-user-\" are reserved.",
   "email_already_registered": "Email already registered.",
   "invalid_credentials": "Invalid credentials.",
   "ip_not_allowed": "Access from your IP address is not allowed. Contact your administrator.",

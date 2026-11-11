@@ -57,6 +57,7 @@
     "usernameSaved": "Username saved",
     "usernameSaveFailed": "Failed to save username",
     "usernameTaken": "This username is already taken",
+    "usernameReserved": "Usernames starting with \"deleted-user-\" are reserved",
     "usernameCooldown": "Username can only be changed once every 7 days. Please try again in {days} days.",
     "usernameChangeConfirmTitle": "Change username?",
     "usernameChangeConfirmDescription": "Once changed, your username will be locked for 7 days. Make sure this is the name you want.",
