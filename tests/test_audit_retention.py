@@ -520,3 +520,9 @@ class TestTimeZones:
             stamp = await db.scalar(select(ReviewLog.created_at))
         assert stamp is not None and stamp.tzinfo is None
         assert abs(stamp - datetime.now(UTC).replace(tzinfo=None)) < timedelta(minutes=5)
+
+
+def test_a_database_built_from_the_models_has_the_call_records_age_index() -> None:
+    """Migration ``b2d4e6f8a901`` creates it; ``create_all`` must as well."""
+    names = {index.name for index in ConnectorCallLog.__table__.indexes}
+    assert "ix_connector_call_logs_created_at" in names
