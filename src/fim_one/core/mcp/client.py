@@ -46,10 +46,50 @@ def _tool_def_from_mcp(tool: Any) -> dict[str, Any]:
     }
 
 
+class _Contexts:
+    """The transports and sessions a client has open, closed last-in first-out.
+
+    Not :class:`contextlib.AsyncExitStack`, for what that does when the
+    closing task is being cancelled (a client that went away), which is when
+    connections are usually closed. Every context on the stack then fails
+    with a CancelledError of its own, and the exit stack hands each failure
+    to the next context and links the errors to one another through
+    ``__context__``. With two HTTP servers the links form a cycle. anyio
+    follows the ``__context__`` chain of a cancelled task with no end to it,
+    so the event loop spins and the process stops answering every request.
+
+    Here each context is closed on its own, with no error handed on, and the
+    first failure is raised once all of them have been closed.
+    """
+
+    def __init__(self) -> None:
+        self._entered: list[contextlib.AbstractAsyncContextManager[Any]] = []
+
+    async def enter_async_context(self, context: Any) -> Any:
+        value = await context.__aenter__()
+        self._entered.append(context)
+        return value
+
+    async def aclose(self) -> None:
+        first: BaseException | None = None
+        while self._entered:
+            context = self._entered.pop()
+            try:
+                await context.__aexit__(None, None, None)
+            except BaseException as exc:
+                if first is None:
+                    first = exc
+                else:
+                    logger.debug("Another MCP connection failed to close: %r", exc)
+        if first is not None:
+            # Outside the handler above, so that it is linked to nothing.
+            raise first
+
+
 class MCPClient:
     """Manages connections to one or more MCP servers and provides tool adapters.
 
-    Uses :class:`contextlib.AsyncExitStack` to keep server processes and
+    Keeps server processes and
     sessions alive for the lifetime of the client.  Call :meth:`disconnect_all`
     (or use as an async context manager) to clean up.
 
@@ -68,7 +108,7 @@ class MCPClient:
     """
 
     def __init__(self) -> None:
-        self._exit_stack = contextlib.AsyncExitStack()
+        self._exit_stack = _Contexts()
         self._sessions: dict[str, Any] = {}  # name -> ClientSession
 
     # ------------------------------------------------------------------
