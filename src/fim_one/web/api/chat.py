@@ -1324,6 +1324,8 @@ async def _stop_turn_task(task: asyncio.Task[Any] | None, what: str) -> None:
     # then waits for the task without limit.
     with suppress(asyncio.CancelledError):
         await asyncio.wait({task}, timeout=_TURN_STOP_GRACE)
+    if not task.done():
+        logger.warning("The %s is still running after it was cancelled", what)
 
 
 async def _metered_body(
