@@ -32,7 +32,7 @@ import contextlib
 import logging
 import os
 import random
-from collections.abc import Mapping
+from collections.abc import Awaitable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
@@ -176,8 +176,8 @@ class AuditRetentionSweeper:
                 return None
             if not await self._due(moment):
                 return None
-            counts = await self._remove_expired(moment)
-            await self._leave_a_record(counts)
+            counts, failed = await self._remove_expired(moment)
+            await self._leave_a_record(counts, failed)
         return counts
 
     @staticmethod
@@ -233,7 +233,12 @@ class AuditRetentionSweeper:
         # by one check interval a day.
         return moment - _aware(last) >= timedelta(hours=self.interval_hours * 0.9)
 
-    async def _remove_expired(self, moment: datetime) -> dict[str, int]:
+    async def _remove_expired(self, moment: datetime) -> tuple[dict[str, int], list[str]]:
+        """Remove what is past its period. Returns the counts and the tables that failed.
+
+        A table that fails is logged and named; the others are still swept,
+        and what that table had already removed stays counted.
+        """
         from fim_one.db.models.audit_log import AuditLog
         from fim_one.db.models.connector_call_log import ConnectorCallLog
         from fim_one.db.models.login_history import LoginHistory
@@ -246,20 +251,37 @@ class AuditRetentionSweeper:
             "connector_call_logs": 0,
             "confirmation_payloads": 0,
         }
+        failed: list[str] = []
+
+        async def step(table: str, work: Awaitable[int]) -> None:
+            try:
+                counts[table] = await work
+            except Exception:
+                logger.exception("Audit retention: sweeping %s failed", table)
+                failed.append(table)
+
         if self.retention.audit_days > 0:
             cutoff = moment - timedelta(days=self.retention.audit_days)
-            counts["audit_logs"] = await self._delete_older(AuditLog, cutoff)
-            counts["login_history"] = await self._delete_older(LoginHistory, cutoff)
             # ``review_log.created_at`` carries no timezone; it is written in UTC.
-            counts["review_log"] = await self._delete_older(ReviewLog, cutoff.replace(tzinfo=None))
-            counts["confirmation_payloads"] = await self._clear_payloads(cutoff)
+            naive = cutoff.replace(tzinfo=None)
+            await step("audit_logs", self._delete_older(AuditLog, cutoff, tally=counts))
+            await step("login_history", self._delete_older(LoginHistory, cutoff, tally=counts))
+            await step("review_log", self._delete_older(ReviewLog, naive, tally=counts))
+            await step("confirmation_payloads", self._clear_payloads(cutoff, tally=counts))
         if self.retention.call_log_days > 0:
             cutoff = moment - timedelta(days=self.retention.call_log_days)
-            counts["connector_call_logs"] = await self._delete_older(ConnectorCallLog, cutoff)
-        return counts
+            await step(
+                "connector_call_logs", self._delete_older(ConnectorCallLog, cutoff, tally=counts)
+            )
+        return counts, failed
 
-    async def _delete_older(self, model: Any, cutoff: datetime) -> int:
+    async def _delete_older(
+        self, model: Any, cutoff: datetime, *, tally: dict[str, int] | None = None
+    ) -> int:
         """Delete the rows of *model* created before *cutoff*, a batch at a time.
+
+        With *tally*, its entry for the table follows the count batch by batch, so what
+        was removed before a failure is still reported.
 
         The only ``DELETE`` on the four record tables besides user deletion.
         """
@@ -289,11 +311,15 @@ class AuditRetentionSweeper:
                 )
                 await db.commit()
                 removed += max(result.rowcount, 0)
+                if tally is not None:
+                    tally[model.__tablename__] = removed
             if len(ids) < self.batch_size:
                 return removed
             await asyncio.sleep(0)  # let requests run between batches
 
-    async def _clear_payloads(self, cutoff: datetime) -> int:
+    async def _clear_payloads(
+        self, cutoff: datetime, *, tally: dict[str, int] | None = None
+    ) -> int:
         """Clear what approvers were shown on requests decided before *cutoff*.
 
         The payload holds the arguments of the call that asked. The request
@@ -332,11 +358,13 @@ class AuditRetentionSweeper:
                 )
                 await db.commit()
                 cleared += len(ids)
+                if tally is not None:
+                    tally["confirmation_payloads"] = cleared
             if len(ids) < self.batch_size:
                 return cleared
             await asyncio.sleep(0)
 
-    async def _leave_a_record(self, counts: dict[str, int]) -> None:
+    async def _leave_a_record(self, counts: dict[str, int], failed: list[str]) -> None:
         kept = (
             f"audit {self.retention.audit_days or 'unlimited'} days, "
             f"calls {self.retention.call_log_days or 'unlimited'} days"
@@ -345,8 +373,12 @@ class AuditRetentionSweeper:
         await audit.record(
             actions.AUDIT_RETENTION_SWEEP,
             actor=audit.system_actor("audit-retention"),
-            detail=f"removed: {removed}; kept: {kept}",
+            outcome="failed" if failed else "success",
+            detail=f"removed: {removed}; kept: {kept}"
+            + (f"; failed: {', '.join(failed)}" if failed else ""),
         )
+        if failed:
+            logger.warning("Audit retention sweep failed for: %s", ", ".join(failed))
         if any(counts.values()):
             logger.info("Audit retention sweep removed: %s (kept: %s)", removed, kept)
         else:

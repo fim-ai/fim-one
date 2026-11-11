@@ -418,7 +418,9 @@ class TestTheLockOnPostgres:
         second: list[Any] = []
         original = AuditRetentionSweeper._delete_older
 
-        async def watched(self: AuditRetentionSweeper, model: Any, cutoff: datetime) -> int:
+        async def watched(
+            self: AuditRetentionSweeper, model: Any, cutoff: datetime, **kw: Any
+        ) -> int:
             if not seen:
                 async with factory() as db:
                     rows = await db.execute(
@@ -430,7 +432,7 @@ class TestTheLockOnPostgres:
                     )
                     seen.append(list(rows.all()))
                 second.append(await AuditRetentionSweeper(Retention()).sweep(now=NOW))
-            return await original(self, model, cutoff)
+            return await original(self, model, cutoff, **kw)
 
         monkeypatch.setattr(AuditRetentionSweeper, "_delete_older", watched)
 
@@ -447,3 +449,33 @@ class TestTheLockOnPostgres:
             await db.execute(
                 text("SELECT pg_advisory_unlock(hashtext('fim_one.audit_retention_sweep'))")
             )
+
+
+class TestATableThatFails:
+    async def test_the_other_tables_are_swept_and_the_record_names_the_failure(
+        self, factory: Factory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        await _add(factory, *[_login(900) for _ in range(3)], _review(900), _call(900))
+        pauses = 0
+
+        async def pause(_seconds: float) -> None:
+            # Between batches; the second pause is in the sign-in history,
+            # after two of its rows went.
+            nonlocal pauses
+            pauses += 1
+            if pauses == 2:
+                raise RuntimeError("database away")
+
+        monkeypatch.setattr("fim_one.core.audit.retention.asyncio.sleep", pause)
+
+        counts = await AuditRetentionSweeper(Retention(), batch_size=1).sweep(now=NOW)
+
+        assert counts is not None
+        # What went before the failure is counted; the tables after it ran.
+        assert counts["login_history"] == 2 and await _count(factory, LoginHistory) == 1
+        assert counts["review_log"] == 1 and counts["connector_call_logs"] == 1
+        [record] = await _sweeps(factory)
+        assert record.outcome == "failed"
+        assert record.detail is not None
+        assert "login_history=2" in record.detail and "review_log=1" in record.detail
+        assert record.detail.endswith("failed: login_history")
