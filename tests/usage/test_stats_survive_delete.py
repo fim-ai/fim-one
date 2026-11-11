@@ -553,6 +553,41 @@ class TestDashboard:
         assert sum(day["tokens"] for day in dashboard["activity_trend"]) == current
 
 
+class TestDashboardDays:
+    """The dashboard's seven days are UTC dates counted back from the UTC
+    today, the same days the ledger buckets by, whatever the server's zone."""
+
+    @pytest.mark.parametrize("zone", ["Etc/GMT-14", "Etc/GMT+12"])
+    async def test_the_last_day_is_the_utc_today(
+        self, usage: Usage, alice: User, zone: str  # noqa: F811
+    ) -> None:
+        """UTC+14 and UTC-12 are a calendar day apart at every hour, so in
+        one of them the local date is not the UTC date."""
+        import os
+        import time
+
+        from fim_one.db.models.usage_ledger import UsageLedger
+
+        await usage.add(
+            UsageLedger(user_id=alice.id, source_type="conversation", entry="chat",
+                        total_tokens=9, created_at=datetime.now(UTC) - timedelta(minutes=1)),
+        )  # fmt: skip
+        before = os.environ.get("TZ")
+        os.environ["TZ"] = zone
+        time.tzset()
+        try:
+            dashboard = await _get(usage, "/api/dashboard/stats", alice)
+        finally:
+            if before is None:
+                os.environ.pop("TZ", None)
+            else:
+                os.environ["TZ"] = before
+            time.tzset()
+        days = dashboard["activity_trend"]
+        assert days[-1]["date"] == str(datetime.now(UTC).date())
+        assert sum(day["tokens"] for day in days) == 9
+
+
 # ---------------------------------------------------------------------------
 # A slice below zero
 # ---------------------------------------------------------------------------

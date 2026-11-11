@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.core.usage import ledger as usage_ledger
 from fim_one.db import get_session
+from fim_one.db.dates import utc_date
 from fim_one.db.models import Agent, Connector, ConnectorCallLog, Conversation, KnowledgeBase, User
 from fim_one.db.models.resource_subscription import ResourceSubscription
 from fim_one.db.models.workflow import Workflow, WorkflowRun, history_run_clause
@@ -397,21 +398,24 @@ async def get_dashboard_stats(
 
     activity_cutoff = datetime.now(timezone.utc) - timedelta(days=7)
     # Conversations started per day; tokens per day from the usage ledger.
+    # Days are UTC dates on both, and so is the "today" the series is
+    # zero-filled back from, whatever the server's or the database's zone.
+    conv_day = utc_date(Conversation.created_at)
     trend_rows = await db.execute(
         select(
-            func.date(Conversation.created_at).label("day"),
+            conv_day.label("day"),
             func.count().label("cnt"),
         )
         .where(
             Conversation.user_id == current_user.id,
             Conversation.created_at >= activity_cutoff,
         )
-        .group_by(func.date(Conversation.created_at))
-        .order_by(func.date(Conversation.created_at))
+        .group_by(conv_day)
+        .order_by(conv_day)
     )
     tokens_by_day = dict(await usage_ledger.used_by_day(db, current_user.id, activity_cutoff))
 
-    today_date = date.today()
+    today_date = datetime.now(UTC).date()
     # Build ordered map from oldest to newest (6 days ago → today)
     date_map: dict[str, dict[str, int]] = {
         str(today_date - timedelta(days=i)): {"count": 0, "tokens": 0}

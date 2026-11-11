@@ -353,6 +353,33 @@ class TestPlatformFigures:
             with pytest.raises(ValueError):
                 await used_by(db, ["user"])  # type: ignore[list-item]
 
+    async def test_days_are_utc_dates_whatever_the_session_zone(
+        self, factory: Factory  # noqa: F811
+    ) -> None:
+        """17:30 UTC on 10 November is 01:30 on the 11th in Shanghai: with the
+        PostgreSQL session there, ``DATE(created_at)`` says the 11th, and the
+        dashboard's zero-filled UTC days would drop the row. The days read
+        here are the UTC date on every dialect."""
+        from fim_one.core.usage.ledger import UsageSlice, used_by, used_by_day
+        from fim_one.db.dates import utc_date
+
+        at = datetime(2026, 11, 10, 17, 30, tzinfo=UTC)
+        async with factory() as db:
+            db.add(UsageLedger(user_id="alice", source_type="conversation", entry="chat",
+                               total_tokens=9, created_at=at))  # fmt: skip
+            await db.commit()
+        async with factory() as db:
+            if db.get_bind().dialect.name == "postgresql":
+                await db.execute(text("SET TIME ZONE 'Asia/Shanghai'"))
+                session_day = (
+                    await db.execute(text("SELECT DATE(created_at) FROM usage_ledger"))
+                ).scalar_one()
+                assert str(session_day) == "2026-11-11"
+            assert await used_by(db, ["day"]) == [UsageSlice(total_tokens=9, day="2026-11-10")]
+            assert await used_by_day(db, "alice", at - timedelta(days=1)) == [("2026-11-10", 9)]
+            day = (await db.execute(select(utc_date(UsageLedger.created_at)))).scalar_one()
+            assert str(day) == "2026-11-10"
+
     async def test_per_agent(self, factory: Factory) -> None:  # noqa: F811
         from fim_one.core.usage.ledger import usage_per_agent_subquery
 

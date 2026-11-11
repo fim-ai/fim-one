@@ -232,9 +232,10 @@ async def used_by_day(db: AsyncSession, user_id: str, since: datetime) -> list[t
     """
     from sqlalchemy import func, select
 
+    from fim_one.db.dates import utc_date
     from fim_one.db.models.usage_ledger import UsageLedger
 
-    day = func.date(UsageLedger.created_at)
+    day = utc_date(UsageLedger.created_at)
     rows = (
         await db.execute(
             select(day, func.coalesce(func.sum(UsageLedger.total_tokens), 0))
@@ -298,11 +299,12 @@ _DIMENSIONS: tuple[Dimension, ...] = ("day", "model", "agent", "background")
 class UsageSlice:
     """Usage that shares the values of the dimensions it was grouped by.
 
-    A dimension not grouped by is ``None``. ``day`` is the date the usage
-    was recorded, as ``YYYY-MM-DD`` (``DATE(created_at)``, as the other
-    daily figures). ``background`` is whether it was the work done after a
-    turn (entry ``background``: the title, and on backfilled rows every
-    fast-model token of the conversation, which carry no model).
+    A dimension not grouped by is ``None``. ``day`` is the UTC date the
+    usage was recorded, as ``YYYY-MM-DD`` (:class:`~fim_one.db.dates.utc_date`,
+    whatever the database session's time zone). ``background`` is whether
+    it was the work done after a turn (entry ``background``: the title, and
+    on backfilled rows every fast-model token of the conversation, which
+    carry no model).
     """
 
     total_tokens: int
@@ -386,13 +388,14 @@ async def used_by(
     """
     from sqlalchemy import case, func, select
 
+    from fim_one.db.dates import utc_date
     from fim_one.db.models.usage_ledger import UsageLedger
 
     unknown = [name for name in by if name not in _DIMENSIONS]
     if unknown:
         raise ValueError(f"cannot group usage by {unknown}")
     columns: dict[str, Any] = {
-        "day": func.date(UsageLedger.created_at),
+        "day": utc_date(UsageLedger.created_at),
         "model": UsageLedger.model,
         "agent": UsageLedger.agent_id,
         "background": case((UsageLedger.entry == "background", 1), else_=0),
