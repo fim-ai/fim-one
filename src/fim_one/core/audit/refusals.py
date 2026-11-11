@@ -16,9 +16,16 @@ one window, so no more than the budget's worth of sources is ever held:
 memory is bounded by the budget, and a new source is never refused its
 first record for any reason but the budget of the current window.
 
+A caller can also name a *group* for a refusal (the person refused, or
+the workflow of a trigger key) with a budget of its own, counted before
+the kind's: one person refused over many sources cannot use up the
+kind's budget and leave everyone else's refusals unrecorded.
+
 What was counted and not written is reported: about one window after the
 first uncounted refusal of a kind, one summary record of that kind is
-written with the system as actor and the number left out. A count still
+written with the system as actor and the number left out, one per
+organization the refusals belonged to (so an organization's own view
+shows that something of its own was left out, and nothing of another's). A count still
 pending when a process stops is lost. All of this is per server process:
 with several processes each has its own budget and writes its own summary.
 """
@@ -60,8 +67,11 @@ class _Kind:
     written: OrderedDict[str, list[float]] = field(default_factory=OrderedDict)
     budget_start: float = 0.0
     budget_used: int = 0
-    # Refusals counted and not written since the last summary.
-    left_out: int = 0
+    # group -> [when its window began, how many records it has had].
+    groups: dict[str, list[float]] = field(default_factory=dict)
+    # Refusals counted and not written since the last summary, by the
+    # organization they belonged to (None: none).
+    left_out: dict[str | None, int] = field(default_factory=dict)
 
 
 class RefusalThrottle:
@@ -78,31 +88,55 @@ class RefusalThrottle:
         self._kinds: dict[str, _Kind] = {}
 
     def admit(
-        self, action: str, source: str, *, now: float | None = None, per_source: int = 1
+        self,
+        action: str,
+        source: str,
+        *,
+        now: float | None = None,
+        per_source: int = 1,
+        group: str | None = None,
+        per_group: int = 0,
+        org: str | None = None,
     ) -> bool:
         """Whether a refusal of kind *action* from *source* is written now.
 
-        A source gets *per_source* records per window. ``False``: this one
-        was counted (:meth:`take_left_out` reports it).
+        A source gets *per_source* records per window, and a *group*
+        *per_group* (when both are given), before the kind's budget is
+        asked. ``False``: this one was counted, under *org*
+        (:meth:`take_left_out` reports it).
         """
         moment = time.monotonic() if now is None else now
         kind = self._kinds.setdefault(action, _Kind())
         self._forget_expired(kind, moment)
         seen = kind.written.get(source)
         if seen is not None and seen[1] >= per_source:
-            kind.left_out += 1
-            return False
+            return self._leave_out(kind, org)
+        counted = None
+        if group is not None and per_group > 0:
+            counted = kind.groups.get(group)
+            if counted is not None and moment - counted[0] >= self._window:
+                counted = None
+            if counted is not None and counted[1] >= per_group:
+                return self._leave_out(kind, org)
         if moment - kind.budget_start >= self._window:
             kind.budget_start, kind.budget_used = moment, 0
         if kind.budget_used >= self._max_records:
-            kind.left_out += 1
-            return False
+            return self._leave_out(kind, org)
         if seen is None:
             kind.written[source] = [moment, 1]
         else:
             seen[1] += 1
+        if group is not None and per_group > 0:
+            if counted is None:
+                counted = kind.groups[group] = [moment, 0]
+            counted[1] += 1
         kind.budget_used += 1
         return True
+
+    @staticmethod
+    def _leave_out(kind: _Kind, org: str | None) -> bool:
+        kind.left_out[org] = kind.left_out.get(org, 0) + 1
+        return False
 
     def _forget_expired(self, kind: _Kind, moment: float) -> None:
         # Insertion order is time order: stop at the first one still fresh.
@@ -111,14 +145,25 @@ class RefusalThrottle:
             if moment - written_at < self._window:
                 break
             del kind.written[source]
+        # A group is only held once it has had a record, so there are no
+        # more of them than the kind's budget allows per window.
+        if len(kind.groups) > self._max_records:
+            for name in [
+                n for n, (start, _) in kind.groups.items() if moment - start >= self._window
+            ]:
+                del kind.groups[name]
 
     def take_left_out(self, action: str) -> int:
         """How many refusals of kind *action* were counted since last asked; resets the count."""
+        return sum(self.take_left_out_by_org(action).values())
+
+    def take_left_out_by_org(self, action: str) -> dict[str | None, int]:
+        """:meth:`take_left_out` by the organization the refusals belonged to."""
         kind = self._kinds.get(action)
         if kind is None:
-            return 0
-        count, kind.left_out = kind.left_out, 0
-        return count
+            return {}
+        counts, kind.left_out = kind.left_out, {}
+        return counts
 
     def remembered(self) -> int:
         """How many sources are held, over all kinds."""
@@ -159,21 +204,25 @@ def safe_path(path: str) -> str:
 
 
 async def write_summary(action: str) -> bool:
-    """Write the summary record for *action* if any refusal was left out; never raises."""
+    """Write the summary records for *action* if any refusal was left out; never raises.
+
+    One per organization the left-out refusals belonged to, and one for
+    those that belonged to none.
+    """
     _summary_pending.discard(action)
-    count = _throttle.take_left_out(action)
-    if not count:
-        return False
-    await audit.record(
-        action,
-        actor=audit.system_actor("refusal summary"),
-        outcome="denied",
-        detail=(
-            f"{count} more refusal(s) of this kind were counted and not recorded one by "
-            f"one in the last {int(WINDOW_SECONDS // 60)} minutes"
-        ),
-    )
-    return True
+    counts = _throttle.take_left_out_by_org(action)
+    for org, count in sorted(counts.items(), key=lambda item: item[0] or ""):
+        await audit.record(
+            action,
+            actor=audit.system_actor("refusal summary"),
+            org_id=org,
+            outcome="denied",
+            detail=(
+                f"{count} more refusal(s) of this kind were counted and not recorded one "
+                f"by one in the last {int(WINDOW_SECONDS // 60)} minutes"
+            ),
+        )
+    return bool(counts)
 
 
 def _schedule_summary(action: str) -> None:
@@ -198,14 +247,30 @@ def _schedule_summary(action: str) -> None:
 _summary_tasks: set[asyncio.Task[bool]] = set()
 
 
-def admit_refusal(action: str, source: str | None, *, per_source: int = 1) -> bool:
+def admit_refusal(
+    action: str,
+    source: str | None,
+    *,
+    per_source: int = 1,
+    group: str | None = None,
+    per_group: int = 0,
+    org: str | None = None,
+) -> bool:
     """Whether a record of kind *action* from *source* may be written now.
 
-    For a caller that writes the record itself, to another table (a failed
-    sign-in). One that may not is counted and reported in the kind's next
-    summary record, like a refusal :func:`record_refusal` leaves out.
+    For a caller that writes the record itself (a failed sign-in, a
+    refused workflow run). One that may not is counted and reported in the
+    kind's next summary record, like a refusal :func:`record_refusal`
+    leaves out. *group*, *per_group* and *org*: see :meth:`RefusalThrottle.admit`.
     """
-    if _throttle.admit(action, source or "-", per_source=per_source):
+    if _throttle.admit(
+        action,
+        source or "-",
+        per_source=per_source,
+        group=group,
+        per_group=per_group,
+        org=org,
+    ):
         return True
     _schedule_summary(action)
     return False

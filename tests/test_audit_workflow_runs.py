@@ -997,3 +997,75 @@ class TestAContinuationCarriesNothingOfTheApproversRequest:
 
         (row,) = await world.events("workflow.run_started")
         assert (row.actor_id, row.auth_method, row.credential_ref) == (alice.id, None, None)
+
+
+class TestOnePersonCannotUseUpTheRefusalBudget:
+    """Review F3. The refusal throttle has one budget per kind for the
+    whole instance (600 records in ten minutes). One person refused over
+    700 workflows used it up, and everyone else's refusals went
+    unrecorded for the window; the summary said only how many, with no
+    organization, so an organization's own view showed nothing missing."""
+
+    @staticmethod
+    def _workflow(index: int, org_id: str | None) -> Any:
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            id=f"wf-{index:04d}", org_id=org_id, name=f"w{index}", api_key_prefix=None
+        )
+
+    async def test_after_one_persons_700_refusals_another_persons_is_recorded(
+        self, world: World
+    ) -> None:
+        from fim_one.core.workflow.run_audit import record_refused
+
+        alice, bob = await world.user("alice"), await world.user("bob")
+        for index in range(700):
+            await record_refused(
+                self._workflow(index, "org-a"),
+                user_id=alice.id,
+                mode="interactive",
+                error_code="token_quota_exceeded",
+            )
+
+        written = await record_refused(
+            self._workflow(9999, "org-b"),
+            user_id=bob.id,
+            mode="interactive",
+            error_code="token_quota_exceeded",
+        )
+
+        assert written
+        rows = await world.events("workflow.run_refused")
+        assert {row.actor_id for row in rows} == {alice.id, bob.id}
+        assert len([row for row in rows if row.actor_id == alice.id]) == 20
+
+    async def test_what_was_left_out_is_summarised_per_organization(self, world: World) -> None:
+        from fim_one.core.workflow.run_audit import record_refused
+
+        alice = await world.user("alice")
+        for index in range(25):
+            await record_refused(
+                self._workflow(index, "org-a"),
+                user_id=alice.id,
+                mode="interactive",
+                error_code="token_quota_exceeded",
+            )
+        for index in range(25, 50):
+            await record_refused(
+                self._workflow(index, None),
+                user_id=alice.id,
+                mode="interactive",
+                error_code="token_quota_exceeded",
+            )
+
+        assert await refusals.write_summary("workflow.run_refused")
+
+        summaries = [
+            row for row in await world.events("workflow.run_refused") if row.actor_kind == "system"
+        ]
+        # 20 recorded, then 5 left out in org-a and 25 with no organization.
+        assert sorted((row.org_id or "", row.detail.split(" ")[0]) for row in summaries) == [
+            ("", "25"),
+            ("org-a", "5"),
+        ]
