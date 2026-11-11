@@ -1286,6 +1286,29 @@ async def _in_background_scope(turn_meter: OpenMeter, work: Coroutine[Any, Any, 
         await work
 
 
+async def _stop_turn_task(task: asyncio.Task[Any] | None, what: str) -> None:
+    """Cancel the task that runs the turn when its stream ends before it does.
+
+    A client that goes away ends the stream wherever it is waiting, not
+    necessarily where it polls ``request.is_disconnected()``. Left running,
+    the task keeps calling the model and tools for a turn nobody reads, on
+    connections the clean-up below has closed, after the meter has closed.
+    """
+    if task is None or task.done():
+        return
+    logger.info("Stream ended before the %s finished — cancelling it", what)
+    # The stream's own task may itself be cancelled: the wait below is then
+    # cut short, and this keeps the task's outcome from being reported as
+    # an exception nobody retrieved.
+    task.add_done_callback(lambda t: t.cancelled() or t.exception())
+    task.cancel()
+    try:
+        with suppress(asyncio.CancelledError, TimeoutError):
+            await asyncio.wait_for(task, timeout=5.0)
+    except Exception:
+        logger.exception("Unexpected error while cancelling the %s", what)
+
+
 async def _metered_body(
     body: AsyncGenerator[str, None], turn_meter: OpenMeter
 ) -> AsyncGenerator[str, None]:
@@ -3285,6 +3308,7 @@ async def _react_turn_metered(
         # while the DB poll is still blocked.  Scope falls back to the
         # conversation for agent-less playground runs so question cards
         # work without an agent binding.  Cancelled below at teardown.
+        run_task: asyncio.Task[Any] | None = None
         _confirmation_pump_task = _start_confirmation_pump(
             (agent_cfg or {}).get("agent_id"),
             conversation_id,
@@ -4186,6 +4210,7 @@ async def _react_turn_metered(
             yield _emit(sse_events, "error", _run_failed_payload(exc, elapsed))
             yield _sse("end", {})
         finally:
+            await _stop_turn_task(run_task, "ReAct task")
             if _confirmation_pump_task is not None:
                 _confirmation_pump_task.cancel()
                 with suppress(asyncio.CancelledError, Exception):
@@ -4579,6 +4604,7 @@ async def _dag_turn_metered(
 
         # Inline confirmation pump: the same entry as the ReAct handler,
         # so a chat with no agent is served under its conversation here too.
+        exec_task: asyncio.Task[Any] | None = None
         _dag_confirmation_pump_task = _start_confirmation_pump(
             (agent_cfg or {}).get("agent_id"),
             conversation_id,
@@ -5518,6 +5544,7 @@ async def _dag_turn_metered(
             yield _emit(sse_events, "error", _run_failed_payload(exc, elapsed))
             yield _sse("end", {})
         finally:
+            await _stop_turn_task(exec_task, "DAG exec task")
             if _dag_confirmation_pump_task is not None:
                 _dag_confirmation_pump_task.cancel()
                 with suppress(asyncio.CancelledError, Exception):
