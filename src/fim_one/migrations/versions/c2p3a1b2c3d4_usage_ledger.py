@@ -45,14 +45,22 @@ How it runs:
   large table rewrites nothing.
 
 At the end the backfilled totals are compared with the source tables per
-user (:data:`RECONCILE_SQL`). A difference means a conversation or run was
-written while the backfill ran (an instance of the previous release still
-serving), or an earlier, interrupted run carried over a source that has
-been deleted since. Only the users that differ are carried over again,
-their leftovers removed, in up to :data:`RECONCILE_ROUNDS` short rounds;
-a difference that remains after them fails the migration. What an instance
-of the previous release adds after the migration has finished has no
-ledger row; ``python -m fim_one.core.usage.topup`` records it.
+user, once (:data:`RECONCILE_SQL`). A difference means a conversation or
+run was written while the backfill ran (an instance of the previous
+release still serving), or an earlier, interrupted run carried over a
+source that has been deleted since. Each user that differs is carried over
+again, the leftovers removed, and checked against their sources, all in
+one transaction (``REPEATABLE READ`` on PostgreSQL), so the check sees
+exactly the sources the carry-over read. Only a user whose carry-over does
+not match its own snapshot fails the migration; a writer still running
+cannot cause that.
+
+What is written after that is left to the top-up: for a user carried over
+again, what was committed after their transaction began; for every other
+user, what was committed after the check. An instance of the previous
+release still serving adds to the totals without ledger rows, during the
+migration and after it; once the last one has stopped,
+``python -m fim_one.core.usage.topup --apply`` records it.
 
 Downgrade drops the table, and with it what was metered since.
 
@@ -86,8 +94,9 @@ _INDEXES: dict[str, list[str]] = {
 }
 # Index -> column the sum reads, kept in the index so it is read from there.
 _COVERED = {"ix_usage_ledger_user_created": "total_tokens"}
-# Rounds of carrying over again the users whose totals differ.
-RECONCILE_ROUNDS = 5
+# Attempts at one user's carry-over when PostgreSQL cannot serialize it
+# (another replica of the migration writing the same rows at once).
+CARRY_OVER_ATTEMPTS = 5
 # Source rows read per query. A conversation gives up to two ledger rows.
 BATCH = 2000
 # Ledger rows per INSERT: fourteen values a row, under SQLite's limit of
@@ -99,22 +108,23 @@ _NAMESPACE = uuid.UUID("c2b3a1b2-c3d4-4c2b-8a1b-c2b3a1b2c3d4")
 # Per user and source table: what the old sum saw, and what was carried
 # over. Any row it returns is a difference. Also the reconciliation an
 # operator can run by hand right after the migration.
-RECONCILE_SQL = """
+_RECONCILE_TEMPLATE = """
 SELECT user_id, source_type, SUM(source_total) AS source_total, SUM(ledger_total) AS ledger_total
 FROM (
     SELECT user_id, 'conversation' AS source_type,
            total_tokens AS source_total, 0 AS ledger_total
-      FROM conversations WHERE total_tokens > 0
+      FROM conversations WHERE total_tokens > 0{owner}
     UNION ALL
     SELECT user_id, 'workflow_run', total_tokens, 0
-      FROM workflow_runs WHERE total_tokens > 0
+      FROM workflow_runs WHERE total_tokens > 0{owner}
     UNION ALL
     SELECT user_id, source_type, 0, total_tokens
-      FROM usage_ledger WHERE kind = 'backfill'
+      FROM usage_ledger WHERE kind = 'backfill'{owner}
 ) AS both_sides
 GROUP BY user_id, source_type
 HAVING SUM(source_total) <> SUM(ledger_total)
 """
+RECONCILE_SQL = _RECONCILE_TEMPLATE.format(owner="")
 
 
 def _ledger() -> sa.TableClause:
@@ -310,22 +320,32 @@ def _differences(bind: sa.Connection) -> list[Any]:
     return list(bind.execute(sa.text(RECONCILE_SQL)).all())
 
 
+def _owner(user_id: str | None) -> tuple[str, dict[str, Any]]:
+    """The condition (appended to a WHERE) that selects one user's rows."""
+    if user_id is None:
+        return " AND user_id IS NULL", {}
+    return " AND user_id = :user", {"user": user_id}
+
+
+def _differences_of(bind: sa.Connection, user_id: str | None) -> list[Any]:
+    owner, params = _owner(user_id)
+    return list(bind.execute(sa.text(_RECONCILE_TEMPLATE.format(owner=owner)), params).all())
+
+
 def _carry_over_again(bind: sa.Connection, user_id: str | None) -> None:
     """Bring one user's backfilled rows to what their sources say now.
 
     Their sources are carried over again, and the backfilled rows of theirs
     that no source gives any more are removed: those of a conversation or
     run deleted (or emptied) since an earlier, interrupted run, and a fast
-    or main row its conversation no longer splits off.
+    or main row its conversation no longer splits off. Rows of any other
+    kind (``usage``, ``adjustment``) are not touched.
     """
-    if user_id is None:
-        owner, params, mine = " AND user_id IS NULL", {}, "user_id IS NULL"
-    else:
-        owner, params, mine = " AND user_id = :user", {"user": user_id}, "user_id = :user"
+    owner, params = _owner(user_id)
     current = _copy(bind, _CONVERSATIONS_SQL.format(owner=owner), _conversation_rows, params)
     current |= _copy(bind, _RUNS_SQL.format(owner=owner), _run_rows, params)
     there = bind.execute(
-        sa.text(f"SELECT id FROM {_TABLE} WHERE kind = 'backfill' AND {mine}"), params
+        sa.text(f"SELECT id FROM {_TABLE} WHERE kind = 'backfill'{owner}"), params
     ).scalars()
     stale = [row_id for row_id in there if row_id not in current]
     for start in range(0, len(stale), _STATEMENT_ROWS):
@@ -337,29 +357,65 @@ def _carry_over_again(bind: sa.Connection, user_id: str | None) -> None:
         )
 
 
-def _backfill_and_reconcile(bind: sa.Connection) -> None:
-    _backfill(bind)
-    differences = _differences(bind)
-    # Each round covers only the users that differ, so it takes as long as
-    # their sources do, not the table: a writer still running gets a short
-    # window to fall between the carry-over and the check.
-    for _ in range(RECONCILE_ROUNDS):
-        if not differences:
-            return
-        for user_id in sorted({row.user_id for row in differences}, key=lambda u: u or ""):
+def _cannot_serialize(error: BaseException) -> bool:
+    """PostgreSQL gave up on the transaction: a serialization failure or a deadlock."""
+    code = getattr(getattr(error, "orig", error), "pgcode", None)
+    return code in ("40001", "40P01")
+
+
+def _carry_over_and_check(bind: sa.Connection, user_id: str | None, *, snapshot: bool) -> list[Any]:
+    """Carry one user over again and compare, in one transaction.
+
+    *snapshot* (PostgreSQL, whose connection is in autocommit here): the
+    transaction is ``REPEATABLE READ``, so the comparison reads the same
+    sources the carry-over read, whatever was committed since. Otherwise
+    (SQLite) the migration's own transaction holds the database's write
+    lock, and nothing else is written in between.
+
+    Returns the differences that remain, which is empty unless the
+    carry-over is wrong.
+    """
+    if not snapshot:
+        _carry_over_again(bind, user_id)
+        return _differences_of(bind, user_id)
+    for attempt in range(1, CARRY_OVER_ATTEMPTS + 1):
+        bind.execute(sa.text("BEGIN ISOLATION LEVEL REPEATABLE READ"))
+        try:
             _carry_over_again(bind, user_id)
-        differences = _differences(bind)
-    if differences:
+            remaining = _differences_of(bind, user_id)
+            if remaining:
+                bind.execute(sa.text("ROLLBACK"))
+                return remaining
+            bind.execute(sa.text("COMMIT"))
+            return []
+        except Exception as error:
+            bind.execute(sa.text("ROLLBACK"))
+            if not _cannot_serialize(error) or attempt == CARRY_OVER_ATTEMPTS:
+                raise
+    return []  # not reached
+
+
+def _backfill_and_reconcile(bind: sa.Connection, *, snapshot: bool = False) -> None:
+    _backfill(bind)
+    # One check over every user. A user who differs is carried over again
+    # and compared in a transaction of its own, which takes as long as
+    # their sources do, not the table; writes that land after it, or after
+    # this check for everyone else, are the top-up's (see the docstring).
+    users = sorted({row.user_id for row in _differences(bind)}, key=lambda u: u or "")
+    failed: list[Any] = []
+    for user_id in users:
+        failed.extend(_carry_over_and_check(bind, user_id, snapshot=snapshot))
+    if failed:
         shown = ", ".join(
             f"user {row.user_id} {row.source_type}: source {row.source_total},"
             f" ledger {row.ledger_total}"
-            for row in differences[:5]
+            for row in failed[:5]
         )
         raise RuntimeError(
-            f"usage_ledger backfill does not match its sources for {len(differences)} user(s)"
-            f" ({shown}) after {RECONCILE_ROUNDS} rounds of carrying them over again."
-            " Conversations or workflow runs are still being written: stop the instances"
-            " of the previous release and run the migration again."
+            f"usage_ledger backfill does not match its sources for"
+            f" {len({row.user_id for row in failed})} user(s)"
+            f" ({shown}), compared in the same snapshot as it was carried over."
+            " This is a fault in the backfill, not a writer still running."
         )
 
 
@@ -407,7 +463,7 @@ def upgrade() -> None:
         # Commits the table (and whatever the migration run did before), then
         # every batch on its own: no transaction spans the source tables.
         with op.get_context().autocommit_block():
-            _backfill_and_reconcile(op.get_bind())
+            _backfill_and_reconcile(op.get_bind(), snapshot=True)
     else:
         _backfill_and_reconcile(bind)
 

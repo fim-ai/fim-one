@@ -403,9 +403,60 @@ class TestWithTheSourcesStillBeingWritten:
         again = {source for checked, sources in upserts if checked for source in sources}
         assert again == {"conv-a1", "conv-a2", "conv-old", "run-r1"}  # alice's, not bob's
 
-    def test_a_writer_that_does_not_stop_fails_it_after_a_few_short_rounds(
+    def test_a_writer_on_other_users_does_not_hold_it_up(
         self, before: sa.Engine, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """Bob differs once; carol's total keeps growing from the check on.
+
+        Only bob is carried over again and compared. What carol gains after
+        the check is the top-up's: the migration finishes, and the
+        reconciliation query shows exactly that much for her.
+        """
+        module = _module()
+        monkeypatch.setattr(module, "BATCH", 2)
+        writes_after_check = 0
+
+        def _writes(bind: Any, count: int) -> None:
+            nonlocal writes_after_check
+            if count == 2:  # conv-b1 has just been carried over
+                _write_meanwhile(
+                    before, bind, "UPDATE conversations SET total_tokens = 80 WHERE id = 'conv-b1'"
+                )
+            if upserts[-1][0]:  # after the check
+                writes_after_check += 1
+                _write_meanwhile(
+                    before, bind,
+                    "UPDATE workflow_runs SET total_tokens = total_tokens + 1 WHERE id = 'run-r4'",
+                )  # fmt: skip
+
+        upserts = self._watch(module, monkeypatch, _writes)
+
+        _migrate(before, _C2P3, "upgrade")
+
+        again = {source for checked, sources in upserts if checked for source in sources}
+        assert again == {"conv-b1", "conv-b2", "run-r2", "run-r3"}
+        assert writes_after_check >= 2
+        with before.connect() as conn:
+            left = [
+                (row.user_id, row.source_type, int(row.source_total), int(row.ledger_total))
+                for row in conn.execute(text(module.RECONCILE_SQL))
+            ]
+        assert left == [("carol", "workflow_run", writes_after_check, 0)]
+
+    def test_a_writer_on_the_same_user_does_not_hold_it_up(
+        self, before: sa.Engine, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Bob's run grows after every batch, during his own carry-over too.
+
+        His carry-over and its comparison read one snapshot, so the
+        migration finishes; the writes committed after that snapshot began
+        are left over, for the top-up.
+        """
+        if before.dialect.name != "postgresql":
+            pytest.skip(
+                "SQLite: the migration holds the write lock from its first write to its"
+                " commit, so no other connection writes during a carry-over"
+            )
         module = _module()
 
         def _always(bind: Any, count: int) -> None:
@@ -416,15 +467,94 @@ class TestWithTheSourcesStillBeingWritten:
 
         upserts = self._watch(module, monkeypatch, _always)
 
-        with pytest.raises(RuntimeError, match="still being written"):
-            _migrate(before, _C2P3, "upgrade")
+        _migrate(before, _C2P3, "upgrade")
 
         again = [sources for checked, sources in upserts if checked]
-        # Each round: bob's conversations and his runs, nobody else's.
-        assert len(again) == 2 * module.RECONCILE_ROUNDS
-        assert {source for sources in again for source in sources} == {
-            "conv-b1", "conv-b2", "run-r2", "run-r3",
-        }  # fmt: skip
+        # Bob's conversations and his runs, once each.
+        assert again == [["conv-b1", "conv-b2"], ["run-r2", "run-r3"]]
+        with before.connect() as conn:
+            left = [
+                (row.user_id, row.source_type, int(row.source_total) - int(row.ledger_total))
+                for row in conn.execute(text(module.RECONCILE_SQL))
+            ]
+        # One write after each of his two batches, both after his snapshot.
+        assert left == [("bob", "workflow_run", 2)]
+
+    def test_a_carry_over_postgresql_cannot_serialize_is_tried_again(
+        self, before: sa.Engine, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Another replica wrote the same rows: the transaction is rolled back and run again."""
+        if before.dialect.name != "postgresql":
+            pytest.skip("SQLite's carry-over runs in the migration's own transaction")
+        module = _module()
+        _migrate(before, _C2P3, "upgrade")
+        with before.begin() as conn:  # leaves bob a stale row the backfill does not remove
+            conn.execute(text("DELETE FROM workflow_runs WHERE id = 'run-r3'"))
+        compare = module._differences_of
+        calls = 0
+
+        class _ConflictError(Exception):
+            pgcode = "40001"
+
+        def _once(bind: Any, user_id: Any) -> list[Any]:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise _ConflictError("could not serialize access due to concurrent update")
+            return compare(bind, user_id)
+
+        monkeypatch.setattr(module, "_differences_of", _once)
+
+        _migrate(before, _C2P3, "upgrade")
+
+        assert calls == 2
+        with before.connect() as conn:
+            assert conn.execute(text(module.RECONCILE_SQL)).all() == []
+
+    def test_a_carry_over_leaves_the_users_metered_rows_alone(
+        self, before: sa.Engine, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Bob differs and has a stale backfilled row, a metered row and an adjustment.
+
+        The stale row goes; the other two are not even proposed for removal.
+        """
+        _migrate(before, _C2P3, "upgrade")
+        with before.begin() as conn:
+            for row_id, kind in (("live-b", "usage"), ("adj-b", "adjustment")):
+                conn.execute(
+                    text(
+                        f"INSERT INTO {_LEDGER} (id, user_id, source_type, source_id, entry,"
+                        " total_tokens, kind) VALUES (:id, 'bob', 'conversation', 'conv-b1',"
+                        " 'chat', 7, :kind)"
+                    ),
+                    {"id": row_id, "kind": kind},
+                )
+            conn.execute(text("DELETE FROM workflow_runs WHERE id = 'run-r3'"))
+            conn.execute(text("UPDATE conversations SET total_tokens = 80 WHERE id = 'conv-b1'"))
+        proposed: list[str] = []
+
+        def _deletes(conn: Any, cursor: Any, statement: str, parameters: Any, *_: Any) -> None:
+            if statement.lstrip().upper().startswith("DELETE"):
+                values = parameters.values() if isinstance(parameters, dict) else parameters
+                proposed.extend(str(value) for value in values)
+
+        sa.event.listen(before, "before_cursor_execute", _deletes)
+        try:
+            _migrate(before, _C2P3, "upgrade")
+        finally:
+            sa.event.remove(before, "before_cursor_execute", _deletes)
+
+        stale = module_row_id("workflow_run", "run-r3")
+        assert proposed == [stale]
+        with before.connect() as conn:
+            kinds = dict(
+                conn.execute(
+                    text(f"SELECT id, kind FROM {_LEDGER} WHERE id IN ('live-b', 'adj-b', :stale)"),
+                    {"stale": stale},
+                ).all()
+            )
+            assert conn.execute(text(_module().RECONCILE_SQL)).all() == []
+        assert kinds == {"live-b": "usage", "adj-b": "adjustment"}
 
     def test_a_second_run_rewrites_no_row_that_is_up_to_date(self, before: sa.Engine) -> None:
         _migrate(before, _C2P3, "upgrade")
