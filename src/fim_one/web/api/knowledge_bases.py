@@ -393,13 +393,15 @@ async def _ingest_document(
     regression vs. the pre-OCR behavior.
     """
     from fim_one.core.usage.meter import UsageScope, metered
+    from fim_one.web.services.quota_enforcer import resource_org_id
 
     # The loaders may ask a vision model to read images and scanned pages:
-    # that is recorded against whoever added the document.
+    # that is recorded against whoever added the document, with the
+    # knowledge base's organization.
     async with metered(
         UsageScope(
             user_id=user_id,
-            org_id=None,
+            org_id=await resource_org_id({"kb_id": kb_id}),
             source_type="endpoint",
             source_id=kb_id,
             entry="kb_ingest",

@@ -146,12 +146,15 @@ class TestChat:
 class TestTheModelBackedHelperEndpoints:
     """AI assist for agents and connectors, KB chat, DB chat, schema annotation."""
 
-    async def _connector(self, usage: Usage, owner: User) -> Any:  # noqa: F811
+    async def _connector(
+        self, usage: Usage, owner: User, org: Any = None  # noqa: F811
+    ) -> Any:
         from fim_one.db.models.connector import Connector, ConnectorAction
 
         connector = Connector(
             id="conn-api",
             user_id=owner.id,
+            org_id=org.id if org is not None else None,
             name="crm",
             type="api",
             base_url="https://crm.example.test",
@@ -193,12 +196,13 @@ class TestTheModelBackedHelperEndpoints:
         body: dict[str, Any],
         entry: str,
         source_id: str | None,
+        org: Any = None,
     ) -> None:
         # Whatever the endpoint makes of the model's reply: what it asked
         # the model is recorded.
         await usage.call("POST", path, by=by, json=body, expect=tuple(range(200, 600)))
 
-        rows = await _recorded(usage, provider, by=by)
+        rows = await _recorded(usage, provider, by=by, org=org)
         assert _sources(rows) == {("endpoint", source_id)}
         assert _entries(rows) == {entry}
 
@@ -215,6 +219,41 @@ class TestTheModelBackedHelperEndpoints:
         await self._helper(
             usage, provider, alice, f"/api/agents/{agent.id}/ai/refine",
             {"instruction": "be brief"}, "ai_assist.agent_refine", agent.id,
+        )  # fmt: skip
+
+    async def test_an_organizations_agent_puts_its_organization_on_the_row(
+        self, usage: Usage, provider: Provider  # noqa: F811
+    ) -> None:
+        alice = await usage.user("alice")
+        org = await usage.org("acme", alice)
+        agent = await usage.agent(alice, org=org)
+        await self._helper(
+            usage, provider, alice, f"/api/agents/{agent.id}/ai/refine",
+            {"instruction": "be brief"}, "ai_assist.agent_refine", agent.id, org,
+        )  # fmt: skip
+
+    async def test_an_organizations_connector_puts_its_organization_on_the_row(
+        self, usage: Usage, provider: Provider  # noqa: F811
+    ) -> None:
+        alice = await usage.user("alice")
+        org = await usage.org("acme", alice)
+        await self._connector(usage, alice, org)
+        await self._helper(
+            usage, provider, alice, "/api/connectors/conn-api/ai/generate-actions",
+            {"instruction": "add a ping action"}, "ai_assist.connector_actions", "conn-api", org,
+        )  # fmt: skip
+
+    async def test_an_organizations_knowledge_base_puts_its_organization_on_the_row(
+        self, usage: Usage, provider: Provider  # noqa: F811
+    ) -> None:
+        from fim_one.db.models.knowledge_base import KnowledgeBase
+
+        alice = await usage.user("alice")
+        org = await usage.org("acme", alice)
+        await usage.add(KnowledgeBase(id="kb-1", user_id=alice.id, name="handbook", org_id=org.id))
+        await self._helper(
+            usage, provider, alice, "/api/knowledge-bases/kb-1/ai/chat",
+            {"message": "what is in here?"}, "kb_chat", "kb-1", org,
         )  # fmt: skip
 
     async def test_connector_create(self, usage: Usage, provider: Provider) -> None:  # noqa: F811
@@ -379,8 +418,9 @@ class TestOtherEntries:
         from fim_one.web.deps import get_llm
 
         alice = await usage.user("alice")
+        org = await usage.org("acme", alice)
         await usage.add(
-            KnowledgeBase(id="kb-1", user_id=alice.id, name="handbook"),
+            KnowledgeBase(id="kb-1", user_id=alice.id, name="handbook", org_id=org.id),
             KBDocument(
                 id="doc-1", kb_id="kb-1", filename="scan.pdf", file_path="scan.pdf",
                 file_size=1, file_type="pdf", status="processing",
@@ -408,7 +448,8 @@ class TestOtherEntries:
             chunk_strategy="recursive", chunk_size=1000, chunk_overlap=200,
         )  # fmt: skip
 
-        rows = await _recorded(usage, provider, by=alice)
+        # The knowledge base's organization is on the row.
+        rows = await _recorded(usage, provider, by=alice, org=org)
         assert provider.calls == 2
         assert _sources(rows) == {("endpoint", "kb-1")}
         assert _entries(rows) == {"kb_ingest"}

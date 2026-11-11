@@ -35,7 +35,8 @@ here is what propagates that contract upward.
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
+from typing import Any
 
 from fastapi import Depends, Request
 from sqlalchemy import select
@@ -241,11 +242,51 @@ _ENDPOINT_ENTRIES: dict[str, str] = {
 _RESOURCE_PARAMS = ("agent_id", "connector_id", "kb_id")
 
 
-def endpoint_usage_scope(request: Request, user_id: str) -> UsageScope:
+async def resource_org_id(params: Mapping[str, Any]) -> str | None:
+    """The organization of the agent, connector or knowledge base *params* names.
+
+    *params* holds at most one of ``agent_id``, ``connector_id`` and
+    ``kb_id`` (a route's path parameters). ``None`` when it names none,
+    the resource is not found, or it belongs to no organization. Read in a
+    short session of its own; never raises (a failed read logs and gives
+    ``None``: the row is still written, without its organization).
+    """
+    from sqlalchemy import select
+
+    from fim_one.db import create_session
+    from fim_one.db.models.agent import Agent
+    from fim_one.db.models.connector import Connector
+    from fim_one.db.models.knowledge_base import KnowledgeBase
+
+    lookups: tuple[tuple[str, Any], ...] = (
+        ("agent_id", Agent),
+        ("connector_id", Connector),
+        ("kb_id", KnowledgeBase),
+    )
+    for key, model in lookups:
+        resource_id = params.get(key)
+        if not resource_id:
+            continue
+        try:
+            async with create_session() as db:
+                org_id = (
+                    await db.execute(select(model.org_id).where(model.id == str(resource_id)))
+                ).scalar_one_or_none()
+        except Exception:
+            logger.warning("Organization of %s %s could not be read", key, resource_id)
+            return None
+        return str(org_id) if org_id else None
+    return None
+
+
+def endpoint_usage_scope(
+    request: Request, user_id: str, org_id: str | None = None
+) -> UsageScope:
     """Whose usage a helper endpoint's model calls are: the caller's own.
 
     Recorded as a use of the endpoint (there is no conversation or run),
-    under the entry name of its route and the resource it works on.
+    under the entry name of its route and the resource it works on, with
+    that resource's organization (*org_id*, see :func:`resource_org_id`).
     """
     route = request.scope.get("route")
     name = getattr(route, "name", None) or "unknown"
@@ -253,7 +294,7 @@ def endpoint_usage_scope(request: Request, user_id: str) -> UsageScope:
     resource_id = next((str(params[key]) for key in _RESOURCE_PARAMS if params.get(key)), None)
     return UsageScope(
         user_id=user_id,
-        org_id=None,
+        org_id=org_id,
         source_type="endpoint",
         source_id=resource_id,
         entry=_ENDPOINT_ENTRIES.get(name, f"endpoint.{name}"),
@@ -274,7 +315,8 @@ async def get_metered_user(
     in the background (annotating a large schema) reports to the same
     scope and is written as it arrives.
     """
-    opened = open_meter(endpoint_usage_scope(request, user.id))
+    org_id = await resource_org_id(request.path_params)
+    opened = open_meter(endpoint_usage_scope(request, user.id, org_id))
     try:
         yield user
     finally:
@@ -288,4 +330,5 @@ __all__ = [
     "get_user_quota",
     "get_user_quota_by_id",
     "is_user_unentitled",
+    "resource_org_id",
 ]
