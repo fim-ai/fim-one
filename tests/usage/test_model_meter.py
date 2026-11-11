@@ -603,3 +603,193 @@ def test_the_model_package_does_not_import_the_ledger() -> None:
     imports = re.compile(r"^\s*(?:from|import)\s+\S*(?:core\.usage|\.\.usage)\b", re.MULTILINE)
     for path in Path(usage_mod.__file__).parent.glob("*.py"):
         assert not imports.search(path.read_text(encoding="utf-8")), path.name
+
+
+class TestACallCancelledBeforeItYieldsAnything:
+    """The provider has the request; what it was sent is billed even if nothing came back."""
+
+    @staticmethod
+    async def _cancel_once(started: asyncio.Event, call: Any) -> None:
+        task = asyncio.create_task(call)
+        await started.wait()
+        for _ in range(3):
+            await asyncio.sleep(0)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    async def test_a_call_that_is_not_streamed_reports_its_prompt(
+        self, provider: Provider, meter: UsageMeter
+    ) -> None:
+        provider.hang_at = 1
+
+        await self._cancel_once(provider.hung, _llm().chat(MESSAGES, tools=_SCHEMA_TOOLS))
+
+        (item,) = meter.drain()
+        assert item.estimated is True
+        assert item.prompt_tokens == estimate_prompt_tokens(MESSAGES, _SCHEMA_TOOLS)
+        assert item.completion_tokens == 0
+
+    async def test_a_stream_still_waiting_for_its_response_reports_its_prompt(
+        self, monkeypatch: pytest.MonkeyPatch, meter: UsageMeter
+    ) -> None:
+        sent = asyncio.Event()
+
+        async def _waiting(**_kwargs: Any) -> Any:
+            sent.set()
+            await asyncio.Event().wait()
+
+        monkeypatch.setattr("litellm.acompletion", _waiting)
+
+        async def _read() -> None:
+            async for _ in _llm().stream_chat(MESSAGES):
+                pass
+
+        await self._cancel_once(sent, _read())
+
+        (item,) = meter.drain()
+        assert (item.estimated, item.prompt_tokens, item.completion_tokens) == (
+            True,
+            estimate_prompt_tokens(MESSAGES),
+            0,
+        )
+
+    async def test_a_stream_opened_but_waiting_for_its_first_chunk_reports_its_prompt(
+        self, monkeypatch: pytest.MonkeyPatch, meter: UsageMeter
+    ) -> None:
+        opened = asyncio.Event()
+
+        async def _silent(**_kwargs: Any) -> Any:
+            async def _chunks() -> AsyncIterator[Any]:
+                opened.set()
+                await asyncio.Event().wait()
+                yield  # pragma: no cover
+
+            return _chunks()
+
+        monkeypatch.setattr("litellm.acompletion", _silent)
+
+        async def _read() -> None:
+            async for _ in _llm().stream_chat(MESSAGES):
+                pass
+
+        await self._cancel_once(opened, _read())
+
+        (item,) = meter.drain()
+        assert (item.estimated, item.prompt_tokens, item.completion_tokens) == (
+            True,
+            estimate_prompt_tokens(MESSAGES),
+            0,
+        )
+
+    async def test_a_streamed_tool_call_round_counts_the_arguments_written_so_far(
+        self, monkeypatch: pytest.MonkeyPatch, meter: UsageMeter
+    ) -> None:
+        """A tool-call round yields nothing until the arguments are complete."""
+        code = "import pandas as pd\n" + "df = df[df['amount'] > 1000]\n" * 50
+        fragments = [code[i : i + 40] for i in range(0, len(code), 40)]
+        written = asyncio.Event()
+
+        async def _tool_round(**_kwargs: Any) -> Any:
+            async def _chunks() -> AsyncIterator[Any]:
+                for number, fragment in enumerate(fragments):
+                    function = SimpleNamespace(
+                        name="python_exec" if number == 0 else None, arguments=fragment
+                    )
+                    call = SimpleNamespace(
+                        index=0, id="call_1" if number == 0 else None, function=function
+                    )
+                    delta = SimpleNamespace(content=None, reasoning_content=None, tool_calls=[call])
+                    yield SimpleNamespace(
+                        choices=[SimpleNamespace(delta=delta, finish_reason=None)], usage=None
+                    )
+                written.set()
+                await asyncio.Event().wait()
+
+            return _chunks()
+
+        monkeypatch.setattr("litellm.acompletion", _tool_round)
+        seen: list[StreamChunk] = []
+
+        async def _read() -> None:
+            async for chunk in _llm().stream_chat(MESSAGES):
+                seen.append(chunk)
+
+        await self._cancel_once(written, _read())
+
+        assert seen == []
+        (item,) = meter.drain()
+        assert item.estimated is True
+        assert item.prompt_tokens == estimate_prompt_tokens(MESSAGES)
+        assert item.completion_tokens == estimate_tokens("".join(fragments))
+
+    async def test_a_native_responses_tool_call_round_counts_its_arguments_too(
+        self, monkeypatch: pytest.MonkeyPatch, meter: UsageMeter
+    ) -> None:
+        arguments = '{"code": "' + "print(1); " * 60 + '"}'
+        written = asyncio.Event()
+
+        async def _events() -> AsyncIterator[Any]:
+            yield {"type": "response.output_item.added", "item": {"type": "function_call"}}
+            for start in range(0, len(arguments), 30):
+                yield {
+                    "type": "response.function_call_arguments.delta",
+                    "item_id": "fc_1",
+                    "delta": arguments[start : start + 30],
+                }
+            written.set()
+            await asyncio.Event().wait()
+
+        class _Stream:
+            def __init__(self) -> None:
+                self._events = _events()
+
+            def __aiter__(self) -> _Stream:
+                return self
+
+            async def __anext__(self) -> Any:
+                return await self._events.__anext__()
+
+        async def _aresponses(**_kwargs: Any) -> Any:
+            return _Stream()
+
+        monkeypatch.setattr("litellm.aresponses", _aresponses)
+        llm = _llm("gpt-5")
+        monkeypatch.setattr(llm, "_should_use_native_responses", lambda **_kw: True)
+
+        async def _read() -> None:
+            async for _ in llm.stream_chat(MESSAGES):
+                pass
+
+        await self._cancel_once(written, _read())
+
+        (item,) = meter.drain()
+        assert (item.estimated, item.completion_tokens) == (True, estimate_tokens(arguments))
+
+    async def test_a_call_waiting_for_the_rate_limiter_reports_nothing(
+        self, provider: Provider, meter: UsageMeter
+    ) -> None:
+        """Nothing was sent yet."""
+        from fim_one.core.model.rate_limit import RateLimitConfig
+
+        llm = OpenAICompatibleLLM(
+            api_key="test-key",
+            base_url="https://api.openai.com/v1",
+            model="gpt-4o",
+            retry_config=None,
+            rate_limit_config=RateLimitConfig(),
+        )
+        waiting = asyncio.Event()
+        limiter = llm._rate_limiter
+        assert limiter is not None
+
+        async def _blocked() -> None:
+            waiting.set()
+            await asyncio.Event().wait()
+
+        limiter.acquire = _blocked  # type: ignore[method-assign]
+
+        await self._cancel_once(waiting, llm.chat(MESSAGES))
+
+        assert meter.total() == 0
+        assert provider.calls == 0

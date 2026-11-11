@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "ModelUsage",
+    "StreamProgress",
     "TextTokenCounter",
     "UnmeteredUsageError",
     "UsageMeter",
@@ -458,6 +459,40 @@ class TextTokenCounter:
             + self._other * _TOKENS_PER_OTHER
         )
         return math.ceil(exact)
+
+
+class StreamProgress:
+    """What a stream has had from its provider that its reader has not seen yet.
+
+    A streamed tool-call round yields nothing until the model has written
+    every argument, so a stream cut short in that round would look as if
+    it had never started. The client's inner iterator notes each raw chunk
+    and the argument text it holds back here, and the metering wrapper
+    counts both when the stream ends without the provider's count.
+    """
+
+    __slots__ = ("_held", "started")
+
+    def __init__(self) -> None:
+        self.started = False
+        self._held: dict[Any, str] = {}
+
+    def chunk(self) -> None:
+        """A raw chunk arrived from the provider."""
+        self.started = True
+
+    def tool_arguments(self, key: Any, text: str | None) -> None:
+        """Argument text of tool call *key* arrived and is held back."""
+        self.started = True
+        if text:
+            self._held[key] = self._held.get(key, "") + text
+
+    def released(self) -> None:
+        """The held tool calls were yielded; their arguments are counted from there."""
+        self._held.clear()
+
+    def held_text(self) -> str:
+        return "".join(self._held.values())
 
 
 def estimate_tokens(text: str | None) -> int:
