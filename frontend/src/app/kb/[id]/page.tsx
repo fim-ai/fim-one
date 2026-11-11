@@ -341,6 +341,7 @@ export default function KBDetailPage() {
                 kbId={kbId}
                 documents={documents}
                 onDeleteDocument={handleDeleteDocument}
+                onRetried={handleKbChanged}
                 chunkSize={kb.chunk_size}
               />
               {docTotalPages > 1 && (

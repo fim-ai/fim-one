@@ -30,6 +30,8 @@ export interface KBDocumentResponse {
   chunk_count: number
   status: string
   error_message: string | null
+  /** Set on a ready document read without the vision model: the quota refusal code. */
+  vision_notice?: string | null
   created_at: string
 }
 

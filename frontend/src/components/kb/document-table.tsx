@@ -12,6 +12,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { ChunkDrawer } from "@/components/kb/chunk-drawer"
+import { VisionNotice } from "@/components/kb/vision-notice"
 import { kbApi } from "@/lib/api"
 import type { KBDocumentResponse } from "@/types/kb"
 
@@ -19,6 +20,8 @@ interface DocumentTableProps {
   kbId: string
   documents: KBDocumentResponse[]
   onDeleteDocument: (docId: string) => void
+  /** Called once a retry was accepted, so the list can be fetched again. */
+  onRetried?: () => void
   chunkSize?: number
 }
 
@@ -45,6 +48,7 @@ export function DocumentTable({
   kbId,
   documents,
   onDeleteDocument,
+  onRetried,
   chunkSize,
 }: DocumentTableProps) {
   const t = useTranslations("kb")
@@ -53,14 +57,19 @@ export function DocumentTable({
     null,
   )
   const [retryingIds, setRetryingIds] = useState<Set<string>>(new Set())
-  const [retriedIds, setRetriedIds] = useState<Set<string>>(new Set())
+  // The document as it was when its retry was sent: it shows as processing
+  // until the parent fetches the list again and hands over a new object.
+  const [retried, setRetried] = useState<Map<string, KBDocumentResponse>>(
+    new Map(),
+  )
 
   const handleRetry = async (doc: KBDocumentResponse) => {
     setRetryingIds((prev) => new Set(prev).add(doc.id))
     try {
       await kbApi.retryDocument(kbId, doc.id)
       // Mark as retried so we show "processing" optimistically until parent re-fetches
-      setRetriedIds((prev) => new Set(prev).add(doc.id))
+      setRetried((prev) => new Map(prev).set(doc.id, doc))
+      onRetried?.()
     } catch (err) {
       console.error("Failed to retry document:", err)
     } finally {
@@ -72,10 +81,17 @@ export function DocumentTable({
     }
   }
 
-  // Derive effective status: if retried and still showing "failed", override to "processing"
+  // Derive effective status: a retried document the parent has not fetched again shows "processing"
   const getEffectiveStatus = (doc: KBDocumentResponse) => {
-    if (retriedIds.has(doc.id) && doc.status === "failed") return "processing"
+    if (retried.get(doc.id) === doc) return "processing"
     return doc.status
+  }
+
+  // A failed document, or one read as text only because the quota refused
+  // the vision model, can be read again.
+  const canRetry = (doc: KBDocumentResponse) => {
+    const status = getEffectiveStatus(doc)
+    return status === "failed" || (status === "ready" && !!doc.vision_notice)
   }
 
   if (documents.length === 0) {
@@ -150,7 +166,7 @@ export function DocumentTable({
                   </Tooltip>
                 )
               }
-              return (
+              const badge = (
                 <Badge
                   variant="secondary"
                   className={cn(
@@ -164,11 +180,20 @@ export function DocumentTable({
                   {effectiveStatus}
                 </Badge>
               )
+              if (effectiveStatus === "ready" && doc.vision_notice) {
+                return (
+                  <div className="flex items-center gap-1">
+                    {badge}
+                    <VisionNotice code={doc.vision_notice} />
+                  </div>
+                )
+              }
+              return badge
             })()}
 
             {/* Actions */}
             <div className="flex items-center justify-end gap-0.5">
-              {getEffectiveStatus(doc) === "failed" && (
+              {canRetry(doc) && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -186,7 +211,9 @@ export function DocumentTable({
                       />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom" sideOffset={5}>{t("retryProcessing")}</TooltipContent>
+                  <TooltipContent side="bottom" sideOffset={5}>
+                    {doc.vision_notice ? t("retryWithImageRecognition") : t("retryProcessing")}
+                  </TooltipContent>
                 </Tooltip>
               )}
               <Tooltip>

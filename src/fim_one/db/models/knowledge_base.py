@@ -14,6 +14,8 @@ from fim_one.db.base import Base, TimestampMixin, UUIDPKMixin
 if TYPE_CHECKING:
     from .user import User
 
+VISION_SKIPPED_PREFIX = "vision_skipped:"
+
 
 class KnowledgeBase(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "knowledge_bases"
@@ -68,6 +70,34 @@ class KBDocument(UUIDPKMixin, TimestampMixin, Base):
     content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     chunk_count: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(20), default="processing")
+    # On a failed document, why it failed. On a ready document it can
+    # instead hold ``vision_skipped:<refusal code>``: the document was read
+    # without the vision model because the quota check refused it (see
+    # ``vision_notice``).
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     knowledge_base: Mapped[KnowledgeBase] = relationship(back_populates="documents", lazy="raise")
+
+    def mark_vision_skipped(self, refusal_code: str | None) -> None:
+        """Record on a ready document whether the vision model was left out, and why.
+
+        ``None`` clears the record (the document was read with the vision
+        model, or no vision model would have been used).
+        """
+        self.error_message = f"{VISION_SKIPPED_PREFIX}{refusal_code}" if refusal_code else None
+
+    @property
+    def vision_notice(self) -> str | None:
+        """The refusal code under which a ready document was read without the vision model."""
+        if (
+            self.status == "ready"
+            and self.error_message
+            and self.error_message.startswith(VISION_SKIPPED_PREFIX)
+        ):
+            return self.error_message[len(VISION_SKIPPED_PREFIX) :]
+        return None
+
+    @property
+    def failure_message(self) -> str | None:
+        """``error_message`` without the vision record: what the API shows as the error."""
+        return None if self.vision_notice else self.error_message

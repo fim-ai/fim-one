@@ -81,6 +81,7 @@ class AdminKBDocumentInfo(BaseModel):
     chunk_count: int = 0
     status: str = "processing"
     error_message: str | None = None
+    vision_notice: str | None = None
     created_at: str
 
 
@@ -334,7 +335,8 @@ async def admin_get_knowledge_base(
             file_type=doc.file_type,
             chunk_count=doc.chunk_count,
             status=doc.status,
-            error_message=doc.error_message,
+            error_message=doc.failure_message,
+            vision_notice=doc.vision_notice,
             created_at=doc.created_at.isoformat() if doc.created_at else "",
         )
         for doc in kb.documents

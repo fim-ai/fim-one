@@ -56,6 +56,10 @@ class KBDocumentResponse(BaseModel):
     chunk_count: int
     status: str
     error_message: str | None
+    # Set on a ready document read without the vision model: the quota
+    # refusal code (``token_quota_exceeded``, ``subscription_required``,
+    # ``quota_unavailable``).
+    vision_notice: str | None = None
     created_at: str
 
 

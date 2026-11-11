@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { kbApi } from "@/lib/api"
 import { ChunkEditor } from "@/components/kb/chunk-editor"
+import { VisionNotice } from "@/components/kb/vision-notice"
 import type { KBDocumentResponse, ChunkResponse } from "@/types/kb"
 
 interface ChunkDrawerProps {
@@ -207,6 +208,9 @@ export function ChunkDrawer({
                   >
                     {document.status}
                   </Badge>
+                  {document.status === "ready" && document.vision_notice && (
+                    <VisionNotice code={document.vision_notice} />
+                  )}
                 </div>
                 {!searchOpen && (
                   <Button

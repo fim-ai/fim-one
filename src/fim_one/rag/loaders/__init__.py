@@ -27,6 +27,7 @@ __all__ = [
     "PDFLoader",
     "TextLoader",
     "loader_for_extension",
+    "uses_vision",
 ]
 
 _EXTENSION_MAP: dict[str, type[BaseLoader]] = {
@@ -47,6 +48,15 @@ _EXTENSION_MAP: dict[str, type[BaseLoader]] = {
     ".csv": CSVLoader,
     ".txt": TextLoader,
 }
+
+# Audio goes through MarkItDown for transcription, not the vision model.
+_AUDIO_EXTENSIONS = frozenset({".mp3", ".wav", ".m4a"})
+
+
+def uses_vision(extension: str) -> bool:
+    """Whether the loader for this extension hands images and scanned pages to a vision model."""
+    ext = extension.lower()
+    return _EXTENSION_MAP.get(ext) is MarkItDownLoader and ext not in _AUDIO_EXTENSIONS
 
 
 def loader_for_extension(
