@@ -92,7 +92,8 @@ def _doc_to_response(doc: KBDocument) -> KBDocumentResponse:
         file_type=doc.file_type,
         chunk_count=doc.chunk_count,
         status=doc.status,
-        error_message=doc.error_message,
+        error_message=doc.failure_message,
+        vision_notice=doc.vision_notice,
         created_at=doc.created_at.isoformat() if doc.created_at else "",
     )
 
@@ -418,12 +419,12 @@ async def _ingest_document(
         )
 
 
-async def _vision_allowed(user_id: str, file_path: Path) -> bool:
-    """Whether the user's plan and quota cover the vision model reading the document.
+async def _vision_refusal(user_id: str, file_path: Path) -> str | None:
+    """Why the user's plan and quota do not cover the vision model reading the document.
 
-    The chat turn's check (``check_quota``): not when access is sold by
-    plan and the user has none, not when the quota is used up, and not
-    when either cannot be read.
+    The chat turn's check (``check_quota``): refused when access is sold by
+    plan and the user has none, when the quota is used up, and when either
+    cannot be read. ``None`` when the check passes.
     """
     from fim_one.core.assembly.errors import AssemblyRefusal
     from fim_one.core.assembly.principal import provisional_principal
@@ -438,8 +439,34 @@ async def _vision_allowed(user_id: str, file_path: Path) -> bool:
             user_id,
             refusal.error_code,
         )
-        return False
-    return True
+        return refusal.error_code
+    return None
+
+
+async def _resolve_vision_llm(file_path: Path) -> Any:
+    """The vision model MarkItDown would use for this document, or ``None``.
+
+    Best-effort: a failure here must not block ingestion; the loaders
+    degrade to text-only.
+    """
+    from fim_one.db import create_session
+    from fim_one.rag.loaders import uses_vision
+
+    if not uses_vision(file_path.suffix):
+        return None
+    try:
+        from fim_one.web.api.chat import _build_markitdown_vision_deps
+
+        async with create_session() as _vision_db:
+            return await _build_markitdown_vision_deps(None, _vision_db)
+    except Exception:
+        logger.warning(
+            "Failed to resolve vision LLM for KB ingest of %s; "
+            "continuing in text-only mode",
+            file_path,
+            exc_info=True,
+        )
+        return None
 
 
 async def _ingest_document_metered(
@@ -454,25 +481,16 @@ async def _ingest_document_metered(
 ) -> None:
     from fim_one.db import create_session
 
-    # Resolve vision LLM for OCR injection — best-effort. A failure
-    # here must not block ingestion; the loaders degrade to text-only.
     # The vision model's tokens count against the user's quota, so a user
     # the quota check would refuse a model call gets the text-only reading
-    # instead: the document is still added.
-    vision_llm = None
-    if await _vision_allowed(user_id, file_path):
-        try:
-            from fim_one.web.api.chat import _build_markitdown_vision_deps
-
-            async with create_session() as _vision_db:
-                vision_llm = await _build_markitdown_vision_deps(None, _vision_db)
-        except Exception:
-            logger.warning(
-                "Failed to resolve vision LLM for KB ingest of %s; "
-                "continuing in text-only mode",
-                file_path,
-                exc_info=True,
-            )
+    # instead: the document is still added, and it records why so the
+    # user can be told. Only asked when a vision model would be used.
+    vision_llm = await _resolve_vision_llm(file_path)
+    vision_refusal: str | None = None
+    if vision_llm is not None:
+        vision_refusal = await _vision_refusal(user_id, file_path)
+        if vision_refusal is not None:
+            vision_llm = None
 
     try:
         manager = get_kb_manager()
@@ -497,6 +515,7 @@ async def _ingest_document_metered(
                 doc.chunk_count = chunk_count
                 doc.content_hash = content_hash
                 doc.status = "ready"
+                doc.mark_vision_skipped(vision_refusal)
                 await db.commit()
 
             # Update KB counters
@@ -602,10 +621,15 @@ async def retry_document(
     if doc is None:
         raise AppError("document_not_found", status_code=404)
 
-    if doc.status != "failed":
+    # A document read without the vision model can be read again once the
+    # quota allows it.
+    if doc.status != "failed" and doc.vision_notice is None:
         raise AppError(
             "document_not_failed",
-            detail=f"Only failed documents can be retried (current status: {doc.status})",
+            detail=(
+                "Only failed documents, or documents read without image recognition, "
+                f"can be retried (current status: {doc.status})"
+            ),
             detail_args={"status": doc.status},
         )
 

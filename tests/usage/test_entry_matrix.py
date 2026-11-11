@@ -496,7 +496,10 @@ class TestOtherEntries:
         assert _entries(rows) == {"kb_ingest"}
 
 
-    @pytest.mark.parametrize("refusal", ["over_quota", "unentitled"])
+    @pytest.mark.parametrize(
+        ("refusal", "code"),
+        [("over_quota", "token_quota_exceeded"), ("unentitled", "subscription_required")],
+    )
     async def test_a_user_the_quota_refuses_gets_the_document_read_without_the_vision_model(
         self,
         usage: Usage,  # noqa: F811
@@ -505,66 +508,181 @@ class TestOtherEntries:
         tmp_path: Any,
         caplog: pytest.LogCaptureFixture,
         refusal: str,
+        code: str,
     ) -> None:
-        """The upload is not refused; the vision model is left out, and that is logged."""
-        import asyncio
+        """The upload is not refused; the vision model is left out, logged and shown."""
         import logging
 
-        from fim_one.core.usage.ledger import UsageEntry, write_entries
         from fim_one.db.models import SystemSetting
-        from fim_one.db.models.knowledge_base import KBDocument, KnowledgeBase
-        from fim_one.web.api import knowledge_bases as kb_api
-        from fim_one.web.deps import get_llm
 
         alice = await usage.user("alice")
         if refusal == "over_quota":
-            await usage.cap(50)
-            await write_entries(
-                [
-                    UsageEntry(
-                        user_id=alice.id, org_id=None, source_type="conversation",
-                        source_id="c-1", entry="chat", model="m", total_tokens=60,
-                    )
-                ]
-            )  # fmt: skip
+            await _over_quota(usage, alice)
         else:
             await usage.add(SystemSetting(key="access_model", value="paid_only"))
-        await usage.add(
-            KnowledgeBase(id="kb-1", user_id=alice.id, name="handbook"),
-            KBDocument(
-                id="doc-1", kb_id="kb-1", filename="scan.pdf", file_path="scan.pdf",
-                file_size=1, file_type="pdf", status="processing",
-            ),  # fmt: skip
-        )
-        given: list[Any] = []
-
-        class _Manager:
-            async def ingest_file(self, _path: Any, *, vision_llm: Any, **_kw: Any) -> Any:
-                given.append(vision_llm)
-                await asyncio.sleep(0)
-                return 2, "hash"
-
-        async def _vision(_agent_cfg: Any, _db: Any) -> Any:
-            return get_llm()
-
-        monkeypatch.setattr(kb_api, "get_kb_manager", lambda: _Manager())
-        monkeypatch.setattr("fim_one.web.api.chat._build_markitdown_vision_deps", _vision)
+        given = await _kb_with_document(usage, alice, monkeypatch, tmp_path, "scan.pdf")
 
         with caplog.at_level(logging.INFO, logger="fim_one.web.api.knowledge_bases"):
-            await kb_api._ingest_document(
-                doc_id="doc-1", kb_id="kb-1", user_id=alice.id, file_path=tmp_path / "scan.pdf",
-                chunk_strategy="recursive", chunk_size=1000, chunk_overlap=200,
-            )  # fmt: skip
+            await _ingest(alice, tmp_path / "scan.pdf")
 
         assert given == [None]
         assert provider.calls == 0
         assert "without the vision model" in caplog.text
+        doc = await _listed(usage, alice)
+        assert (doc["status"], doc["chunk_count"]) == ("ready", 2)
+        assert doc["vision_notice"] == code
+        assert doc["error_message"] is None
+
+    async def test_a_retry_within_the_quota_reads_the_document_with_the_vision_model(
+        self,
+        usage: Usage,  # noqa: F811
+        provider: Provider,  # noqa: F811
+        monkeypatch: Any,
+        tmp_path: Any,
+    ) -> None:
+        """The notice offers a retry; once the quota allows it, the retry clears the notice."""
+        from sqlalchemy import update
+
         from fim_one.db import create_session
+        from fim_one.db.models import SystemSetting
+
+        alice = await usage.user("alice")
+        await _over_quota(usage, alice)
+        given = await _kb_with_document(usage, alice, monkeypatch, tmp_path, "scan.pdf")
+        await _ingest(alice, tmp_path / "scan.pdf")
+        assert (await _listed(usage, alice))["vision_notice"] == "token_quota_exceeded"
 
         async with create_session() as db:
-            doc = await db.get(KBDocument, "doc-1")
-            assert doc is not None and doc.chunk_count == 2
+            await db.execute(
+                update(SystemSetting)
+                .where(SystemSetting.key == "default_token_quota")
+                .values(value="100000")
+            )
+            await db.commit()
+        await usage.call("POST", "/api/knowledge-bases/kb-1/documents/doc-1/retry", by=alice)
+        await usage.settle()
 
+        assert given[0] is None and given[1] is not None
+        doc = await _listed(usage, alice)
+        assert (doc["status"], doc["vision_notice"]) == ("ready", None)
+
+    @pytest.mark.parametrize("case", ["no_vision_model", "plain_text"])
+    async def test_no_notice_when_no_vision_model_would_have_read_the_document(
+        self,
+        usage: Usage,  # noqa: F811
+        provider: Provider,  # noqa: F811
+        monkeypatch: Any,
+        tmp_path: Any,
+        case: str,
+    ) -> None:
+        alice = await usage.user("alice")
+        await _over_quota(usage, alice)
+        filename = "notes.txt" if case == "plain_text" else "scan.pdf"
+        await _kb_with_document(
+            usage, alice, monkeypatch, tmp_path, filename, vision=case != "no_vision_model"
+        )
+        await _ingest(alice, tmp_path / filename)
+
+        doc = await _listed(usage, alice)
+        assert (doc["status"], doc["vision_notice"]) == ("ready", None)
+
+    async def test_a_ready_document_without_the_notice_is_not_retried(
+        self,
+        usage: Usage,  # noqa: F811
+        provider: Provider,  # noqa: F811
+        monkeypatch: Any,
+        tmp_path: Any,
+    ) -> None:
+        alice = await usage.user("alice")
+        await _kb_with_document(usage, alice, monkeypatch, tmp_path, "scan.pdf")
+        await _ingest(alice, tmp_path / "scan.pdf")
+
+        response = await usage.call(
+            "POST", "/api/knowledge-bases/kb-1/documents/doc-1/retry", by=alice, expect=400
+        )
+        assert "document_not_failed" in response.text
+
+
+async def _over_quota(usage: Usage, user: User) -> None:  # noqa: F811
+    from fim_one.core.usage.ledger import UsageEntry, write_entries
+
+    await usage.cap(50)
+    await write_entries(
+        [
+            UsageEntry(
+                user_id=user.id, org_id=None, source_type="conversation",
+                source_id="c-1", entry="chat", model="m", total_tokens=60,
+            )
+        ]
+    )  # fmt: skip
+
+
+async def _kb_with_document(
+    usage: Usage,  # noqa: F811
+    owner: User,
+    monkeypatch: Any,
+    tmp_path: Any,
+    filename: str,
+    *,
+    vision: bool = True,
+) -> list[Any]:
+    """Knowledge base ``kb-1`` with document ``doc-1`` being read.
+
+    Returns the vision model each read of it was given.
+    """
+    import asyncio
+
+    from fim_one.db.models.knowledge_base import KBDocument, KnowledgeBase
+    from fim_one.web.api import knowledge_bases as kb_api
+    from fim_one.web.deps import get_llm
+
+    path = tmp_path / filename
+    path.write_bytes(b"x")
+    await usage.add(
+        KnowledgeBase(id="kb-1", user_id=owner.id, name="handbook"),
+        KBDocument(
+            id="doc-1",
+            kb_id="kb-1",
+            filename=filename,
+            file_path=str(path),
+            file_size=1,
+            file_type=path.suffix.lstrip("."),
+            status="processing",
+        ),
+    )
+    given: list[Any] = []
+
+    class _Manager:
+        async def ingest_file(self, _path: Any, *, vision_llm: Any, **_kw: Any) -> Any:
+            given.append(vision_llm)
+            await asyncio.sleep(0)
+            return 2, "hash"
+
+        async def delete_document(self, **_kw: Any) -> None:
+            return None
+
+    async def _vision(_agent_cfg: Any, _db: Any) -> Any:
+        return get_llm() if vision else None
+
+    monkeypatch.setattr(kb_api, "get_kb_manager", lambda: _Manager())
+    monkeypatch.setattr("fim_one.web.api.chat._build_markitdown_vision_deps", _vision)
+    return given
+
+
+async def _ingest(owner: User, path: Any) -> None:
+    from fim_one.web.api import knowledge_bases as kb_api
+
+    await kb_api._ingest_document(
+        doc_id="doc-1", kb_id="kb-1", user_id=owner.id, file_path=path,
+        chunk_strategy="recursive", chunk_size=1000, chunk_overlap=200,
+    )  # fmt: skip
+
+
+async def _listed(usage: Usage, owner: User) -> dict[str, Any]:  # noqa: F811
+    response = await usage.call("GET", "/api/knowledge-bases/kb-1/documents", by=owner)
+    items: list[dict[str, Any]] = response.json()["items"]
+    assert len(items) == 1
+    return items[0]
 
 
 # ---------------------------------------------------------------------------
