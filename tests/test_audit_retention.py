@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 import fim_one.db.models  # noqa: F401
 from fim_one.core.audit import actions
+from fim_one.core.audit import writer as audit_writer
 from fim_one.core.audit.retention import (
     AuditRetentionSweeper,
     Retention,
@@ -540,6 +541,62 @@ class TestATableThatFails:
         assert record.detail is not None
         assert "login_history=2" in record.detail and "review_log=1" in record.detail
         assert record.detail.endswith("failed: login_history")
+
+
+class TestWhenTheDatabaseGoesAwayDuringASweep:
+    """Every table failed and the record could not be written: the process
+    waited 21.6 hours before it tried again."""
+
+    async def test_it_tries_again_after_an_hour(
+        self, factory: Factory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        await _add(factory, _login(900))
+        away = True
+
+        async def failing(original: Any, *args: Any, **kwargs: Any) -> Any:
+            if away:
+                raise RuntimeError("database away")
+            return await original(*args, **kwargs)
+
+        for name in ("_delete_older", "_clear_payloads"):
+            original = getattr(AuditRetentionSweeper, name)
+
+            async def wrapped(self: Any, *a: Any, _o: Any = original, **k: Any) -> Any:
+                return await failing(_o, self, *a, **k)
+
+            monkeypatch.setattr(AuditRetentionSweeper, name, wrapped)
+        real_record = audit_writer.record
+
+        async def record(*args: Any, **kwargs: Any) -> None:
+            if away:
+                raise RuntimeError("database away")
+            await real_record(*args, **kwargs)
+
+        monkeypatch.setattr("fim_one.core.audit.retention.audit.record", record)
+        sweeper = AuditRetentionSweeper(Retention())
+
+        assert await sweeper.sweep(now=NOW) is not None
+        assert await sweeper.sweep(now=NOW + timedelta(minutes=30)) is None
+        away = False
+        counts = await sweeper.sweep(now=NOW + timedelta(hours=1))
+
+        assert counts is not None and counts["login_history"] == 1
+        assert len(await _sweeps(factory)) == 1
+
+    async def test_a_sweep_that_removed_something_waits_the_interval(
+        self, factory: Factory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Only the record is lost: the hour is not for this case."""
+        await _add(factory, _login(900))
+
+        async def record(*_args: Any, **_kwargs: Any) -> None:
+            raise RuntimeError("database away")
+
+        monkeypatch.setattr("fim_one.core.audit.retention.audit.record", record)
+        sweeper = AuditRetentionSweeper(Retention())
+
+        assert await sweeper.sweep(now=NOW) is not None
+        assert await sweeper.sweep(now=NOW + timedelta(hours=1)) is None
 
 
 class TestTimeZones:
