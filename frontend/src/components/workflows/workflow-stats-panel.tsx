@@ -143,12 +143,12 @@ export function WorkflowStatsPanel({
                 <StatCard
                   icon={<TrendingUp className="h-4 w-4 text-emerald-500" />}
                   label={t("statsSuccessRate")}
-                  value={`${(stats.success_rate * 100).toFixed(1)}%`}
+                  value={`${stats.success_rate.toFixed(1)}%`}
                   bar={
                     <div className="mt-1.5 h-1.5 w-full rounded-full bg-muted">
                       <div
                         className="h-full rounded-full bg-emerald-500 transition-all duration-500"
-                        style={{ width: `${Math.min(stats.success_rate * 100, 100)}%` }}
+                        style={{ width: `${Math.min(stats.success_rate, 100)}%` }}
                       />
                     </div>
                   }
