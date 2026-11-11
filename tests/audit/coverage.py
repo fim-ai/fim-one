@@ -553,6 +553,11 @@ NON_ROUTE_ACTIONS: dict[str, str] = {
         "tests/test_audit_refusals.py::TestAnUnknownTriggerKey::"
         "test_recorded_once_per_address_with_only_the_start_of_the_key"
     ),
+    # Only the connector builder's test tool sends this request; no route does.
+    "connector.action_test": (
+        "tests/test_audit_builder_tools.py::TestConnectorBuilder::"
+        "test_a_test_call_is_recorded_without_its_arguments"
+    ),
     # Also written by the payment processor's webhook (a route, see AUDITED);
     # here: the sweep that ends a cancelled subscription at its period end.
     "billing.plan_change": (
@@ -602,6 +607,10 @@ TOOL_WRITERS: dict[str, tuple[tuple[str, ...], str]] = {
         ("connector.action_delete",),
         _TOOLS + "TestConnectorBuilder::test_creating_changing_and_deleting_an_action",
     ),
+    "ConnectorTestActionTool": (
+        ("connector.action_test",),
+        _TOOLS + "TestConnectorBuilder::test_a_test_call_is_recorded_without_its_arguments",
+    ),
     "ConnectorUpdateSettingsTool": (
         ("connector.update",),
         _TOOLS + "TestConnectorBuilder::test_changing_where_the_connector_calls_and_how_it_signs_in",
@@ -625,6 +634,10 @@ TOOL_WRITERS: dict[str, tuple[tuple[str, ...], str]] = {
     "AgentSetModelTool": (
         ("agent.update",),
         _TOOLS + "TestAgentBuilder::test_a_model_change_is_content_and_leaves_no_record",
+    ),
+    "DbRunSampleQueryTool": (
+        ("database.query",),
+        _TOOLS + "TestDatabaseBuilder::test_a_sample_query_is_recorded_like_the_portal_query_box",
     ),
     "DbUpdateConnectorSettingsTool": (
         ("connector.update",),
@@ -658,6 +671,7 @@ OTHER_WRITERS: dict[str, str] = {
     ),
     "core/channels/expiry.py": "the expiry sweep; records confirmation.expire",
     "core/memory/db.py": "conversation messages: content",
+    "core/usage/ledger.py": "the usage ledger (usage_ledger), its own table",
     "core/tool/builtin/agent_builder.py": "builder tools, see TOOL_WRITERS",
     "core/tool/builtin/connector_builder.py": "builder tools, see TOOL_WRITERS",
     "core/tool/builtin/db_builder.py": "builder tools, see TOOL_WRITERS",

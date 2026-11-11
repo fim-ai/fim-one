@@ -51,7 +51,7 @@ import logging
 import os
 import time
 import uuid
-from collections.abc import AsyncGenerator, Sequence
+from collections.abc import AsyncGenerator, Coroutine, Sequence
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
@@ -78,7 +78,7 @@ from fim_one.core.assembly.principal import (
     provisional_principal,
     resolve_principal,
 )
-from fim_one.core.assembly.quota import check_quota, quota_reset_at, quota_status
+from fim_one.core.assembly.quota import QuotaStatus, check_quota, quota_reset_at
 from fim_one.core.assembly.sandbox import is_run_sandbox, sandbox_base
 from fim_one.core.assembly.sandbox import sandbox_root as run_sandbox_root
 from fim_one.core.assembly.toolset import (
@@ -113,6 +113,7 @@ from fim_one.core.planner import (
 )
 from fim_one.core.planner.checkpoint import DAGCheckpoint
 from fim_one.core.tool import ToolRegistry
+from fim_one.core.usage.meter import OpenMeter, UsageScope, metered, open_meter, scope_from_context
 from fim_one.core.utils import (
     extract_json_value,
     get_language_directive,
@@ -1200,8 +1201,11 @@ async def _resolve_agent_config(
 
 async def _admit_turn(
     principal: Principal, conversation_id: str | None, agent_id: str | None
-) -> dict[str, Any] | None:
-    """The checks a chat turn passes before it streams; returns the agent config.
+) -> tuple[dict[str, Any] | None, QuotaStatus]:
+    """The checks a chat turn passes before it streams.
+
+    Returns the agent config, and the usage and cap the turn was admitted
+    on (what the mid-stream quota guard starts from).
 
     The conversation is confirmed to be the caller's before its agent is
     looked at: resolving the agent of someone else's conversation would
@@ -1210,7 +1214,7 @@ async def _admit_turn(
     """
     if conversation_id:
         await _validate_conversation_ownership(conversation_id, principal.user_id)
-    _, agent_cfg = await asyncio.gather(
+    quota, agent_cfg = await asyncio.gather(
         check_quota(principal),
         agent_runtime.resolve_agent(
             CallContext(principal=principal, binding=None, entry="chat"),
@@ -1218,7 +1222,20 @@ async def _admit_turn(
             conversation_id=conversation_id,
         ),
     )
-    return agent_cfg
+    return agent_cfg, quota
+
+
+def _used_by_now(quota: QuotaStatus, turn_meter: OpenMeter) -> int:
+    """What the user has used at this point of a turn, without asking the database.
+
+    What they had used when the turn was admitted, and what the turn has
+    consumed since according to its meter: the calls that have reported,
+    and the meter's estimate of the answer being streamed right now (that
+    call reports its own count only when its stream ends). Usage of the
+    same user's other turns in the meantime is not in it; their next
+    turn's admission sees it.
+    """
+    return quota.used + turn_meter.used_so_far()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1235,6 +1252,60 @@ class _AdmittedTurn:
     preferred_language: str | None
     timezone: str | None
     agent_cfg: dict[str, Any] | None
+    # The usage and cap the turn was admitted on.
+    quota: QuotaStatus
+    # The turn's usage meter, opened before the routing model was asked.
+    meter: OpenMeter
+
+
+def _turn_scope(ctx: CallContext, conversation_id: str | None, entry: str) -> UsageScope:
+    """Whose usage a chat turn is: the caller's, recorded on the conversation.
+
+    A turn without a conversation (an API call that passes none) is
+    recorded all the same, as a use of the endpoint.
+    """
+    return scope_from_context(
+        ctx,
+        source_type="conversation" if conversation_id else "endpoint",
+        source_id=conversation_id,
+        entry=entry,
+    )
+
+
+async def _in_background_scope(turn_meter: OpenMeter, work: Coroutine[Any, Any, None]) -> None:
+    """Run a turn's after-work (the title) in a metering scope of its own.
+
+    It outlives the response, so it is recorded apart from the turn, as
+    ``background`` usage of the same user and conversation.
+    """
+    scope = turn_meter.scope
+    if scope is None:
+        await work
+        return
+    async with metered(dataclasses.replace(scope, entry="background")):
+        await work
+
+
+async def _metered_body(
+    body: AsyncGenerator[str, None], turn_meter: OpenMeter
+) -> AsyncGenerator[str, None]:
+    """A turn's event stream; what the turn consumed is recorded when it ends.
+
+    However it ends: finished, failed, or abandoned by a client that went
+    away. The stream's own clean-up runs first (it cancels the agent, whose
+    interrupted model call then reports), the ledger write after.
+    """
+    # Here as well as in the handler: the response is not necessarily
+    # produced in the context the handler ran in.
+    turn_meter.enter()
+    try:
+        async for chunk in body:
+            yield chunk
+    finally:
+        try:
+            await body.aclose()
+        finally:
+            await turn_meter.close()
 
 
 async def _resolve_llm(
@@ -2839,6 +2910,23 @@ async def _react_turn(
     admitted: _AdmittedTurn | None,
 ) -> StreamingResponse:
     """A ReAct turn. *admitted* is set when Auto mode already admitted it."""
+    # Open from the first line: models are called before the response
+    # starts (the domain is classified), and a turn refused or failed
+    # before it streams has still consumed what it consumed.
+    turn_meter = admitted.meter if admitted is not None else open_meter()
+    try:
+        return await _react_turn_metered(request, body, admitted, turn_meter)
+    except BaseException:
+        await turn_meter.close()
+        raise
+
+
+async def _react_turn_metered(
+    request: Request,
+    body: ChatStreamRequest,
+    admitted: _AdmittedTurn | None,
+    turn_meter: OpenMeter,
+) -> StreamingResponse:
     q = body.q
     conversation_id = body.conversation_id
     agent_id = body.agent_id
@@ -2889,15 +2977,17 @@ async def _react_turn(
         user_timezone = request.headers.get("X-Timezone") or None
 
     # Auto mode admitted the turn before routing it here; once is enough.
-    agent_cfg = (
-        admitted.agent_cfg
-        if admitted is not None
-        else await _admit_turn(principal, conversation_id, agent_id)
-    )
+    if admitted is not None:
+        agent_cfg, quota_at_start = admitted.agent_cfg, admitted.quota
+    else:
+        agent_cfg, quota_at_start = await _admit_turn(principal, conversation_id, agent_id)
     # The context this turn's resources are used and recorded under.
     turn_ctx = agent_runtime.call_context(
         principal, agent_cfg, conversation_id=conversation_id
     )
+    if turn_meter.scope is None:
+        # Not routed here by Auto mode, which names the turn its own.
+        turn_meter.bind(_turn_scope(turn_ctx, conversation_id, "chat"))
 
     from fim_one.db import create_session as _create_session
 
@@ -3656,13 +3746,6 @@ async def _react_turn(
             answer_chunks: list[str] = []
             quota_exceeded_mid_stream = False
             quota_terminator_payload: dict[str, Any] | None = None
-            # Tokens already accounted for from the planner/tool LLM calls
-            # (result.usage).  The streamed answer adds completion tokens on
-            # top — we estimate them from emitted chunk lengths since the
-            # streaming API does not surface per-delta usage.
-            _result_tokens_so_far = (
-                result.usage.total_tokens if result.usage is not None else 0
-            )
             _streamed_chars_since_check = 0
             try:
                 async for _token in agent.stream_answer(
@@ -3677,37 +3760,24 @@ async def _react_turn(
                         {"status": "delta", "content": _token},
                     )
                     # -- Mid-stream quota guard --------------------------
-                    # Re-check the user's monthly quota at most once every
-                    # ~200 characters (~50 estimated tokens) to keep DB
-                    # load bounded while still cutting the stream within
-                    # a small overshoot of the quota.  When the quota is
-                    # exhausted we emit a structured terminator instead
-                    # of letting the connection drop into a generic
-                    # network error on the client.
-                    if current_user_id:
+                    # About every 200 characters, compare what the user
+                    # has used by now with their cap: what they had used
+                    # when the turn was admitted plus what the turn's
+                    # meter has counted since, with no database query.
+                    # When the quota is exhausted we emit a structured
+                    # terminator instead of letting the connection drop
+                    # into a generic network error on the client.
+                    if not quota_at_start.unlimited:
                         _streamed_chars_since_check += len(_token)
                         if _streamed_chars_since_check >= 200:
                             _streamed_chars_since_check = 0
-                            _est_completion_tokens = (
-                                sum(len(c) for c in answer_chunks) // 4
-                            )
-                            _approx_total = (
-                                _result_tokens_so_far + _est_completion_tokens
-                            )
-                            _quota_now = await quota_status(current_user_id)
-                            _monthly_used, _quota_cap = _quota_now.used, _quota_now.cap
-                            if (
-                                _quota_cap > 0
-                                and _monthly_used + _est_completion_tokens
-                                >= _quota_cap
-                            ):
+                            _used_now = _used_by_now(quota_at_start, turn_meter)
+                            if _used_now >= quota_at_start.cap:
                                 quota_exceeded_mid_stream = True
                                 quota_terminator_payload = (
                                     _build_quota_terminator_payload(
-                                        monthly_tokens=(
-                                            _monthly_used + _est_completion_tokens
-                                        ),
-                                        user_quota=_quota_cap,
+                                        monthly_tokens=_used_now,
+                                        user_quota=quota_at_start.cap,
                                         reset_at=(
                                             await quota_reset_at(current_user_id)
                                         ).isoformat(),
@@ -3715,12 +3785,11 @@ async def _react_turn(
                                 )
                                 logger.info(
                                     "Token quota exhausted mid-stream for user=%s "
-                                    "(used=%s, quota=%s, approx_total=%s) — emitting "
+                                    "(used=%s, quota=%s) — emitting "
                                     "structured terminator",
                                     current_user_id,
-                                    _monthly_used + _est_completion_tokens,
-                                    _quota_cap,
-                                    _approx_total,
+                                    _used_now,
+                                    quota_at_start.cap,
                                 )
                                 break
                 answer = "".join(answer_chunks)
@@ -3874,6 +3943,10 @@ async def _react_turn(
                         conversation_id,
                         exc_info=True,
                     )
+
+            # What the turn consumed is on its way to the ledger by the time
+            # the client hears "done" (written in the background).
+            turn_meter.flush_soon()
 
             # -- Yield done IMMEDIATELY (no suggestions/title yet) ------
             yield _sse(
@@ -4081,7 +4154,7 @@ async def _react_turn(
                     if _bg_db:
                         await _bg_db.close()
 
-            spawn_background(_react_post_processing())
+            spawn_background(_in_background_scope(turn_meter, _react_post_processing()))
         except (
             InputGuardrailTripwireTriggered,
             OutputGuardrailTripwireTriggered,
@@ -4125,7 +4198,7 @@ async def _react_turn(
                 await db_session.close()
 
     return StreamingResponse(
-        generate(),
+        _metered_body(generate(), turn_meter),
         media_type="text/event-stream",
         headers={
             "X-Accel-Buffering": "no",
@@ -4162,6 +4235,21 @@ async def _dag_turn(
     admitted: _AdmittedTurn | None,
 ) -> StreamingResponse:
     """A plan (DAG) turn. *admitted* is set when Auto mode already admitted it."""
+    # See _react_turn: the meter is open before the first model call.
+    turn_meter = admitted.meter if admitted is not None else open_meter()
+    try:
+        return await _dag_turn_metered(request, body, admitted, turn_meter)
+    except BaseException:
+        await turn_meter.close()
+        raise
+
+
+async def _dag_turn_metered(
+    request: Request,
+    body: ChatStreamRequest,
+    admitted: _AdmittedTurn | None,
+    turn_meter: OpenMeter,
+) -> StreamingResponse:
     q = body.q
     conversation_id = body.conversation_id
     agent_id = body.agent_id
@@ -4197,15 +4285,17 @@ async def _dag_turn(
         user_timezone = request.headers.get("X-Timezone") or None
 
     # Auto mode admitted the turn before routing it here; once is enough.
-    agent_cfg = (
-        admitted.agent_cfg
-        if admitted is not None
-        else await _admit_turn(principal, conversation_id, agent_id)
-    )
+    if admitted is not None:
+        agent_cfg, quota_at_start = admitted.agent_cfg, admitted.quota
+    else:
+        agent_cfg, quota_at_start = await _admit_turn(principal, conversation_id, agent_id)
     # The context this turn's resources are used and recorded under.
     turn_ctx = agent_runtime.call_context(
         principal, agent_cfg, conversation_id=conversation_id
     )
+    if turn_meter.scope is None:
+        # Not routed here by Auto mode, which names the turn its own.
+        turn_meter.bind(_turn_scope(turn_ctx, conversation_id, "dag"))
 
     from fim_one.db import create_session as _create_session
 
@@ -4958,26 +5048,17 @@ async def _dag_turn(
                         )
                         # Mid-stream quota guard — see ReAct handler for
                         # the rationale and the 200-char throttle.
-                        if current_user_id:
+                        if not quota_at_start.unlimited:
                             _dag_streamed_chars_since_check += len(_token)
                             if _dag_streamed_chars_since_check >= 200:
                                 _dag_streamed_chars_since_check = 0
-                                _dag_est_completion = (
-                                    sum(len(c) for c in answer_chunks) // 4
-                                )
-                                _dag_quota_now = await quota_status(current_user_id)
-                                _dag_used, _dag_cap = _dag_quota_now.used, _dag_quota_now.cap
-                                if (
-                                    _dag_cap > 0
-                                    and _dag_used + _dag_est_completion >= _dag_cap
-                                ):
+                                _dag_used = _used_by_now(quota_at_start, turn_meter)
+                                if _dag_used >= quota_at_start.cap:
                                     dag_quota_exceeded_mid_stream = True
                                     dag_quota_terminator_payload = (
                                         _build_quota_terminator_payload(
-                                            monthly_tokens=(
-                                                _dag_used + _dag_est_completion
-                                            ),
-                                            user_quota=_dag_cap,
+                                            monthly_tokens=_dag_used,
+                                            user_quota=quota_at_start.cap,
                                             reset_at=(
                                                 await quota_reset_at(current_user_id)
                                             ).isoformat(),
@@ -4988,8 +5069,8 @@ async def _dag_turn(
                                         "user=%s (used=%s, quota=%s) — emitting "
                                         "structured terminator",
                                         current_user_id,
-                                        _dag_used + _dag_est_completion,
-                                        _dag_cap,
+                                        _dag_used,
+                                        quota_at_start.cap,
                                     )
                                     break
                     answer = "".join(answer_chunks)
@@ -5180,6 +5261,9 @@ async def _dag_turn(
             # purpose; drop it so a later identical query starts fresh.
             if conversation_id:
                 _dag_checkpoint.clear(conversation_id)
+
+            # See the ReAct handler: the turn's usage goes to the ledger now.
+            turn_meter.flush_soon()
 
             # -- Yield done IMMEDIATELY (no suggestions/title yet) ------
             yield _sse(
@@ -5375,7 +5459,7 @@ async def _dag_turn(
                     if _bg_db:
                         await _bg_db.close()
 
-            spawn_background(_dag_post_processing())
+            spawn_background(_in_background_scope(turn_meter, _dag_post_processing()))
         except (
             InputGuardrailTripwireTriggered,
             OutputGuardrailTripwireTriggered,
@@ -5440,7 +5524,7 @@ async def _dag_turn(
                 await db_session.close()
 
     return StreamingResponse(
-        generate(),
+        _metered_body(generate(), turn_meter),
         media_type="text/event-stream",
         headers={
             "X-Accel-Buffering": "no",
@@ -5485,14 +5569,43 @@ async def auto_endpoint(
     # classification below spends a model call: the conversation is the
     # caller's, plan and quota allow the turn, the agent is usable. The
     # routed endpoint is handed the result and does not admit again.
-    agent_cfg = await _admit_turn(principal, body.conversation_id, body.agent_id)
-    admitted = _AdmittedTurn(
-        principal=principal,
-        system_instructions=system_instructions,
-        preferred_language=preferred_language,
-        timezone=user_timezone,
-        agent_cfg=agent_cfg,
+    agent_cfg, quota_at_start = await _admit_turn(principal, body.conversation_id, body.agent_id)
+    # The turn's usage meter, open before the routing model is asked: that
+    # call is the turn's too. The endpoint it is routed to carries it on.
+    turn_meter = open_meter(
+        _turn_scope(
+            agent_runtime.call_context(
+                principal, agent_cfg, conversation_id=body.conversation_id
+            ),
+            body.conversation_id,
+            "auto",
+        )
     )
+    try:
+        return await _auto_turn(
+            request,
+            body,
+            _AdmittedTurn(
+                principal=principal,
+                system_instructions=system_instructions,
+                preferred_language=preferred_language,
+                timezone=user_timezone,
+                agent_cfg=agent_cfg,
+                quota=quota_at_start,
+                meter=turn_meter,
+            ),
+        )
+    except BaseException:
+        await turn_meter.close()
+        raise
+
+
+async def _auto_turn(
+    request: Request, body: ChatStreamRequest, admitted: _AdmittedTurn
+) -> StreamingResponse:
+    """Ask the routing model, then hand the admitted turn to the endpoint it names."""
+    q = body.q
+    agent_cfg = admitted.agent_cfg
 
     # Determine execution mode
     from fim_one.core.planner.router import classify_execution_mode
@@ -5531,8 +5644,17 @@ async def auto_endpoint(
         # Emit routing decision first
         yield _sse("routing", {"mode": mode, "reasoning": reasoning})
         # Then delegate to the inner endpoint's generator
-        async for chunk in inner_response.body_iterator:
-            yield str(chunk) if not isinstance(chunk, str) else chunk
+        inner = inner_response.body_iterator
+        try:
+            async for chunk in inner:
+                yield str(chunk) if not isinstance(chunk, str) else chunk
+        finally:
+            # A client that goes away closes this generator; the turn's own
+            # is closed with it, here and now, so that it stops the agent
+            # and records what the turn consumed.
+            close_inner = getattr(inner, "aclose", None)
+            if close_inner is not None:
+                await close_inner()
 
     return StreamingResponse(
         auto_generate(),

@@ -11,9 +11,6 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import func
-from sqlalchemy import select as sa_select
-
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,33 +27,28 @@ __all__ = [
 async def window_usage(session: AsyncSession, user_id: str) -> tuple[int, datetime]:
     """``(tokens used in the current quota window, when it resets)``.
 
-    What counts against a user's quota: their conversations and the
-    workflow runs billed to them (trigger keys and schedules included).
-    The enforced number and the one the usage card shows are both this.
+    What counts against a user's quota is what the usage ledger holds
+    against them since the window began: every model call made on their
+    account, from chat, workflow runs billed to them (trigger keys and
+    schedules included), the AI-assisted builders, KB and DB chat and
+    evaluation runs, whether the turn or run finished, failed or was
+    abandoned. The ledger is append-only, so the figure never goes down
+    within a window: deleting a conversation, a run or a workflow does not
+    give anything back. The enforced number and the one the usage card
+    shows are both this.
+
+    Usage belongs to the window it was recorded in, not to the window its
+    conversation was created in.
 
     The window is billing-aligned: paid users reset on their subscription's
     monthly anniversary, free users on the calendar month. Resolution falls
     back to the calendar month on failure.
     """
-    from fim_one.db.models import Conversation
-    from fim_one.db.models.workflow import WorkflowRun
+    from fim_one.core.usage.ledger import used_since
     from fim_one.web.services.quota_window import resolve_quota_window
 
     window_start, window_reset = await resolve_quota_window(session, user_id)
-    chat_tokens = await session.execute(
-        sa_select(func.coalesce(func.sum(Conversation.total_tokens), 0)).where(
-            Conversation.user_id == user_id,
-            Conversation.created_at >= window_start,
-        )
-    )
-    run_tokens = await session.execute(
-        sa_select(func.coalesce(func.sum(WorkflowRun.total_tokens), 0)).where(
-            WorkflowRun.user_id == user_id,
-            WorkflowRun.created_at >= window_start,
-        )
-    )
-    used = int(chat_tokens.scalar_one() or 0) + int(run_tokens.scalar_one() or 0)
-    return used, window_reset
+    return await used_since(session, user_id, window_start), window_reset
 
 
 async def usage_and_cap(user_id: str) -> tuple[int, int]:

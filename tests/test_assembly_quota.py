@@ -24,9 +24,9 @@ from fim_one.core.assembly import quota
 from fim_one.core.assembly.errors import AssemblyRefusal
 from fim_one.core.assembly.principal import Binding, provisional_principal
 from fim_one.db.base import Base
-from fim_one.db.models import BillingPlan, Conversation, SystemSetting
+from fim_one.db.models import BillingPlan, SystemSetting
 from fim_one.db.models.user import User
-from fim_one.db.models.workflow import Workflow, WorkflowRun
+from fim_one.db.models.usage_ledger import UsageLedger
 
 RESET = datetime(2027, 1, 1, tzinfo=UTC)
 
@@ -312,7 +312,11 @@ async def _seed(
         )
         s.add(user)
         if used:
-            s.add(Conversation(user_id="u1", title="t", mode="react", total_tokens=used))
+            s.add(
+                UsageLedger(
+                    user_id="u1", source_type="conversation", entry="chat", total_tokens=used
+                )
+            )
         await s.commit()
     return "u1"
 
@@ -368,9 +372,12 @@ class TestTheChain:
         )
         assert await _refusal(user_id) is None
         async with factory() as s:
-            s.add(Workflow(id="w", user_id=user_id, name="w", blueprint={}))
-            await s.flush()
-            s.add(WorkflowRun(workflow_id="w", user_id=user_id, blueprint_snapshot={}, total_tokens=1))
+            # One more token, from a workflow run: it counts like chat does.
+            s.add(
+                UsageLedger(
+                    user_id=user_id, source_type="workflow_run", entry="trigger", total_tokens=1
+                )
+            )
             await s.commit()
         assert await _refusal(user_id) == "token_quota_exceeded"
 

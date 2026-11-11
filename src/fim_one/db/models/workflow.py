@@ -168,8 +168,9 @@ class WorkflowRun(UUIDPKMixin, TimestampMixin, Base):
     )
 
     # Entry point that started the run: interactive, batch, trigger,
-    # schedule, tool or test_node. NULL on rows written before the column
-    # existed; readers treat NULL as an ordinary run.
+    # schedule or tool (and test_node on rows from before single-step tests
+    # stopped leaving one). NULL on rows written before the column existed;
+    # readers treat NULL as an ordinary run.
     mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     # What a run waiting for a decision needs to be continued: its
@@ -196,14 +197,15 @@ class WorkflowRun(UUIDPKMixin, TimestampMixin, Base):
     workflow: Mapped[Workflow] = relationship(back_populates="runs", lazy="raise")
 
 
-# ``WorkflowRun.mode`` of a single-node test: such rows exist only so the
-# test's token usage counts toward quota.
+# ``WorkflowRun.mode`` of a single-node test. Such rows were written, until
+# the usage ledger took over, only so that the test's token usage counted
+# toward quota; none is written any more, the old ones remain.
 RUN_MODE_TEST_NODE = "test_node"
 
 
 def history_run_clause() -> Any:
-    """WHERE clause excluding single-node test rows from run history, counts,
-    rates and recent-run lists. Quota sums deliberately include them."""
+    """WHERE clause excluding the single-node test rows of earlier releases
+    from run history, counts, rates and recent-run lists."""
     return sa.or_(WorkflowRun.mode.is_(None), WorkflowRun.mode != RUN_MODE_TEST_NODE)
 
 

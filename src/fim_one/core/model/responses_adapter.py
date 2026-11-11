@@ -31,6 +31,7 @@ from collections.abc import AsyncIterator, Iterable
 from typing import Any
 
 from .types import ChatMessage, LLMResult, StreamChunk, ToolCallRequest
+from .usage import StreamProgress
 
 logger = logging.getLogger(__name__)
 
@@ -383,7 +384,9 @@ def _parse_arguments(raw: Any) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-async def stream_to_chunks(stream: AsyncIterator[Any]) -> AsyncIterator[StreamChunk]:
+async def stream_to_chunks(
+    stream: AsyncIterator[Any], progress: StreamProgress | None = None
+) -> AsyncIterator[StreamChunk]:
     """Translate a Responses event stream into :class:`StreamChunk` values.
 
     The protocol is event-typed rather than delta-shaped, so this is a
@@ -392,11 +395,16 @@ async def stream_to_chunks(stream: AsyncIterator[Any]) -> AsyncIterator[StreamCh
     never break a live turn.  The terminal ``response.completed`` event
     carries the authoritative output list, so tool calls and usage are
     taken from there rather than reassembled from deltas.
+
+    *progress*, when given, is told of every event and of the argument text
+    held back until the terminal event (see ``StreamProgress``).
     """
     unknown: Counter[str] = Counter()
     pending_args: dict[str, str] = {}
 
     async for event in stream:
+        if progress is not None:
+            progress.chunk()
         # LiteLLM hands back a str-subclassed enum here, so the comparisons
         # below already work; unwrapping to the plain value keeps them
         # working if that ever becomes a bare Enum, and keeps the
@@ -427,10 +435,14 @@ async def stream_to_chunks(stream: AsyncIterator[Any]) -> AsyncIterator[StreamCh
             pending_args[item_id] = pending_args.get(item_id, "") + (
                 _get(event, "delta") or ""
             )
+            if progress is not None:
+                progress.tool_arguments(item_id, _get(event, "delta"))
 
         elif event_type in ("response.completed", "response.incomplete"):
             response = _get(event, "response")
             result = parse_response(response)
+            if progress is not None and result.message.tool_calls:
+                progress.released()
             yield StreamChunk(
                 finish_reason=result.finish_reason,
                 tool_calls=result.message.tool_calls,

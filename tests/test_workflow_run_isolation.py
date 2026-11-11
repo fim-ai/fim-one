@@ -552,14 +552,16 @@ class TestAuthorEnvNotInjectedForOthers:
 
 
 class _TokenSpendingExecutor:
-    """Stands in for an LLM node: records 42 tokens and completes."""
+    """Stands in for an LLM node: spends 42 tokens and completes."""
 
     async def execute(self, node: Any, store: Any, context: Any) -> Any:
+        from fim_one.core.model.usage import report_usage
         from fim_one.core.workflow.types import NodeResult, NodeStatus
 
-        await context.usage_tracker.record(
-            {"prompt_tokens": 30, "completion_tokens": 12, "total_tokens": 42}
-        )
+        spent = {"prompt_tokens": 30, "completion_tokens": 12, "total_tokens": 42}
+        await context.usage_tracker.record(spent)
+        # As the model client does for every call it makes.
+        report_usage("test-model", spent)
         return NodeResult(node_id=node.id, status=NodeStatus.COMPLETED, output="ok")
 
 
@@ -586,7 +588,7 @@ class TestTestNodeQuotaAndUsage:
         assert exc.value.error_code == "token_quota_exceeded"
 
     @pytest.mark.asyncio
-    async def test_usage_recorded_and_hidden_from_history(
+    async def test_usage_recorded_in_the_ledger_and_no_run_is_left(
         self,
         world: World,
         session: AsyncSession,
@@ -615,15 +617,22 @@ class TestTestNodeQuotaAndUsage:
             )
         assert resp.data["status"] == "completed"
 
+        from fim_one.core.usage.meter import wait_for_writes
+        from fim_one.db.models.usage_ledger import UsageLedger
+
+        await wait_for_writes()
+        (used,) = (await session.execute(select(UsageLedger))).scalars().all()
+        assert (used.user_id, used.entry, used.total_tokens) == (world.author.id, "test_node", 42)
+        assert (used.source_type, used.workflow_id) == ("workflow_run", world.wf.id)
+        # The test counts toward quota through the ledger. It used to leave a
+        # run record for that, holding nothing but the tokens.
         rows = (
             await session.execute(
                 select(WorkflowRun).where(WorkflowRun.mode == wf_api.RUN_MODE_TEST_NODE)
             )
         ).scalars().all()
-        assert len(rows) == 1
-        assert rows[0].user_id == world.author.id
-        assert rows[0].total_tokens == 42
+        assert rows == []
 
-        # The usage row counts toward quota but stays out of run history.
+        # Run history shows the workflow's runs, as before.
         assert await _list_ids(world, world.author, session) == {world.runs["author"].id}
         assert (await _stats(world, world.author, session))["total_runs"] == 3

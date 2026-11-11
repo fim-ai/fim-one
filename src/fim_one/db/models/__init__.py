@@ -37,6 +37,7 @@ from .organization import Organization, OrgMembership
 from .sensitive_word import SensitiveWord
 from .skill import Skill
 from .system_setting import SystemSetting
+from .usage_ledger import UsageLedger
 from .user import User
 from .workflow import Workflow, WorkflowRun, WorkflowTemplate, WorkflowVersion
 
@@ -81,6 +82,7 @@ __all__ = [
     "StripeWebhookEvent",
     "Subscription",
     "SystemSetting",
+    "UsageLedger",
     "User",
     "UserOAuthBinding",
     "Workflow",

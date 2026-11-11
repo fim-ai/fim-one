@@ -21,7 +21,7 @@ from fim_one.db import get_session
 from fim_one.core.utils import spawn_background
 from fim_one.web.audit_events import record_resource, record_resource_change, snapshot
 from fim_one.web.auth import get_current_user
-from fim_one.web.services.quota_enforcer import get_quota_checked_user
+from fim_one.web.services.quota_enforcer import get_metered_user
 from fim_one.web.exceptions import AppError
 from fim_one.web.deps import get_embedding, get_kb_manager
 from fim_one.db.models import KBDocument, KnowledgeBase, User
@@ -392,23 +392,87 @@ async def _ingest_document(
     the loaders gracefully fall back to text-only extraction — zero
     regression vs. the pre-OCR behavior.
     """
+    from fim_one.core.usage.meter import UsageScope, metered
+    from fim_one.web.services.quota_enforcer import resource_org_id
+
+    # The loaders may ask a vision model to read images and scanned pages:
+    # that is recorded against whoever added the document, with the
+    # knowledge base's organization.
+    async with metered(
+        UsageScope(
+            user_id=user_id,
+            org_id=await resource_org_id({"kb_id": kb_id}),
+            source_type="endpoint",
+            source_id=kb_id,
+            entry="kb_ingest",
+        )
+    ):
+        await _ingest_document_metered(
+            doc_id=doc_id,
+            kb_id=kb_id,
+            user_id=user_id,
+            file_path=file_path,
+            chunk_strategy=chunk_strategy,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+        )
+
+
+async def _vision_allowed(user_id: str, file_path: Path) -> bool:
+    """Whether the user's plan and quota cover the vision model reading the document.
+
+    The chat turn's check (``check_quota``): not when access is sold by
+    plan and the user has none, not when the quota is used up, and not
+    when either cannot be read.
+    """
+    from fim_one.core.assembly.errors import AssemblyRefusal
+    from fim_one.core.assembly.principal import provisional_principal
+    from fim_one.core.assembly.quota import check_quota
+
+    try:
+        await check_quota(provisional_principal(user_id))
+    except AssemblyRefusal as refusal:
+        logger.info(
+            "KB ingest of %s for user %s reads it without the vision model (%s)",
+            file_path,
+            user_id,
+            refusal.error_code,
+        )
+        return False
+    return True
+
+
+async def _ingest_document_metered(
+    *,
+    doc_id: str,
+    kb_id: str,
+    user_id: str,
+    file_path: Path,
+    chunk_strategy: str,
+    chunk_size: int,
+    chunk_overlap: int,
+) -> None:
     from fim_one.db import create_session
 
     # Resolve vision LLM for OCR injection — best-effort. A failure
     # here must not block ingestion; the loaders degrade to text-only.
+    # The vision model's tokens count against the user's quota, so a user
+    # the quota check would refuse a model call gets the text-only reading
+    # instead: the document is still added.
     vision_llm = None
-    try:
-        from fim_one.web.api.chat import _build_markitdown_vision_deps
+    if await _vision_allowed(user_id, file_path):
+        try:
+            from fim_one.web.api.chat import _build_markitdown_vision_deps
 
-        async with create_session() as _vision_db:
-            vision_llm = await _build_markitdown_vision_deps(None, _vision_db)
-    except Exception:
-        logger.warning(
-            "Failed to resolve vision LLM for KB ingest of %s; "
-            "continuing in text-only mode",
-            file_path,
-            exc_info=True,
-        )
+            async with create_session() as _vision_db:
+                vision_llm = await _build_markitdown_vision_deps(None, _vision_db)
+        except Exception:
+            logger.warning(
+                "Failed to resolve vision LLM for KB ingest of %s; "
+                "continuing in text-only mode",
+                file_path,
+                exc_info=True,
+            )
 
     try:
         manager = get_kb_manager()
@@ -1075,7 +1139,7 @@ class _KBAIChatRequest(BaseModel):
 async def kb_ai_chat(
     kb_id: str,
     req: _KBAIChatRequest,
-    current_user: User = Depends(get_quota_checked_user),  # noqa: B008
+    current_user: User = Depends(get_metered_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> dict[str, Any]:
     """Natural language interface for KB management (retrieve, annotate, config)."""

@@ -42,7 +42,8 @@ from fim_one.core.assembly.confirmation import (
     close_requests_of_runs,
     validate_assignee,
 )
-from fim_one.core.assembly.errors import AssemblyRefusal
+from fim_one.core.assembly.errors import TOKEN_QUOTA_EXCEEDED, AssemblyRefusal
+from fim_one.core.assembly.quota import QuotaStatus, quota_status
 from fim_one.core.assembly.principal import AuthMethod, Principal, resolve_principal
 from fim_one.db.models import User, Workflow, WorkflowRun, WorkflowVersion
 from fim_one.db.models.channel import ConfirmationRequest
@@ -1878,6 +1879,23 @@ async def run_workflow(
 # ---------------------------------------------------------------------------
 
 
+async def _batch_quota_at_start(user_id: str) -> QuotaStatus | None:
+    """The user's usage and cap as a batch starts, read once.
+
+    ``None`` when they cannot be read: the batch was admitted, so it then
+    runs without the check between items.
+    """
+    try:
+        return await quota_status(user_id)
+    except Exception:
+        logger.warning(
+            "Quota of user %s could not be read; the batch is not checked between items",
+            user_id,
+            exc_info=True,
+        )
+        return None
+
+
 @router.post("/{workflow_id}/batch-run", response_model=ApiResponse)
 async def batch_run_workflow(
     workflow_id: str,
@@ -1936,10 +1954,28 @@ async def batch_run_workflow(
 
     batch_id = str(uuid.uuid4())
     semaphore = asyncio.Semaphore(body.max_parallel)
+    # The batch was admitted once; between items the quota is checked the
+    # way a chat turn checks it mid-answer: what the user had used when the
+    # batch started, plus what its finished items consumed, with no further
+    # query. An item still running when the cap is reached finishes.
+    quota = await _batch_quota_at_start(current_user.id)
+    consumed = 0
 
     async def _run_single(index: int, inputs: dict[str, Any]) -> BatchRunResultItem:
         """Execute one workflow run within the batch."""
+        nonlocal consumed
         async with semaphore:
+            if quota is not None and quota.exhausted_after(consumed):
+                return BatchRunResultItem(
+                    run_id="",
+                    inputs=inputs,
+                    status="failed",
+                    error=(
+                        f"Not started: the token quota was used up ({TOKEN_QUOTA_EXCEEDED})"
+                        " by the items before it."
+                    ),
+                    duration_ms=0,
+                )
             try:
                 outcome = await service.run_to_completion(
                     wf,
@@ -1958,6 +1994,7 @@ async def batch_run_workflow(
                     error=f"{type(exc).__name__}: {exc}",
                     duration_ms=0,
                 )
+        consumed += outcome.total_tokens
         return BatchRunResultItem(
             run_id=outcome.run_id,
             inputs=inputs,

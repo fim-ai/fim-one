@@ -12,9 +12,18 @@ interface DailyUsage {
   tokens: number
 }
 
+// Usage through no (existing) agent comes with a key instead of a name.
+type UsageOrigin =
+  | "direct_chat"
+  | "workflows"
+  | "evaluations"
+  | "ai_assist"
+  | "deleted_agents"
+
 interface AgentUsage {
   agent_id: string | null
-  agent_name: string
+  agent_name: string | null
+  origin: UsageOrigin | null
   tokens: number
 }
 
@@ -218,11 +227,11 @@ export function UsageSettings() {
                           : 0
                       return (
                         <tr
-                          key={a.agent_id ?? `direct-chat:${a.agent_name}`}
+                          key={a.agent_id ?? `origin:${a.origin}`}
                           className="hover:bg-muted/20 transition-colors"
                         >
                           <td className="px-4 py-2 font-medium text-foreground">
-                            {a.agent_name}
+                            {a.origin ? t(`origins.${a.origin}`) : a.agent_name}
                           </td>
                           <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">
                             {formatNumber(a.tokens ?? 0)}

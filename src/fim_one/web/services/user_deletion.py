@@ -14,6 +14,9 @@ meant to delete.
 
 This module is the single source of truth.
 
+Order: the rows go first, in the caller's transaction, together with the
+caller's audit record; the files go after that commit.
+
 FK-cascade notes
 ----------------
 SQLite now runs with ``PRAGMA foreign_keys=ON`` (see ``db/engine.py``) so the
@@ -75,16 +78,74 @@ def _vector_store_base() -> Path:
     return Path(os.environ.get("VECTOR_STORE_DIR", "./data/vector_store"))
 
 
-async def purge_user_data(db: AsyncSession, user_id: str) -> dict[str, int]:
-    """Remove a user and *all* of their data — DB rows and on-disk files.
+class PurgedUser(dict[str, int]):
+    """What :func:`purge_user_data` staged: the summary, and the files to remove.
+
+    The mapping itself is the summary ``{"conversations": int,
+    "knowledge_bases": int}`` for the caller's audit detail line.
+    """
+
+    def __init__(
+        self,
+        summary: dict[str, int],
+        *,
+        user_id: str,
+        conversation_ids: tuple[str, ...],
+        knowledge_base_ids: tuple[str, ...],
+    ) -> None:
+        super().__init__(summary)
+        self.user_id = user_id
+        self.conversation_ids = conversation_ids
+        self.knowledge_base_ids = knowledge_base_ids
+
+    def remove_files(self) -> None:
+        """Remove the deleted user's files. Call once the deletion is committed.
+
+        Never raises: the account is already gone, and a path that could not
+        be removed is logged for the operator.
+        """
+        try:
+            uploads_base = _uploads_base()
+            uploads_conversations = uploads_base / "conversations"
+            dag_checkpoints_dir = _REPO_ROOT / "data" / "dag_checkpoints"
+            workspaces_dir = _REPO_ROOT / "data" / "workspaces"
+            for conv_id in self.conversation_ids:
+                shutil.rmtree(_CONVERSATIONS_SANDBOX_DIR / conv_id, ignore_errors=True)
+                shutil.rmtree(uploads_conversations / conv_id, ignore_errors=True)
+                shutil.rmtree(workspaces_dir / conv_id, ignore_errors=True)
+                (dag_checkpoints_dir / f"{conv_id}.json").unlink(missing_ok=True)
+
+            kb_uploads = uploads_base / "kb"
+            for kb_id in self.knowledge_base_ids:
+                shutil.rmtree(kb_uploads / kb_id, ignore_errors=True)
+
+            shutil.rmtree(_vector_store_base() / f"user_{self.user_id}", ignore_errors=True)
+            shutil.rmtree(uploads_base / f"user_{self.user_id}", ignore_errors=True)
+
+            avatar_dir = uploads_base / "avatars"
+            if avatar_dir.exists():
+                for pattern in (f"{self.user_id}_*", f"{self.user_id}.*"):
+                    for avatar_file in avatar_dir.glob(pattern):
+                        avatar_file.unlink(missing_ok=True)
+        except Exception:
+            logger.error(
+                "Files of deleted user %s could not all be removed", self.user_id, exc_info=True
+            )
+
+
+async def purge_user_data(db: AsyncSession, user_id: str) -> PurgedUser:
+    """Stage the removal of a user and *all* of their rows.
 
     Does **not** commit and does **not** write an audit record; the caller owns
     transaction boundaries and audit semantics (the actor/action differ between
-    the admin and self-serve paths).
+    the admin and self-serve paths). It does **not** touch the disk either:
+    the caller commits, then calls :meth:`PurgedUser.remove_files`. In that
+    order a failed commit leaves the account whole, and a crash after the
+    commit leaves only files nothing refers to.
 
     Returns:
-        A small summary ``{"conversations": int, "knowledge_bases": int}`` for
-        the caller's audit detail line.
+        The summary ``{"conversations": int, "knowledge_bases": int}`` for
+        the caller's audit detail line, with the files to remove.
 
     Raises:
         AppError(``user_not_found``): no such user.
@@ -140,42 +201,24 @@ async def purge_user_data(db: AsyncSession, user_id: str) -> dict[str, int]:
             detail_args={"count": len(owned), "orgs": ", ".join(owned)},
         )
 
-    # 3. Clean up file-system resources before the DB delete.
-    #    NOTE: any new user-owned module that writes to disk MUST be added here
-    #    AND to the registry in .claude/skills/user-owned-module/SKILL.md
-    #    and .agents/skills/user-owned-module/SKILL.md.
+    # 3. Note the file-system resources to remove. They are removed by the
+    #    caller AFTER the deletion is committed (:meth:`PurgedUser.remove_files`):
+    #    a file left behind by a crash in between can still be cleaned up, a
+    #    user whose deletion rolled back cannot get their files back.
+    #    NOTE: any new user-owned module that writes to disk MUST be added to
+    #    :meth:`PurgedUser.remove_files` AND to the registry in
+    #    .claude/skills/user-owned-module/SKILL.md and
+    #    .agents/skills/user-owned-module/SKILL.md.
     conv_ids = (
         await db.execute(
             select(Conversation.id).where(Conversation.user_id == user_id)
         )
     ).scalars().all()
-    uploads_base = _uploads_base()
-    uploads_conversations = uploads_base / "conversations"
-    dag_checkpoints_dir = _REPO_ROOT / "data" / "dag_checkpoints"
-    workspaces_dir = _REPO_ROOT / "data" / "workspaces"
-    for conv_id in conv_ids:
-        shutil.rmtree(_CONVERSATIONS_SANDBOX_DIR / conv_id, ignore_errors=True)
-        shutil.rmtree(uploads_conversations / conv_id, ignore_errors=True)
-        shutil.rmtree(workspaces_dir / conv_id, ignore_errors=True)
-        (dag_checkpoints_dir / f"{conv_id}.json").unlink(missing_ok=True)
-
     kb_ids = (
         await db.execute(
             select(KnowledgeBase.id).where(KnowledgeBase.user_id == user_id)
         )
     ).scalars().all()
-    kb_uploads = uploads_base / "kb"
-    for kb_id in kb_ids:
-        shutil.rmtree(kb_uploads / kb_id, ignore_errors=True)
-
-    shutil.rmtree(_vector_store_base() / f"user_{user_id}", ignore_errors=True)
-    shutil.rmtree(uploads_base / f"user_{user_id}", ignore_errors=True)
-
-    avatar_dir = uploads_base / "avatars"
-    if avatar_dir.exists():
-        for pattern in (f"{user_id}_*", f"{user_id}.*"):
-            for avatar_file in avatar_dir.glob(pattern):
-                avatar_file.unlink(missing_ok=True)
 
     # 4. Explicit, FK-safe deletes for tables that have a FK to users but no
     #    cascade relationship on the User model (so the ORM cascade in step 5
@@ -232,6 +275,12 @@ async def purge_user_data(db: AsyncSession, user_id: str) -> dict[str, int]:
         .values(invited_by=None)
     )
 
+    # The usage ledger (``usage_ledger``) is left as it is: it has no
+    # foreign key, and what the account consumed stays counted in the
+    # organization's and the platform's totals after the account is gone.
+    # Its ``user_id`` then names nobody. (What is shown of a deleted user in
+    # the records that outlive them is decided with the other logs.)
+
     # Preserve audit history but remove the actor reference.
     await db.execute(
         update(AuditLog).where(AuditLog.actor_id == user_id).values(actor_id=None)
@@ -250,4 +299,9 @@ async def purge_user_data(db: AsyncSession, user_id: str) -> dict[str, int]:
         len(conv_ids),
         len(kb_ids),
     )
-    return {"conversations": len(conv_ids), "knowledge_bases": len(kb_ids)}
+    return PurgedUser(
+        {"conversations": len(conv_ids), "knowledge_bases": len(kb_ids)},
+        user_id=user_id,
+        conversation_ids=tuple(conv_ids),
+        knowledge_base_ids=tuple(kb_ids),
+    )

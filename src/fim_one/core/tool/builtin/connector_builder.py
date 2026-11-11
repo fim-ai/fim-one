@@ -573,9 +573,12 @@ class ConnectorTestActionTool(_ConnectorBuilderBase):
                         auth=auth,
                     )
             except httpx.TimeoutException:
+                await self._record_test_call(db, connector, action, None)
                 return "[Timeout] Request timed out after 30s."
             except httpx.RequestError as exc:
+                await self._record_test_call(db, connector, action, None)
                 return f"[Error] {exc}"
+            await self._record_test_call(db, connector, action, resp.status_code)
 
             # Format response
             resp_body = resp.text[:10_000]  # cap at 10 KB for LLM context
@@ -595,6 +598,36 @@ class ConnectorTestActionTool(_ConnectorBuilderBase):
                 ensure_ascii=False,
                 indent=2,
             )
+
+
+    async def _record_test_call(
+        self, db: Any, connector: Any, action: Any, status_code: int | None
+    ) -> None:
+        """A real request left with the owner's stored credential: recorded.
+
+        Which action, what it calls (method and path template) and how the
+        request ended; never the parameters, the body or the response. A
+        failure to write it is logged: the request has already been sent.
+        """
+        try:
+            answered = status_code is not None and status_code < 400
+            status = f"status={status_code}" if status_code is not None else "no response"
+            await audited.record_resource(
+                db,
+                await audited.builder_actor(db, self.user_id),
+                audit_actions.CONNECTOR_ACTION_TEST,
+                "connector_action",
+                action,
+                org_id=connector.org_id,
+                outcome="success" if answered else "failed",
+                detail=(
+                    f"{audited.action_deleted_detail(self.connector_id, action)}; {status}; "
+                    f"{audited.THROUGH_THE_BUILDER}"
+                ),
+            )
+            await db.commit()
+        except Exception:
+            logger.error("Could not record the builder's test call", exc_info=True)
 
 
 # ------------------------------------------------------------------

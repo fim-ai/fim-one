@@ -35,11 +35,14 @@ here is what propagates that contract upward.
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator, Mapping
+from typing import Any
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.usage.meter import UsageScope, open_meter
 from fim_one.db.models import BillingPlan, SystemSetting, User
 from fim_one.web.auth import get_current_user
 from fim_one.web.services.billing_flag import (
@@ -212,9 +215,9 @@ async def get_quota_checked_user(
 ) -> User:
     """``get_current_user`` that also refuses an over-quota or unentitled user.
 
-    For endpoints that call a model outside chat (AI-assisted builders, KB and
-    DB chat, eval runs); chat runs the same check before each turn. These
-    calls are not yet counted in the user's usage.
+    For endpoints that start model work outside chat; chat runs the same
+    check before each turn. An endpoint that calls a model itself takes
+    :func:`get_metered_user`, which also records what the call consumes.
     """
     from fim_one.core.assembly.principal import provisional_principal
     from fim_one.core.assembly.quota import check_quota
@@ -223,9 +226,109 @@ async def get_quota_checked_user(
     return user
 
 
+# What each model-backed helper endpoint is called in the usage ledger, by
+# the name of its route function.
+_ENDPOINT_ENTRIES: dict[str, str] = {
+    "ai_create_agent": "ai_assist.agent_create",
+    "ai_refine_agent": "ai_assist.agent_refine",
+    "ai_create_connector": "ai_assist.connector_create",
+    "ai_generate_actions": "ai_assist.connector_actions",
+    "ai_refine_action": "ai_assist.connector_action_refine",
+    "ai_annotate": "ai_assist.db_annotate",
+    "db_ai_chat": "db_chat",
+    "kb_ai_chat": "kb_chat",
+}
+# The path parameter that names what the endpoint works on.
+_RESOURCE_PARAMS = ("agent_id", "connector_id", "kb_id")
+
+
+async def resource_org_id(params: Mapping[str, Any]) -> str | None:
+    """The organization of the agent, connector or knowledge base *params* names.
+
+    *params* holds at most one of ``agent_id``, ``connector_id`` and
+    ``kb_id`` (a route's path parameters). ``None`` when it names none,
+    the resource is not found, or it belongs to no organization. Read in a
+    short session of its own; never raises (a failed read logs and gives
+    ``None``: the row is still written, without its organization).
+    """
+    from sqlalchemy import select
+
+    from fim_one.db import create_session
+    from fim_one.db.models.agent import Agent
+    from fim_one.db.models.connector import Connector
+    from fim_one.db.models.knowledge_base import KnowledgeBase
+
+    lookups: tuple[tuple[str, Any], ...] = (
+        ("agent_id", Agent),
+        ("connector_id", Connector),
+        ("kb_id", KnowledgeBase),
+    )
+    for key, model in lookups:
+        resource_id = params.get(key)
+        if not resource_id:
+            continue
+        try:
+            async with create_session() as db:
+                org_id = (
+                    await db.execute(select(model.org_id).where(model.id == str(resource_id)))
+                ).scalar_one_or_none()
+        except Exception:
+            logger.warning("Organization of %s %s could not be read", key, resource_id)
+            return None
+        return str(org_id) if org_id else None
+    return None
+
+
+def endpoint_usage_scope(
+    request: Request, user_id: str, org_id: str | None = None
+) -> UsageScope:
+    """Whose usage a helper endpoint's model calls are: the caller's own.
+
+    Recorded as a use of the endpoint (there is no conversation or run),
+    under the entry name of its route and the resource it works on, with
+    that resource's organization (*org_id*, see :func:`resource_org_id`).
+    """
+    route = request.scope.get("route")
+    name = getattr(route, "name", None) or "unknown"
+    params = request.path_params
+    resource_id = next((str(params[key]) for key in _RESOURCE_PARAMS if params.get(key)), None)
+    return UsageScope(
+        user_id=user_id,
+        org_id=org_id,
+        source_type="endpoint",
+        source_id=resource_id,
+        entry=_ENDPOINT_ENTRIES.get(name, f"endpoint.{name}"),
+        agent_id=str(params["agent_id"]) if params.get("agent_id") else None,
+    )
+
+
+async def get_metered_user(
+    request: Request,
+    user: User = Depends(get_quota_checked_user),  # noqa: B008
+) -> AsyncIterator[User]:
+    """:func:`get_quota_checked_user`, with the request's model calls recorded.
+
+    For the endpoints that call a model outside chat (AI-assisted builders,
+    KB and DB chat). The usage counts against the caller's quota like a
+    chat turn's does, and is written to the usage ledger when the request
+    ends, whether it succeeded or failed. Work the request leaves running
+    in the background (annotating a large schema) reports to the same
+    scope and is written as it arrives.
+    """
+    org_id = await resource_org_id(request.path_params)
+    opened = open_meter(endpoint_usage_scope(request, user.id, org_id))
+    try:
+        yield user
+    finally:
+        await opened.close()
+
+
 __all__ = [
+    "endpoint_usage_scope",
+    "get_metered_user",
     "get_quota_checked_user",
     "get_user_quota",
     "get_user_quota_by_id",
     "is_user_unentitled",
+    "resource_org_id",
 ]

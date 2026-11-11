@@ -76,6 +76,11 @@ class TestUrlPath:
             ("https://host.example/mcp/ab12cd34-ef56gh78-ij90kl12", "url_path_segment"),
             ("https://actions.zapier.com/mcp/sk-ak-abcdefgh12345/sse", "url_path_segment"),
             (f"https://host.example/mcp/%30123456789abcdef{T32[:8]}", "url_path_segment"),
+            # A token glued to a short word by a dot or a bracket.
+            ("https://host.example/hook.sk-live-0123456789abcdef", "url_path_segment"),
+            (f"https://host.example/v1/key.{T32}", "url_path_segment"),
+            ("https://host.example/v1/(token)sk-live-0123456789abcdef", "url_path_segment"),
+            (f"https://host.example/v1/key[{T32}]", "url_path_segment"),
             ("https://host.example/mcp;token=abc", "url_path_parameter"),
             ("https://host.example/mcp;v=1/sse", "url_path_parameter"),
             ("https://host.example/mcp%3Ftoken=abc", "url_path_parameter"),
@@ -123,6 +128,11 @@ class TestUrlPath:
             "https://host.example/api/v2/workspaces/acme-corp/mcp",
             "https://host.example/mcp;charset",
             "https://host.example/0123456789abcde/sse",  # 15 hex
+            # File names and versions: dots that join words, not a token.
+            "https://host.example/files/report.final.json",
+            "https://host.example/api/v1.2/mcp",
+            "https://host.example/docs/release-notes.2024.html",
+            "https://host.example/a/index(1).html",
         ],
     )
     def test_fixed_addresses_and_names_do_not(self, url: str) -> None:
@@ -439,6 +449,20 @@ class TestStripUrlSecrets:
                 "https://host.example/mcp/sk-ak-abcdefgh12345/sse",
                 "https://host.example/mcp/***/sse",
             ),
+            (
+                "https://host.example/hook.sk-live-0123456789abcdef/sse",
+                "https://host.example/***/sse",
+            ),
+            (f"https://host.example/v1/key.{T32}", "https://host.example/v1/***"),
+            (
+                "https://host.example/v1/(token)sk-live-0123456789abcdef",
+                "https://host.example/v1/***",
+            ),
+            (
+                "https://host.example/files/report.final.json",
+                "https://host.example/files/report.final.json",
+            ),
+            ("https://host.example/api/v1.2/mcp", "https://host.example/api/v1.2/mcp"),
             ("https://host.example/mcp;token=abc/sse", "https://host.example/mcp;***/sse"),
             (f"https://host.example/{T32};a=b", "https://host.example/***"),
             ("https://host.example/mcp%3Ftoken=abc", "https://host.example/***"),

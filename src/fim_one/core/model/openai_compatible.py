@@ -6,11 +6,12 @@ DeepSeek, Mistral, etc.) without provider-specific conditionals.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
 import re
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 import httpx
@@ -35,6 +36,13 @@ from .responses_adapter import (
 )
 from .retry import RetryConfig, retry_async_call, retry_async_iterator
 from .types import ChatMessage, LLMResult, StreamChunk, ToolCallRequest
+from .usage import (
+    StreamProgress,
+    TextTokenCounter,
+    UsageReporter,
+    estimated_usage,
+    report_usage,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -609,29 +617,40 @@ class OpenAICompatibleLLM(BaseLLM):
             await self._rate_limiter.acquire()
 
         if self._should_use_native_responses(reasoning_effort=reasoning_effort):
-            native = await self._native_responses_chat(
-                messages,
-                tools=tools,
-                tool_choice=tool_choice,
-                max_tokens=max_tokens,
-                response_format=response_format,
-                reasoning_effort=reasoning_effort,
-            )
+            try:
+                native = await self._native_responses_chat(
+                    messages,
+                    tools=tools,
+                    tool_choice=tool_choice,
+                    max_tokens=max_tokens,
+                    response_format=response_format,
+                    reasoning_effort=reasoning_effort,
+                )
+            except asyncio.CancelledError:
+                self._report_cancelled_call(report_usage, messages, tools)
+                raise
             if native is not None:
+                # Metered first: a cancel landing on the rate limiter's await
+                # must not lose a response that has arrived.
+                self._meter_result(messages, native, tools)
                 if self._rate_limiter is not None and native.usage.get("total_tokens"):
                     await self._rate_limiter.report_usage(native.usage["total_tokens"])
                 return native
 
-        response = await self._dispatch_acompletion(
-            messages=messages,
-            tools=tools,
-            tool_choice=tool_choice,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            response_format=response_format,
-            stream=False,
-            reasoning_effort=reasoning_effort,
-        )
+        try:
+            response = await self._dispatch_acompletion(
+                messages=messages,
+                tools=tools,
+                tool_choice=tool_choice,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format=response_format,
+                stream=False,
+                reasoning_effort=reasoning_effort,
+            )
+        except asyncio.CancelledError:
+            self._report_cancelled_call(report_usage, messages, tools)
+            raise
 
         choice = response.choices[0]
         assistant_msg = self._parse_choice_message(choice)
@@ -653,16 +672,128 @@ class OpenAICompatibleLLM(BaseLLM):
             }
             _merge_cache_usage(usage, response.usage)
 
-        # Report actual token usage back to the rate limiter.
-        if self._rate_limiter is not None and usage.get("total_tokens"):
-            await self._rate_limiter.report_usage(usage["total_tokens"])
-
-        return LLMResult(
+        result = LLMResult(
             message=assistant_msg,
             usage=usage,
             finish_reason=finish_reason,
             truncated_tool_call=truncated_tool_call,
         )
+        # Metered before the rate limiter's await, which a cancel can land
+        # on: the response has arrived and is billed.
+        self._meter_result(messages, result, tools)
+
+        # Report actual token usage back to the rate limiter.
+        if self._rate_limiter is not None and usage.get("total_tokens"):
+            await self._rate_limiter.report_usage(usage["total_tokens"])
+        return result
+
+    def _meter_result(
+        self,
+        messages: list[ChatMessage],
+        result: LLMResult,
+        tools: list[dict[str, Any]] | None,
+    ) -> None:
+        """Report a finished non-streaming call to the usage meter of the scope.
+
+        The provider's own count when it sent one; an estimate from the
+        text otherwise, marked as such. Never raises (outside strict
+        metering, which tests switch on).
+        """
+        if result.usage and result.usage.get("total_tokens"):
+            report_usage(self._model, result.usage)
+            return
+        message = result.message
+        parts = [
+            message.content if isinstance(message.content, str) else "",
+            message.reasoning_content or "",
+        ]
+        parts.extend(json.dumps(call.arguments, default=str) for call in message.tool_calls or ())
+        report_usage(
+            self._model, estimated_usage(messages, "".join(parts), tools), estimated=True
+        )
+
+    def _report_cancelled_call(
+        self,
+        report: Callable[..., None],
+        messages: list[ChatMessage],
+        tools: list[dict[str, Any]] | None,
+    ) -> None:
+        """Report a call cancelled after it was sent and before anything came back.
+
+        The provider has the request and bills at least what it was sent,
+        so its prompt is reported, estimated. A call that fails instead
+        (refused, unreachable) reports nothing: the provider billed nothing.
+        """
+        report(self._model, estimated_usage(messages, "", tools), estimated=True)
+
+    def _metered_stream(
+        self,
+        chunks: AsyncIterator[StreamChunk],
+        messages: list[ChatMessage],
+        tools: list[dict[str, Any]] | None,
+        progress: StreamProgress,
+        report: UsageReporter,
+    ) -> AsyncIterator[StreamChunk]:
+        """*chunks*, with the call's usage reported to the meter when the stream ends.
+
+        However it ends: read to the end, abandoned by its reader, cancelled
+        or broken by an error. The provider's count is reported when one
+        arrived; a stream that ended without one (cut short, or a provider
+        that sends none) is estimated from what was sent and what had come
+        back, and marked as an estimate. What came back includes tool-call
+        arguments the inner iterator still holds (*progress*): a tool-call
+        round yields nothing until the model has written them all. A stream
+        cancelled or abandoned before its first chunk reports its prompt,
+        estimated; one that broke on an error before its first chunk
+        reports nothing.
+
+        *report* is bound by the caller in its own context, before the call
+        is sent: the stream may be closed from another one.
+        """
+        model = self._model
+
+        async def _iterate() -> AsyncIterator[StreamChunk]:
+            usage: dict[str, int] | None = None
+            received: list[str] = []
+            cancelled = False
+            # What this stream has added to the meter's in-flight estimate:
+            # the scope can see the answer grow before the call reports.
+            counter = TextTokenCounter()
+            in_flight = 0
+            try:
+                async for chunk in chunks:
+                    progress.chunk()
+                    if chunk.usage:
+                        usage = chunk.usage
+                    pieces = [chunk.delta_content, chunk.delta_reasoning]
+                    pieces.extend(
+                        json.dumps(call.arguments, default=str) for call in chunk.tool_calls or ()
+                    )
+                    for piece in pieces:
+                        if not piece:
+                            continue
+                        received.append(piece)
+                        counter.add(piece)
+                    so_far = counter.tokens()
+                    if so_far != in_flight:
+                        report.progress(so_far - in_flight)
+                        in_flight = so_far
+                    yield chunk
+            except (asyncio.CancelledError, GeneratorExit):
+                cancelled = True
+                raise
+            finally:
+                # The estimate goes; the call's own count takes its place.
+                report.progress(-in_flight)
+                if usage and usage.get("total_tokens"):
+                    report(model, usage)
+                elif progress.started:
+                    output = "".join(received) + progress.held_text()
+                    report(model, estimated_usage(messages, output, tools), estimated=True)
+                elif cancelled:
+                    self._report_cancelled_call(report, messages, tools)
+
+        return _iterate()
 
     async def stream_chat(
         self,
@@ -709,24 +840,38 @@ class OpenAICompatibleLLM(BaseLLM):
         if self._rate_limiter is not None:
             await self._rate_limiter.acquire()
 
+        # Bound now, in the caller's context: the stream may be closed from
+        # another one.
+        report = UsageReporter()
+        progress = StreamProgress()
+
         if self._should_use_native_responses():
-            native = await self._native_responses_stream(
-                messages,
+            try:
+                native = await self._native_responses_stream(
+                    messages,
+                    tools=tools,
+                    tool_choice=tool_choice,
+                    max_tokens=max_tokens,
+                    progress=progress,
+                )
+            except asyncio.CancelledError:
+                self._report_cancelled_call(report, messages, tools)
+                raise
+            if native is not None:
+                return self._metered_stream(native, messages, tools, progress, report)
+
+        try:
+            stream = await self._dispatch_acompletion(
+                messages=messages,
                 tools=tools,
                 tool_choice=tool_choice,
+                temperature=temperature,
                 max_tokens=max_tokens,
+                stream=True,
             )
-            if native is not None:
-                return native
-
-        stream = await self._dispatch_acompletion(
-            messages=messages,
-            tools=tools,
-            tool_choice=tool_choice,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            stream=True,
-        )
+        except asyncio.CancelledError:
+            self._report_cancelled_call(report, messages, tools)
+            raise
 
         async def _iterate() -> AsyncIterator[StreamChunk]:
             # Accumulate partial tool calls keyed by their index in the array.
@@ -739,6 +884,7 @@ class OpenAICompatibleLLM(BaseLLM):
             think_parser = _ThinkTagStreamParser()
 
             async for chunk in stream:
+                progress.chunk()
                 # Extract usage from any chunk that carries it (typically the
                 # final chunk, which may have empty choices).
                 if hasattr(chunk, "usage") and chunk.usage is not None:
@@ -825,6 +971,7 @@ class OpenAICompatibleLLM(BaseLLM):
                                 partial.name = tc_name
                             if tc_delta.function.arguments:
                                 partial.arguments += tc_delta.function.arguments
+                                progress.tool_arguments(idx, tc_delta.function.arguments)
 
                 # Emit a chunk for every delta that carries content,
                 # reasoning, or a thinking-block signature.
@@ -861,6 +1008,10 @@ class OpenAICompatibleLLM(BaseLLM):
                         )
                     else:
                         completed = self._flush_tool_calls(pending_tool_calls)
+                        # Counted from the chunk from here on. A batch cut
+                        # by the length limit is dropped, not yielded, and
+                        # stays held: the model wrote it.
+                        progress.released()
                         yield StreamChunk(
                             finish_reason=finish_reason,
                             tool_calls=completed,
@@ -887,7 +1038,7 @@ class OpenAICompatibleLLM(BaseLLM):
             if stream_usage and not usage_yielded:
                 yield StreamChunk(usage=stream_usage)
 
-        return _iterate()
+        return self._metered_stream(_iterate(), messages, tools, progress, report)
 
     @property
     def abilities(self) -> dict[str, bool]:
@@ -1218,6 +1369,7 @@ class OpenAICompatibleLLM(BaseLLM):
         tools: list[dict[str, Any]] | None,
         tool_choice: str | dict[str, Any] | None,
         max_tokens: int | None,
+        progress: StreamProgress | None = None,
     ) -> AsyncIterator[StreamChunk] | None:
         """Open one streaming /v1/responses call.
 
@@ -1248,7 +1400,7 @@ class OpenAICompatibleLLM(BaseLLM):
             raise TypeError(
                 "litellm.aresponses(stream=True) returned a non-streaming response"
             )
-        return stream_to_chunks(stream)
+        return stream_to_chunks(stream, progress)
 
     async def _dispatch_acompletion(self, **build_args: Any) -> Any:
         """Call ``litellm.acompletion``, optionally via the Responses bridge.

@@ -61,6 +61,7 @@ from fim_one.core.assembly.principal import (
 )
 from fim_one.core.assembly.quota import AssemblyRunGate
 from fim_one.core.assembly.sandbox import release_sandbox, workflow_run_sandbox_id
+from fim_one.core.usage.meter import OpenMeter, UsageScope, open_meter
 
 from .node_gates import (
     HUMAN_INTERVENTION_DISABLED,
@@ -467,7 +468,33 @@ class StartedRun:
                 return
             yield item
 
+    def _usage_scope(self) -> UsageScope:
+        """Whose usage the run's model calls are: the run's principal (the
+        author, for a trigger key or a schedule), recorded on the run."""
+        return UsageScope(
+            user_id=self.principal.user_id,
+            org_id=getattr(self.workflow, "org_id", None),
+            source_type="workflow_run",
+            source_id=self.run_id,
+            entry=self.mode.value,
+            workflow_id=getattr(self.workflow, "id", None),
+        )
+
     async def _drive(self) -> None:
+        # The run's own metering scope, in the task that drives it: the
+        # model calls of its steps are recorded on the run and nowhere else
+        # (not on the conversation of an agent that started it as a tool).
+        # A run that waits and is continued is driven again, by a new
+        # object with a scope of its own: each part is recorded once.
+        usage = open_meter(self._usage_scope())
+        try:
+            await self._drive_metered()
+        finally:
+            # After the run is stored, and whoever stored it: a run closed
+            # under this process has still consumed what it consumed.
+            await usage.close()
+
+    async def _drive_metered(self) -> None:
         start = time.time()
         out = self.outcome
         try:
@@ -1511,8 +1538,9 @@ class WorkflowRunService:
         """Execute one node in isolation; return its result and the variables.
 
         Same principal, gate and env rules as a full run. There is no
-        ``db_session_factory``, so an approval node is auto-approved. Token
-        usage is recorded as a ``test_node`` run so it counts toward quota.
+        ``db_session_factory``, so an approval node is auto-approved. What
+        the step consumes is recorded in the usage ledger (entry
+        ``test_node``) and counts toward the quota; no run record is made.
         """
         from fim_one.core.model.usage import UsageTracker
 
@@ -1547,6 +1575,17 @@ class WorkflowRunService:
         executor = get_executor(node.type)
 
         t0 = time.time()
+        usage = OpenMeter(
+            UsageScope(
+                user_id=principal.user_id,
+                org_id=getattr(workflow, "org_id", None),
+                source_type="workflow_run",
+                # There is no run record: the id says which test it was.
+                source_id=test_run_id,
+                entry=RunMode.TEST_NODE.value,
+                workflow_id=workflow.id,
+            )
+        ).enter()
         try:
             result = await asyncio.wait_for(
                 executor.execute(node, store, context), timeout=node.timeout_ms / 1000
@@ -1572,23 +1611,16 @@ class WorkflowRunService:
                 duration_ms=int((time.time() - t0) * 1000),
             )
         finally:
-            await release_sandbox(context.sandbox_id)
+            usage.leave()
+            try:
+                await release_sandbox(context.sandbox_id)
+            finally:
+                await usage.close()
 
-        total_tokens = int(usage_tracker.get_summary().total_tokens or 0)
-        if total_tokens > 0:
-            now = datetime.now(UTC)
-            await self._insert_run(
-                workflow_id=workflow.id,
-                user_id=principal.user_id,
-                blueprint_snapshot={"nodes": [], "edges": [], "test_node": node.id},
-                inputs=None,
-                status="completed" if result.status == NodeStatus.COMPLETED else "failed",
-                mode=RunMode.TEST_NODE,
-                started_at=now,
-                completed_at=now,
-                duration_ms=result.duration_ms,
-                total_tokens=total_tokens,
-            )
+        # No run record is written for a test. One used to be, with nothing
+        # in it but the tokens, so that the test counted toward the quota:
+        # the quota reads the usage ledger now, where the scope above has
+        # put what the step consumed.
         return result, await store.snapshot()
 
     # -- internals ------------------------------------------------------------

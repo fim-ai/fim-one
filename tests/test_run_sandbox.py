@@ -408,7 +408,7 @@ class TestAnEvaluationRun:
         monkeypatch.setattr(eval_runs, "create_session", factory)
         monkeypatch.setattr(eval_runs, "_run_one_case", _case)
 
-        await eval_runs._execute_eval_run("eval-1", None, [{"id": "c1"}], None, None)
+        await eval_runs._run_cases("eval-1", None, [{"id": "c1"}], None, None)
 
         (dirs,) = seen
         assert set(dirs) == SANDBOXED

@@ -28,6 +28,7 @@ from fim_one.db.models.agent import Agent
 from fim_one.db.models.connector import Connector, ConnectorAction
 from fim_one.db.models.conversation import Conversation
 from fim_one.db.models.organization import Organization, OrgMembership
+from fim_one.db.models.usage_ledger import UsageLedger
 from fim_one.db.models.user import User
 from fim_one.web import create_app
 from fim_one.web.auth import create_access_token
@@ -395,7 +396,11 @@ class TestAutoIsAdmittedBeforeItClassifies:
             user = await db.get(User, world.user)
             assert user is not None
             user.token_quota = 10
-            db.add(Conversation(user_id=world.user, title="t", mode="react", total_tokens=10))
+            db.add(
+                UsageLedger(
+                    user_id=world.user, source_type="conversation", entry="chat", total_tokens=10
+                )
+            )
             await db.commit()
 
         conv = await _conversation(world.user, None)
@@ -493,7 +498,7 @@ class TestAutoIsAdmittedBeforeItClassifies:
 class TestTheMidStreamQuotaGuard:
     """A turn admitted under the limit is stopped when its answer crosses it."""
 
-    # 100 chunks of 100 characters: about 2,500 tokens by the guard's estimate.
+    # 100 chunks of 100 characters: about 2,300 tokens by the guard's estimate.
     CHUNKS = 100
     CHUNK = "x" * 100
     QUOTA = 1000
@@ -509,6 +514,18 @@ class TestTheMidStreamQuotaGuard:
             user.token_quota = self.QUOTA
             await db.commit()
 
+    @staticmethod
+    def _in_flight(chunk: str) -> None:
+        """What the model client does as a streamed call's text arrives: it
+        keeps the turn's meter up to date with an estimate of the answer so
+        far (``estimate_tokens``). The scripted model of these
+        tests is not that client, so the stand-in stream does it."""
+        from fim_one.core.model.usage import current_meter, estimate_tokens
+
+        meter = current_meter.get()
+        assert meter is not None, "the answer is streamed outside the turn's usage meter"
+        meter.stream_progress(estimate_tokens(chunk))
+
     def _assert_stopped(self, body: str) -> None:
         events = _payloads(body)
         streamed = sum(
@@ -516,9 +533,12 @@ class TestTheMidStreamQuotaGuard:
             for name, data in events
             if name == "answer" and data.get("status") == "delta"
         )
-        # Cut at the first check after the estimate reaches the limit
-        # (4 characters a token, checked every 200 characters), not at the end.
-        assert self.QUOTA * 4 <= streamed <= self.QUOTA * 4 + 200, streamed
+        # Cut at the first check after what the turn's meter holds reaches
+        # the limit (checked every 200 characters), not at the end.
+        from fim_one.core.model.usage import estimate_tokens
+
+        limit = self.QUOTA * len(self.CHUNK) / estimate_tokens(self.CHUNK)
+        assert limit <= streamed <= limit + 200, streamed
         assert streamed < self.CHUNKS * len(self.CHUNK)
         (terminator,) = [data for name, data in events if name == "error"]
         assert terminator["code"] == "QUOTA_EXCEEDED"
@@ -537,6 +557,7 @@ class TestTheMidStreamQuotaGuard:
     ) -> None:
         async def _long(_self: Any, *_args: Any, **_kwargs: Any) -> AsyncIterator[str]:
             for _ in range(self.CHUNKS):
+                self._in_flight(self.CHUNK)
                 yield self.CHUNK
 
         monkeypatch.setattr(ReActAgent, "stream_answer", _long)
@@ -557,6 +578,7 @@ class TestTheMidStreamQuotaGuard:
 
         async def _long(_self: Any, *_args: Any, **_kwargs: Any) -> AsyncIterator[str]:
             for _ in range(self.CHUNKS):
+                self._in_flight(self.CHUNK)
                 yield self.CHUNK
 
         monkeypatch.setattr(chat_mod.PlanAnalyzer, "stream_synthesize", _long)
@@ -579,6 +601,7 @@ class TestTheMidStreamQuotaGuard:
 
         async def _short(_self: Any, *_args: Any, **_kwargs: Any) -> AsyncIterator[str]:
             for _ in range(10):
+                self._in_flight(self.CHUNK)
                 yield self.CHUNK
 
         monkeypatch.setattr(ReActAgent, "stream_answer", _short)

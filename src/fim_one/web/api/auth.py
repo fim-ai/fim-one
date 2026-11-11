@@ -1587,6 +1587,8 @@ async def delete_own_account(
         db=db,
     )
     await db.commit()
+    # The files go once the deletion is committed, never before.
+    summary.remove_files()
 
     return {"deleted": True}
 

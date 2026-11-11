@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from fim_one.core.audit import writer as audit
+from fim_one.core.usage import ledger as usage_ledger
 from fim_one.web.csv_safe import safe_writer
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_admin, hash_password, hash_password_async
@@ -630,14 +631,12 @@ async def list_users(
     result = await db.execute(query)
     users = result.scalars().all()
 
-    # Bulk monthly token aggregation
+    # What each listed user consumed this calendar month, from the usage
+    # ledger: it does not fall when their conversations are deleted.
     first_of_month = datetime(date.today().year, date.today().month, 1, tzinfo=timezone.utc)
-    monthly_rows = await db.execute(
-        select(Conversation.user_id, func.coalesce(func.sum(Conversation.total_tokens), 0))
-        .where(Conversation.created_at >= first_of_month)
-        .group_by(Conversation.user_id)
+    monthly_tokens_map = await usage_ledger.used_by_users_since(
+        db, first_of_month, user_ids=[u.id for u in users]
     )
-    monthly_tokens_map: dict[str, int] = {row[0]: row[1] for row in monthly_rows.all()}
 
     now = datetime.now(timezone.utc)
     items = [
@@ -1189,7 +1188,7 @@ async def delete_user(
     info = _user_to_info(target_user)
     label = target_user.username or target_user.email
 
-    # Unified deletion: file cleanup + FK-safe row removal + ORM cascade.
+    # Unified deletion: FK-safe row removal + ORM cascade, then the files.
     # Raises cannot_delete_org_owner if the user still owns any organization.
     summary = await purge_user_data(db, user_id)
     await db.flush()
@@ -1202,6 +1201,9 @@ async def delete_user(
         ),
     )
     await db.commit()
+    # Only now: had the commit failed, the account would still be there and
+    # must still have its files.
+    summary.remove_files()
     return info
 
 

@@ -6,6 +6,7 @@ import asyncio
 import logging
 import math
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -14,7 +15,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.core.agent import ReActAgent
+from fim_one.core.assembly.errors import TOKEN_QUOTA_EXCEEDED
+from fim_one.core.assembly.quota import QuotaStatus, quota_status
 from fim_one.core.model.structured import structured_llm_call
+from fim_one.core.usage.meter import UsageScope, metered
 from fim_one.core.utils import spawn_background
 from fim_one.core.model.types import ChatMessage
 from fim_one.db import create_session, get_session
@@ -77,6 +81,10 @@ def _run_to_response(
     )
 
 
+class _QuotaReached(Exception):  # noqa: N818 - an outcome, not a fault
+    """The user's token quota ran out before this case could start."""
+
+
 async def _run_one_case(
     case: dict[str, Any],
     agent_instructions: str | None,
@@ -86,9 +94,16 @@ async def _run_one_case(
     run_id: str,
     db: AsyncSession,
     sem: asyncio.Semaphore,
+    over_quota: Callable[[], bool] = lambda: False,
 ) -> None:
-    """Run a single eval case, grade it, and write the EvalCaseResult row."""
+    """Run a single eval case, grade it, and write the EvalCaseResult row.
+
+    Raises :class:`_QuotaReached`, writing nothing, when *over_quota* says
+    the user's quota is used up by the time the case would start.
+    """
     async with sem:
+        if over_quota():
+            raise _QuotaReached
         t0 = time.monotonic()
         status = "error"
         answer = None
@@ -168,8 +183,51 @@ async def _execute_eval_run(
     cases: list[dict[str, Any]],
     llm: Any,
     grader_llm: Any,
+    usage_scope: UsageScope,
 ) -> None:
-    """Background task: run all cases, grade them, and update the EvalRun row."""
+    """Background task: run all cases, grade them, and update the EvalRun row.
+
+    The agent's and the grader's model calls are recorded in the usage
+    ledger against whoever started the run, however the run ends.
+    """
+    async with metered(usage_scope) as opened:
+        quota = await _quota_at_start(usage_scope.user_id)
+
+        def _over_quota() -> bool:
+            # The chat turn's arithmetic: what the user had used when the run
+            # started, plus what the run has consumed since by its meter.
+            return quota is not None and quota.exhausted_after(opened.used_so_far())
+
+        await _run_cases(run_id, agent_instructions, cases, llm, grader_llm, _over_quota)
+
+
+async def _quota_at_start(user_id: str | None) -> QuotaStatus | None:
+    """The user's usage and cap as the run starts, read once.
+
+    ``None`` when there is no user or they cannot be read; the run was
+    admitted, so it then runs without the check between cases.
+    """
+    if not user_id:
+        return None
+    try:
+        return await quota_status(user_id)
+    except Exception:
+        logger.warning(
+            "Quota of user %s could not be read; the eval run is not checked between cases",
+            user_id,
+            exc_info=True,
+        )
+        return None
+
+
+async def _run_cases(
+    run_id: str,
+    agent_instructions: str | None,
+    cases: list[dict[str, Any]],
+    llm: Any,
+    grader_llm: Any,
+    over_quota: Callable[[], bool] = lambda: False,
+) -> None:
     async with create_session() as db:
         # Mark as running
         run_result = await db.execute(select(EvalRun).where(EvalRun.id == run_id))
@@ -188,16 +246,25 @@ async def _execute_eval_run(
         sem = asyncio.Semaphore(5)
 
         try:
-            await asyncio.gather(
+            outcomes = await asyncio.gather(
                 *[
                     _run_one_case(
-                        case, agent_instructions, tools, llm, grader_llm, run_id, db, sem
+                        case,
+                        agent_instructions,
+                        tools,
+                        llm,
+                        grader_llm,
+                        run_id,
+                        db,
+                        sem,
+                        over_quota,
                     )
                     for case in cases
                 ],
                 return_exceptions=True,
             )
             await db.commit()
+            not_run = sum(1 for outcome in outcomes if isinstance(outcome, _QuotaReached))
 
             # Aggregate results
             results_result = await db.execute(
@@ -218,6 +285,14 @@ async def _execute_eval_run(
             run = run_result2.scalar_one_or_none()
             if run:
                 run.status = "completed"
+                if not_run:
+                    # Stopped like a chat turn that reaches the cap: the
+                    # cases under way finished, the rest did not start.
+                    run.status = "failed"
+                    run.error_message = (
+                        f"Token quota exceeded ({TOKEN_QUOTA_EXCEEDED}): {not_run} of"
+                        f" {len(cases)} cases were not run."
+                    )
                 run.passed_cases = passed
                 run.failed_cases = failed
                 run.avg_latency_ms = avg_latency
@@ -316,7 +391,21 @@ async def create_run(
     # Fire background task — capture agent instructions and LLM instances by value
     agent_instructions = agent.instructions
     spawn_background(
-        _execute_eval_run(run.id, agent_instructions, cases, llm, grader_llm)
+        _execute_eval_run(
+            run.id,
+            agent_instructions,
+            cases,
+            llm,
+            grader_llm,
+            UsageScope(
+                user_id=current_user.id,
+                org_id=agent.org_id,
+                source_type="eval_run",
+                source_id=run.id,
+                entry="eval",
+                agent_id=agent.id,
+            ),
+        )
     )
 
     return ApiResponse(data=run_response)

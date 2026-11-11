@@ -456,3 +456,35 @@ class TestTheExistingWritersGoThroughIt:
             ("u-1", "alice", "a@x.io", "198.51.100.4", "Firefox", True),
             (None, None, "z@x.io", "198.51.100.4", "Firefox", False),
         ]
+
+
+class TestTypedIdentifier:
+    """What is stored of the name typed for an account that does not exist."""
+
+    @pytest.mark.parametrize(
+        "typed",
+        [
+            "P@ssw0rd.2024",  # a numeric "top-level domain"
+            "Tr0ub4dor&3@x.y",  # ``&`` in the local part, a one-letter TLD
+            "p@ss.w0rd",
+            "my pass@x.io",
+            "hunter2@localhost",
+            "a@b@c.io",
+            "pass!word@corp.example",
+            "user@exa_mple.com",
+            "user@.com",
+        ],
+    )
+    def test_a_password_with_an_at_sign_and_a_dot_is_not_stored(self, typed: str) -> None:
+        from fim_one.core.audit.writer import typed_identifier
+
+        assert typed_identifier(typed) == f"(not an email address; {len(typed)} characters)"
+
+    @pytest.mark.parametrize(
+        "typed",
+        ["ghost@x.io", "First.Last+tag@mail.example-corp.co.uk", "a_b%c-d@sub.example.org"],
+    )
+    def test_a_strict_address_is_kept(self, typed: str) -> None:
+        from fim_one.core.audit.writer import typed_identifier
+
+        assert typed_identifier(typed) == typed

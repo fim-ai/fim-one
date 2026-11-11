@@ -682,6 +682,7 @@
       "connector__action_create": "Create Connector Action",
       "connector__action_update": "Change Connector Action",
       "connector__action_delete": "Delete Connector Action",
+      "connector__action_test": "Send Test Request for Connector Action",
       "connector__actions_import": "Import Connector Actions",
       "connector__schema_fence_update": "Change Database Visibility or Masking",
       "workflow__run_delete": "Delete Workflow Run",

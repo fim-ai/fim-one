@@ -91,6 +91,13 @@ class QuotaStatus:
     def exhausted(self) -> bool:
         return not self.unlimited and self.used >= self.cap
 
+    def exhausted_after(self, consumed: int) -> bool:
+        """Whether the cap is reached once *consumed* is added to what was used
+        at the check: the mid-run test of a long piece of work (a chat
+        turn's answer, an evaluation's cases, a batch's items), made from
+        its own meter without asking the database again."""
+        return not self.unlimited and self.used + consumed >= self.cap
+
 
 async def quota_status(user_id: str, *, with_reset: bool = False) -> QuotaStatus:
     """Usage and cap of *user_id*; the pre-run check and the mid-stream guard share it."""
@@ -108,13 +115,16 @@ async def quota_reset_at(user_id: str) -> datetime:
     return await get_quota_backend().reset_at(user_id)
 
 
-async def check_quota(principal: Principal) -> None:
+async def check_quota(principal: Principal) -> QuotaStatus:
     """Refuse a model call the principal's plan or quota does not cover.
 
     In order: ``subscription_required`` (402) when access is sold by plan
     and the user has none, then ``token_quota_exceeded`` (429). When the
     plan or the usage cannot be read the call is refused as
     ``quota_unavailable`` (503): an unknown is not a pass.
+
+    Returns the usage and cap the call was let through on, so that a long
+    turn can keep watching the cap without reading them again.
     """
     backend = get_quota_backend()
     try:
@@ -135,6 +145,7 @@ async def check_quota(principal: Principal) -> None:
         raise AssemblyRefusal(SUBSCRIPTION_REQUIRED, 402)
     if status.exhausted:
         raise AssemblyRefusal(TOKEN_QUOTA_EXCEEDED, 429)
+    return status
 
 
 class AssemblyRunGate:
