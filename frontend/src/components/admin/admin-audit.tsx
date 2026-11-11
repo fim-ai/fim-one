@@ -34,6 +34,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Input } from "@/components/ui/input"
+import { CallRecordsPanel } from "@/components/audit/call-records-panel"
+import { useAuditActionLabel } from "@/hooks/use-audit-action-label"
+import { ALL, AUDIT_OUTCOMES, buildAuditQuery, formatAuditChange } from "@/lib/audit-records"
 import { cn } from "@/lib/utils"
 import { apiFetch, adminApi } from "@/lib/api"
 import { getApiBaseUrl, ACCESS_TOKEN_KEY } from "@/lib/constants"
@@ -57,13 +61,17 @@ interface AuditEntry {
   outcome?: string
   changes?: Record<string, { from?: unknown; to?: unknown; changed?: boolean }> | null
   ip_address?: string | null
+  user_agent?: string | null
 }
 
-/** One changed field as text: "member → admin", or "changed" for a secret. */
-function formatChange(change: { from?: unknown; to?: unknown; changed?: boolean }, changedLabel: string): string {
-  if (change.changed) return changedLabel
-  const show = (value: unknown) => (value === null || value === undefined ? "\u2014" : typeof value === "string" ? value : JSON.stringify(value))
-  return `${show(change.from)} \u2192 ${show(change.to)}`
+/** What the list and the export are filtered by. */
+interface AuditFilters {
+  action: string
+  orgId: string
+  outcome: string
+  ipAddress: string
+  dateFrom: Date | undefined
+  dateTo: Date | undefined
 }
 
 interface AuditPage {
@@ -101,35 +109,24 @@ function formatDateParam(date: Date | undefined): string {
   return date ? format(date, "yyyy-MM-dd") : ""
 }
 
-/** Build query string from filter + pagination state. */
-function buildParams(
-  page: number,
-  actionFilter: string,
-  dateFrom: Date | undefined,
-  dateTo: Date | undefined,
-): URLSearchParams {
-  const params = new URLSearchParams()
-  params.set("page", String(page))
-  params.set("size", "50")
-  if (actionFilter && actionFilter !== "__all__") params.set("action", actionFilter)
-  const from = formatDateParam(dateFrom)
-  const to = formatDateParam(dateTo)
-  if (from) params.set("date_from", from)
-  if (to) params.set("date_to", to)
-  return params
+/** The query string of the list (with a page) or of the export (without). */
+function buildParams(filters: AuditFilters, page?: number): URLSearchParams {
+  return buildAuditQuery({
+    page,
+    size: page === undefined ? undefined : 50,
+    action: filters.action,
+    orgId: filters.orgId,
+    outcome: filters.outcome,
+    ipAddress: filters.ipAddress,
+    dateFrom: formatDateParam(filters.dateFrom),
+    dateTo: formatDateParam(filters.dateTo),
+  })
 }
 
-function useActionLabel() {
-  const t = useTranslations("admin.audit.actionLabels")
-  return (action: string) => {
-    // Convert "user.create" → "user__create" because next-intl uses dots as nesting separators
-    const key = action.replace(/\./g, "__") as Parameters<typeof t>[0]
-    try {
-      return t(key)
-    } catch {
-      return action
-    }
-  }
+function outcomeBadgeClass(outcome: string): string {
+  return outcome === "success"
+    ? "border-green-500/30 bg-green-500/15 text-green-700 dark:text-green-400"
+    : "border-red-500/30 bg-red-500/15 text-red-700 dark:text-red-400"
 }
 
 const REVIEW_ACTIONS = ["submitted", "approved", "rejected", "unpublished", "resubmitted"] as const
@@ -365,13 +362,15 @@ export function AdminAudit() {
   const tc = useTranslations("common")
   const tError = useTranslations("errors")
   const { formatDateTimeFull } = useDateFormatter()
-  const getActionLabel = useActionLabel()
+  const getActionLabel = useAuditActionLabel()
   const [data, setData] = useState<AuditPage | null>(null)
   const [page, setPage] = useState(1)
   const [isLoading, setIsLoading] = useState(true)
   const [isExporting, setIsExporting] = useState(false)
   const [selected, setSelected] = useState<AuditEntry | null>(null)
-  const [activeTab, setActiveTab] = useState<"system" | "review">("system")
+  const [activeTab, setActiveTab] = useState<"system" | "review" | "calls">("system")
+  // Organization names, for the filter and for the column.
+  const [orgs, setOrgs] = useState<Array<{ id: string; name: string }>>([])
   // What can be filtered for is what can be recorded: read from the server's registry.
   const [actionGroups, setActionGroups] = useState<ActionGroup[]>([])
   const tGroups = useTranslations("admin.audit.actionGroups")
@@ -389,19 +388,46 @@ export function AdminAudit() {
       .catch(() => setActionGroups([]))
   }, [])
 
+  useEffect(() => {
+    adminApi.listOrganizations(1, 200).then((res) => {
+      setOrgs(res.items.map((o: AdminOrganization) => ({ id: o.id, name: o.name })))
+    }).catch(() => {
+      // The filter stays empty and the column shows the id.
+    })
+  }, [])
+  const orgName = (orgId: string | null | undefined): string | null =>
+    orgId ? (orgs.find((o) => o.id === orgId)?.name ?? orgId.slice(0, 8)) : null
+  const outcomeLabel = (outcome: string | undefined): string =>
+    outcome === "denied"
+      ? t("outcomeDenied")
+      : outcome === "failed"
+        ? t("outcomeFailed")
+        : !outcome || outcome === "success"
+          ? t("outcomeSuccess")
+          : outcome
+
   // Filters
   const [actionFilter, setActionFilter] = useState("__all__")
+  const [orgFilter, setOrgFilter] = useState(ALL)
+  const [outcomeFilter, setOutcomeFilter] = useState(ALL)
+  // What is typed, and what the list is filtered by (applied on Enter or on leaving the field).
+  const [ipInput, setIpInput] = useState("")
+  const [ipFilter, setIpFilter] = useState("")
   const [dateFrom, setDateFrom] = useState<Date | undefined>()
   const [dateTo, setDateTo] = useState<Date | undefined>()
   const [dateFromOpen, setDateFromOpen] = useState(false)
   const [dateToOpen, setDateToOpen] = useState(false)
 
-  const hasActiveFilters = (actionFilter && actionFilter !== "__all__") || dateFrom || dateTo
+  const hasActiveFilters =
+    (actionFilter && actionFilter !== "__all__") || orgFilter !== ALL || outcomeFilter !== ALL || ipFilter || dateFrom || dateTo
 
   const load = useCallback(async () => {
     setIsLoading(true)
     try {
-      const params = buildParams(page, actionFilter, dateFrom, dateTo)
+      const params = buildParams(
+        { action: actionFilter, orgId: orgFilter, outcome: outcomeFilter, ipAddress: ipFilter, dateFrom, dateTo },
+        page,
+      )
       const res = await apiFetch<AuditPage>(`/api/admin/audit-log?${params}`)
       setData(res)
     } catch (err) {
@@ -409,7 +435,7 @@ export function AdminAudit() {
     } finally {
       setIsLoading(false)
     }
-  }, [page, actionFilter, dateFrom, dateTo, tError])
+  }, [page, actionFilter, orgFilter, outcomeFilter, ipFilter, dateFrom, dateTo, tError])
 
   useEffect(() => { load() }, [load])
 
@@ -417,6 +443,21 @@ export function AdminAudit() {
   const handleActionChange = (value: string) => {
     setActionFilter(value)
     setPage(1)
+  }
+  const handleOrgChange = (value: string) => {
+    setOrgFilter(value)
+    setPage(1)
+  }
+  const handleOutcomeChange = (value: string) => {
+    setOutcomeFilter(value)
+    setPage(1)
+  }
+  const applyIpFilter = () => {
+    const next = ipInput.trim()
+    if (next !== ipFilter) {
+      setIpFilter(next)
+      setPage(1)
+    }
   }
   const handleDateFromChange = (date: Date | undefined) => {
     setDateFrom(date)
@@ -432,12 +473,10 @@ export function AdminAudit() {
   const handleExport = async () => {
     setIsExporting(true)
     try {
-      const params = new URLSearchParams()
-      if (actionFilter && actionFilter !== "__all__") params.set("action", actionFilter)
-      const from = formatDateParam(dateFrom)
-      const to = formatDateParam(dateTo)
-      if (from) params.set("date_from", from)
-      if (to) params.set("date_to", to)
+      // The same filters as the list on screen.
+      const params = buildParams({
+        action: actionFilter, orgId: orgFilter, outcome: outcomeFilter, ipAddress: ipFilter, dateFrom, dateTo,
+      })
 
       const token = typeof window !== "undefined" ? localStorage.getItem(ACCESS_TOKEN_KEY) : null
       const headers: Record<string, string> = {}
@@ -511,10 +550,23 @@ export function AdminAudit() {
         >
           {t("reviewLog")}
         </button>
+        <button
+          onClick={() => setActiveTab("calls")}
+          className={cn(
+            "px-3 py-1.5 text-sm rounded-sm transition-colors font-medium",
+            activeTab === "calls"
+              ? "bg-background shadow-xs text-foreground"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {t("callLog")}
+        </button>
       </div>
 
       {activeTab === "review" ? (
         <ReviewLogPanel />
+      ) : activeTab === "calls" ? (
+        <CallRecordsPanel endpoint="/api/admin/call-log" orgName={orgName} />
       ) : (
         <>
       {/* Filter bar */}
@@ -539,6 +591,53 @@ export function AdminAudit() {
               ))}
             </SelectContent>
           </Select>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">{t("filterByOrg")}</label>
+          <Select value={orgFilter} onValueChange={handleOrgChange}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>{t("allOrgs")}</SelectItem>
+              {orgs.map((org) => (
+                <SelectItem key={org.id} value={org.id}>
+                  {org.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">{t("filterOutcome")}</label>
+          <Select value={outcomeFilter} onValueChange={handleOutcomeChange}>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>{t("filterOutcomeAll")}</SelectItem>
+              {AUDIT_OUTCOMES.map((outcome) => (
+                <SelectItem key={outcome} value={outcome}>
+                  {outcomeLabel(outcome)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1">
+          <label htmlFor="audit-ip-filter" className="text-xs font-medium text-muted-foreground">{t("filterIp")}</label>
+          <Input
+            id="audit-ip-filter"
+            value={ipInput}
+            onChange={(e) => setIpInput(e.target.value)}
+            onBlur={applyIpFilter}
+            onKeyDown={(e) => { if (e.key === "Enter") applyIpFilter() }}
+            placeholder={t("filterIpPlaceholder")}
+            className="h-9 w-[170px] font-mono text-xs"
+          />
         </div>
 
         <div className="space-y-1">
@@ -624,7 +723,10 @@ export function AdminAudit() {
                   <th className="px-4 py-2.5 text-left font-medium text-muted-foreground whitespace-nowrap">{t("timeColumn")}</th>
                   <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("adminColumn")}</th>
                   <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("actionColumn")}</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("outcomeColumn")}</th>
                   <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("targetColumn")}</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("colOrg")}</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground whitespace-nowrap">{t("ipColumn")}</th>
                   <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("detailColumn")}</th>
                   <th className="px-4 py-2.5 w-12 text-right font-medium text-muted-foreground">{tc("actions")}</th>
                 </tr>
@@ -639,19 +741,25 @@ export function AdminAudit() {
                       {entry.admin_username}
                     </td>
                     <td className="px-4 py-2.5">
-                      {entry.outcome && entry.outcome !== "success" && (
-                        <span className="mr-1.5 inline-flex items-center rounded-md border border-red-500/30 bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-400">
-                          {entry.outcome === "denied" ? t("outcomeDenied") : entry.outcome === "failed" ? t("outcomeFailed") : entry.outcome}
-                        </span>
-                      )}
                       <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${actionColor(entry.action)}`}>
                         {getActionLabel(entry.action)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${outcomeBadgeClass(entry.outcome ?? "success")}`}>
+                        {outcomeLabel(entry.outcome)}
                       </span>
                     </td>
                     <td className="px-4 py-2.5 text-muted-foreground text-xs">
                       {entry.target_label
                         ? <span className="font-medium text-foreground">{entry.target_label}</span>
                         : <span className="text-muted-foreground/50">&mdash;</span>}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                      {orgName(entry.org_id) ?? <span className="text-muted-foreground/50">&mdash;</span>}
+                    </td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground whitespace-nowrap">
+                      {entry.ip_address ?? <span className="text-muted-foreground/50">&mdash;</span>}
                     </td>
                     <td className="px-4 py-2.5 text-xs text-muted-foreground max-w-[260px] truncate">
                       {entry.detail ?? "\u2014"}
@@ -738,26 +846,23 @@ export function AdminAudit() {
                     {Object.entries(selected.changes).map(([field, change]) => (
                       <span key={field} className="block break-words">
                         <span className="font-mono text-xs text-muted-foreground">{field}</span>{" "}
-                        {formatChange(change, t("changedValue"))}
+                        {formatAuditChange(change, t("changedValue"))}
                       </span>
                     ))}
                   </span>
                 </>
               )}
 
-              {selected.outcome && selected.outcome !== "success" && (
-                <>
-                  <span className="text-muted-foreground">{t("outcomeColumn")}</span>
-                  <span className="font-medium">
-                    {selected.outcome === "denied" ? t("outcomeDenied") : selected.outcome === "failed" ? t("outcomeFailed") : selected.outcome}
-                  </span>
-                </>
-              )}
+              <span className="text-muted-foreground">{t("outcomeColumn")}</span>
+              <span className="font-medium">{outcomeLabel(selected.outcome)}</span>
 
               {selected.org_id && (
                 <>
                   <span className="text-muted-foreground">{t("colOrg")}</span>
-                  <span className="font-mono text-xs text-muted-foreground break-all">{selected.org_id}</span>
+                  <span>
+                    <span className="font-medium">{orgName(selected.org_id)}</span>{" "}
+                    <span className="font-mono text-xs text-muted-foreground break-all">{selected.org_id}</span>
+                  </span>
                 </>
               )}
 
@@ -765,6 +870,13 @@ export function AdminAudit() {
                 <>
                   <span className="text-muted-foreground">{t("ipColumn")}</span>
                   <span className="font-mono text-xs">{selected.ip_address}</span>
+                </>
+              )}
+
+              {selected.user_agent && (
+                <>
+                  <span className="text-muted-foreground">{t("userAgentColumn")}</span>
+                  <span className="text-xs text-muted-foreground break-words">{selected.user_agent}</span>
                 </>
               )}
             </div>

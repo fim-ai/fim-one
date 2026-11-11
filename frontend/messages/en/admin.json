@@ -721,7 +721,34 @@
     "exportCsv": "Export CSV",
     "exportError": "Failed to export audit log",
     "exportTruncated": "Exported the newest {rows} of {total} matching entries. Narrow the date range to export the rest.",
-    "noResults": "No audit log entries match the current filters"
+    "noResults": "No audit log entries match the current filters",
+    "outcomeSuccess": "Success",
+    "filterOutcome": "Outcome",
+    "filterOutcomeAll": "All Outcomes",
+    "filterIp": "IP Address",
+    "filterIpPlaceholder": "Exact address",
+    "userAgentColumn": "Browser",
+    "callLog": "Call Records",
+    "colCaller": "Caller",
+    "colCalled": "Resource",
+    "colCallAction": "Action / Tool",
+    "colRequest": "Request",
+    "colStatus": "Status",
+    "colDuration": "Duration",
+    "durationMs": "{ms} ms",
+    "noCallEntries": "No call records yet.",
+    "noCallResults": "No call records match the current filters.",
+    "callKinds": {
+      "connector": "Connector",
+      "database": "Database",
+      "mcp": "MCP Server"
+    },
+    "sourceActionLabels": {
+      "auth__login": "Sign-In",
+      "call__connector": "Connector Call",
+      "call__database": "Database Call",
+      "call__mcp": "MCP Server Call"
+    }
   },
   "storage": {
     "title": "Storage",

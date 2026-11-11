@@ -286,6 +286,12 @@
     "sessionsRevokeAllSuccess": "All other sessions have been revoked",
     "sessionsRevokeAllFailed": "Failed to revoke sessions",
     "sessionsLoadFailed": "Failed to load login history",
+    "securityEventsTitle": "Security Events",
+    "securityEventsDescription": "Changes to your password, two-factor authentication, sign-in providers, API keys and sessions, with where each was made from.",
+    "securityEventsEvent": "Event",
+    "securityEventsByAdministrator": "By an administrator",
+    "securityEventsNoData": "No security events yet",
+    "securityEventsLoadFailed": "Failed to load security events",
 
     "dataExportTitle": "Data Export",
     "dataExportDescription": "Download all your data including profile, conversations, agents, and settings as a JSON file.",
