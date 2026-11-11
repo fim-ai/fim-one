@@ -217,6 +217,47 @@ class TestPlatformOverview:
         ]
 
 
+    async def test_top_ten_models_then_the_fast_slice_and_top_ten_agents(
+        self, usage: Usage, alice: User, root: User  # noqa: F811
+    ) -> None:
+        """Tokens by model: the ten models with the most tokens, most first,
+        and after them the fast slice (the work after the turns), however
+        large. Tokens by agent: the ten agents with the most, most first."""
+        from fim_one.db.models.usage_ledger import UsageLedger
+
+        rows: list[Any] = []
+        for n in range(12):
+            rows.append(
+                Agent(
+                    id=f"agent-{n:02}", user_id=alice.id, name=f"A{n:02}", instructions="x",
+                    status="published", is_active=True, visibility="personal",
+                )
+            )  # fmt: skip
+            rows.append(
+                UsageLedger(
+                    user_id=alice.id, source_type="conversation", entry="chat",
+                    agent_id=f"agent-{n:02}", model=f"model-{n:02}",
+                    total_tokens=100 + 10 * n,
+                )
+            )  # fmt: skip
+        rows.append(
+            UsageLedger(
+                user_id=alice.id, source_type="conversation", entry="background",
+                model=None, kind="backfill", total_tokens=10_000,
+            )
+        )  # fmt: skip
+        await usage.add(*rows)
+
+        stats = await _get(usage, "/api/admin/stats", root)
+        assert stats["tokens_by_model"] == [
+            *({"model": f"model-{n:02}", "count": 100 + 10 * n} for n in range(11, 1, -1)),
+            {"model": "Fast LLM (fast-model)", "count": 10_000},
+        ]
+        assert [(a["agent_id"], a["total_tokens"]) for a in stats["tokens_by_agent"]] == [
+            (f"agent-{n:02}", 100 + 10 * n) for n in range(11, 1, -1)
+        ]
+
+
 # ---------------------------------------------------------------------------
 # GET /api/admin/analytics/by-agent: Analytics, per agent
 # ---------------------------------------------------------------------------

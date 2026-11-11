@@ -363,9 +363,10 @@ async def get_stats(
 
     # Tokens: everything the usage ledger holds, so deleting a conversation,
     # a run or a workflow does not take its tokens out of these figures.
-    # By the model each was consumed on; the rows carried over from the
-    # conversations' fast-model totals have no model and form the fast slice.
-    # The fast figure is the work done after the turns (entry "background").
+    # By model: the ten models with the most tokens of the turns' own work,
+    # then the fast slice, as before the ledger. The fast slice is the work
+    # done after the turns (entry "background": titles, and on carried-over
+    # rows the conversations' fast-model totals, which have no model).
     fast_label = f"Fast LLM ({fast_llm_model})" if fast_llm_model else "Fast LLM"
     total_tokens = 0
     total_fast_llm_tokens = 0
@@ -374,16 +375,17 @@ async def get_stats(
         total_tokens += usage_slice.total_tokens
         if usage_slice.background:
             total_fast_llm_tokens += usage_slice.total_tokens
-        if usage_slice.model is None and usage_slice.background:
-            label = fast_label
         else:
-            label = _model_label(usage_slice.model or "Unknown")
-        token_label_counts[label] += usage_slice.total_tokens
+            token_label_counts[_model_label(usage_slice.model or "Unknown")] += (
+                usage_slice.total_tokens
+            )
     tokens_by_model = [
         ModelStat(model=label, count=count)
         for label, count in token_label_counts.most_common(10)
         if count > 0
     ]
+    if total_fast_llm_tokens > 0:
+        tokens_by_model.append(ModelStat(model=fast_label, count=total_fast_llm_tokens))
 
     # Top agents by conversation count (top 5), joined to get agent name
     agent_rows = await db.execute(
