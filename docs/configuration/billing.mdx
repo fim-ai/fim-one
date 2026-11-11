@@ -189,6 +189,8 @@ Where each row comes from is on the row: `source_type` (`conversation`, `workflo
 
 Rows are written when a turn, run or request ends, however it ends; a long one is also written as it goes, at most every 30 seconds. If the server process is killed, what its in-flight turns consumed in the last 30 seconds at most is not recorded. A write that fails is retried once and then logged at ERROR with the user and the numbers (`Usage not recorded`), and the turn is not failed for it.
 
+**After rolling back and upgrading again.** A release older than the ledger keeps adding to `conversations.total_tokens` and `workflow_runs.total_tokens` without writing ledger rows. If you roll back to one and later upgrade again, run `python -m fim_one.core.usage.topup` (with the application's `DATABASE_URL`) to see what the ledger is missing, and again with `--apply` to record it: one `adjustment` row per conversation or run whose ledger rows add up to less than its total. It only adds rows, and a second run finds nothing left. The added usage counts in the window in which the command is run.
+
 ### Three-state override semantics
 
 `users.token_quota` is the per-user administrative override. It carries three meanings in one column:
