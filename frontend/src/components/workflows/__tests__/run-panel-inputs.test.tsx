@@ -106,4 +106,18 @@ describe("RunPanel input form", () => {
     )
     expect((screen.getByLabelText(/^count/) as HTMLInputElement).value).toBe("abc")
   })
+
+  // A run the server refused to start (too many runs at once, already
+  // running) has no step results, so the panel stayed on its input form and
+  // the reason the hook had set was not shown anywhere.
+  it.each([
+    ["with inputs", VARIABLES],
+    ["without inputs", []],
+  ])("shows why the server refused to start the run, on the form (%s)", (_label, startVariables) => {
+    const reason = "Too many workflow runs right now. Wait for a run to finish, or try again in a minute."
+    renderPanel({ startVariables, nodeResults: {}, runStatus: "failed", finalError: reason })
+    const message = screen.getByText(reason)
+    expect(message.getAttribute("role")).toBe("alert")
+    expect(screen.getByRole("button", { name: "Start Run" })).toBeTruthy()
+  })
 })

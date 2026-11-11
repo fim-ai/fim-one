@@ -292,14 +292,16 @@ export interface MostFailedNodeEntry {
 export interface WorkflowAnalyticsResponse {
   total_runs: number
   status_distribution: Record<string, number>
-  success_rate: number
+  /** Null when no run in the range finished (completed or failed). */
+  success_rate: number | null
   avg_duration_ms: number
   p50_duration_ms: number
   p95_duration_ms: number
   p99_duration_ms: number
   runs_per_day: RunsPerDayEntry[]
   most_failed_nodes: MostFailedNodeEntry[]
-  avg_nodes_per_run: number
+  /** Null when no run in the range recorded its steps. */
+  avg_nodes_per_run: number | null
 }
 
 // --- Stats ---

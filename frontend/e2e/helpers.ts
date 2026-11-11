@@ -42,19 +42,31 @@ async function api<T>(
   return (await res.json()) as T
 }
 
+const ADMIN = { email: "smoke@example.com", password: "smoke-password-1" }
+
+/**
+ * The first administrator of the backend: set up by the first spec that
+ * asks, signed in for the others.
+ */
+export async function adminSession(request: APIRequestContext): Promise<Session> {
+  let res = await request.post(`${API}/api/auth/setup`, { data: ADMIN })
+  if (!res.ok()) res = await request.post(`${API}/api/auth/login`, { data: ADMIN })
+  expect(res.ok(), `sign in -> ${res.status()} ${await res.text()}`).toBe(true)
+  const body = (await res.json()) as {
+    access_token: string
+    refresh_token: string
+    user: Record<string, unknown>
+  }
+  return { accessToken: body.access_token, refreshToken: body.refresh_token, user: body.user }
+}
+
 /**
  * Prepare the fresh backend: first admin, the Workflows module switched on,
  * and one connector, MCP server and knowledge base that point at the stubs.
  */
 export async function seed(request: APIRequestContext): Promise<Seed> {
-  const auth = await api<{ access_token: string; refresh_token: string; user: Record<string, unknown> }>(
-    request,
-    "POST",
-    "/api/auth/setup",
-    null,
-    { email: "smoke@example.com", password: "smoke-password-1" },
-  )
-  const token = auth.access_token
+  const auth = await adminSession(request)
+  const token = auth.accessToken
   await api(request, "PATCH", "/api/admin/settings", token, { modules: { workflows: true } })
 
   const connectorName = "Stub Echo"
@@ -132,7 +144,7 @@ export async function seed(request: APIRequestContext): Promise<Seed> {
     .toBe("ready")
 
   return {
-    session: { accessToken: token, refreshToken: auth.refresh_token, user: auth.user },
+    session: auth,
     connectorId: connector.data.id,
     connectorName,
     actionId: action.data.id,

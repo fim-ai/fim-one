@@ -122,10 +122,11 @@ def before(current_db: sa.Engine) -> sa.Engine:  # noqa: F811
 
 
 class TestTheChain:
-    def test_it_is_the_single_head_after_the_audit_fields(self) -> None:
+    def test_it_is_on_the_single_head_after_the_audit_fields(self) -> None:
         script = ScriptDirectory(str(Path(fim_one.__file__).parent / "migrations"))
 
-        assert script.get_heads() == ["c2p3a1b2c3d4"]
+        (head,) = script.get_heads()
+        assert "c2p3a1b2c3d4" in [r.revision for r in script.iterate_revisions(head, "base")]
         revision = script.get_revision("c2p3a1b2c3d4")
         assert revision is not None and revision.down_revision == "c2p1a1b2c3d4"
 

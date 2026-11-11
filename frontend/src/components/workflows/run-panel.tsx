@@ -924,6 +924,11 @@ export function RunPanel({
               ) : (
                 <p className="text-xs text-muted-foreground">{t("runPanelNoInputs")}</p>
               )}
+              {/* A run the server refused to start: no step ran, so there are
+                  no results to show it with; the form says why. */}
+              {finalError && (
+                <p role="alert" className="text-sm text-destructive">{finalError}</p>
+              )}
               <Button size="sm" className="gap-1.5" onClick={handleStartRun}>
                 <Play className="h-3.5 w-3.5" />
                 {t("runPanelStartRun")}

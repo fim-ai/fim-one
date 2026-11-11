@@ -727,3 +727,33 @@ test("leaving the editor with unsaved changes asks first", async ({ page, reques
   const stored = await fetchBlueprint(request, seeded.session, workflowId)
   expect(stored.nodes.find((n) => n.type === "llm")?.data.prompt_template).toBe("stored prompt")
 })
+
+// Validation set badges on the nodes, the canvas reported that as a change,
+// and a report while unsaved restarted the automatic save's pause and asked
+// for validation again: the editor validated every ~2 s and never saved.
+test("an edited prompt saves itself, and validation stops once it has", async ({ page, request }) => {
+  const workflowId = await createLinearWorkflow(request, seeded.session, "Saves itself", "stored prompt")
+  await page.goto(`/workflows/${workflowId}`)
+  await expect(canvasNodes(page)).toHaveCount(3)
+  await canvasReported(page)
+
+  const validations: number[] = []
+  page.on("request", (r) => {
+    if (r.method() === "POST" && r.url().endsWith("/api/workflows/validate")) validations.push(Date.now())
+  })
+  const saved = page.waitForRequest(
+    (r) => r.method() === "PUT" && r.url().endsWith(`/api/workflows/${workflowId}`),
+    { timeout: 15_000 },
+  )
+  const panel = await openConfig(page, "llm")
+  await panel.getByPlaceholder(PROMPT_HINT).fill("saved without a click")
+  await saved
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0)
+  const stored = await fetchBlueprint(request, seeded.session, workflowId)
+  expect(stored.nodes.find((n) => n.type === "llm")?.data.prompt_template).toBe("saved without a click")
+
+  // Nothing changes any more: no validation either.
+  const settled = validations.length
+  await page.waitForTimeout(5000)
+  expect(validations.length).toBe(settled)
+})

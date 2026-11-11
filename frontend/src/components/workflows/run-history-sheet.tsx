@@ -591,7 +591,7 @@ export function RunHistorySheet({
                             </div>
                             {result.duration_ms != null && (
                               <p className="text-[10px] text-muted-foreground tabular-nums">
-                                {fmtDuration(result.duration_ms)}
+                                {fmtDuration(result.duration_ms / 1000)}
                               </p>
                             )}
                             {result.error && (

@@ -144,6 +144,9 @@ export function PlaygroundPage({ isNewChat, embedded, initialAgentId, onTurnComp
   const [query, setQuery] = useState("")
   const [sourceMode, setSourceMode] = useState<AgentMode | null>(null)
   const [pendingQuery, setPendingQuery] = useState<string | null>(null)
+  // Why the server refused the turn just sent, shown under that message for
+  // as long as it is the current one (a toast is gone in a few seconds).
+  const [refusal, setRefusal] = useState<TurnRefusal | null>(null)
   // pendingMode removed — mode switching is now free within conversations
   // Use resume-capable wrapper so dropped SSE streams auto-reconnect via
   // /api/chat/resume (backed by the A1 recovery endpoint). When no active
@@ -441,6 +444,7 @@ export function PlaygroundPage({ isNewChat, embedded, initialAgentId, onTurnComp
 
       if (isRunning || sendingRef.current || autoSendingRef.current) return
       sendingRef.current = true
+      setRefusal(null)
 
       // Clear input and show user message immediately
       setQuery("")
@@ -498,7 +502,11 @@ export function PlaygroundPage({ isNewChat, embedded, initialAgentId, onTurnComp
         body,
         onError: (err) => {
           sendingRef.current = false
-          toast.error(getErrorMessage(err, tError))
+          const message = getErrorMessage(err, tError)
+          toast.error(message)
+          if (err instanceof ApiError) {
+            setRefusal({ query: trimmed, message, retryable: isRetryableRefusal(err) })
+          }
         },
       })
       // Release the sync guard — isRunning (from useSSE) will take over
@@ -539,6 +547,7 @@ export function PlaygroundPage({ isNewChat, embedded, initialAgentId, onTurnComp
         sourceMode={sourceMode}
         query={query}
         pendingQuery={pendingQuery}
+        refusal={refusal && refusal.query === pendingQuery ? refusal : null}
         messages={messages}
         isRunning={isRunning}
         isError={isError}
@@ -799,11 +808,33 @@ function CompactDivider({ originalCount, keptCount }: { originalCount: number; k
   )
 }
 
+/** The server's refusal of a turn: why, and whether sending again could help. */
+interface TurnRefusal {
+  query: string
+  message: string
+  retryable: boolean
+}
+
+/**
+ * Whether sending the same turn again could be answered differently. A
+ * refusal about the request or what it uses (the conversation's agent is
+ * gone, a quota is used up, access is denied) is given again; a timeout, a
+ * rate limit or a server error may not be. Nor is an expired sign-in: the
+ * stream sends its token in the body, outside the client that refreshes
+ * one on a 401, and by the retry another request has refreshed it.
+ */
+function isRetryableRefusal(err: ApiError): boolean {
+  if (err.status === 401 || err.status === 408 || err.status === 429) return true
+  return err.status < 400 || err.status >= 500
+}
+
 interface PlaygroundContentProps {
   mode: AgentMode
   sourceMode: AgentMode | null
   query: string
   pendingQuery: string | null
+  /** Why the server refused the turn `pendingQuery` was sent in, if it did. */
+  refusal: TurnRefusal | null
   messages: ReturnType<typeof useSSE>["messages"]
   isRunning: boolean
   isError: boolean
@@ -836,6 +867,7 @@ function PlaygroundContent({
   sourceMode,
   query,
   pendingQuery,
+  refusal,
   messages,
   isRunning,
   isError,
@@ -1974,7 +2006,10 @@ function PlaygroundContent({
     return null
   }, [isRunning, hasLiveMessages, activeConversation?.messages])
 
-  const retryQuery = wasStopped ? pendingQuery : refreshStoppedQuery
+  // A refusal that sending again would only repeat offers no Retry.
+  const retryQuery = wasStopped
+    ? (refusal && !refusal.retryable ? null : pendingQuery)
+    : refreshStoppedQuery
 
 
   // Composer: a single floating pill that holds attachments, the textarea and
@@ -2465,6 +2500,11 @@ function PlaygroundContent({
                               <ImageThumbnail key={img.file_id} fileId={img.file_id} filename={img.filename} />
                             ))}
                           </div>
+                        )}
+                        {refusal && !isRunning && (
+                          <p role="alert" data-testid="turn-refusal" className="mt-1.5 text-sm text-destructive">
+                            {refusal.message}
+                          </p>
                         )}
                       </div>
                     </div>

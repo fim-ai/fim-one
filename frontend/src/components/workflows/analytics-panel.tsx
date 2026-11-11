@@ -195,7 +195,8 @@ function TopStatCards({
       <StatCard
         icon={<TrendingUp className="h-3.5 w-3.5 text-emerald-500" />}
         label={t("analyticsSuccessRate")}
-        value={`${data.success_rate.toFixed(1)}%`}
+        // No run in the range finished (all cancelled or still running).
+        value={data.success_rate === null ? "—" : `${data.success_rate.toFixed(1)}%`}
       />
       <StatCard
         icon={<Clock className="h-3.5 w-3.5 text-amber-500" />}
@@ -446,7 +447,7 @@ function DurationPercentiles({
           {t("analyticsAvgNodesPerRun")}
         </span>
         <span className="font-medium tabular-nums">
-          {data.avg_nodes_per_run.toFixed(1)}
+          {data.avg_nodes_per_run === null ? "—" : data.avg_nodes_per_run.toFixed(1)}
         </span>
       </div>
     </div>
