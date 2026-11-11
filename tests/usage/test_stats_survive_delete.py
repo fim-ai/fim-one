@@ -288,3 +288,53 @@ class TestCostProjection:
         )[0]
         assert projection["trailing_7d_tokens"] == old_tokens + await backfilled.runs_since(since)
         assert projection["trailing_7d_conversations"] == old_count
+
+
+# ---------------------------------------------------------------------------
+# GET /api/admin/analytics/trends: Analytics, the 30-day trend
+# ---------------------------------------------------------------------------
+
+
+class TestDailyTrend:
+    PATH = "/api/admin/analytics/trends"
+
+    async def test_survives(
+        self, usage: Usage, provider: Provider, alice: User, root: User, runs: Any  # noqa: F811
+    ) -> None:
+        billed = await _everything(usage, provider, alice)
+        (today,) = await _get(usage, self.PATH, root)
+        assert (today["total_tokens"], today["conversation_count"]) == (provider.billed, 2)
+
+        await _delete_everything(usage, alice, billed)
+
+        # The day stays, with its tokens, though no conversation is left.
+        (after,) = await _get(usage, self.PATH, root)
+        assert after == {**today, "conversation_count": 0, "active_users": 0}
+
+    async def test_backfilled(self, usage: Usage, backfilled: Backfilled, root: User) -> None:  # noqa: F811
+        since = datetime.now(UTC) - timedelta(days=30)
+        old = {
+            str(day): (int(tokens), count, users)
+            for day, tokens, count, users in await backfilled.old(
+                "SELECT DATE(created_at), SUM(total_tokens), COUNT(*), COUNT(DISTINCT user_id)"
+                " FROM conversations WHERE created_at >= :since GROUP BY DATE(created_at)",
+                since=since,
+            )
+        }
+        runs_by_day = dict(
+            await backfilled.old(
+                "SELECT DATE(created_at), SUM(total_tokens) FROM workflow_runs"
+                " WHERE created_at >= :since GROUP BY DATE(created_at)",
+                since=since,
+            )
+        )
+        trend = {
+            row["date"]: (row["total_tokens"], row["conversation_count"], row["active_users"])
+            for row in await _get(usage, self.PATH, root)
+        }
+        expected = dict(old)
+        for day, tokens in runs_by_day.items():
+            tokens_then, count, users = expected.get(str(day), (0, 0, 0))
+            expected[str(day)] = (tokens_then + int(tokens), count, users)
+        assert trend == expected
+        assert list(trend) == sorted(trend)
