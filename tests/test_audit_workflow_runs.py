@@ -580,3 +580,72 @@ class TestARunThatIsRefused:
             )
 
         assert answer.json()["error_code"] == "blueprint_empty"
+
+
+class TestARunThatIsCancelled:
+    async def _waiting_run(self, world: World, owner: User, org: Any = None) -> None:
+        await _workflow(world, owner, org_id=org.id if org else None)
+        await world.add(
+            WorkflowRun(
+                id="run-1",
+                workflow_id="wf-1",
+                user_id=owner.id,
+                blueprint_snapshot=PLAIN,
+                inputs={},
+                status="waiting",
+                mode="interactive",
+            )
+        )
+
+    async def test_a_waiting_run(self, world: World, service: Any) -> None:
+        alice = await world.user("alice")
+        org = await world.org("acme", alice)
+        await self._waiting_run(world, alice, org)
+
+        await world.call("POST", "/api/workflows/wf-1/runs/run-1/cancel", by=alice)
+
+        row = await world.one(
+            "workflow.run_cancelled", actor=alice, org=org, target=("workflow", "wf-1")
+        )
+        assert (row.workflow_run_id, row.detail) == ("run-1", "was waiting")
+
+    async def test_the_author_cancelling_someone_elses_run(
+        self, world: World, service: Any
+    ) -> None:
+        author, bob = await world.user("author"), await world.user("bob")
+        await _workflow(world, author)
+        await world.add(
+            WorkflowRun(
+                id="run-1",
+                workflow_id="wf-1",
+                user_id=bob.id,
+                blueprint_snapshot=PLAIN,
+                inputs={},
+                status="running",
+                mode="interactive",
+            )
+        )
+
+        await world.call("POST", "/api/workflows/wf-1/runs/run-1/cancel", by=author)
+
+        row = await world.one("workflow.run_cancelled", actor=author, target=("workflow", "wf-1"))
+        assert (row.workflow_run_id, row.detail) == ("run-1", "was running")
+
+    async def test_a_run_that_had_ended_is_not_cancelled_and_not_recorded(
+        self, world: World, service: Any
+    ) -> None:
+        from sqlalchemy import update
+
+        alice = await world.user("alice")
+        await self._waiting_run(world, alice)
+        async with world.factory() as db:
+            await db.execute(
+                update(WorkflowRun).where(WorkflowRun.id == "run-1").values(status="completed")
+            )
+            await db.commit()
+
+        await world.call(
+            "POST", "/api/workflows/wf-1/runs/run-1/cancel", by=alice, expect=(400, 409)
+        )
+
+        assert await world.events("workflow.run_cancelled") == []

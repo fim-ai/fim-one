@@ -36,7 +36,14 @@ from fim_one.core.audit.refusals import admit_refusal
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-__all__ = ["NO_REQUEST", "record_refused", "record_started", "refusal_code", "run_actor"]
+__all__ = [
+    "NO_REQUEST",
+    "record_cancelled",
+    "record_refused",
+    "record_started",
+    "refusal_code",
+    "run_actor",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -187,3 +194,20 @@ async def record_refused(
         logger.error("Could not record a refused run: %s", type(exc).__name__)
         return False
     return True
+
+
+async def record_cancelled(workflow: Any, *, run_id: str, actor: Actor, was: str) -> None:
+    """``workflow.run_cancelled``: *actor* stopped run *run_id*, which was *was*.
+
+    Written on its own once the run is closed; a failure is logged.
+    """
+    await audit.record(
+        actions.WORKFLOW_RUN_CANCELLED,
+        actor=actor,
+        org_id=getattr(workflow, "org_id", None),
+        target_type="workflow",
+        target_id=workflow.id,
+        target_label=getattr(workflow, "name", None),
+        detail=f"was {was}",
+        context=EventContext(workflow_run_id=run_id),
+    )

@@ -260,6 +260,9 @@ WORKFLOW_RUN_STARTED = "workflow.run_started"
 # workflow, person, entry and code in ten minutes, the next saying how many
 # were left out. Items of a batch not started: one per reason, with the count.
 WORKFLOW_RUN_REFUSED = "workflow.run_refused"
+# Someone stopped a run (its runner, or the workflow's author); the detail
+# says whether it was running or waiting for a decision.
+WORKFLOW_RUN_CANCELLED = "workflow.run_cancelled"
 # Subscribing to a resource published to an organization or the Market, and
 # giving the subscription up.
 MARKET_SUBSCRIBE = "market.subscribe"

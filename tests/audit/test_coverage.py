@@ -98,10 +98,9 @@ class TestWhatTheTablesSay:
         for route, gap in c.KNOWN_GAPS.items():
             assert gap.reason.strip(), f"{route}: a deferred route says why"
 
-    def test_the_deferred_routes_are_the_workflow_run_routes(self) -> None:
-        assert {path for _, path in c.KNOWN_GAPS} == {
-            "/api/workflows/{workflow_id}/runs/{run_id}/cancel",
-        }
+    def test_no_route_is_left_unrecorded(self) -> None:
+        """The workflow run routes were the last (T10 P7)."""
+        assert c.KNOWN_GAPS == {}
 
 
 def _constant_names(action: str) -> Iterator[str]:

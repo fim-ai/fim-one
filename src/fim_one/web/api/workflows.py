@@ -3133,16 +3133,16 @@ async def cancel_workflow_run(
     ):
         raise AppError("workflow_run_not_found", status_code=404)
 
+    from fim_one.core.workflow.run_audit import record_cancelled
     from fim_one.core.workflow.run_service import get_run_service
 
     service = get_run_service()
-    if service.cancel_run(run_id):
-        return ApiResponse(data={"cancelled": True, "run_id": run_id})
-
-    # Not executing in this process: waiting for a decision (closed here,
-    # with its open requests), or running in another server process (which
-    # stops it when it sees the record).
-    if await service.cancel_stored_run(run_id):
+    was = run.status
+    # Here, or not executing in this process: waiting for a decision
+    # (closed here, with its open requests), or running in another server
+    # process (which stops it when it sees the record).
+    if service.cancel_run(run_id) or await service.cancel_stored_run(run_id):
+        await record_cancelled(wf, run_id=run_id, actor=audit.actor_of(current_user), was=was)
         return ApiResponse(data={"cancelled": True, "run_id": run_id})
 
     # Nothing was cancelled: the run had ended by the time the cancel got

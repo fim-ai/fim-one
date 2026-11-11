@@ -366,6 +366,7 @@ AUDITED: dict[Route, tuple[str, ...]] = {
     ("POST", "/api/workflows/trigger"): ("workflow.run_started",),
     ("POST", "/api/workflows/trigger/{api_key}"): ("workflow.run_started",),
     ("POST", "/api/workflows/{workflow_id}/test-node"): ("workflow.run_started",),
+    ("POST", "/api/workflows/{workflow_id}/runs/{run_id}/cancel"): ("workflow.run_cancelled",),
 }
 
 EXEMPT: dict[Route, str] = {
@@ -439,17 +440,7 @@ EXEMPT: dict[Route, str] = {
     ("POST", "/api/billing/portal"): PAYMENT_REDIRECT,
 }
 
-KNOWN_GAPS: dict[Route, Gap] = {
-    # T10 P7: workflow run events. What the request changes is a run, and
-    # the run row records it today (who, which entry, the outcome) for as
-    # long as run retention keeps it.
-    ("POST", "/api/workflows/{workflow_id}/runs/{run_id}/cancel"): Gap(
-        "T10 P7",
-        "workflow.run_cancelled",
-        "ends a run; recorded with the other ways a run ends (failed, timed out, "
-        "closed as stale)",
-    ),
-}
+KNOWN_GAPS: dict[Route, Gap] = {}
 
 
 # GET routes that leave a record: an export, a look at someone else's data.
@@ -562,6 +553,9 @@ RECORDED_IN: dict[Route, tuple[str, ...]] = {
     ("POST", "/api/workflows/trigger"): ("fim_one.core.workflow.run_audit",),
     ("POST", "/api/workflows/trigger/{api_key}"): ("fim_one.core.workflow.run_audit",),
     ("POST", "/api/workflows/{workflow_id}/test-node"): ("fim_one.core.workflow.run_audit",),
+    ("POST", "/api/workflows/{workflow_id}/runs/{run_id}/cancel"): (
+        "fim_one.core.workflow.run_audit",
+    ),
     # The schema form's saves and the database builder tools share the recorder.
     ("PUT", "/api/connectors/{connector_id}/schemas/bulk"): ("fim_one.core.audit.resources",),
     ("PUT", "/api/connectors/{connector_id}/schemas/{schema_id}"): (
