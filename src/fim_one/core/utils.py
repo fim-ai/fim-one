@@ -35,6 +35,27 @@ def cancel_requested() -> bool:
     return task is not None and task.cancelling() > 0
 
 
+async def stop_background(
+    task: asyncio.Task[Any], *, timeout: float, name: str, cancel: bool = True
+) -> bool:
+    """Cancel *task* (unless *cancel* is off) and wait at most *timeout* seconds for it.
+
+    For the application's shutdown: a background loop that does not end
+    is logged and left behind, so the shutdown goes on (closing the HTTP
+    client, writing the usage still metered, closing the database) instead
+    of waiting for it. Returns whether it ended.
+    """
+    if cancel and not task.done():
+        task.cancel()
+    done, _ = await asyncio.wait({task}, timeout=timeout)
+    if not done:
+        logger.error("%s did not stop within %.0f s; shutting down without it", name, timeout)
+        return False
+    if not task.cancelled() and task.exception() is not None:
+        logger.error("%s ended with an error: %r", name, task.exception())
+    return True
+
+
 def spawn_background(
     coro: Coroutine[Any, Any, Any],
     *,

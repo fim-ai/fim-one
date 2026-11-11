@@ -1221,3 +1221,47 @@ class TestOneAuthorsManyKeysCannotUseUpTheBudgetEither:
         )
         rows = await world.events("workflow.run_refused")
         assert len([row for row in rows if row.actor_id == author.id]) == 20
+
+
+class TestAContinuationCancelledWhileReadmittedIsNotFailed:
+    """Recheck R2. resume_run takes any error of a continuation as the
+    run's own and closes the run as failed ("could not be read back"). A
+    cancellation that the database driver turned into an error is not the
+    run's: the run is left for the next process to continue."""
+
+    async def test_cancelled_during_readmission(
+        self, world: World, service: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        alice = await world.user("alice")
+        await _workflow(world, alice)
+        await world.add(
+            WorkflowRun(
+                id="run-1",
+                workflow_id="wf-1",
+                user_id=alice.id,
+                blueprint_snapshot=PLAIN,
+                inputs={},
+                status="waiting",
+                mode="interactive",
+            )
+        )
+        entered = asyncio.Event()
+
+        async def readmit(*_args: Any, **_kwargs: Any) -> Any:
+            entered.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                raise ValueError("no active connection") from None
+
+        monkeypatch.setattr(service, "_readmit", readmit)
+        task = asyncio.ensure_future(service.resume_run("run-1"))
+        await asyncio.wait_for(entered.wait(), timeout=5)
+
+        task.cancel()
+        await asyncio.wait({task}, timeout=5)
+
+        assert task.done() and (task.cancelled() or task.exception() is not None)
+        (run,) = await _runs(world)
+        assert run.status != "failed", run.error
+        assert await world.events("workflow.run_closed") == []

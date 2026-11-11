@@ -298,55 +298,36 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
 
     yield
 
-    # Graceful shutdown: stop sweepers, scheduler, then dispose the DB
-    subscription_lifecycle_task.cancel()
-    try:
-        await subscription_lifecycle_task
-    except asyncio.CancelledError:
-        pass
+    # Graceful shutdown: stop sweepers, scheduler, then dispose the DB.
+    # Each wait is bounded: a loop that does not end is logged and left,
+    # and the shutdown goes on (core.utils.stop_background).
+    from fim_one.core.utils import stop_background
 
-    confirmation_expirer_task.cancel()
-    try:
-        await confirmation_expirer_task
-    except asyncio.CancelledError:
-        pass
+    await stop_background(
+        subscription_lifecycle_task, timeout=10, name="Subscription lifecycle loop"
+    )
+    await stop_background(
+        confirmation_expirer_task, timeout=10, name="Confirmation request expirer"
+    )
 
     remove_resume_hook()
     # Asked, not cancelled: a cancel that interrupts a database call can
     # leave a task behind that keeps the process from exiting (SQLite).
     # Cancelled only if the pass it is in does not end in time.
     run_supervisor.stop()
-    _, still_running = await asyncio.wait({run_supervisor_task}, timeout=15)
-    if still_running:
-        run_supervisor_task.cancel()
-        try:
-            await run_supervisor_task
-        except asyncio.CancelledError:
-            pass
+    if not await stop_background(
+        run_supervisor_task, timeout=15, name="Workflow run supervisor", cancel=False
+    ):
+        await stop_background(run_supervisor_task, timeout=5, name="Workflow run supervisor")
 
-    cleanup_task.cancel()
-    try:
-        await cleanup_task
-    except asyncio.CancelledError:
-        pass
-
-    audit_retention_task.cancel()
-    try:
-        await audit_retention_task
-    except asyncio.CancelledError:
-        pass
+    await stop_background(cleanup_task, timeout=10, name="Workflow run cleaner")
+    await stop_background(audit_retention_task, timeout=10, name="Audit retention sweeper")
 
     await scheduler.stop()
-    try:
-        await asyncio.wait_for(scheduler_task, timeout=35.0)
-    except asyncio.TimeoutError:
-        scheduler_task.cancel()
-        try:
-            await scheduler_task
-        except asyncio.CancelledError:
-            pass
-    except asyncio.CancelledError:
-        pass
+    if not await stop_background(
+        scheduler_task, timeout=35, name="Workflow scheduler", cancel=False
+    ):
+        await stop_background(scheduler_task, timeout=5, name="Workflow scheduler")
     await close_shared_http_client()
     # Usage metered and not yet written (turns and runs cut short by the
     # shutdown, background writes in flight) goes to the ledger first.

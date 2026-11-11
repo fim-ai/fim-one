@@ -230,3 +230,6 @@ class WorkflowRunCleaner:
                     logger.info("Workflow run cleaner stopped")
                     break
                 logger.exception("Workflow run cleanup failed")
+            if cancel_requested():
+                logger.info("Workflow run cleaner stopped")
+                break

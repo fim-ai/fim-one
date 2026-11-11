@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
@@ -212,6 +212,141 @@ class TestTheRunSupervisorStopsWithoutBeingCancelled:
 
         from fim_one.web import app
 
-        source = inspect.getsource(app.lifespan)
-        assert "run_supervisor.stop()" in source
-        assert "run_supervisor_task.cancel()" in source.split("run_supervisor.stop()", 1)[1]
+        source = "".join(inspect.getsource(app.lifespan).split())
+        after = source.split("run_supervisor.stop()", 1)[1]
+        # Asked first; then waited for without a cancel; cancelled only after.
+        assert after.startswith("ifnotawaitstop_background(run_supervisor_task,timeout=15,"), after[
+            :120
+        ]
+        assert "cancel=False" in after.split("awaitstop_background(run_supervisor_task", 2)[1]
+
+
+class _Session:
+    """A stand-in session: no database, no rows."""
+
+    bind = None
+
+    async def execute(self, *_args: Any, **_kwargs: Any) -> Any:
+        class _Result:
+            def scalars(self) -> Any:
+                return self
+
+            def all(self) -> list[Any]:
+                return list(_Session.rows)
+
+        return _Result()
+
+    rows: ClassVar[list[Any]] = []
+
+
+@asynccontextmanager
+async def _stand_in_session() -> AsyncIterator[_Session]:
+    yield _Session()
+
+
+async def _ends(task: asyncio.Future[Any], seconds: float = 2) -> bool:
+    done, _ = await asyncio.wait({task}, timeout=seconds)
+    if not done:
+        task.cancel()  # the fake ends on a second cancel
+        await asyncio.wait({task}, timeout=2)
+    return bool(done)
+
+
+class TestAPassThatCatchesTheErrorItselfStillStops:
+    """Recheck R2. A pass that catches errors per item (a table of the
+    retention sweep, a workflow of the scheduler's tick) swallowed the
+    converted cancellation and returned normally; the loop then slept its
+    whole interval, and the shutdown that awaits it waited as long."""
+
+    async def test_the_retention_sweep_cancelled_inside_a_tables_delete(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from fim_one.core.audit import retention
+
+        monkeypatch.setattr("fim_one.db.create_session", _stand_in_session)
+        monkeypatch.setattr(retention.random, "uniform", lambda _a, _b: 0)
+        sweeper = retention.AuditRetentionSweeper(
+            retention.Retention(audit_days=365), check_interval_seconds=3600
+        )
+        fake = _PassLosingCancellation()
+
+        async def due(_moment: Any) -> bool:
+            return True
+
+        monkeypatch.setattr(sweeper, "_due", due)
+        monkeypatch.setattr(sweeper, "_leave_a_record", _noop)
+        monkeypatch.setattr(sweeper, "_clear_payloads", _noop)
+        monkeypatch.setattr(sweeper, "_delete_older", fake)
+        task = asyncio.ensure_future(sweeper.run_loop())
+        await asyncio.wait_for(fake.entered.wait(), timeout=5)
+
+        task.cancel()
+
+        assert await _ends(task), "the sweeper slept its interval after it was cancelled"
+
+    async def test_the_scheduler_cancelled_inside_one_workflows_dispatch(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from types import SimpleNamespace
+
+        from fim_one.core.workflow.scheduler import WorkflowScheduler
+
+        monkeypatch.setattr("fim_one.db.create_session", _stand_in_session)
+        monkeypatch.setattr(_Session, "rows", [SimpleNamespace(id="wf-1", name="n")])
+        scheduler = WorkflowScheduler(poll_interval=3600)
+        fake = _PassLosingCancellation()
+        monkeypatch.setattr(scheduler, "_is_due", lambda _wf, _now: True)
+
+        async def enabled(*_args: Any) -> bool:
+            return True
+
+        monkeypatch.setattr("fim_one.web.services.feature_flags.is_feature_enabled", enabled)
+        monkeypatch.setattr(scheduler, "_dispatch_run", fake)
+        task = asyncio.ensure_future(scheduler.run())
+        await asyncio.wait_for(fake.entered.wait(), timeout=5)
+
+        task.cancel()
+
+        assert await _ends(task), "the scheduler waited its interval after it was cancelled"
+
+
+class TestTheShutdownWaitsABoundedTime:
+    async def test_a_task_that_does_not_end_on_cancel_is_left_after_the_timeout(self) -> None:
+        from fim_one.core.utils import stop_background
+
+        release = asyncio.Event()
+
+        async def stubborn() -> None:
+            while not release.is_set():
+                try:
+                    await asyncio.sleep(10)
+                except asyncio.CancelledError:
+                    continue
+
+        task = asyncio.ensure_future(stubborn())
+        await asyncio.sleep(0)
+
+        started = asyncio.get_running_loop().time()
+        assert await stop_background(task, timeout=0.3, name="stubborn") is False
+        assert asyncio.get_running_loop().time() - started < 1.5
+        release.set()
+        task.cancel()
+        await asyncio.wait({task}, timeout=2)
+
+    async def test_the_application_bounds_every_background_task(self) -> None:
+        import inspect
+
+        from fim_one.web import app
+
+        source = "".join(inspect.getsource(app.lifespan).split())
+        shutdown = source.split("yield", 1)[1]
+        for task in (
+            "subscription_lifecycle_task",
+            "confirmation_expirer_task",
+            "run_supervisor_task",
+            "cleanup_task",
+            "audit_retention_task",
+            "scheduler_task",
+        ):
+            assert f"stop_background({task}," in shutdown, task
+            assert f"await{task}" not in shutdown, task

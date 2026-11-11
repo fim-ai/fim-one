@@ -143,6 +143,9 @@ async def _run_loop(interval_seconds: int) -> None:
                 logger.info("Subscription lifecycle loop stopped")
                 break
             logger.exception("Subscription lifecycle sweep failed")
+        if cancel_requested():
+            logger.info("Subscription lifecycle loop stopped")
+            break
 
 
 def start_lifecycle_loop(

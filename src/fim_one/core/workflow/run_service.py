@@ -1089,6 +1089,10 @@ class WorkflowRunService:
             try:
                 await self._announce_closed(run_id, error)
             except Exception:
+                from fim_one.core.utils import cancel_requested
+
+                if cancel_requested():
+                    raise
                 logger.exception("Could not announce that run %s failed", run_id)
         return previous
 
@@ -1553,6 +1557,12 @@ class WorkflowRunService:
             )
             return None
         except Exception:
+            from fim_one.core.utils import cancel_requested
+
+            if cancel_requested():
+                # Cancelled (shutdown), not the run's own failure: left as
+                # it is, for the sweep of another or the next process.
+                raise
             logger.exception("Workflow run %s could not be continued", run_id)
             await self._end_stored_run(
                 run_id,

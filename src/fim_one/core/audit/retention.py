@@ -274,6 +274,9 @@ class AuditRetentionSweeper:
             try:
                 counts[table] = await work
             except Exception:
+                if cancel_requested():
+                    # Cancelled, not failed (see cancel_requested).
+                    raise
                 logger.exception("Audit retention: sweeping %s failed", table)
                 failed.append(table)
 
@@ -430,6 +433,9 @@ class AuditRetentionSweeper:
                         logger.info("Audit retention sweeper stopped")
                         return
                     logger.exception("Audit retention sweep failed")
+                if cancel_requested():
+                    logger.info("Audit retention sweeper stopped")
+                    return
                 await asyncio.sleep(self.check_interval_seconds)
         except asyncio.CancelledError:
             logger.info("Audit retention sweeper stopped")

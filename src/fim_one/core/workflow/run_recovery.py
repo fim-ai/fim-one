@@ -669,6 +669,9 @@ class WorkflowRunSupervisor:
                 if time.monotonic() - last_sweep >= self.sweep_seconds:
                     last_sweep = time.monotonic()
                     await self.sweep()
+                if cancel_requested():
+                    # A pass that caught the converted cancellation itself.
+                    break
             except asyncio.CancelledError:
                 break
             except Exception:

@@ -129,6 +129,9 @@ class ConfirmationRequestExpirer:
                     logger.info("ConfirmationRequestExpirer stopped")
                     break
                 logger.exception("ConfirmationRequestExpirer sweep failed")
+            if cancel_requested():
+                logger.info("ConfirmationRequestExpirer stopped")
+                break
 
 
 __all__ = ["ConfirmationRequestExpirer"]
