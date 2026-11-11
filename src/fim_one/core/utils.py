@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import json
 import logging
 import re
@@ -35,7 +36,10 @@ def cancel_requested() -> bool:
 
 
 def spawn_background(
-    coro: Coroutine[Any, Any, Any], *, name: str | None = None
+    coro: Coroutine[Any, Any, Any],
+    *,
+    name: str | None = None,
+    context: contextvars.Context | None = None,
 ) -> asyncio.Task[Any]:
     """Schedule a fire-and-forget coroutine with a guaranteed strong reference.
 
@@ -48,8 +52,11 @@ def spawn_background(
 
     Tasks that are awaited or stored by the caller do *not* need this helper —
     they already have a strong reference.
+
+    *context* is the task's context; by default a copy of the caller's (a
+    request's caller, address and meters included).
     """
-    task = asyncio.create_task(coro, name=name)
+    task = asyncio.create_task(coro, name=name, context=context)
     _BACKGROUND_TASKS.add(task)
 
     def _on_done(t: asyncio.Task[Any]) -> None:

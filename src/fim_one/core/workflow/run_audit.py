@@ -95,10 +95,14 @@ async def run_actor(
     mode: str,
     workflow: Any,
     *,
-    auth: str | None = None,
+    from_request: bool = True,
     db: AsyncSession | None = None,
 ) -> Actor:
-    """Who a run of *workflow* through entry *mode* is recorded as."""
+    """Who a run of *workflow* through entry *mode* is recorded as.
+
+    How they signed in is the current request's, when there is one and
+    *from_request*; otherwise unknown (``None``), never assumed.
+    """
     label, is_admin = await _person(user_id, db)
     if mode == _SCHEDULE:
         return Actor(user_id=user_id, label=label, kind="system", auth="schedule")
@@ -110,12 +114,12 @@ async def run_actor(
             auth="trigger_key",
             credential_ref=getattr(workflow, "api_key_prefix", None),
         )
-    signed_in = current_request_auth()
+    signed_in = current_request_auth() if from_request else None
     return Actor(
         user_id=user_id,
         label=label,
         kind="admin" if is_admin else "user",
-        auth=signed_in[0] if signed_in else (auth or "session"),
+        auth=signed_in[0] if signed_in else None,
         credential_ref=signed_in[1] if signed_in else None,
     )
 
@@ -175,7 +179,7 @@ async def record_refused(
             f"{workflow.id}|{user_id or '-'}|{mode}|{code}",
         ):
             return False
-        actor = await run_actor(user_id, mode, workflow)
+        actor = await run_actor(user_id, mode, workflow, from_request=request is not NO_REQUEST)
         detail = code
         if not_started is not None:
             detail = f"{code}: {not_started[0]} of {not_started[1]} items not started"

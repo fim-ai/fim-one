@@ -906,3 +906,94 @@ class TestACancelIsRecordedWhenTheRunEndsCancelled:
         )
 
         assert len(await world.events("workflow.run_cancelled")) == 1
+
+
+class TestAContinuationCarriesNothingOfTheApproversRequest:
+    """Review F2. A run continues after someone decides its approval; the
+    decision's request is not the run's. Its records must not carry the
+    approver's address or sign-in, and the run must not run in the
+    approver's request context at all."""
+
+    APPROVER_IP = "198.51.100.9"
+
+    def _as_the_approvers_request(self) -> Any:
+        from contextlib import contextmanager
+
+        from fim_one.core.audit.context import request_auth, request_meta
+        from fim_one.core.audit.events import RequestMeta
+        from fim_one.core.model.rate_limit import current_user_id
+
+        @contextmanager
+        def inside() -> Any:
+            tokens = (
+                request_meta.set(RequestMeta(self.APPROVER_IP, "approver-ua", "req-approver")),
+                request_auth.set(("api_key", "approver-key-id")),
+                current_user_id.set("approver-id"),
+            )
+            try:
+                yield
+            finally:
+                current_user_id.reset(tokens[2])
+                request_auth.reset(tokens[1])
+                request_meta.reset(tokens[0])
+
+        return inside()
+
+    async def test_a_refused_continuation_is_the_runners_with_no_request(
+        self, world: World, service: Any
+    ) -> None:
+        alice = await world.user("alice")
+        await _workflow(world, alice)
+        await _over_quota(world, alice)
+        await world.add(
+            WorkflowRun(
+                id="run-1",
+                workflow_id="wf-1",
+                user_id=alice.id,
+                blueprint_snapshot=PLAIN,
+                inputs={},
+                status="waiting",
+                mode="interactive",
+            )
+        )
+
+        with self._as_the_approvers_request():
+            assert await service.resume_run("run-1") is None
+
+        (row,) = await world.events("workflow.run_refused")
+        assert (row.actor_id, row.detail) == (alice.id, "token_quota_exceeded")
+        assert (row.ip_address, row.user_agent, row.request_id) == (None, None, None)
+        assert (row.auth_method, row.credential_ref) == (None, None)
+
+    async def test_the_continuation_runs_outside_the_deciding_request(
+        self, world: World, service: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from fim_one.core.audit.context import current_request_auth, current_request_meta
+        from fim_one.core.model.rate_limit import current_user_id
+
+        seen: list[Any] = []
+        done = asyncio.Event()
+
+        async def resume_run(run_id: str) -> None:
+            seen.append((current_request_meta(), current_request_auth(), current_user_id.get()))
+            done.set()
+
+        monkeypatch.setattr(service, "resume_run", resume_run)
+        with self._as_the_approvers_request():
+            service.schedule_resume("run-1")
+        await asyncio.wait_for(done.wait(), timeout=5)
+
+        assert seen == [(None, None, None)]
+
+    async def test_a_run_started_outside_a_request_claims_no_sign_in(
+        self, world: World, service: Any
+    ) -> None:
+        from fim_one.core.tool.builtin.run_workflow import RunWorkflowTool
+
+        alice = await world.user("alice")
+        await _workflow(world, alice)
+
+        await RunWorkflowTool(["wf-1"], user_id=alice.id).run(name="nightly")
+
+        (row,) = await world.events("workflow.run_started")
+        assert (row.actor_id, row.auth_method, row.credential_ref) == (alice.id, None, None)

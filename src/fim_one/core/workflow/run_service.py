@@ -1646,9 +1646,14 @@ class WorkflowRunService:
         The one seam between "a decision was made" and "the run goes on";
         a task queue would take its place here.
         """
+        import contextvars
+
         from fim_one.core.utils import spawn_background
 
-        spawn_background(self._resume_logged(run_id))
+        # Not in the context of the request that made the decision: the run
+        # is its runner's, and the approver's address, sign-in, rate-limit
+        # identity and meters are not its own.
+        spawn_background(self._resume_logged(run_id), context=contextvars.Context())
 
     async def _resume_logged(self, run_id: str) -> None:
         try:
