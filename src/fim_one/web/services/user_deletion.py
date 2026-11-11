@@ -102,6 +102,12 @@ def deleted_user_label(user_id: str) -> str:
 _IDENTITY_KEYS = frozenset({"username", "email", "display_name"})
 
 
+def _patterns(quoted: list[str | None]) -> tuple[re.Pattern[str], ...]:
+    """Each of *quoted* as a word of its own, longest first; short ones are left."""
+    kept = sorted({name for name in quoted if name and len(name) >= 3}, key=len, reverse=True)
+    return tuple(re.compile(rf"(?<![\w@.-]){re.escape(name)}(?![\w@-])") for name in kept)
+
+
 def _without_names(value: Any, names: tuple[re.Pattern[str], ...], label: str) -> Any:
     """*value* (text, or the lists and mappings of a JSON column) with every name replaced."""
     if isinstance(value, str):
@@ -124,9 +130,9 @@ async def _deidentify_records(
     email become the deleted-user label and the address and device are
     cleared. In ``audit_logs`` the same is done to the rows the user is the
     actor of; rows the user is the target of get the label as the target's
-    name; and where either kind quotes the username, the display name or the
-    email address (a detail line, a value in ``changes``), the quote is
-    replaced. In ``review_log`` the actor's name is replaced. Call records
+    name. In either kind the email address is replaced wherever it is
+    quoted; the username and display name where they are a value under a
+    name key of ``changes`` or the whole of ``detail``. In ``review_log`` the actor's name is replaced. Call records
     and the usage ledger hold an id and nothing else of the user.
 
     An address on a row somebody else is the actor of (an administrator who
@@ -156,15 +162,16 @@ async def _deidentify_records(
     )
     await db.execute(update(AuditLog).where(is_target).values(target_label=label))
 
-    # Longest first, so a username that is the start of the email address
-    # does not leave the rest of the address behind. A name is replaced
-    # where it stands as a word of its own.
-    quoted = sorted(
-        {name for name in (username, email, display_name) if name and len(name) >= 3},
-        key=len,
-        reverse=True,
-    )
-    names = tuple(re.compile(rf"(?<![\w@.-]){re.escape(name)}(?![\w@-])") for name in quoted)
+    # The email address is replaced wherever it stands: nothing else looks
+    # like it. A username or display name can be an ordinary word ("member",
+    # "admin", "true") that is also a role or a flag in the same row, so it
+    # is replaced only where a writer puts a name: under a name key of
+    # ``changes``, or as the whole of ``detail``. Longest first, so a
+    # username that is the start of the email address does not leave the
+    # rest of the address behind.
+    addresses = _patterns([email])
+    names = _patterns([username, email, display_name])
+    whole = {name for name in (username, display_name) if name}
     rows = await db.execute(
         select(AuditLog.id, AuditLog.detail, AuditLog.changes, is_target.label("about_user")).where(
             or_(is_actor, is_target),
@@ -172,15 +179,16 @@ async def _deidentify_records(
         )
     )
     for row_id, detail, changes, about_user in rows.all():
-        new_detail = _without_names(detail, names, label)
+        new_detail = label if detail in whole else _without_names(detail, addresses, label)
         new_changes = changes
         if isinstance(changes, dict):
             new_changes = {
                 # The old and the new value of a name of this account.
-                key: {"changed": True} if about_user and key in _IDENTITY_KEYS else change
+                key: {"changed": True}
+                if about_user and key in _IDENTITY_KEYS
+                else _without_names(change, names if key in _IDENTITY_KEYS else addresses, label)
                 for key, change in changes.items()
             }
-            new_changes = _without_names(new_changes, names, label)
         # Only what changed is written: a row without ``changes`` keeps its
         # SQL NULL (writing ``None`` to a JSON column stores the JSON null).
         values: dict[str, Any] = {}

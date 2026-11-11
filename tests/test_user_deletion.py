@@ -583,14 +583,14 @@ async def test_audit_rows_name_the_user_by_the_label_and_lose_their_address(
     in_org = event(
         "agent.update", actor_id=carol.id, actor_label="carol", actor_kind="user",
         org_id="org-a", target_type="agent", target_id="a1", target_label="Helper",
-        detail="published by carol (carol@example.test), reviewed for Carol Danvers.",
-        changes={"is_active": {"from": False, "to": True}, "owner": {"from": None, "to": "carol"}},
+        detail="published to carol@example.test",
+        changes={"is_active": {"from": False, "to": True}, "notify": {"from": None, "to": "carol@example.test"}},
         ip_address="198.51.100.5", user_agent="CarolBrowser/1",
     )  # fmt: skip
     by_admin = event(
         "user.update", actor_id=root.id, actor_label="root", actor_kind="admin",
         target_type="user", target_id=carol.id, target_label="carol",
-        detail="email of carol changed",
+        detail="carol",
         changes={"email": {"from": "c@old.test", "to": "carol@example.test"}},
         ip_address="198.51.100.99", user_agent="RootBrowser/9",
     )  # fmt: skip
@@ -628,10 +628,10 @@ async def test_audit_rows_name_the_user_by_the_label_and_lose_their_address(
     assert (rows["own"].actor_id, rows["own"].actor_label) == (carol.id, label)
     assert rows["own"].target_label == label and rows["own"].ip_address is None
     assert rows["own"].changes == {"username": {"changed": True}}
-    assert rows["in_org"].detail == f"published by {label} ({label}), reviewed for {label}."
+    assert rows["in_org"].detail == f"published to {label}"
     assert rows["in_org"].changes == {
         "is_active": {"from": False, "to": True},
-        "owner": {"from": None, "to": label},
+        "notify": {"from": None, "to": label},
     }
     # No ``changes`` before, none after: SQL NULL, not the JSON null.
     assert rows["plain"].changes is None
@@ -647,13 +647,61 @@ async def test_audit_rows_name_the_user_by_the_label_and_lose_their_address(
     assert (rows["by_admin"].actor_label, rows["by_admin"].ip_address) == ("root", "198.51.100.99")
     assert rows["by_admin"].user_agent == "RootBrowser/9"
     assert rows["by_admin"].target_label == label
-    assert rows["by_admin"].detail == f"email of {label} changed"
+    assert rows["by_admin"].detail == label
     assert rows["by_admin"].changes == {"email": {"changed": True}}
     # What changed that is not a name of hers is kept.
     assert rows["role"].changes == {"role": {"from": "member", "to": "admin"}}
     assert rows["role"].target_label == label
     # Rows she is neither the actor nor the target of are not rewritten.
     assert rows["unrelated"].detail == "carolina joined; scarol left"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["member", "admin", "true"])
+async def test_a_username_that_is_an_ordinary_word_leaves_the_rest_of_the_row(
+    db: AsyncSession, name: str
+) -> None:
+    """A username was replaced wherever it stood as a word, so deleting a
+    user called ``member`` rewrote the roles in the rows about them."""
+    person = await _person(db, name, display_name="Admin")
+    root = await _person(db, "root", is_admin=True)
+    label = f"deleted-user-{person.id[:8]}"
+    role = AuditLog(
+        id=_uid(), action="org.member_role_change", actor_id=root.id, actor_label="root",
+        actor_kind="user", org_id="org-a", target_type="user", target_id=person.id,
+        target_label=name, changes={"role": {"from": "member", "to": "admin"}},
+        detail="role=admin; was member",
+    )  # fmt: skip
+    own = AuditLog(
+        id=_uid(), action="workflow.schedule_update", actor_id=person.id, actor_label=name,
+        actor_kind="user", target_type="workflow", target_id="w1", target_label="Nightly",
+        changes={"enabled": {"from": "false", "to": "true"}, "role": {"from": "admin", "to": "member"}},
+        detail="schedule_enabled=true; by admin",
+    )  # fmt: skip
+    renamed = AuditLog(
+        id=_uid(), action="auth.username_change", actor_id=person.id, actor_label=name,
+        actor_kind="user", target_type="user", target_id=person.id, target_label=name,
+        changes={"username": {"from": "old", "to": name}},
+    )  # fmt: skip
+    db.add_all([role, own, renamed])
+    await db.commit()
+
+    await purge_user_data(db, person.id)
+    await db.commit()
+
+    role_now = await _fresh(db, AuditLog, role.id)
+    assert role_now.target_label == label
+    assert role_now.changes == {"role": {"from": "member", "to": "admin"}}
+    assert role_now.detail == "role=admin; was member"
+    own_now = await _fresh(db, AuditLog, own.id)
+    assert own_now.actor_label == label
+    assert own_now.changes == {
+        "enabled": {"from": "false", "to": "true"},
+        "role": {"from": "admin", "to": "member"},
+    }
+    assert own_now.detail == "schedule_enabled=true; by admin"
+    renamed_now = await _fresh(db, AuditLog, renamed.id)
+    assert renamed_now.changes == {"username": {"changed": True}}
 
 
 @pytest.mark.asyncio
