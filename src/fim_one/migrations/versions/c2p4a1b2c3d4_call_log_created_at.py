@@ -12,10 +12,14 @@ sweep), so none of them saw any call, and no record was ever swept.
 - The column gets the default the model declares (``now()``) and becomes
   not null, as the model says. A database built with ``create_all``
   already has both and is left as it is.
-- Records without a time get the best one there is: the start of the
-  workflow run they were made in, else the start of their conversation
-  (a call comes after either; the record lands near when it was made and
-  is swept no later than it should be), else the time of this migration.
+- Records without a time get one that is not earlier than the call: the
+  retention sweep deletes by age, and a record dated too early would be
+  deleted before its time. The end of the workflow run the call was made
+  in (``completed_at``), else the last change of its conversation
+  (``updated_at``), else the time of this migration. The start of a run or
+  a conversation would be earlier than its calls: a conversation can go on
+  for weeks. A run still under way or waiting, and a conversation never
+  changed after it was created, give no such time.
 
 Safe to run again: both steps only touch what is still missing.
 
@@ -66,11 +70,11 @@ def _backfill(bind: sa.Connection) -> None:
     sources = []
     if table_exists(bind, "workflow_runs"):
         sources.append(
-            f"(SELECT r.created_at FROM workflow_runs r WHERE r.id = {_TABLE}.workflow_run_id)"
+            f"(SELECT r.completed_at FROM workflow_runs r WHERE r.id = {_TABLE}.workflow_run_id)"
         )
     if table_exists(bind, "conversations"):
         sources.append(
-            f"(SELECT c.created_at FROM conversations c WHERE c.id = {_TABLE}.conversation_id)"
+            f"(SELECT c.updated_at FROM conversations c WHERE c.id = {_TABLE}.conversation_id)"
         )
     sources.append("CURRENT_TIMESTAMP")
     bind.execute(

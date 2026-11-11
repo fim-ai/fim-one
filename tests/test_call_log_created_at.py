@@ -19,7 +19,7 @@ import importlib
 import os
 import uuid
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -149,13 +149,31 @@ def before(database_url: str) -> Iterator[sa.Engine]:
     with Session(engine) as session:
         session.add(User(id="u-1", email="ada@x.io", username="ada", password_hash="x"))
         session.flush()
+        # Started 1 October, last answered 5 November: its calls were made
+        # in between, so 1 October would date them too early.
         session.add(
             Conversation(
-                id="conv-1", user_id="u-1", title="t", mode="react", created_at=_at("2026-10-01")
+                id="conv-1",
+                user_id="u-1",
+                title="t",
+                mode="react",
+                created_at=_at("2026-10-01"),
+                updated_at=_at("2026-11-05"),
+            )
+        )
+        # Never changed after it was created: no upper bound to go by.
+        session.add(
+            Conversation(
+                id="conv-quiet",
+                user_id="u-1",
+                title="q",
+                mode="react",
+                created_at=_at("2026-10-01"),
             )
         )
         session.add(Workflow(id="wf-1", user_id="u-1", name="w", blueprint={}))
         session.flush()
+        # Created and started 2 October, finished 3 October.
         session.add(
             WorkflowRun(
                 id="run-1",
@@ -164,12 +182,28 @@ def before(database_url: str) -> Iterator[sa.Engine]:
                 status="completed",
                 blueprint_snapshot={},
                 created_at=_at("2026-10-02"),
+                started_at=_at("2026-10-02"),
+                completed_at=_at("2026-10-03"),
+            )
+        )
+        # Still waiting for a decision: it has not finished.
+        session.add(
+            WorkflowRun(
+                id="run-waiting",
+                workflow_id="wf-1",
+                user_id="u-1",
+                status="waiting",
+                blueprint_snapshot={},
+                created_at=_at("2026-10-02"),
+                started_at=_at("2026-10-02"),
             )
         )
         session.commit()
     with Session(engine) as session:
         session.add(_record(id="in-chat", conversation_id="conv-1"))
+        session.add(_record(id="in-quiet-chat", conversation_id="conv-quiet"))
         session.add(_record(id="in-run", conversation_id="conv-1", workflow_run_id="run-1"))
+        session.add(_record(id="in-waiting-run", workflow_run_id="run-waiting"))
         session.add(_record(id="gone", conversation_id="conv-deleted"))
         session.commit()
     yield engine
@@ -189,9 +223,13 @@ class TestMigration:
         _run_module(before, "upgrade")
 
         dated = _created_at(before)
-        assert _day(dated["in-run"]) == "2026-10-02"
-        assert _day(dated["in-chat"]) == "2026-10-01"
-        assert dated["gone"] is not None
+        # Never earlier than the call: the retention sweep reads by age, and
+        # a record dated too early is deleted before its time.
+        assert _day(dated["in-run"]) == "2026-10-03"
+        assert _day(dated["in-chat"]) == "2026-11-05"
+        upgraded = datetime.now(UTC).date().isoformat()
+        for unbounded in ("in-quiet-chat", "in-waiting-run", "gone"):
+            assert _day(dated[unbounded]) >= upgraded, unbounded
         assert _column(before) == {"nullable": False, "has_default": True}
 
         with Session(before) as session:
