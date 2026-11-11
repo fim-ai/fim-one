@@ -48,6 +48,7 @@ from fim_one.web.auth import (
 )
 from fim_one.db.models import LoginHistory, User
 from fim_one.core.audit import actions
+from fim_one.core.audit import context as audit_context
 from fim_one.core.audit import writer as audit
 from fim_one.core.audit.redact import diff_changes
 from fim_one.core.audit.refusals import admit_refusal
@@ -1568,18 +1569,24 @@ async def delete_own_account(
 ) -> dict[str, Any]:
     """Permanently delete the current user's own account and all associated data."""
     user_id = current_user.id
-    label = current_user.username or current_user.email
     # Built before the account is removed: who, and how they were signed in.
     actor = audit.actor_of(current_user)
 
     # --- Audit trail (must happen before DB delete since user is the actor) ---
     summary = await purge_user_data(db, user_id)
+    # The record of the deletion is one of the records that outlive the
+    # account: like them it names the user by the deleted-user label and
+    # carries no address or device.
+    meta = audit_context.current_request_meta()
     await audit.record(
         "account.self_delete",
-        actor=actor,
+        actor=replace(actor, label=summary.label),
+        request=RequestMeta(
+            ip=None, user_agent=None, request_id=meta.request_id if meta else None
+        ),
         target_type="user",
         target_id=user_id,
-        target_label=label,
+        target_label=summary.label,
         detail=(
             f"user self-deleted; cleaned {summary['conversations']} conversations, "
             f"{summary['knowledge_bases']} knowledge bases, sandbox & upload dirs"

@@ -249,8 +249,9 @@ class TestDeletingAUser:
     async def test_an_owner_whose_connector_someone_else_called(
         self, world: SimpleNamespace
     ) -> None:
-        """User deletion removes the user's own records, as before, and no
-        longer trips over the records other users left on their connector."""
+        """User deletion does not trip over the records other users left on
+        the user's connector. The user's own call records stay as well: they
+        are kept until their retention period ends, naming the user by id."""
         from fim_one.web.services.user_deletion import purge_user_data
 
         async with world.factory() as db:
@@ -261,7 +262,9 @@ class TestDeletingAUser:
             assert await db.get(User, world.owner) is None
             assert await db.get(Connector, world.connector) is None
         records = await _records(world)
-        assert [(r.user_id, r.connector_id) for r in records] == [(world.caller, world.connector)]
+        assert {r.connector_id for r in records} == {world.connector}
+        assert world.caller in {r.user_id for r in records}
+        assert world.owner in {r.user_id for r in records}
 
 
 class TestDeletingAnMcpServer:

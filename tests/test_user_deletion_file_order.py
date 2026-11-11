@@ -52,7 +52,12 @@ class TestAnAdministratorDeletesAUser:
 
         assert await world.get(User, bob.id) is None
         assert [path.exists() for path in files] == [False, False]
-        await world.one("user.delete", actor=root, target=("user", bob.id))
+        row = await world.one("user.delete", actor=root, target=("user", bob.id))
+        # The record of the deletion names the user as the other records
+        # that outlive the account do.
+        label = f"deleted-user-{bob.id[:8]}"
+        assert row.target_label == label and row.detail.startswith(f"deleted user {label};")
+        world.assert_absent(row, "bob")
 
     async def test_a_deletion_that_does_not_commit_keeps_the_files(
         self, world: World, uploads: Path, monkeypatch: pytest.MonkeyPatch

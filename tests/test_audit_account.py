@@ -331,8 +331,12 @@ class TestDeletingTheAccount:
 
         await world.call("DELETE", "/api/auth/account", by=dave)
 
-        row = await world.one("account.self_delete", actor=dave, target=("user", dave.id))
-        assert (row.auth_method, row.actor_kind) == ("session", "user")
+        # The record outlives the account: it names the user by the
+        # deleted-user label and carries no address (tests/test_user_deletion.py).
+        row = await world.one(
+            "account.self_delete", actor=None, target=("user", dave.id), ip=None
+        )
+        assert (row.actor_id, row.auth_method, row.actor_kind) == (dave.id, "session", "user")
         assert await world.get(User, dave.id) is None
 
 

@@ -1187,17 +1187,18 @@ async def delete_user(
         raise AppError("user_not_found", status_code=404)
 
     info = _user_to_info(target_user)
-    label = target_user.username or target_user.email
 
     # Unified deletion: FK-safe row removal + ORM cascade, then the files.
     # Raises cannot_delete_org_owner if the user still owns any organization.
     summary = await purge_user_data(db, user_id)
     await db.flush()
+    # The record names the user as every record that outlives the account
+    # does: by the deleted-user label, with the id as the target.
     await stage_audit(
         db, current_user, "user.delete",
-        target_type="user", target_id=user_id, target_label=label,
+        target_type="user", target_id=user_id, target_label=summary.label,
         detail=(
-            f"deleted user {label}; cleaned {summary['conversations']} conversations, "
+            f"deleted user {summary.label}; cleaned {summary['conversations']} conversations, "
             f"{summary['knowledge_bases']} knowledge bases, sandbox & upload dirs"
         ),
     )
