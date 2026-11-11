@@ -630,9 +630,11 @@ class OpenAICompatibleLLM(BaseLLM):
                 self._report_cancelled_call(report_usage, messages, tools)
                 raise
             if native is not None:
+                # Metered first: a cancel landing on the rate limiter's await
+                # must not lose a response that has arrived.
+                self._meter_result(messages, native, tools)
                 if self._rate_limiter is not None and native.usage.get("total_tokens"):
                     await self._rate_limiter.report_usage(native.usage["total_tokens"])
-                self._meter_result(messages, native, tools)
                 return native
 
         try:
@@ -670,17 +672,19 @@ class OpenAICompatibleLLM(BaseLLM):
             }
             _merge_cache_usage(usage, response.usage)
 
-        # Report actual token usage back to the rate limiter.
-        if self._rate_limiter is not None and usage.get("total_tokens"):
-            await self._rate_limiter.report_usage(usage["total_tokens"])
-
         result = LLMResult(
             message=assistant_msg,
             usage=usage,
             finish_reason=finish_reason,
             truncated_tool_call=truncated_tool_call,
         )
+        # Metered before the rate limiter's await, which a cancel can land
+        # on: the response has arrived and is billed.
         self._meter_result(messages, result, tools)
+
+        # Report actual token usage back to the rate limiter.
+        if self._rate_limiter is not None and usage.get("total_tokens"):
+            await self._rate_limiter.report_usage(usage["total_tokens"])
         return result
 
     def _meter_result(

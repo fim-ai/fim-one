@@ -766,6 +766,50 @@ class TestACallCancelledBeforeItYieldsAnything:
         (item,) = meter.drain()
         assert (item.estimated, item.completion_tokens) == (True, estimate_tokens(arguments))
 
+    @pytest.mark.parametrize("native", [False, True], ids=["chat", "responses"])
+    async def test_a_call_cancelled_while_its_usage_goes_to_the_rate_limiter_is_recorded(
+        self, provider: Provider, meter: UsageMeter, monkeypatch: pytest.MonkeyPatch, native: bool
+    ) -> None:
+        """The response is in; the provider's count is recorded, once, not an estimate."""
+        from fim_one.core.model.rate_limit import RateLimitConfig
+        from fim_one.core.model.types import LLMResult
+
+        llm = OpenAICompatibleLLM(
+            api_key="test-key",
+            base_url="https://api.openai.com/v1",
+            model="gpt-4o",
+            retry_config=None,
+            rate_limit_config=RateLimitConfig(),
+        )
+        if native:
+            answer = LLMResult(
+                message=ChatMessage(role="assistant", content="pong"),
+                usage={"prompt_tokens": PROMPT, "completion_tokens": COMPLETION,
+                       "total_tokens": UNIT},
+            )  # fmt: skip
+
+            async def _native(*_args: Any, **_kwargs: Any) -> LLMResult:
+                return answer
+
+            monkeypatch.setattr(llm, "_should_use_native_responses", lambda **_kw: True)
+            monkeypatch.setattr(llm, "_native_responses_chat", _native)
+        limiter = llm._rate_limiter
+        assert limiter is not None
+        reporting = asyncio.Event()
+
+        async def _slow(_tokens: int) -> None:
+            reporting.set()
+            await asyncio.Event().wait()
+
+        limiter.report_usage = _slow  # type: ignore[method-assign]
+
+        await self._cancel_once(reporting, llm.chat(MESSAGES))
+
+        (item,) = meter.drain()
+        assert (item.estimated, item.prompt_tokens, item.completion_tokens) == (
+            False, PROMPT, COMPLETION,
+        )  # fmt: skip
+
     async def test_a_call_waiting_for_the_rate_limiter_reports_nothing(
         self, provider: Provider, meter: UsageMeter
     ) -> None:
