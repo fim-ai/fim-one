@@ -498,7 +498,7 @@ class TestAutoIsAdmittedBeforeItClassifies:
 class TestTheMidStreamQuotaGuard:
     """A turn admitted under the limit is stopped when its answer crosses it."""
 
-    # 100 chunks of 100 characters: about 2,500 tokens by the guard's estimate.
+    # 100 chunks of 100 characters: about 2,300 tokens by the guard's estimate.
     CHUNKS = 100
     CHUNK = "x" * 100
     QUOTA = 1000
@@ -518,7 +518,7 @@ class TestTheMidStreamQuotaGuard:
     def _in_flight(chunk: str) -> None:
         """What the model client does as a streamed call's text arrives: it
         keeps the turn's meter up to date with an estimate of the answer so
-        far (four ASCII characters a token). The scripted model of these
+        far (``estimate_tokens``). The scripted model of these
         tests is not that client, so the stand-in stream does it."""
         from fim_one.core.model.usage import current_meter, estimate_tokens
 
@@ -534,9 +534,11 @@ class TestTheMidStreamQuotaGuard:
             if name == "answer" and data.get("status") == "delta"
         )
         # Cut at the first check after what the turn's meter holds reaches
-        # the limit (4 characters a token, checked every 200 characters),
-        # not at the end.
-        assert self.QUOTA * 4 <= streamed <= self.QUOTA * 4 + 200, streamed
+        # the limit (checked every 200 characters), not at the end.
+        from fim_one.core.model.usage import estimate_tokens
+
+        limit = self.QUOTA * len(self.CHUNK) / estimate_tokens(self.CHUNK)
+        assert limit <= streamed <= limit + 200, streamed
         assert streamed < self.CHUNKS * len(self.CHUNK)
         (terminator,) = [data for name, data in events if name == "error"]
         assert terminator["code"] == "QUOTA_EXCEEDED"
