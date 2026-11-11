@@ -16,11 +16,14 @@ one way: the ledger package imports this one.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import contextvars
+import json
 import logging
+import math
 import threading
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -28,12 +31,14 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "ModelUsage",
+    "TextTokenCounter",
     "UnmeteredUsageError",
     "UsageMeter",
     "UsageReporter",
     "UsageSummary",
     "UsageTracker",
     "current_meter",
+    "estimate_prompt_tokens",
     "estimate_tokens",
     "estimated_usage",
     "report_usage",
@@ -405,43 +410,138 @@ class UsageReporter:
             self._meter.stream_progress(tokens)
 
 
+# Tokens per character, by kind of character, fitted against the
+# ``o200k_base`` encoding on English and Chinese prose, JSON, tool schemas
+# and Python source (each within 0.8x-1.2x of the real count). Letters run
+# about four to a token; digits and punctuation, which dominate JSON and
+# code, about two; CJK and other non-ASCII text about one each. Whitespace
+# is absorbed into the tokens around it.
+_TOKENS_PER_LETTER = 0.25
+_TOKENS_PER_DIGIT = 0.55
+_TOKENS_PER_PUNCTUATION = 0.65
+_TOKENS_PER_OTHER = 0.85
+# What a message costs beyond its content (role and separators), what a
+# tool call in the history costs beyond its arguments (id, name, framing),
+# and a flat figure per image: about what a 1024x1024 picture costs at high
+# detail. The picture's size is not known here, and its base64 data is not
+# what the provider counts.
+_TOKENS_PER_MESSAGE = 4
+_TOKENS_PER_TOOL_CALL = 12
+_TOKENS_PER_IMAGE = 1100
+
+
+class TextTokenCounter:
+    """A running :func:`estimate_tokens` over text that arrives in pieces."""
+
+    __slots__ = ("_digits", "_letters", "_other", "_punctuation")
+
+    def __init__(self) -> None:
+        self._letters = self._digits = self._punctuation = self._other = 0
+
+    def add(self, text: str | None) -> None:
+        for ch in text or ():
+            if ord(ch) >= 128:
+                self._other += 1
+            elif ch.isalpha():
+                self._letters += 1
+            elif ch.isdigit():
+                self._digits += 1
+            elif not ch.isspace():
+                self._punctuation += 1
+
+    def tokens(self) -> int:
+        """The estimate so far, rounded up."""
+        exact = (
+            self._letters * _TOKENS_PER_LETTER
+            + self._digits * _TOKENS_PER_DIGIT
+            + self._punctuation * _TOKENS_PER_PUNCTUATION
+            + self._other * _TOKENS_PER_OTHER
+        )
+        return math.ceil(exact)
+
+
 def estimate_tokens(text: str | None) -> int:
     """A token estimate for *text* when the provider gave no count.
 
-    The heuristic of ``core.memory.compact.CompactUtils.estimate_tokens``:
-    about four ASCII characters to a token, and one and a half of anything
-    else (CJK text runs one to two tokens a character).
+    Rounded up: an estimate stands in for a count the provider would have
+    sent, for a call its caller chose to cut short.
     """
     if not text:
         return 0
-    ascii_chars = sum(1 for ch in text if ord(ch) < 128)
-    other_chars = len(text) - ascii_chars
-    return int(ascii_chars / 4 + other_chars / 1.5 + 0.999)
+    counter = TextTokenCounter()
+    counter.add(text)
+    return counter.tokens()
 
 
-def _message_text(message: Any) -> str:
-    content = getattr(message, "content", None)
-    if content is None and isinstance(message, Mapping):
-        content = message.get("content")
+def _field(obj: Any, name: str) -> Any:
+    if isinstance(obj, Mapping):
+        return obj.get(name)
+    return getattr(obj, name, None)
+
+
+def _message_tokens(message: Any) -> int:
+    counter = TextTokenCounter()
+    tokens = _TOKENS_PER_MESSAGE
+    content = _field(message, "content")
     if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        return " ".join(
-            str(part.get("text", "")) for part in content if isinstance(part, Mapping)
+        counter.add(content)
+    elif isinstance(content, list):
+        for part in content:
+            if not isinstance(part, Mapping):
+                continue
+            if part.get("type") in ("image_url", "input_image", "image"):
+                tokens += _TOKENS_PER_IMAGE
+            else:
+                counter.add(str(part.get("text") or ""))
+    reasoning = _field(message, "reasoning_content")
+    if isinstance(reasoning, str):
+        counter.add(reasoning)
+    for call in _field(message, "tool_calls") or ():
+        tokens += _TOKENS_PER_TOOL_CALL
+        function = _field(call, "function")
+        name = _field(call, "name") or _field(function, "name")
+        arguments = _field(call, "arguments")
+        if arguments is None:
+            arguments = _field(function, "arguments")
+        counter.add(str(name or ""))
+        counter.add(
+            arguments if isinstance(arguments, str) else json.dumps(arguments, default=str)
         )
-    return ""
+    return tokens + counter.tokens()
 
 
-def estimated_usage(messages: Any, output_text: str) -> dict[str, int]:
+def estimate_prompt_tokens(
+    messages: Any, tools: Sequence[Mapping[str, Any]] | None = None
+) -> int:
+    """What a call sending *messages* and *tools* is billed for its input, estimated.
+
+    Message text, the arguments of tool calls in the history, a flat figure
+    per image, and the tool schemas sent with the call. Never raises: a
+    message of a shape not known here counts its overhead only.
+    """
+    total = 0
+    for message in messages or ():
+        try:
+            total += _message_tokens(message)
+        except Exception:
+            total += _TOKENS_PER_MESSAGE
+    if tools:
+        with contextlib.suppress(Exception):
+            total += estimate_tokens(json.dumps(list(tools), default=str))
+    return total
+
+
+def estimated_usage(
+    messages: Any,
+    output_text: str,
+    tools: Sequence[Mapping[str, Any]] | None = None,
+) -> dict[str, int]:
     """Usage for a call whose provider reported none, estimated from its text.
 
-    *messages* is what was sent, *output_text* everything that came back
-    (content, reasoning, tool-call arguments).
+    *messages* and *tools* are what was sent, *output_text* everything that
+    came back (content, reasoning, tool-call arguments).
     """
-    try:
-        prompt = sum(estimate_tokens(_message_text(message)) for message in messages or ())
-    except Exception:
-        prompt = 0
+    prompt = estimate_prompt_tokens(messages, tools)
     completion = estimate_tokens(output_text)
     return {
         "prompt_tokens": prompt,

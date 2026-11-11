@@ -35,7 +35,7 @@ from .responses_adapter import (
 )
 from .retry import RetryConfig, retry_async_call, retry_async_iterator
 from .types import ChatMessage, LLMResult, StreamChunk, ToolCallRequest
-from .usage import UsageReporter, estimated_usage, report_usage
+from .usage import TextTokenCounter, UsageReporter, estimated_usage, report_usage
 
 logger = logging.getLogger(__name__)
 
@@ -621,7 +621,7 @@ class OpenAICompatibleLLM(BaseLLM):
             if native is not None:
                 if self._rate_limiter is not None and native.usage.get("total_tokens"):
                     await self._rate_limiter.report_usage(native.usage["total_tokens"])
-                self._meter_result(messages, native)
+                self._meter_result(messages, native, tools)
                 return native
 
         response = await self._dispatch_acompletion(
@@ -665,10 +665,15 @@ class OpenAICompatibleLLM(BaseLLM):
             finish_reason=finish_reason,
             truncated_tool_call=truncated_tool_call,
         )
-        self._meter_result(messages, result)
+        self._meter_result(messages, result, tools)
         return result
 
-    def _meter_result(self, messages: list[ChatMessage], result: LLMResult) -> None:
+    def _meter_result(
+        self,
+        messages: list[ChatMessage],
+        result: LLMResult,
+        tools: list[dict[str, Any]] | None,
+    ) -> None:
         """Report a finished non-streaming call to the usage meter of the scope.
 
         The provider's own count when it sent one; an estimate from the
@@ -684,10 +689,15 @@ class OpenAICompatibleLLM(BaseLLM):
             message.reasoning_content or "",
         ]
         parts.extend(json.dumps(call.arguments, default=str) for call in message.tool_calls or ())
-        report_usage(self._model, estimated_usage(messages, "".join(parts)), estimated=True)
+        report_usage(
+            self._model, estimated_usage(messages, "".join(parts), tools), estimated=True
+        )
 
     def _metered_stream(
-        self, chunks: AsyncIterator[StreamChunk], messages: list[ChatMessage]
+        self,
+        chunks: AsyncIterator[StreamChunk],
+        messages: list[ChatMessage],
+        tools: list[dict[str, Any]] | None,
     ) -> AsyncIterator[StreamChunk]:
         """*chunks*, with the call's usage reported to the meter when the stream ends.
 
@@ -709,7 +719,8 @@ class OpenAICompatibleLLM(BaseLLM):
             started = False
             # What this stream has added to the meter's in-flight estimate:
             # the scope can see the answer grow before the call reports.
-            ascii_chars = other_chars = in_flight = 0
+            counter = TextTokenCounter()
+            in_flight = 0
             try:
                 async for chunk in chunks:
                     started = True
@@ -723,10 +734,8 @@ class OpenAICompatibleLLM(BaseLLM):
                         if not piece:
                             continue
                         received.append(piece)
-                        plain = sum(1 for ch in piece if ord(ch) < 128)
-                        ascii_chars += plain
-                        other_chars += len(piece) - plain
-                    so_far = int(ascii_chars / 4 + other_chars / 1.5)
+                        counter.add(piece)
+                    so_far = counter.tokens()
                     if so_far != in_flight:
                         report.progress(so_far - in_flight)
                         in_flight = so_far
@@ -737,7 +746,9 @@ class OpenAICompatibleLLM(BaseLLM):
                 if usage and usage.get("total_tokens"):
                     report(model, usage)
                 elif started:
-                    report(model, estimated_usage(messages, "".join(received)), estimated=True)
+                    report(
+                        model, estimated_usage(messages, "".join(received), tools), estimated=True
+                    )
 
         return _iterate()
 
@@ -794,7 +805,7 @@ class OpenAICompatibleLLM(BaseLLM):
                 max_tokens=max_tokens,
             )
             if native is not None:
-                return self._metered_stream(native, messages)
+                return self._metered_stream(native, messages, tools)
 
         stream = await self._dispatch_acompletion(
             messages=messages,
@@ -964,7 +975,7 @@ class OpenAICompatibleLLM(BaseLLM):
             if stream_usage and not usage_yielded:
                 yield StreamChunk(usage=stream_usage)
 
-        return self._metered_stream(_iterate(), messages)
+        return self._metered_stream(_iterate(), messages, tools)
 
     @property
     def abilities(self) -> dict[str, bool]:

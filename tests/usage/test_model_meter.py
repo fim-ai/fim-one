@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import json
 import threading
 from collections.abc import AsyncIterator, Iterator
 from types import SimpleNamespace
@@ -24,7 +25,9 @@ from fim_one.core.model.usage import (
     UnmeteredUsageError,
     UsageMeter,
     current_meter,
+    estimate_prompt_tokens,
     estimate_tokens,
+    estimated_usage,
     report_usage,
     set_strict_metering,
     unattributed_tokens,
@@ -122,7 +125,135 @@ class TestTheMeter:
     def test_an_estimate_counts_cjk_text_as_more_than_ascii(self) -> None:
         assert estimate_tokens("") == 0
         assert estimate_tokens("abcdefgh") == 2
-        assert estimate_tokens("你好世界你好") == 4
+        assert estimate_tokens("你好世界你好") > estimate_tokens("abcdef")
+
+
+# The estimate stands in for the provider's count when a call ends without
+# one. The reference counts below were taken once with tiktoken's
+# ``o200k_base`` encoding (GPT-4o family); the test does not need tiktoken.
+_SCHEMA_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": f"connector_{i}__search_records",
+            "description": (
+                "Search records in the CRM by any combination of filters. Returns up to "
+                "50 rows with id, name, owner, stage and amount. Use before update_record."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    key: {
+                        "type": "string",
+                        "description": f"Filter on {key}; exact match unless it ends with *",
+                    }
+                    for key in (
+                        "name", "owner", "stage", "region",
+                        "created_after", "created_before", "amount_min", "amount_max",
+                    )
+                },
+                "required": ["name"],
+            },
+        },
+    }
+    for i in range(25)
+]
+_ROWS = json.dumps(
+    [
+        {
+            "id": n,
+            "name": f"Acme {n}",
+            "owner": "li.wei",
+            "stage": "negotiation",
+            "amount": n * 1000,
+        }
+        for n in range(30)
+    ]
+)
+_PROSE = (
+    "The quarterly report shows that revenue grew in every region except the north, where "
+    "two large customers delayed their renewals until the next fiscal year. Management "
+    "expects the gap to close by March. "
+) * 30
+_PROSE_TOKENS = 1111
+
+
+def _tool_heavy_turn() -> tuple[list[ChatMessage], str, int]:
+    """An agent's last call of a turn: 25 tool schemas, 6 tool rounds, 2 images.
+
+    Returns the messages, the answer, and the call's ``o200k_base`` count:
+    message text 9,021, tool schemas 7,151, history tool calls 6 x 25 + 6 x 12,
+    two 1024x1024 images at high detail 2 x 1,105, message framing 4 x 14,
+    the answer 833.
+    """
+    from fim_one.core.model.types import ToolCallRequest
+
+    arguments = {"name": "Acme*", "owner": "li.wei", "stage": "negotiation", "region": "APAC"}
+    image = {"type": "image_url", "image_url": {"url": "data:image/png;base64," + "A" * 200_000}}
+    messages = [
+        ChatMessage(role="system", content="You are a careful assistant. " * 60),
+        ChatMessage(
+            role="user",
+            content=[
+                {"type": "text", "text": "看一下这三张截图里的合同金额，再去 CRM 里核对。"},  # noqa: RUF001
+                image,
+                image,
+            ],
+        ),
+    ]
+    for i in range(6):
+        messages.append(
+            ChatMessage(
+                role="assistant",
+                content=None,
+                tool_calls=[
+                    ToolCallRequest(
+                        id=f"c{i}", name="connector_3__search_records", arguments=arguments
+                    )
+                ],
+            )
+        )
+        messages.append(ChatMessage(role="tool", content=_ROWS, tool_call_id=f"c{i}"))
+    answer = "合同金额核对如下：" + "第一份合同金额为 120 万元，与 CRM 记录一致。" * 40  # noqa: RUF001
+    return messages, answer, 17_493
+
+
+class TestAnEstimate:
+    def test_a_tool_heavy_call_comes_within_a_tenth_of_its_real_count(self) -> None:
+        messages, answer, actual = _tool_heavy_turn()
+
+        estimate = estimated_usage(messages, answer, _SCHEMA_TOOLS)["total_tokens"]
+
+        assert 0.9 * actual <= estimate <= 1.3 * actual
+
+    def test_plain_prose_is_not_overcounted(self) -> None:
+        assert 0.9 * _PROSE_TOKENS <= estimate_tokens(_PROSE) <= 1.3 * _PROSE_TOKENS
+
+    def test_the_tool_schemas_sent_with_the_call_are_counted(self) -> None:
+        without = estimate_prompt_tokens(MESSAGES)
+        with_tools = estimate_prompt_tokens(MESSAGES, _SCHEMA_TOOLS)
+
+        # 7,151 tokens in o200k_base.
+        assert with_tools - without >= 0.9 * 7151
+
+    def test_an_image_counts_a_flat_figure_not_its_base64(self) -> None:
+        messages, _answer, _actual = _tool_heavy_turn()
+        user = messages[1]
+        text_only = ChatMessage(role="user", content=[user.content[0]])  # type: ignore[index]
+
+        extra = estimate_prompt_tokens([user]) - estimate_prompt_tokens([text_only])
+
+        assert 2 * 1000 <= extra <= 2 * 1600
+
+    def test_tool_calls_in_the_history_are_counted(self) -> None:
+        messages, _answer, _actual = _tool_heavy_turn()
+        call = messages[2]
+
+        # 25 tokens of arguments and the call's framing.
+        assert estimate_prompt_tokens([call]) >= 25 + 12
+
+    def test_it_rounds_up(self) -> None:
+        assert estimate_tokens("a") == 1
 
 
 class TestWithNoMeterOpen:
@@ -205,7 +336,7 @@ class TestACallThatIsNotStreamed:
         assert result.usage == {}
         (item,) = meter.drain()
         assert item.estimated is True
-        assert item.prompt_tokens == estimate_tokens("ping, please")
+        assert item.prompt_tokens == estimate_prompt_tokens(MESSAGES)
         assert item.completion_tokens == estimate_tokens("pong " * 8)
         assert item.total_tokens == item.prompt_tokens + item.completion_tokens
 
@@ -227,6 +358,18 @@ class TestACallThatIsNotStreamed:
 
 
 class TestAStreamedCall:
+    async def test_with_no_count_the_tool_schemas_it_sent_are_estimated(
+        self, provider: Provider, meter: UsageMeter
+    ) -> None:
+        provider.silent_streams = True
+
+        async for _ in _llm().stream_chat(MESSAGES, tools=_SCHEMA_TOOLS):
+            pass
+
+        (item,) = meter.drain()
+        assert item.estimated is True
+        assert item.prompt_tokens == estimate_prompt_tokens(MESSAGES, _SCHEMA_TOOLS)
+
     async def test_read_to_the_end_it_reports_the_providers_count_once(
         self, provider: Provider, meter: UsageMeter
     ) -> None:
@@ -253,7 +396,7 @@ class TestAStreamedCall:
             seen[0][0] > 0 and seen[0][1] == 0
         )
         growing = [in_flight for in_flight, total in seen if total == 0]
-        assert growing == sorted(growing) and growing[-1] >= len(text) // 4 - 1
+        assert growing == sorted(growing) and growing[-1] >= estimate_tokens(text) - 1
         # ...when the call's own count replaces the estimate.
         assert (meter.in_flight(), meter.total()) == (0, UNIT)
 
@@ -289,7 +432,7 @@ class TestAStreamedCall:
 
         (item,) = meter.drain()
         assert item.estimated is True
-        assert item.prompt_tokens == estimate_tokens("ping, please")
+        assert item.prompt_tokens == estimate_prompt_tokens(MESSAGES)
         assert item.completion_tokens == estimate_tokens("".join(received))
 
     async def test_cancelled_mid_stream_it_reports_an_estimate(
