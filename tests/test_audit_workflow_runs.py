@@ -21,7 +21,7 @@ import pytest
 from fim_one.core.audit import refusals
 from fim_one.db.models import User
 from fim_one.db.models.workflow import Workflow, WorkflowRun
-from tests.audit.harness import World, world  # noqa: F401
+from tests.audit.harness import World, backends, world  # noqa: F401
 
 
 def _node(node_id: str, kind: str, type_name: str, **data: Any) -> dict[str, Any]:
@@ -54,6 +54,13 @@ WITH_A_BRANCH = _blueprint(
         conditions=[{"id": "c1", "expression": "True"}],
     )
 )
+
+
+@pytest.fixture(params=backends())
+def audit_backend(request: pytest.FixtureRequest) -> str:
+    """Every test here on SQLite, and on PostgreSQL with FIM_TEST_PG_URL (review F7):
+    the start record is written in the transaction that inserts the run."""
+    return str(request.param)
 
 
 @pytest.fixture(autouse=True)

@@ -36,7 +36,7 @@ from fim_one.db.models import AuditLog, LoginHistory, User
 from fim_one.db.models.organization import Organization, OrgMembership
 from fim_one.db.models.review_log import ReviewLog
 
-__all__ = ["CLIENT_IP", "USER_AGENT", "World", "world"]
+__all__ = ["CLIENT_IP", "USER_AGENT", "World", "backends", "world"]
 
 CLIENT_IP = "203.0.113.7"
 USER_AGENT = "audit-tests/1.0"
@@ -59,6 +59,7 @@ class World:
     client: AsyncClient
     factory: async_sessionmaker[AsyncSession]
     app: Any
+    backend: str = "sqlite"
 
     # -- people and organizations -------------------------------------------
 
@@ -205,8 +206,12 @@ class World:
 
     async def events(self, action: str | None = None) -> list[AuditLog]:
         async with self.factory() as db:
-            # In the order written: timestamps have one-second resolution here.
-            query = select(AuditLog).order_by(text("rowid"))
+            # In the order written. SQLite's timestamps have one-second
+            # resolution, so its row order; PostgreSQL's are finer.
+            order = (
+                (text("rowid"),) if self.backend == "sqlite" else (AuditLog.created_at, AuditLog.id)
+            )
+            query = select(AuditLog).order_by(*order)
             if action is not None:
                 query = query.where(AuditLog.action == action)
             return list((await db.execute(query)).scalars().all())
@@ -262,22 +267,84 @@ class World:
             assert secret and secret not in text, f"{secret!r} is in the audit row: {text}"
 
 
+def backends() -> list[Any]:
+    """SQLite, and PostgreSQL when ``FIM_TEST_PG_URL`` is set.
+
+    The database :func:`world` runs on is the ``audit_backend`` fixture,
+    ``"sqlite"`` unless a module overrides it (``tests/conftest.py``)::
+
+        @pytest.fixture(params=backends())
+        def audit_backend(request): return request.param
+    """
+    return [
+        pytest.param("sqlite", id="sqlite"),
+        pytest.param(
+            "postgresql",
+            id="postgresql",
+            marks=pytest.mark.skipif(
+                not os.environ.get("FIM_TEST_PG_URL"), reason="FIM_TEST_PG_URL not set"
+            ),
+        ),
+    ]
+
+
+@asynccontextmanager
+async def _database(backend: str, tmp_path: Path) -> AsyncIterator[Any]:
+    """An empty database with the application's tables; dropped afterwards."""
+    if backend == "sqlite":
+        engine = create_async_engine(
+            f"sqlite+aiosqlite:///{tmp_path / 'audit.db'}",
+            connect_args={"check_same_thread": False, "timeout": 30},
+        )
+
+        @event.listens_for(engine.sync_engine, "connect")
+        def _pragmas(dbapi_conn: Any, _record: Any) -> None:
+            dbapi_conn.execute("PRAGMA foreign_keys=ON")  # as the app's engine does
+
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        try:
+            yield engine
+        finally:
+            await engine.dispose()
+        return
+
+    from sqlalchemy.engine import make_url
+
+    url = make_url(os.environ["FIM_TEST_PG_URL"]).set(drivername="postgresql+asyncpg")
+    schema = f"audit_{uuid.uuid4().hex[:12]}"
+    admin = create_async_engine(url)
+    async with admin.begin() as conn:
+        await conn.execute(text(f'CREATE SCHEMA "{schema}"'))
+    engine = create_async_engine(
+        url, pool_size=10, connect_args={"server_settings": {"search_path": schema}}
+    )
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        yield engine
+    finally:
+        await engine.dispose()
+        async with admin.begin() as conn:
+            await conn.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        await admin.dispose()
+
+
 @pytest.fixture()
-async def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[World]:
+async def world(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, audit_backend: str
+) -> AsyncIterator[World]:
+    async with _database(audit_backend, tmp_path) as engine:
+        async for running in _world(engine, audit_backend, monkeypatch):
+            yield running
+
+
+async def _world(
+    engine: Any, backend: str, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[World]:
     import fim_one.db.engine as db_engine
     from fim_one.web.app import create_app
 
-    engine = create_async_engine(
-        f"sqlite+aiosqlite:///{tmp_path / 'audit.db'}",
-        connect_args={"check_same_thread": False, "timeout": 30},
-    )
-
-    @event.listens_for(engine.sync_engine, "connect")
-    def _pragmas(dbapi_conn: Any, _record: Any) -> None:
-        dbapi_conn.execute("PRAGMA foreign_keys=ON")  # as the app's engine does
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     # ``get_session`` and ``create_session`` both read the module's factory.
     monkeypatch.setattr(db_engine, "_engine", engine)
@@ -291,5 +358,4 @@ async def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterato
         app = create_app()
     transport = ASGITransport(app=app, client=(CLIENT_IP, 50123))
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield World(client=client, factory=factory, app=app)
-    await engine.dispose()
+        yield World(client=client, factory=factory, app=app, backend=backend)

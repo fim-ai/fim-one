@@ -233,3 +233,13 @@ def _assembly_ports() -> None:
     from fim_one.web.services.assembly_ports import register_assembly_ports
 
     register_assembly_ports()
+
+
+@pytest.fixture()
+def audit_backend() -> str:
+    """The database the audit harness's ``world`` runs on (``tests/audit/harness.py``).
+
+    SQLite. A module that should also run on PostgreSQL overrides it with
+    ``@pytest.fixture(params=backends())``.
+    """
+    return "sqlite"
