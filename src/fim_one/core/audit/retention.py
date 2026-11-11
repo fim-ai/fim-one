@@ -116,8 +116,12 @@ def retention_from_env(environ: Mapping[str, str] | None = None) -> Retention:
 
 
 def _aware(moment: datetime) -> datetime:
-    """*moment* in UTC; SQLite hands timestamps back without their zone."""
-    return moment if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
+    """*moment* in UTC; SQLite hands timestamps back without their zone.
+
+    A moment in another zone is converted: the review trail is compared on
+    the UTC wall clock.
+    """
+    return moment.astimezone(UTC) if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
 
 
 class AuditRetentionSweeper:

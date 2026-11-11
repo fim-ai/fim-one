@@ -479,3 +479,25 @@ class TestATableThatFails:
         assert record.detail is not None
         assert "login_history=2" in record.detail and "review_log=1" in record.detail
         assert record.detail.endswith("failed: login_history")
+
+
+class TestTimeZones:
+    async def test_a_moment_given_in_another_zone_cuts_where_utc_does(
+        self, factory: Factory
+    ) -> None:
+        """The review trail's timestamps carry no zone and are UTC; a cutoff
+        taken from a local moment's wall clock was eight hours off."""
+        from zoneinfo import ZoneInfo
+
+        younger = ReviewLog(
+            org_id="org-a", resource_type="agent", resource_id="a1", resource_name="Helper",
+            action="approved",
+            created_at=(NOW - timedelta(days=365) + timedelta(hours=4)).replace(tzinfo=None),
+        )  # fmt: skip
+        await _add(factory, younger, _review(366))
+        local = NOW.astimezone(ZoneInfo("Asia/Shanghai"))
+
+        counts = await AuditRetentionSweeper(Retention()).sweep(now=local)
+
+        assert counts is not None and counts["review_log"] == 1
+        assert await _count(factory, ReviewLog) == 1
