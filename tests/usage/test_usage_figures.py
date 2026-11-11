@@ -11,14 +11,11 @@ from __future__ import annotations
 
 import csv
 import io
-import re
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 import pytest
 
-import fim_one
 from fim_one.db.models import User
 
 from .harness import Usage, usage  # noqa: F401
@@ -214,31 +211,3 @@ class TestWhatAdministratorsSee:
         rows = {row["username"]: row for row in csv.DictReader(io.StringIO(export.text))}
         assert int(rows["alice"]["monthly_tokens"]) == provider.billed
         assert int(rows["root"]["monthly_tokens"]) == 0
-
-
-class TestNothingElseSumsTheOldTotals:
-    """Quota and the figures above read the ledger. The totals kept on
-    conversations and runs are summed only by the statistics pages, which
-    move to the ledger later (C2 phase 5), and by the run's own record."""
-
-    SRC = Path(fim_one.__file__).parent
-    # File -> how many sums it may hold. A new one anywhere fails this test.
-    STATISTICS = {
-    }
-
-    def test_sums_over_conversation_totals(self) -> None:
-        summing = re.compile(r"func\.sum\(\s*\w*Conv\w*\.total_tokens")
-        found = {
-            str(path.relative_to(self.SRC)): len(summing.findall(path.read_text(encoding="utf-8")))
-            for path in self.SRC.rglob("*.py")
-        }
-        assert {name: count for name, count in found.items() if count} == self.STATISTICS
-
-    def test_no_sum_over_run_totals(self) -> None:
-        summing = re.compile(r"func\.sum\(\s*\w*WorkflowRun\w*\.total_tokens")
-        found = sorted(
-            str(path.relative_to(self.SRC))
-            for path in self.SRC.rglob("*.py")
-            if summing.search(path.read_text(encoding="utf-8"))
-        )
-        assert found == []

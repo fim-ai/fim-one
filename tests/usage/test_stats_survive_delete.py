@@ -15,17 +15,24 @@ Each class below holds two kinds of test:
 - *backfilled*: on data carried over by the ledger's migration, the figure is
   what the old query gave, plus the workflow runs where the page now counts
   them (the old query left them out; the definitions differ only there).
+
+The last class is the gate: no code sums the per-row totals kept on
+conversations, runs and evaluation runs, except where it is named with
+the reason.
 """
 
 from __future__ import annotations
 
 import importlib
+import re
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from pathlib import Path
+from typing import Any, ClassVar
 
 import pytest
 from sqlalchemy import text
 
+import fim_one
 from fim_one.db.models import Agent, Conversation, User
 from fim_one.db.models.workflow import Workflow, WorkflowRun
 
@@ -501,3 +508,53 @@ class TestDashboard:
         assert previous > 0
         assert dashboard["tokens_week_trend"] == round((current - previous) / previous * 100, 2)
         assert sum(day["tokens"] for day in dashboard["activity_trend"]) == current
+
+
+# ---------------------------------------------------------------------------
+# The gate
+# ---------------------------------------------------------------------------
+
+
+class TestNothingSumsThePerRowTotals:
+    """A conversation's, a run's or an evaluation run's own ``total_tokens``
+    (and a conversation's ``fast_llm_tokens``) is what that one row used,
+    for its own page. Summed, it falls when rows are deleted: a figure over
+    many of them reads the usage ledger instead."""
+
+    SRC = Path(fim_one.__file__).parent
+    SUMMING = re.compile(
+        r"func\.sum\(\s*[^)]*?\b(\w*(?:Conv|WorkflowRun|EvalRun)\w*)\.(total_tokens|fast_llm_tokens)"
+    )
+    # (file, column summed) -> why it stays.
+    EXEMPT: ClassVar[dict[tuple[str, str], str]] = {
+        ("web/api/admin_eval.py", "EvalRun.total_tokens"): (
+            "the evaluation center's 'tokens consumed': evaluation tokens were not"
+            " carried into the ledger by its migration, so read from the ledger the"
+            " figure would drop to the evaluations run since"
+        ),
+    }
+
+    def _sums(self) -> set[tuple[str, str]]:
+        found = set()
+        for path in self.SRC.rglob("*.py"):
+            for model, column in self.SUMMING.findall(path.read_text(encoding="utf-8")):
+                found.add((str(path.relative_to(self.SRC)), f"{model}.{column}"))
+        return found
+
+    def test_only_the_exempt_sums_remain(self) -> None:
+        assert self._sums() == set(self.EXEMPT)
+
+    def test_the_pattern_finds_the_old_queries(self) -> None:
+        for old in (
+            "select(func.coalesce(func.sum(Conversation.total_tokens), 0))",
+            "func.sum(Conversation.total_tokens - Conversation.fast_llm_tokens)",
+            "func.sum(Conversation.fast_llm_tokens)",
+            "func.sum(ConvModel.total_tokens)",
+            "func.sum(\n    WorkflowRun.total_tokens\n)",
+        ):
+            assert self.SUMMING.search(old), old
+        for fine in (
+            "func.sum(UsageLedger.total_tokens)",
+            "func.sum(case((WorkflowRun.status == 'completed', 1), else_=0))",
+        ):
+            assert not self.SUMMING.search(fine), fine
