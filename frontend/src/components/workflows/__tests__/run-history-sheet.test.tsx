@@ -140,4 +140,22 @@ describe("RunHistorySheet", () => {
     expect(screen.getByText("h_1")).toBeTruthy()
     expect(screen.getByText("short output")).toBeTruthy()
   })
+
+  // A step's duration_ms is milliseconds, as the run's is; the step's was
+  // shown as seconds ("6071s" for 6.1 s).
+  it("shows a step's duration in seconds, like the run panel", async () => {
+    api.getRuns.mockResolvedValue(page([run("r1", "completed", { duration_ms: 6400 })]))
+    api.getRun.mockResolvedValue(
+      run("r1", "completed", {
+        duration_ms: 6400,
+        node_results: { llm_1: { node_id: "llm_1", status: "completed", duration_ms: 6071 } },
+      }),
+    )
+    renderSheet()
+    await flush()
+    fireEvent.click(screen.getByText("Completed"))
+    await flush()
+    expect(screen.getByText("6.1s")).toBeTruthy()
+    expect(screen.queryByText("6071s")).toBeNull()
+  })
 })
