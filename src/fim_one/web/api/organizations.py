@@ -5,15 +5,17 @@ from __future__ import annotations
 import math
 import re
 import secrets
-from typing import Any
+from datetime import date, datetime
+from typing import Any, cast
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from fim_one.core.audit import actions
+from fim_one.core.audit import query as audit_query
 from fim_one.core.audit import writer as audit
 from fim_one.core.audit.redact import diff_changes
 from fim_one.db import get_session
@@ -741,6 +743,137 @@ async def remove_member(
     await db.delete(target_membership)
     await db.commit()
     return ApiResponse(data={"removed": user_id, "org_id": org_id})
+
+
+# ---------------------------------------------------------------------------
+# The organization's audit records
+# ---------------------------------------------------------------------------
+
+
+class OrgAuditEntry(BaseModel):
+    """One record as an organization's administrator is shown it.
+
+    The model has no field for an address or a device: an organization is
+    not shown where a request came from.
+    """
+
+    id: str
+    # ``audit`` (events), ``review`` (the review trail) or ``call`` (call records).
+    source: str
+    created_at: str
+    action: str
+    actor_id: str | None = None
+    actor_label: str | None = None
+    actor_kind: str | None = None
+    target_type: str | None = None
+    target_id: str | None = None
+    target_label: str | None = None
+    outcome: str = "success"
+    changes: dict[str, Any] | None = None
+    detail: str | None = None
+    extra: dict[str, Any] = {}
+
+
+_ORG_AUDIT_SOURCES = "^(" + "|".join(audit_query.ORG_SOURCES) + ")$"
+
+
+def _day(value: str | None) -> date | None:
+    """``YYYY-MM-DD`` as a date; anything else is no filter."""
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+@router.get("/{org_id}/audit-log", response_model=PaginatedResponse)
+async def list_org_audit_log(
+    org_id: str,
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=200),
+    source: str = Query("audit", pattern=_ORG_AUDIT_SOURCES),
+    action: str | None = None,
+    actor_id: str | None = None,
+    target_type: str | None = None,
+    target_id: str | None = None,
+    outcome: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> PaginatedResponse:
+    """The audit records of an organization, newest first, for its administrators.
+
+    What carries the organization's id: events (membership and role
+    changes, resources published to it, approvals decided in it), its
+    review trail (``source=review``) and the calls made through its
+    agents and workflows (``source=call``). No address and no device, and
+    nothing a member did to their own account. A platform administrator
+    who is not an administrator of the organization reads these in the
+    platform's audit log instead.
+    """
+    membership = await require_org_member(org_id, current_user, db)
+    if not audit_query.may_read_org_audit(membership.role):
+        # The same answer ``require_org_admin`` gives.
+        raise HTTPException(status_code=403, detail="Organization admin access required")
+
+    found = await audit_query.list_events(
+        db,
+        scope="org",
+        org_id=org_id,
+        filters=audit_query.EventFilter(
+            source=cast(audit_query.Source, source),
+            action=action or None,
+            actor_id=actor_id or None,
+            target_type=target_type or None,
+            target_id=target_id or None,
+            outcome=outcome or None,
+            date_from=_day(date_from),
+            date_to=_day(date_to),
+        ),
+        offset=(page - 1) * size,
+        limit=size,
+    )
+
+    # A call record names its caller by id alone. The name is filled in for
+    # callers who are members of this organization, whom its administrators
+    # can already see in the member list.
+    unnamed = {row.actor_id for row in found.items if row.actor_id and not row.actor_label}
+    names: dict[str, str] = {}
+    if unnamed:
+        members = await db.execute(
+            select(User.id, User.username, User.email)
+            .join(OrgMembership, OrgMembership.user_id == User.id)
+            .where(OrgMembership.org_id == org_id, User.id.in_(unnamed))
+        )
+        names = {uid: username or email for uid, username, email in members.all()}
+
+    return PaginatedResponse(
+        items=[
+            OrgAuditEntry(
+                id=row.id,
+                source=row.source,
+                created_at=row.created_at.isoformat() if row.created_at else "",
+                action=row.action,
+                actor_id=row.actor_id,
+                actor_label=row.actor_label or names.get(row.actor_id or ""),
+                actor_kind=row.actor_kind,
+                target_type=row.target_type,
+                target_id=row.target_id,
+                target_label=row.target_label,
+                outcome=row.outcome,
+                changes=row.changes,
+                detail=row.detail,
+                extra=row.extra,
+            ).model_dump()
+            for row in found.items
+        ],
+        total=found.total,
+        page=page,
+        size=size,
+        pages=math.ceil(found.total / size) if found.total > 0 else 1,
+    )
 
 
 # ---------------------------------------------------------------------------

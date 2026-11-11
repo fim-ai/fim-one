@@ -16,6 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.core.audit import actions
+from fim_one.core.audit import query as audit_query
 from fim_one.core.audit import writer as audit
 from fim_one.core.usage import ledger
 from fim_one.db import get_session
@@ -47,6 +48,8 @@ from fim_one.web.schemas.user_settings import (
     NotificationPrefInfo,
     NotificationPrefListResponse,
     PaginatedUserApiKeyResponse,
+    SecurityEventInfo,
+    SecurityEventListResponse,
     SessionInfo,
     SessionListResponse,
     SubscriptionInfo,
@@ -270,6 +273,48 @@ async def list_my_sessions(
         for row in rows
     ]
     return SessionListResponse(items=items, total=len(items))
+
+
+@router.get("/security-events", response_model=SecurityEventListResponse)
+async def list_my_security_events(
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> SecurityEventListResponse:
+    """The security events of the user's own account, newest first.
+
+    Password, two-factor, email, linked sign-in providers, API keys and
+    session revocation, each with the address and device it was done from.
+    What a platform administrator did to the account (a password reset, a
+    forced sign-out, disabling it) is listed as done by an administrator,
+    without the administrator's name or address. Sign-ins are in
+    ``/api/me/sessions``.
+    """
+    found = await audit_query.list_events(
+        db, scope="self", user_id=current_user.id, offset=(page - 1) * size, limit=size
+    )
+    return SecurityEventListResponse(
+        items=[
+            SecurityEventInfo(
+                id=row.id,
+                created_at=row.created_at.isoformat() if row.created_at else "",
+                action=row.action,
+                outcome=row.outcome,
+                target_label=row.target_label,
+                changes=row.changes,
+                detail=row.detail,
+                by_administrator=row.actor_id != current_user.id,
+                ip_address=row.ip_address,
+                user_agent=row.user_agent,
+            )
+            for row in found.items
+        ],
+        total=found.total,
+        page=page,
+        size=size,
+        pages=math.ceil(found.total / size) if found.total > 0 else 1,
+    )
 
 
 @router.post("/sessions/revoke-all")
