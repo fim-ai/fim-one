@@ -46,10 +46,68 @@ def _tool_def_from_mcp(tool: Any) -> dict[str, Any]:
     }
 
 
+class _Contexts:
+    """The transports and sessions a client has open, closed last-in first-out.
+
+    Not :class:`contextlib.AsyncExitStack`, for what that does when the
+    closing task is being cancelled (a client that went away), which is when
+    connections are usually closed. Every context on the stack then fails
+    with a CancelledError of its own, and the exit stack hands each failure
+    to the next context and links the errors to one another through
+    ``__context__``. With two HTTP servers the links form a cycle. anyio
+    follows the ``__context__`` chain of a cancelled task with no end to it,
+    so the event loop spins and the process stops answering every request.
+
+    Here each context is closed on its own, with no error handed on, and one
+    failure is raised once all of them have been closed: an ordinary error
+    if there was one (a server that refused the connection), otherwise the
+    cancellation. The others are logged.
+    """
+
+    def __init__(self) -> None:
+        self._entered: list[contextlib.AbstractAsyncContextManager[Any]] = []
+
+    async def enter_async_context(self, context: Any) -> Any:
+        value = await context.__aenter__()
+        self._entered.append(context)
+        return value
+
+    async def aclose(self) -> None:
+        failures: list[BaseException] = []
+        while self._entered:
+            context = self._entered.pop()
+            try:
+                await context.__aexit__(None, None, None)
+            except BaseException as exc:
+                failures.append(exc)
+        if not failures:
+            return
+        # A transport whose server refused it cancels its own session, which
+        # fails first, with that cancellation; the reason comes after, from
+        # the transport. The reason is what the caller can act on.
+        raised = next((f for f in failures if isinstance(f, Exception)), failures[0])
+        for other in failures:
+            if other is not raised and isinstance(other, Exception):
+                # Not ``exc_info``: a connection error quotes the URL it
+                # failed for, which can carry a credential.
+                logger.warning(
+                    "Another MCP connection failed to close\n%s",
+                    _traceback_without_url_secrets(other),
+                )
+        # Outside the handler above, so that it is linked to nothing.
+        raise raised
+
+
+def _traceback_without_url_secrets(exc: BaseException) -> str:
+    from fim_one.core.assembly.mcp_address import traceback_without_url_secrets
+
+    return traceback_without_url_secrets(exc)
+
+
 class MCPClient:
     """Manages connections to one or more MCP servers and provides tool adapters.
 
-    Uses :class:`contextlib.AsyncExitStack` to keep server processes and
+    Keeps server processes and
     sessions alive for the lifetime of the client.  Call :meth:`disconnect_all`
     (or use as an async context manager) to clean up.
 
@@ -68,7 +126,7 @@ class MCPClient:
     """
 
     def __init__(self) -> None:
-        self._exit_stack = contextlib.AsyncExitStack()
+        self._exit_stack = _Contexts()
         self._sessions: dict[str, Any] = {}  # name -> ClientSession
 
     # ------------------------------------------------------------------
