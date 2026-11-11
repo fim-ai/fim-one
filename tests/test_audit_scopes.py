@@ -224,6 +224,19 @@ class TestAnOrganizationsAdministrators:
 
         assert by_bob["total"] == 0 and by_action["total"] == 0 and mine["total"] == 1
 
+    @pytest.mark.parametrize("source", ["review", "call"])
+    async def test_an_address_filter_is_ignored_for_every_source(
+        self, world: World, cast: Cast, source: str
+    ) -> None:
+        """The review trail and call records have no address: a filter by one
+        would answer with nothing, which a platform reader may be told and an
+        organization's administrators are not asked."""
+        plain = await _events_for_org(world, cast, source=source)
+        filtered = await _events_for_org(world, cast, source=source, ip_address=BOB_IP)
+
+        assert plain.total >= 1
+        assert [r.id for r in filtered.items] == [r.id for r in plain.items]
+
     async def test_an_address_is_not_something_to_filter_by(self, world: World, cast: Cast) -> None:
         """A filter that matched would tell which rows came from an address."""
         base = f"/api/orgs/{cast.acme.id}/audit-log"
@@ -337,6 +350,22 @@ class TestTheOwnerOfAnAccount:
 
     async def test_it_needs_a_signed_in_user(self, world: World) -> None:
         await world.call("GET", "/api/me/security-events", expect=401)
+
+    async def test_an_id_of_another_kind_that_equals_theirs_is_not_about_them(
+        self, world: World, cast: Cast
+    ) -> None:
+        """Ids are unique per table, not across: an agent can carry the id of a user."""
+        await _event(
+            "user.reset_password", cast.root, ip=ROOT_IP, ua=ROOT_UA,
+            target_type="agent", target_id=cast.mia.id,
+        )  # fmt: skip
+
+        async with world.factory() as db:
+            page = await audit_query.list_events(db, scope="self", user_id=cast.mia.id)
+
+        about = [(r.action, r.target_type) for r in page.items if r.target_id == cast.mia.id]
+        assert ("user.reset_password", "agent") not in about
+        assert ("user.reset_password", "user") in about
 
 
 class TestWhoMayReadAnOrganization:
