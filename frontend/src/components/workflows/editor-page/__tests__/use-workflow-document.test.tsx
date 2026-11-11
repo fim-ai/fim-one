@@ -149,6 +149,29 @@ describe("useWorkflowDocument", () => {
     expect(api.update.mock.calls[0][1].blueprint).toEqual(canvasOf("third"))
   })
 
+  // Validation answers by setting badges on the canvas nodes; the canvas
+  // then reports the same blueprint again. That report was taken as an edit:
+  // it restarted the five seconds and asked for validation again, which set
+  // the badges again, so an unsaved workflow re-validated every ~2 seconds
+  // and never saved itself.
+  it("a canvas report that changes nothing neither delays the automatic save nor validates again", async () => {
+    const { result, onBlueprintChanged } = await mountDocument(canvasOf("first"))
+    vi.useFakeTimers()
+    onBlueprintChanged.mockClear()
+    act(() => result.current.changeBlueprint(canvasOf("second")))
+    expect(onBlueprintChanged).toHaveBeenCalledTimes(1)
+    for (let i = 0; i < 2; i++) {
+      await act(() => vi.advanceTimersByTimeAsync(2300))
+      // A validation badge changed node data, not the blueprint.
+      act(() => result.current.changeBlueprint(canvasOf("second")))
+    }
+    expect(onBlueprintChanged).toHaveBeenCalledTimes(1)
+    await act(() => vi.advanceTimersByTimeAsync(500))
+    expect(api.update).toHaveBeenCalledTimes(1)
+    expect(api.update.mock.calls[0][1].blueprint).toEqual(canvasOf("second"))
+    expect(result.current.isDirty).toBe(false)
+  })
+
   describe("loading", () => {
     it("waits for a signed-in user", async () => {
       api.get.mockResolvedValue(workflowWith(canvasOf("first")))

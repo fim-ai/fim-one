@@ -457,12 +457,17 @@ export function useWorkflowDocument({
   /** Take a changed blueprint: mark unsaved, validate, and save after a pause. */
   const applyBlueprint = useCallback(
     (bp: WorkflowBlueprint) => {
+      const previous = blueprintRef.current
+      // Overlay-only updates (validation badges, run status) serialize to
+      // the blueprint already held: they are not edits. Taking them as edits
+      // restarted the automatic save's pause and validated again, whose
+      // badges came back as another report, so an unsaved document never
+      // saved itself.
+      if (JSON.stringify(bp) === JSON.stringify(previous)) return
       blueprintRef.current = bp
       trackNodeTypes(bp)
-      // Overlay-only updates (validation badges, run status) serialize to
-      // the stored text: they are not edits and are not validated again.
-      // Neither is a pan or zoom.
-      const changed = graphTextOf(bp) !== savedRef.current?.graphText
+      // A pan or zoom is not validated again either.
+      const changed = graphTextOf(bp) !== graphTextOf(previous)
       noteEdit()
       if (changed) onBlueprintChangedRef.current()
     },
@@ -528,6 +533,9 @@ export function useWorkflowDocument({
       // records what it sent, not this.
       setCanvasRevision((n) => n + 1)
       noteEdit()
+      // The remounted canvas reports this same blueprint, which is not an
+      // edit to it: the imported graph is validated here.
+      onBlueprintChangedRef.current()
       toast.success(t("workflowImported"))
     },
     [t, blueprintRef, trackNodeTypes, setWorkflow, noteEdit],
