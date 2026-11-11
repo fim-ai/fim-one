@@ -154,6 +154,10 @@ class AuditRetentionSweeper:
         self.interval_hours = interval_hours
         self.check_interval_seconds = check_interval_seconds
         self.batch_size = max(1, batch_size)
+        # When this process last swept. The ``audit.retention_sweep`` record
+        # says so across processes; this covers a record that failed to be
+        # written, which would otherwise have every check sweep again.
+        self._last_attempt: datetime | None = None
 
     # ------------------------------------------------------------------
     # One sweep
@@ -180,6 +184,7 @@ class AuditRetentionSweeper:
                 return None
             if not await self._due(moment):
                 return None
+            self._last_attempt = moment
             counts, failed = await self._remove_expired(moment)
             await self._leave_a_record(counts, failed)
         return counts
@@ -222,6 +227,9 @@ class AuditRetentionSweeper:
         from fim_one.db import create_session
         from fim_one.db.models.audit_log import AuditLog
 
+        if self._last_attempt is not None and not self._elapsed(self._last_attempt, moment):
+            return False
+
         async with create_session() as db:
             last = await db.scalar(
                 select(func.max(AuditLog.created_at)).where(
@@ -233,9 +241,12 @@ class AuditRetentionSweeper:
         if isinstance(last, str):
             # An aggregate over a SQLite timestamp column comes back as text.
             last = datetime.fromisoformat(last)
+        return self._elapsed(_aware(last), moment)
+
+    def _elapsed(self, last: datetime, moment: datetime) -> bool:
         # A little under the interval, so a daily sweep does not drift later
         # by one check interval a day.
-        return moment - _aware(last) >= timedelta(hours=self.interval_hours * 0.9)
+        return moment - last >= timedelta(hours=self.interval_hours * 0.9)
 
     async def _remove_expired(self, moment: datetime) -> tuple[dict[str, int], list[str]]:
         """Remove what is past its period. Returns the counts and the tables that failed.

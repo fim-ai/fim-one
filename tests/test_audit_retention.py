@@ -526,3 +526,22 @@ def test_a_database_built_from_the_models_has_the_call_records_age_index() -> No
     """Migration ``b2d4e6f8a901`` creates it; ``create_all`` must as well."""
     names = {index.name for index in ConnectorCallLog.__table__.indexes}
     assert "ix_connector_call_logs_created_at" in names
+
+
+class TestWhenTheRecordOfASweepIsNotWritten:
+    async def test_the_same_process_does_not_sweep_again_within_the_interval(
+        self, factory: Factory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The record is how a sweep is known to be done; without it every
+        hourly check swept again. The process remembers its last attempt."""
+
+        async def lost(*_args: Any, **_kwargs: Any) -> None:
+            return None  # the writer logs a failure and returns
+
+        monkeypatch.setattr("fim_one.core.audit.retention.audit.record", lost)
+        sweeper = AuditRetentionSweeper(Retention())
+
+        assert await sweeper.sweep(now=NOW) is not None
+        assert await sweeper.sweep(now=NOW + timedelta(hours=1)) is None
+        assert await sweeper.sweep(now=NOW + timedelta(hours=23)) is not None
+        assert await _sweeps(factory) == []
