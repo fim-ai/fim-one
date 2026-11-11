@@ -83,12 +83,8 @@ class Gap(NamedTuple):
 # Work outside this branch that a gap may be left to, with the reason.
 # Nothing else may own a gap.
 DEFERRED_OWNERS: dict[str, str] = {
-    "T10 P7": (
-        "workflow run events (a run started, refused, cancelled or closed) are "
-        "recorded in the run service, where every way of starting a run passes: one "
-        "record per run whatever the entry, with the run id. A record in each route "
-        "would miss the schedule and the agent tool and would have to be removed again."
-    ),
+    # Empty since T10 P7 recorded the workflow run events (run started,
+    # refused, cancelled, closed) in the run service.
 }
 
 
@@ -465,18 +461,7 @@ AUDITED_READS: dict[Route, tuple[str, ...]] = {
 }
 
 # Read routes and other entry points that should leave a record and do not yet.
-KNOWN_NON_ROUTE_GAPS: dict[str, Gap] = {
-    # Workflow run events: who started which run through which entry, and
-    # the runs the platform refused or closed on its own. T10 P7 records
-    # them in the run service, where every entry (the Run button, a batch,
-    # a trigger key, a schedule, an agent's tool) passes.
-    "a run closed because its server process stopped (stale heartbeat)": Gap(
-        "T10 P7", "workflow.run_closed"
-    ),
-    "a request closed because its run was deleted, cancelled or failed": Gap(
-        "T10 P7", "workflow.run_cancelled / workflow.run_closed"
-    ),
-}
+KNOWN_NON_ROUTE_GAPS: dict[str, Gap] = {}
 
 # Records written outside any route: action -> the test that shows it
 # (``tests/<file>.py::<Class>::<test>``).
@@ -525,6 +510,13 @@ NON_ROUTE_ACTIONS: dict[str, str] = {
     "workflow.run_refused": (
         "tests/test_audit_workflow_runs.py::TestARunThatIsRefused::"
         "test_the_run_button_over_quota"
+    ),
+    # The platform ending a run on its own: the recovery sweep (a server
+    # process that stopped), a run that cannot be continued, a run that ends
+    # with approval requests still open.
+    "workflow.run_closed": (
+        "tests/test_audit_workflow_runs.py::TestARunThePlatformCloses::"
+        "test_a_run_whose_process_stopped"
     ),
     # Only the connector builder's test tool sends this request; no route does.
     "connector.action_test": (
@@ -665,10 +657,13 @@ OTHER_WRITERS: dict[str, str] = {
     "core/workflow/run_service.py": (
         "workflow runs; records workflow.run_started with the run record (run_audit.py)"
     ),
-    "core/workflow/run_recovery.py": "closes stale runs: run events, T10 P7",
+    "core/workflow/run_recovery.py": (
+        "closes runs whose process stopped; records workflow.run_closed (run_audit.py)"
+    ),
     "core/workflow/run_cleanup.py": (
-        "the retention sweep deletes old runs: run events, T10 P7 (the administrators' "
-        "manual clean-up is recorded: workflow.cleanup_runs)"
+        "the retention sweep deletes ended runs; each one's start stays in the audit "
+        "log (workflow.run_started), and what it consumed in the usage ledger (the "
+        "administrators' manual clean-up is recorded: workflow.cleanup_runs)"
     ),
     "core/workflow/scheduler.py": (
         "starts scheduled runs through the run service, which records workflow.run_started"

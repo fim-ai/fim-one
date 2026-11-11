@@ -691,6 +691,7 @@
       "workflow__run_started": "Workflow Run Started",
       "workflow__run_refused": "Workflow Run Refused",
       "workflow__run_cancelled": "Cancel Workflow Run",
+      "workflow__run_closed": "Workflow Run Closed by the Platform",
       "market__subscribe": "Subscribe to Resource",
       "market__unsubscribe": "Unsubscribe from Resource",
       "billing__plan_change": "Plan Changed by Billing",

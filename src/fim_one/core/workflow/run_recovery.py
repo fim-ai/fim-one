@@ -459,6 +459,7 @@ class WorkflowRunSupervisor:
                 "failed",
                 RUN_INTERRUPTED_ERROR,
                 stale_seconds=self.stale_seconds,
+                closed_because="stale_heartbeat",
             )
             if closed is not None:
                 report.closed.append(run_id)

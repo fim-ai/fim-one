@@ -39,6 +39,7 @@ if TYPE_CHECKING:
 __all__ = [
     "NO_REQUEST",
     "record_cancelled",
+    "record_closed",
     "record_refused",
     "record_started",
     "refusal_code",
@@ -211,3 +212,38 @@ async def record_cancelled(workflow: Any, *, run_id: str, actor: Actor, was: str
         detail=f"was {was}",
         context=EventContext(workflow_run_id=run_id),
     )
+
+
+async def record_closed(run_id: str, detail: str) -> None:
+    """``workflow.run_closed``: the platform ended run *run_id* on its own.
+
+    The system is the actor; *detail* says why (a code, or what was closed
+    with the run). Written on its own after the run is closed; never raises.
+    """
+    from sqlalchemy import select
+
+    from fim_one.db import create_session
+    from fim_one.db.models import Workflow, WorkflowRun
+
+    try:
+        async with create_session() as db:
+            row = (
+                await db.execute(
+                    select(Workflow.id, Workflow.org_id, Workflow.name)
+                    .join(WorkflowRun, WorkflowRun.workflow_id == Workflow.id)
+                    .where(WorkflowRun.id == run_id)
+                )
+            ).first()
+        await audit.record(
+            actions.WORKFLOW_RUN_CLOSED,
+            actor=audit.system_actor("workflow runs"),
+            org_id=row[1] if row else None,
+            target_type="workflow",
+            target_id=row[0] if row else None,
+            target_label=row[2] if row else None,
+            outcome="failed",
+            detail=detail,
+            context=EventContext(workflow_run_id=run_id),
+        )
+    except Exception as exc:
+        logger.error("Could not record a closed run: %s", type(exc).__name__)

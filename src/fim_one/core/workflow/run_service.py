@@ -966,6 +966,7 @@ class WorkflowRunService:
         error: str,
         *,
         stale_seconds: float | None = None,
+        closed_because: str | None = None,
     ) -> str | None:
         """Close a run on its record alone; the status it had, or ``None``.
 
@@ -985,6 +986,9 @@ class WorkflowRunService:
         same transaction. A run that was waiting loses its sandbox here; a
         run that was executing somewhere keeps it until that process, or
         the sweep's later pass over unused directories, removes it.
+
+        *closed_because* is for the platform closing the run on its own:
+        the caller that closes it records ``workflow.run_closed`` with it.
         """
         from sqlalchemy import CursorResult, func, select, update
 
@@ -1043,6 +1047,8 @@ class WorkflowRunService:
                     await db.rollback()
             if previous is not None:
                 break
+        if previous is not None and closed_because:
+            await run_audit.record_closed(run_id, closed_because)
         if previous == "waiting":
             # Nothing was executing it: nobody else will remove its files.
             await release_sandbox(workflow_run_sandbox_id(run_id))
@@ -1516,7 +1522,13 @@ class WorkflowRunService:
             return None
         except Exception:
             logger.exception("Workflow run %s could not be continued", run_id)
-            await self._end_stored_run(run_id, ("running",), "failed", RUN_NOT_RESUMABLE_ERROR)
+            await self._end_stored_run(
+                run_id,
+                ("running",),
+                "failed",
+                RUN_NOT_RESUMABLE_ERROR,
+                closed_because="not_resumable",
+            )
             return None
         self._active_runs[run_id] = started
         started.start()
@@ -1956,7 +1968,7 @@ class WorkflowRunService:
                     return None
                 # Ended here, or closed elsewhere: either way nobody is
                 # asked to decide for it any more.
-                await close_requests_of_runs(db, [out.run_id])
+                left_open = await close_requests_of_runs(db, [out.run_id])
                 if not written:
                     # How the run ended is someone else's entry; what it
                     # spent here is still spent, and counts toward quota.
@@ -1973,6 +1985,13 @@ class WorkflowRunService:
                     )
                 await db.commit()
                 if written:
+                    if left_open and out.status != "cancelled":
+                        # Whoever was asked to decide no longer sees the
+                        # request. A cancel is recorded by who cancelled.
+                        await run_audit.record_closed(
+                            out.run_id,
+                            f"ended {out.status}; {left_open} open approval request(s) closed",
+                        )
                     return None
                 stored = (
                     await db.execute(

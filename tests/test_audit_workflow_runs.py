@@ -649,3 +649,139 @@ class TestARunThatIsCancelled:
         )
 
         assert await world.events("workflow.run_cancelled") == []
+
+
+class TestARunThePlatformCloses:
+    async def test_a_run_whose_process_stopped(self, world: World, service: Any) -> None:
+        from datetime import UTC, datetime, timedelta
+
+        from fim_one.core.workflow.run_recovery import WorkflowRunSupervisor
+
+        alice = await world.user("alice")
+        org = await world.org("acme", alice)
+        await _workflow(world, alice, org_id=org.id)
+        long_ago = datetime.now(UTC) - timedelta(hours=1)
+        await world.add(
+            WorkflowRun(
+                id="run-1",
+                workflow_id="wf-1",
+                user_id=alice.id,
+                blueprint_snapshot=PLAIN,
+                inputs={},
+                status="running",
+                mode="interactive",
+                worker_id="a-process-that-died",
+                started_at=long_ago,
+                heartbeat_at=long_ago,
+            )
+        )
+
+        report = await WorkflowRunSupervisor(service, stale_seconds=90).sweep()
+
+        assert report.closed == ["run-1"]
+        (row,) = await world.events("workflow.run_closed")
+        assert (row.actor_kind, row.actor_id, row.org_id, row.outcome) == (
+            "system",
+            None,
+            org.id,
+            "failed",
+        )
+        assert (row.target_type, row.target_id, row.workflow_run_id) == (
+            "workflow",
+            "wf-1",
+            "run-1",
+        )
+        assert row.detail == "stale_heartbeat"
+
+    async def test_a_waiting_run_that_cannot_be_read_back(self, world: World, service: Any) -> None:
+        alice = await world.user("alice")
+        await _workflow(world, alice)
+        await world.add(
+            WorkflowRun(
+                id="run-1",
+                workflow_id="wf-1",
+                user_id=alice.id,
+                blueprint_snapshot=PLAIN,
+                inputs={},
+                status="waiting",
+                mode="interactive",
+                suspend_state={"not": "a sealed state"},
+            )
+        )
+
+        assert await service.resume_run("run-1") is None
+
+        (row,) = await world.events("workflow.run_closed")
+        assert (row.workflow_run_id, row.detail) == ("run-1", "not_resumable")
+        # Refused and closed are one event each, not both.
+        assert await world.events("workflow.run_refused") == []
+
+    async def test_a_refused_continuation_is_one_record(self, world: World, service: Any) -> None:
+        author = await world.user("author")
+        await _workflow(world, author, is_active=False)
+        await world.add(
+            WorkflowRun(
+                id="run-1",
+                workflow_id="wf-1",
+                user_id=author.id,
+                blueprint_snapshot=PLAIN,
+                inputs={},
+                status="waiting",
+                mode="trigger",
+            )
+        )
+
+        await service.resume_run("run-1")
+
+        assert [row.action for row in await world.events()] == ["workflow.run_refused"]
+
+    async def test_a_run_that_ends_with_an_approval_still_open(
+        self, world: World, service: Any
+    ) -> None:
+        """Its open requests are closed with it; whoever was asked to decide
+        no longer sees them, and the record says so."""
+        from fim_one.db.models.channel import ConfirmationRequest
+
+        alice = await world.user("alice")
+        await _workflow(world, alice)
+        await world.add(
+            WorkflowRun(
+                id="run-1",
+                workflow_id="wf-1",
+                user_id=alice.id,
+                blueprint_snapshot=PLAIN,
+                inputs={},
+                status="running",
+                mode="interactive",
+            ),
+        )
+        await world.add(
+            ConfirmationRequest(
+                id="req-1",
+                kind="workflow_approval",
+                workflow_run_id="run-1",
+                user_id=alice.id,
+                status="pending",
+                payload={},
+            )
+        )
+        from fim_one.core.workflow.run_service import RunOutcome
+
+        await service._persist(RunOutcome(run_id="run-1", status="failed"), started_at=None)
+
+        (row,) = await world.events("workflow.run_closed")
+        assert (row.workflow_run_id, row.detail, row.actor_kind) == (
+            "run-1",
+            "ended failed; 1 open approval request(s) closed",
+            "system",
+        )
+
+    async def test_a_run_that_ends_with_nothing_open_records_nothing(
+        self, world: World, service: Any
+    ) -> None:
+        alice = await world.user("alice")
+        await _workflow(world, alice)
+
+        await world.call("POST", "/api/workflows/wf-1/run", by=alice, json={"inputs": {}})
+
+        assert await world.events("workflow.run_closed") == []

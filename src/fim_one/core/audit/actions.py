@@ -263,6 +263,11 @@ WORKFLOW_RUN_REFUSED = "workflow.run_refused"
 # Someone stopped a run (its runner, or the workflow's author); the detail
 # says whether it was running or waiting for a decision.
 WORKFLOW_RUN_CANCELLED = "workflow.run_cancelled"
+# The platform ended a run on its own: its server process stopped (no
+# heartbeat), it could not be read back to continue after its approval, or
+# it ended with approval requests still open, which were closed with it.
+# The actor is the system.
+WORKFLOW_RUN_CLOSED = "workflow.run_closed"
 # Subscribing to a resource published to an organization or the Market, and
 # giving the subscription up.
 MARKET_SUBSCRIBE = "market.subscribe"
