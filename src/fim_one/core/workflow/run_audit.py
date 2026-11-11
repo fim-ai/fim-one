@@ -5,7 +5,8 @@ it calls these, so each run admitted has one ``workflow.run_started`` and
 each refusal one ``workflow.run_refused``, whatever the entry.
 
 - **who**: the person the run is for (:func:`~.run_service.run_identity`).
-  A trigger-key run carries the key's prefix as its credential; a
+  A trigger-key run is the key holder's (``actor_kind`` ``external``,
+  labelled with the key's prefix, ``actor_id`` the author's account); a
   scheduled run is the system acting for the author (``actor_kind``
   ``system``, ``actor_id`` the author). A run from a signed-in request
   says how the request was signed in (session or API key, and which key).
@@ -113,12 +114,16 @@ async def run_actor(
     if mode == _SCHEDULE:
         return Actor(user_id=user_id, label=label, kind="system", auth="schedule")
     if mode == _TRIGGER:
+        # Whoever called is known only by the key: not the author, and
+        # never an administrator because the author is one. The run is
+        # the author's account's (actor_id), the caller the key's holder.
+        prefix = getattr(workflow, "api_key_prefix", None)
         return Actor(
             user_id=user_id,
-            label=label,
-            kind="admin" if is_admin else "user",
+            label=f"trigger key {prefix}" if prefix else "trigger key",
+            kind="external",
             auth="trigger_key",
-            credential_ref=getattr(workflow, "api_key_prefix", None),
+            credential_ref=prefix,
         )
     signed_in = current_request_auth() if from_request else None
     return Actor(

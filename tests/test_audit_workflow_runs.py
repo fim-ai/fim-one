@@ -217,7 +217,7 @@ class TestARunThatStarts:
         (row,) = await world.events("workflow.run_started")
         assert (row.actor_id, row.actor_kind, row.auth_method, row.credential_ref) == (
             author.id,
-            "user",
+            "external",
             "trigger_key",
             key[:10],
         )
@@ -1108,3 +1108,33 @@ class TestTheStartRecordDoesNotHideAFailedInsert:
         with pytest.raises(IntegrityError):
             await service._insert_run(started=announce, **fields)
         assert await world.events("workflow.run_started") == []
+
+
+class TestATriggerKeyRunIsTheKeyHoldersNotTheAuthors:
+    """Review F6. A trigger-key run of an administrator's workflow was
+    recorded as an administrator's action (and counted as one where the
+    administrators' actions are listed); whoever called holds a key."""
+
+    async def test_an_administrators_workflow_triggered_by_key(
+        self, world: World, service: Any
+    ) -> None:
+        root = await world.user("root", admin=True)
+        await _workflow(world, root)
+        key = (await world.call("POST", "/api/workflows/wf-1/generate-api-key", by=root)).json()[
+            "data"
+        ]["api_key"]
+
+        await world.call(
+            "POST",
+            "/api/workflows/trigger",
+            json={"inputs": {}},
+            headers={"Authorization": f"Bearer {key}"},
+        )
+
+        (row,) = await world.events("workflow.run_started")
+        assert (row.actor_kind, row.actor_label, row.actor_id) == (
+            "external",
+            f"trigger key {key[:10]}",
+            root.id,
+        )
+        assert (row.auth_method, row.credential_ref) == ("trigger_key", key[:10])
