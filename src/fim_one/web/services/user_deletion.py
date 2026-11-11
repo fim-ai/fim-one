@@ -48,6 +48,7 @@ import logging
 import os
 import re
 import shutil
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -100,9 +101,50 @@ def deleted_user_label(user_id: str) -> str:
     return f"{DELETED_USER_PREFIX}{user_id[:8]}"
 
 
+# Characters drawn like a letter of ``deleted-user-`` (after case folding),
+# and like its hyphen. Only those letters: the check compares with the
+# prefix, it does not restrict the alphabet of a username.
+_LOOKS_LIKE = str.maketrans(
+    {
+        "\u0501": "d",  # Cyrillic komi de
+        "\u0435": "e",  # Cyrillic ie
+        "\u04bd": "e",  # Cyrillic abkhasian che
+        "\u04cf": "l",  # Cyrillic palochka
+        "\u01c0": "l",  # Latin dental click
+        "\u03c4": "t",  # Greek tau
+        "\u0442": "t",  # Cyrillic te
+        "\u03c5": "u",  # Greek upsilon
+        "\u057d": "u",  # Armenian seh
+        "\u0455": "s",  # Cyrillic dze
+        "\u0433": "r",  # Cyrillic ghe
+        **dict.fromkeys(
+            "\u2010\u2011\u2012\u2013\u2014\u2015\u2212\u2043\u02d7\u058a\u1806\ufe58\ufe63",
+            "-",
+        ),
+    }
+)
+_SOFT_HYPHEN = "\u00ad"
+
+
 def is_reserved_username(name: str | None) -> bool:
-    """Whether *name* reads as a deleted user's label; no account may take one."""
-    return name is not None and name.strip().lower().startswith(DELETED_USER_PREFIX)
+    """Whether *name* reads as a deleted user's label; no account may take one.
+
+    Read as it is drawn: compatibility forms folded (full-width letters,
+    the non-breaking hyphen), case ignored, invisible format characters
+    (zero-width space, joiners) dropped, and the look-alikes of the
+    prefix's letters and hyphen taken for them. A soft hyphen is invisible
+    in most places and drawn as a hyphen in some, so both readings count.
+    """
+    if name is None:
+        return False
+    drawn = unicodedata.normalize("NFKC", name).casefold().translate(_LOOKS_LIKE)
+    readings = (drawn.replace(_SOFT_HYPHEN, ""), drawn.replace(_SOFT_HYPHEN, "-"))
+    return any(
+        "".join(char for char in reading if unicodedata.category(char) != "Cf")
+        .strip()
+        .startswith(DELETED_USER_PREFIX)
+        for reading in readings
+    )
 
 
 # Keys of an audit row's ``changes`` that hold a name of the account the
