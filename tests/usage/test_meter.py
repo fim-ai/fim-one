@@ -108,6 +108,23 @@ class TestAScope:
 
         assert _by_source(await _rows(factory)) == {"conv-1": 10}
 
+    async def test_cancelled_the_way_a_server_drops_a_response_it_is_written_all_the_same(
+        self, factory: Factory  # noqa: F811
+    ) -> None:
+        """The server cancels the scope a streamed response runs in, and in
+        such a scope every further await is cancelled again, the ones in
+        ``finally`` blocks too. The write does not depend on one."""
+        import anyio
+
+        with anyio.CancelScope() as dropped:
+            async with metered(_scope()):
+                report_usage("main", TEN)
+                dropped.cancel()
+                await anyio.sleep(60)
+
+        assert dropped.cancelled_caught
+        assert _by_source(await _rows(factory)) == {"conv-1": 10}
+
     async def test_flushing_twice_writes_once(self, factory: Factory) -> None:  # noqa: F811
         opened = open_meter(_scope())
         report_usage("main", TEN)
