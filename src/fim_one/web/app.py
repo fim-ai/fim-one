@@ -269,7 +269,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
     )
 
     remove_resume_hook = install_resume_on_decision()
-    run_supervisor_task = asyncio.create_task(WorkflowRunSupervisor.from_env().run_loop())
+    run_supervisor = WorkflowRunSupervisor.from_env()
+    run_supervisor_task = asyncio.create_task(run_supervisor.run_loop())
 
     # Start periodic expiry sweep for stale confirmation requests.
     confirmation_expirer = ConfirmationRequestExpirer(
@@ -311,11 +312,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
         pass
 
     remove_resume_hook()
-    run_supervisor_task.cancel()
-    try:
-        await run_supervisor_task
-    except asyncio.CancelledError:
-        pass
+    # Asked, not cancelled: a cancel that interrupts a database call can
+    # leave a task behind that keeps the process from exiting (SQLite).
+    # Cancelled only if the pass it is in does not end in time.
+    run_supervisor.stop()
+    _, still_running = await asyncio.wait({run_supervisor_task}, timeout=15)
+    if still_running:
+        run_supervisor_task.cancel()
+        try:
+            await run_supervisor_task
+        except asyncio.CancelledError:
+            pass
 
     cleanup_task.cancel()
     try:

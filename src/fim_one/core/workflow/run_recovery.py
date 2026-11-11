@@ -52,6 +52,7 @@ from pathlib import Path
 from typing import Any
 
 from fim_one.core.assembly.sandbox import is_run_sandbox, sandbox_base
+from fim_one.core.utils import cancel_requested
 
 from .run_service import (
     RUN_INTERRUPTED_ERROR,
@@ -318,6 +319,8 @@ class WorkflowRunSupervisor:
         # without, from this supervisor's loop task.
         self._sync_engine = sync_engine
         self._heartbeat: HeartbeatThread | None = None
+        # Set by stop(): the loop ends after the pass it is in.
+        self._stopping = asyncio.Event()
         self.legacy_grace_seconds = legacy_grace_seconds
         self.heartbeat_seconds = heartbeat_seconds
         self.stale_seconds = max(stale_seconds, heartbeat_seconds * 3)
@@ -398,6 +401,10 @@ class WorkflowRunSupervisor:
             try:
                 await part(report)
             except Exception:
+                if cancel_requested():
+                    # Not a failure of the part: the sweep was cancelled
+                    # (see cancel_requested). The caller decides.
+                    raise
                 logger.exception("Workflow run sweep: %s failed", part.__name__)
         if report.closed or report.resumed or report.removed_sandboxes:
             logger.info(
@@ -612,8 +619,18 @@ class WorkflowRunSupervisor:
 
     # -- loop -----------------------------------------------------------------
 
+    def stop(self) -> None:
+        """Ask :meth:`run_loop` to end once the pass it is in is over.
+
+        How the application stops it. Cancelling it instead can interrupt
+        a database call, and on SQLite (aiosqlite) a cancelled call can
+        leave a connection-closing task behind that never ends, so the
+        process cannot exit (see ``tests/test_background_loops_stop.py``).
+        """
+        self._stopping.set()
+
     async def run_loop(self) -> None:
-        """Sweep once at startup, then heartbeat and sweep until cancelled."""
+        """Sweep once at startup, then heartbeat and sweep until stopped or cancelled."""
         logger.info(
             "Workflow run supervisor started (heartbeat=%.0fs, stale=%.0fs, sweep=%.0fs)",
             self.heartbeat_seconds,
@@ -624,7 +641,10 @@ class WorkflowRunSupervisor:
             await self.sweep()
         except asyncio.CancelledError:
             raise
-        except Exception:  # pragma: no cover - sweep() already catches
+        except Exception:
+            if cancel_requested():
+                logger.info("Workflow run supervisor stopped")
+                return
             logger.exception("Workflow run startup sweep failed")
         if self._sync_engine is not None:
             self._heartbeat = HeartbeatThread(
@@ -635,9 +655,13 @@ class WorkflowRunSupervisor:
             )
             self._heartbeat.start()
         last_sweep = time.monotonic()
+        stopping = asyncio.ensure_future(self._stopping.wait())
         while True:
             try:
-                await asyncio.sleep(self.heartbeat_seconds)
+                # The interval, or less when asked to stop.
+                await asyncio.wait({stopping}, timeout=self.heartbeat_seconds)
+                if stopping.done():
+                    break
                 # The thread stamps; this loop does when there is none, or
                 # when the thread has not managed to for two intervals.
                 if self._heartbeat is None or not self._heartbeat.stamping():
@@ -646,12 +670,17 @@ class WorkflowRunSupervisor:
                     last_sweep = time.monotonic()
                     await self.sweep()
             except asyncio.CancelledError:
-                if self._heartbeat is not None:
-                    self._heartbeat.stop()
-                logger.info("Workflow run supervisor stopped")
                 break
             except Exception:
+                if cancel_requested():
+                    # Cancelled during a database call, and the driver's
+                    # clean-up turned that into an error: stop all the same.
+                    break
                 logger.exception("Workflow run supervisor pass failed")
+        stopping.cancel()
+        if self._heartbeat is not None:
+            self._heartbeat.stop()
+        logger.info("Workflow run supervisor stopped")
 
 
 def _run_sandboxes() -> list[Path]:

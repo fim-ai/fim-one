@@ -981,7 +981,9 @@ class TestWaitingRunsAreCapped:
 # can stamp the run meanwhile. With "thread" the supervisor stamps from its
 # heartbeat thread, as a server does; with "loop" from the loop, as before.
 _BLOCKED_SERVER = """
-import asyncio, sys, time
+import asyncio, faulthandler, signal, sys, time
+# The parent asks for every thread's stack when this process overstays.
+faulthandler.register(signal.SIGUSR1, all_threads=True)
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, patch
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -1033,7 +1035,9 @@ async def main():
             workflow, caller_id=user_id, inputs={}, mode=rs.RunMode.INTERACTIVE
         )
         print(outcome.run_id, outcome.status, flush=True)
-        watching.cancel()
+        # As the application stops it at shutdown (web/app.py).
+        supervisor.stop()
+        await watching
 
 
 asyncio.run(main())
@@ -1064,9 +1068,34 @@ async def _blocked_server(rig: Rig, tmp_path: Any, heartbeat: str) -> tuple[Any,
         str(marker),
         env=dict(os.environ),
         stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+        # To a file: what a pipe held would be lost with a read that times out.
+        stderr=(tmp_path / "child.err").open("wb"),
     )
     return child, marker
+
+
+async def _finished(child: Any, tmp_path: Any, budget: float = 15.0) -> tuple[bytes, bytes]:
+    """The child's stdout and stderr once it exits.
+
+    It exits about 4 s after its run starts. One that is still there after
+    *budget* seconds fails the test with every thread's stack and what it
+    wrote, within the test's own time limit.
+    """
+    import signal
+
+    try:
+        out, _ = await asyncio.wait_for(child.communicate(), timeout=budget)
+    except TimeoutError:
+        child.send_signal(signal.SIGUSR1)
+        await asyncio.sleep(1)
+        child.kill()
+        out, _ = await child.communicate()
+        err = (tmp_path / "child.err").read_bytes().decode(errors="replace")
+        pytest.fail(
+            f"the other process was still running after {budget:.0f}s\n"
+            f"stdout: {out.decode()}\nstderr:\n{err[-8000:]}"
+        )
+    return out, (tmp_path / "child.err").read_bytes()
 
 
 async def _the_run(rig: Rig, timeout: float = 30.0) -> WorkflowRun:
@@ -1098,7 +1127,7 @@ class TestALiveRunIsNotTakenForDead:
             await asyncio.sleep(0.5)
             closed += (await other.sweep()).closed
 
-        out, err = await asyncio.wait_for(child.communicate(), timeout=60)
+        out, err = await _finished(child, tmp_path)
         assert child.returncode == 0, err.decode()[-2000:]
         assert closed == []
         assert out.decode().split() == [run.id, "completed"]
@@ -1125,7 +1154,7 @@ class TestALiveRunIsNotTakenForDead:
             await asyncio.sleep(0.1)
             closed += (await other.sweep()).closed
 
-        out, err = await asyncio.wait_for(child.communicate(), timeout=60)
+        out, err = await _finished(child, tmp_path)
         assert child.returncode == 0, err.decode()[-2000:]
         assert closed == [run.id]
         assert marker.exists()  # the step in flight could not be recalled
@@ -1589,9 +1618,10 @@ class TestTheHeartbeatThread:
             peer = WorkflowRunSupervisor(_new_service(), heartbeat_seconds=1, stale_seconds=90)
             assert (await peer.sweep()).closed == []
         finally:
-            watching.cancel()
+            supervisor.stop()
             _HeldEngine.release.set()
             await started.wait()
+            await watching
 
     async def test_a_thread_that_works_again_takes_stamping_back(
         self, rig: Rig, tmp_path: Any

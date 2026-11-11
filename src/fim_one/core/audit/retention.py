@@ -37,6 +37,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
+from fim_one.core.utils import cancel_requested
+
 from . import actions
 from . import writer as audit
 
@@ -424,6 +426,9 @@ class AuditRetentionSweeper:
                 try:
                     await self.sweep()
                 except Exception:
+                    if cancel_requested():
+                        logger.info("Audit retention sweeper stopped")
+                        return
                     logger.exception("Audit retention sweep failed")
                 await asyncio.sleep(self.check_interval_seconds)
         except asyncio.CancelledError:

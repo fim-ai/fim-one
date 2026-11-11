@@ -37,6 +37,7 @@ import sqlalchemy as sa
 from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.utils import cancel_requested
 from fim_one.db.models.channel import ConfirmationRequest
 
 logger = logging.getLogger(__name__)
@@ -124,6 +125,9 @@ class ConfirmationRequestExpirer:
                 logger.info("ConfirmationRequestExpirer stopped")
                 break
             except Exception:
+                if cancel_requested():
+                    logger.info("ConfirmationRequestExpirer stopped")
+                    break
                 logger.exception("ConfirmationRequestExpirer sweep failed")
 
 

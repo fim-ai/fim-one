@@ -19,6 +19,21 @@ logger = logging.getLogger(__name__)
 _BACKGROUND_TASKS: set[asyncio.Task[Any]] = set()
 
 
+def cancel_requested() -> bool:
+    """Whether the current task has been asked to stop.
+
+    A cancellation that arrives while a database call is awaited can come
+    out of the driver's clean-up as an ordinary error: SQLAlchemy on
+    aiosqlite cancels the connection's termination as well, and the
+    rollback that follows raises ``ValueError: no active connection``. A
+    background loop that logs ordinary errors and goes on would then never
+    stop, and the shutdown that awaits it would wait for ever. Such a loop
+    asks this when a pass fails, and stops if it is true.
+    """
+    task = asyncio.current_task()
+    return task is not None and task.cancelling() > 0
+
+
 def spawn_background(
     coro: Coroutine[Any, Any, Any], *, name: str | None = None
 ) -> asyncio.Task[Any]:
