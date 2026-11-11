@@ -51,7 +51,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import and_, delete, or_, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -110,10 +110,57 @@ def is_reserved_username(name: str | None) -> bool:
 _IDENTITY_KEYS = frozenset({"username", "email", "display_name"})
 
 
-def _patterns(quoted: list[str | None]) -> tuple[re.Pattern[str], ...]:
-    """Each of *quoted* as a word of its own, longest first; short ones are left."""
+def _patterns(
+    quoted: list[str | None] | set[str], *, any_case: bool = False
+) -> tuple[re.Pattern[str], ...]:
+    """Each of *quoted* as a word of its own, longest first; short ones are left.
+
+    *any_case* for email addresses, which people type in any case.
+    """
     kept = sorted({name for name in quoted if name and len(name) >= 3}, key=len, reverse=True)
-    return tuple(re.compile(rf"(?<![\w@.-]){re.escape(name)}(?![\w@-])") for name in kept)
+    flags = re.IGNORECASE if any_case else 0
+    return tuple(
+        re.compile(rf"(?<![\w@.-]){re.escape(name)}(?![\w@-])", flags) for name in kept
+    )
+
+
+async def _earlier_names(
+    db: AsyncSession, user_id: str, is_target: Any
+) -> tuple[set[str], set[str]]:
+    """The addresses, and the other names, the account has had.
+
+    Read before anything is relabelled: from the sign-in rows of the
+    account (each holds the address and username it had then) and from the
+    ``changes`` of the audit rows about it (an email change, a rename, an
+    administrator's edit keep the old and the new value).
+    """
+    addresses: set[str] = set()
+    names: set[str] = set()
+    signed_in = await db.execute(
+        select(LoginHistory.email, LoginHistory.username)
+        .where(LoginHistory.user_id == user_id)
+        .distinct()
+    )
+    for address, username in signed_in.all():
+        if address:
+            addresses.add(address)
+        if username:
+            names.add(username)
+    changed = await db.execute(
+        select(AuditLog.changes).where(is_target, AuditLog.changes.isnot(None))
+    )
+    for (changes,) in changed.all():
+        if not isinstance(changes, dict):
+            continue
+        for key in _IDENTITY_KEYS:
+            change = changes.get(key)
+            if not isinstance(change, dict):
+                continue
+            for side in ("from", "to"):
+                value = change.get(side)
+                if isinstance(value, str) and value:
+                    (addresses if key == "email" else names).add(value)
+    return addresses, names
 
 
 def _without_names(value: Any, names: tuple[re.Pattern[str], ...], label: str) -> Any:
@@ -131,8 +178,10 @@ def _without_names(value: Any, names: tuple[re.Pattern[str], ...], label: str) -
 
 async def _deidentify_records(
     db: AsyncSession, user_id: str, *, username: str | None, email: str, display_name: str | None
-) -> None:
+) -> set[str]:
     """Take a user's identity out of the records that stay after the account.
+
+    Returns every address the account has had.
 
     Rows are kept, with the user id. In ``login_history`` the username and
     email become the deleted-user label and the address and device are
@@ -147,22 +196,29 @@ async def _deidentify_records(
     reset this user's password) is that person's, and stays.
     """
     label = deleted_user_label(user_id)
+    is_actor = AuditLog.actor_id == user_id
+    is_target = and_(AuditLog.target_type == "user", AuditLog.target_id == user_id)
+
+    earlier_addresses, earlier_names = await _earlier_names(db, user_id, is_target)
+    all_addresses = {email, *earlier_addresses} - {""}
+    # Compared without case: the sign-in form takes the address as typed,
+    # and ``ZELDA@EXAMPLE.TEST`` is recorded as an unknown account.
+    lowered = sorted({address.lower() for address in all_addresses})
 
     await db.execute(
         update(LoginHistory)
         .where(LoginHistory.user_id == user_id)
         .values(username=label, email=label, ip_address=None, user_agent=None)
     )
-    # A sign-in attempt with this address from before the account existed:
-    # the address typed is the user's, where it came from is not known to be.
+    # A sign-in attempt with one of the account's addresses that was not
+    # matched to it (before the account existed, typed in another case,
+    # or after the address was changed): the address typed is the user's,
+    # where it came from is not known to be.
     await db.execute(
         update(LoginHistory)
-        .where(LoginHistory.user_id.is_(None), LoginHistory.email == email)
+        .where(LoginHistory.user_id.is_(None), func.lower(LoginHistory.email).in_(lowered))
         .values(email=label)
     )
-
-    is_actor = AuditLog.actor_id == user_id
-    is_target = and_(AuditLog.target_type == "user", AuditLog.target_id == user_id)
     await db.execute(
         update(AuditLog)
         .where(is_actor)
@@ -174,12 +230,13 @@ async def _deidentify_records(
     # like it. A username or display name can be an ordinary word ("member",
     # "admin", "true") that is also a role or a flag in the same row, so it
     # is replaced only where a writer puts a name: under a name key of
-    # ``changes``, or as the whole of ``detail``. Longest first, so a
-    # username that is the start of the email address does not leave the
-    # rest of the address behind.
-    addresses = _patterns([email])
-    names = _patterns([username, email, display_name])
-    whole = {name for name in (username, display_name) if name}
+    # ``changes``, or as the whole of ``detail``. The addresses are every
+    # one the account has had, in any case.
+    addresses = _patterns(all_addresses, any_case=True)
+    # Addresses first: a username that is the start of an address does not
+    # leave the rest of the address behind.
+    names = addresses + _patterns([username, display_name, *earlier_names])
+    whole = {name for name in (username, display_name, *earlier_names) if name}
     rows = await db.execute(
         select(AuditLog.id, AuditLog.detail, AuditLog.changes, is_target.label("about_user")).where(
             or_(is_actor, is_target),
@@ -210,6 +267,7 @@ async def _deidentify_records(
     await db.execute(
         update(ReviewLog).where(ReviewLog.actor_id == user_id).values(actor_username=label)
     )
+    return all_addresses
 
 
 class PurgedUser(dict[str, int]):
@@ -375,7 +433,6 @@ async def purge_user_data(db: AsyncSession, user_id: str) -> PurgedUser:
     await db.execute(
         delete(ResourceSubscription).where(ResourceSubscription.user_id == user_id)
     )
-    await db.execute(delete(EmailVerification).where(EmailVerification.email == user_email))
 
     # Workflow runs this user triggered (incl. on *shared* workflows owned by
     # others — those won't be caught by the owned-workflow cascade).  An
@@ -412,8 +469,14 @@ async def purge_user_data(db: AsyncSession, user_id: str) -> PurgedUser:
     # The records that outlive the account (audit log, sign-in history,
     # review trails, call records, usage ledger) keep their rows and the
     # user id, and lose what identifies the person.
-    await _deidentify_records(
+    addresses = await _deidentify_records(
         db, user_id, username=user.username, email=user_email, display_name=user.display_name
+    )
+    # Codes sent to any address of the account, in whatever case it was typed.
+    await db.execute(
+        delete(EmailVerification).where(
+            func.lower(EmailVerification.email).in_(sorted(a.lower() for a in addresses))
+        )
     )
 
     # 5. Delete the user — ORM cascade removes the owned-resource tree

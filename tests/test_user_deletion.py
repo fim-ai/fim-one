@@ -504,7 +504,44 @@ async def test_sign_in_history_stays_without_name_or_address(db: AsyncSession) -
         id=_uid(), user_id=other.id, username="other", email=other.email,
         ip_address="198.51.100.6", user_agent="OtherBrowser/1", success=True,
     )  # fmt: skip
-    db.add_all([mine, before, theirs])
+    # Her address typed in capitals: the sign-in form does not match it to
+    # the account, so the row has no user id.
+    shouted = LoginHistory(
+        id=_uid(), user_id=None, email=carol.email.upper(), ip_address="203.0.113.51",
+        success=False, failure_reason="user_not_found",
+    )  # fmt: skip
+    # She signed in as carol-old@example.test before an administrator changed
+    # her address; attempts with the old address, before and after the
+    # change, and one only an audit row knows of.
+    as_before = LoginHistory(
+        id=_uid(), user_id=carol.id, username="caz", email="carol-old@example.test",
+        ip_address="198.51.100.7", user_agent="CarolBrowser/0", success=True,
+    )  # fmt: skip
+    old_address = LoginHistory(
+        id=_uid(), user_id=None, email="Carol-Old@Example.test", ip_address="203.0.113.52",
+        success=False, failure_reason="user_not_found",
+    )  # fmt: skip
+    first_address = LoginHistory(
+        id=_uid(), user_id=None, email="cd@first.test", ip_address="203.0.113.53",
+        success=False, failure_reason="user_not_found",
+    )  # fmt: skip
+    changed = AuditLog(
+        id=_uid(), action="user.update", actor_id=other.id, actor_label="other",
+        actor_kind="admin", target_type="user", target_id=carol.id, target_label="carol",
+        changes={"email": {"from": "CD@first.test", "to": "carol-old@example.test"}},
+    )  # fmt: skip
+    # Somebody else's address, typed: stays.
+    stranger = LoginHistory(
+        id=_uid(), user_id=None, email="Someone@Example.test", ip_address="203.0.113.54",
+        success=False, failure_reason="user_not_found",
+    )  # fmt: skip
+    codes = [
+        EmailVerification(email=address, code="123456", purpose="reset_password",
+                          expires_at=_now())
+        for address in (carol.email.upper(), "carol-old@example.test", "someone@example.test")
+    ]  # fmt: skip
+    db.add_all([mine, before, theirs, shouted, as_before, old_address, first_address,
+                changed, stranger, *codes])  # fmt: skip
     await db.commit()
 
     await purge_user_data(db, carol.id)
@@ -524,6 +561,15 @@ async def test_sign_in_history_stays_without_name_or_address(db: AsyncSession) -
     assert (untouched.username, untouched.ip_address) == ("other", "198.51.100.6")
     for row in (kept, earlier):
         assert "carol" not in _everything(row)
+    for row_id in (shouted.id, old_address.id, first_address.id):
+        attempt = await _fresh(db, LoginHistory, row_id)
+        assert attempt.email == label, attempt.email
+        assert attempt.ip_address is not None
+    previous = await _fresh(db, LoginHistory, as_before.id)
+    assert (previous.username, previous.email, previous.ip_address) == (label, label, None)
+    assert (await _fresh(db, LoginHistory, stranger.id)).email == "Someone@Example.test"
+    left = (await db.execute(select(EmailVerification.email))).scalars().all()
+    assert left == ["someone@example.test"]
 
 
 @pytest.mark.asyncio
