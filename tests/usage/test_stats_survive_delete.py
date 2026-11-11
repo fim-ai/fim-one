@@ -206,3 +206,49 @@ class TestPlatformOverview:
         assert stats["tokens_by_agent"] == [
             {"agent_id": "agent-1", "name": "Helper", "total_tokens": old_agent}
         ]
+
+
+# ---------------------------------------------------------------------------
+# GET /api/admin/analytics/by-agent: Analytics, per agent
+# ---------------------------------------------------------------------------
+
+
+class TestPerAgent:
+    PATH = "/api/admin/analytics/by-agent?period={period}"
+
+    async def _helper(self, usage: Usage, period: str, by: User) -> list[Any]:  # noqa: F811
+        # Every agent is listed; the AI-assisted helper made one of its own.
+        listed = await _get(usage, self.PATH.format(period=period), by)
+        return [agent for agent in listed if agent["agent_name"] == "Helper"]
+
+    async def test_survives(
+        self, usage: Usage, provider: Provider, alice: User, root: User, runs: Any  # noqa: F811
+    ) -> None:
+        billed = await _everything(usage, provider, alice)
+        (helper,) = await self._helper(usage, "7d", root)
+        assert (helper["total_tokens"], helper["total_conversations"]) == (billed["agent"], 1)
+
+        await usage.call(
+            "DELETE", f"/api/conversations/{billed['conversations'][0].id}", by=alice
+        )
+
+        for period in ("7d", "30d", "90d"):
+            (helper,) = await self._helper(usage, period, root)
+            assert helper["total_tokens"] == billed["agent"], period
+            # The conversation count is of those that still exist; the
+            # average is the agent's tokens over them (none left: no average).
+            assert helper["total_conversations"] == 0
+            assert helper["avg_tokens_per_conversation"] is None
+
+    async def test_backfilled(self, usage: Usage, backfilled: Backfilled, root: User) -> None:  # noqa: F811
+        for period, days in (("7d", 7), ("30d", 30), ("90d", 90)):
+            (helper,) = await self._helper(usage, period, root)
+            since = datetime.now(UTC) - timedelta(days=days)
+            tokens, count = (
+                await backfilled.old(
+                    "SELECT COALESCE(SUM(total_tokens), 0), COUNT(*) FROM conversations"
+                    " WHERE agent_id = 'agent-1' AND created_at >= :since",
+                    since=since,
+                )
+            )[0]
+            assert (helper["total_tokens"], helper["total_conversations"]) == (tokens, count)

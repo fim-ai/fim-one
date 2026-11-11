@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.usage import ledger as usage_ledger
 from fim_one.db import get_session
 from fim_one.db.models import (
     Agent,
@@ -108,12 +109,11 @@ async def analytics_by_agent(
     """Per-agent analytics: conversations, tokens, avg tokens/conversation."""
     cutoff = _period_to_cutoff(period)
 
-    # Aggregate conversations per agent
+    # Conversations per agent: those created in the period that still exist.
     conv_sub = (
         select(
             Conversation.agent_id,
             func.count(Conversation.id).label("total_conversations"),
-            func.coalesce(func.sum(Conversation.total_tokens), 0).label("total_tokens"),
         )
         .where(
             Conversation.agent_id.isnot(None),
@@ -122,6 +122,9 @@ async def analytics_by_agent(
         .group_by(Conversation.agent_id)
         .subquery()
     )
+    # Tokens per agent: what the usage ledger recorded through it in the
+    # period, deleted conversations included.
+    usage_sub = usage_ledger.usage_per_agent_subquery(cutoff)
 
     stmt = (
         select(
@@ -130,11 +133,12 @@ async def analytics_by_agent(
             Agent.user_id,
             User.username,
             func.coalesce(conv_sub.c.total_conversations, 0).label("total_conversations"),
-            func.coalesce(conv_sub.c.total_tokens, 0).label("total_tokens"),
+            func.coalesce(usage_sub.c.total_tokens, 0).label("total_tokens"),
         )
         .outerjoin(conv_sub, Agent.id == conv_sub.c.agent_id)
+        .outerjoin(usage_sub, Agent.id == usage_sub.c.agent_id)
         .outerjoin(User, Agent.user_id == User.id)
-        .order_by(func.coalesce(conv_sub.c.total_tokens, 0).desc())
+        .order_by(func.coalesce(usage_sub.c.total_tokens, 0).desc(), Agent.id)
         .limit(top_n)
     )
 
