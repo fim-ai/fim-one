@@ -129,7 +129,7 @@ def github() -> Iterator[dict[str, Any]]:
 
 
 @pytest.mark.timeout(300)
-async def test_no_secret_reaches_a_row_the_export_or_the_list(world: World, github: dict[str, Any]) -> None:
+async def test_no_secret_reaches_a_row_the_export_or_the_list(world: World, github: dict[str, Any], tmp_path: Any) -> None:
     await world.enable_module("skills")
     await world.enable_module("workflows")
     root = await world.user("root", admin=True, password="RootPass-CNRY99-x1!")
@@ -331,6 +331,27 @@ async def test_no_secret_reaches_a_row_the_export_or_the_list(world: World, gith
     await do(world, "F6b trigger invalid short secret", "POST", "/api/workflows/trigger",
              headers={"Authorization": "Bearer CNRY8"}, json={"inputs": {}})
     await do(world, "F7 runs export", "GET", "/api/workflows/wf-1/runs/export", by=alice)
+    # Runs whose inputs carry secrets: started, refused for an input that does
+    # not fit (the refusal's text quotes no value), through a trigger key.
+    start = {"id": "start_1", "type": "start", "position": {"x": 0, "y": 0},
+             "data": {"type": "START", "validate_inputs": True, "variables": [
+                 {"name": "amount", "type": "number", "required": True},
+                 {"name": "password", "type": "string"}]}}  # fmt: skip
+    end = {"id": "end_1", "type": "end", "position": {"x": 0, "y": 0}, "data": {"type": "END"}}
+    await world.add(Workflow(id="wf-2", user_id=alice.id, name="checked", status="active",
+                             is_active=True, blueprint={"schema_version": 2, "nodes": [start, end],
+                             "edges": [{"id": "e1", "source": "start_1", "target": "end_1"}]}))  # fmt: skip
+    with patch("fim_one.core.assembly.sandbox._BASE", tmp_path / "run-sandboxes"):
+        await do(world, "F9 run with secret inputs", "POST", "/api/workflows/wf-2/run", by=alice,
+                 json={"inputs": {"amount": "5", "password": "CNRY96pw"}})
+        await do(world, "F10 run refused for an input", "POST", "/api/workflows/wf-2/run",
+                 by=alice, json={"inputs": {"amount": "CNRY97notanumber"}})
+        await do(world, "F11 trigger refused, inputs", "POST", "/api/workflows/trigger",
+                 headers={"Authorization": f"Bearer {DYN.get('trigger_key_full', '')}"},
+                 json={"inputs": {"p": "CNRY98"}})
+        await do(world, "F12 batch refused for a row", "POST", "/api/workflows/wf-2/batch-run",
+                 by=alice, json={"inputs": [{"amount": "1", "password": "CNRY00pw"},
+                                            {"amount": "CNRY28bad"}]})  # fmt: skip
     await do(world, "F8 trigger key revoke", "DELETE", "/api/workflows/wf-1/api-key", by=alice)
 
     # ---- G. agents ------------------------------------------------------------------
@@ -376,6 +397,7 @@ async def test_no_secret_reaches_a_row_the_export_or_the_list(world: World, gith
         "mcp_server.credential_set", "workflow.update", "workflow.env_update",
         "workflow.schedule_update", "workflow.trigger_key_generate",
         "workflow.trigger_key_invalid", "export.workflow_runs", "workflow.trigger_key_revoke",
+        "workflow.run_started", "workflow.run_refused",
         "agent.create", "agent.update", "export.conversation", "security.ip_blocked",
     }
     assert expected - recorded == set(), f"the session no longer exercises {expected - recorded}"
