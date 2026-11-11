@@ -248,6 +248,11 @@ WORKFLOW_UNPUBLISH_BY_ADMIN = "workflow.unpublish_by_admin"
 # The author removed run records: one, or all of a workflow's.
 WORKFLOW_RUN_DELETE = "workflow.run_delete"
 WORKFLOW_RUNS_CLEAR = "workflow.runs_clear"
+# A run was admitted, from any entry: the Run button, a batch item, a trigger
+# key, a schedule, an agent's run_workflow tool, a single-step test. Written
+# by the run service (``core/workflow/run_audit.py``) with the run record;
+# the detail is the entry.
+WORKFLOW_RUN_STARTED = "workflow.run_started"
 # Subscribing to a resource published to an organization or the Market, and
 # giving the subscription up.
 MARKET_SUBSCRIBE = "market.subscribe"

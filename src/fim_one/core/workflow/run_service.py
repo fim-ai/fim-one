@@ -63,6 +63,7 @@ from fim_one.core.assembly.quota import AssemblyRunGate
 from fim_one.core.assembly.sandbox import release_sandbox, workflow_run_sandbox_id
 from fim_one.core.usage.meter import OpenMeter, UsageScope, open_meter
 
+from . import run_audit
 from .node_gates import (
     HUMAN_INTERVENTION_DISABLED,
     HUMAN_INTERVENTION_DISABLED_DETAIL,
@@ -1267,6 +1268,13 @@ class WorkflowRunService:
         run_id = str(uuid.uuid4())
         fields = self._run_fields(run_id, workflow, principal, mode, inputs)
         record_created = False
+
+        async def announce(db: Any) -> None:
+            # In the transaction that inserts the run record.
+            await run_audit.record_started(
+                workflow, user_id=principal.user_id, mode=mode.value, run_id=run_id, db=db
+            )
+
         try:
             if single_flight:
                 await self._insert_single_flight_run(
@@ -1277,11 +1285,12 @@ class WorkflowRunService:
                         if acquire_slot
                         else None
                     ),
+                    started=announce,
                 )
             else:
                 if acquire_slot:
                     await self._acquire_slot(principal.user_id, run_id, mode)
-                await self._insert_run(**fields)
+                await self._insert_run(started=announce, **fields)
             record_created = True
 
             from fim_one.db import create_session
@@ -1554,6 +1563,10 @@ class WorkflowRunService:
             )
         ctx = await self._admit(workflow, user_id, auth, RunMode.TEST_NODE)
         principal = ctx.principal
+        # There is no run record to commit it with.
+        await run_audit.record_started(
+            workflow, user_id=principal.user_id, mode=RunMode.TEST_NODE.value, run_id=None
+        )
 
         env_vars = {**author_env_vars(workflow, ctx), **env_overrides}
         store = VariableStore(env_vars=env_vars)
@@ -1659,12 +1672,17 @@ class WorkflowRunService:
                 "Workflow already has a running execution. Please wait for it to complete.",
             )
 
-    async def _insert_run(self, **fields: Any) -> None:
+    async def _insert_run(
+        self, *, started: Callable[[Any], Awaitable[None]] | None = None, **fields: Any
+    ) -> None:
+        """Insert a run record; *started* adds the record of its start to the same commit."""
         from fim_one.db import create_session
         from fim_one.db.models import WorkflowRun
 
         async with create_session() as db:
             db.add(WorkflowRun(**self._stamped(fields, db)))
+            if started is not None:
+                await started(db)
             await db.commit()
 
     @staticmethod
@@ -1715,6 +1733,7 @@ class WorkflowRunService:
         fields: dict[str, Any],
         *,
         take_slot: Callable[[], Awaitable[None]] | None,
+        started: Callable[[Any], Awaitable[None]] | None = None,
     ) -> None:
         """Insert a run record unless the workflow already has a run in flight.
 
@@ -1751,6 +1770,8 @@ class WorkflowRunService:
             if take_slot is not None:
                 await take_slot()
             db.add(WorkflowRun(**self._stamped(fields, db)))
+            if started is not None:
+                await started(db)
             await db.commit()
 
     async def _mark_failed(self, run_id: str, error: str) -> None:

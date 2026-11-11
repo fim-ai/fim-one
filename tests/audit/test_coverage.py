@@ -100,11 +100,6 @@ class TestWhatTheTablesSay:
 
     def test_the_deferred_routes_are_the_workflow_run_routes(self) -> None:
         assert {path for _, path in c.KNOWN_GAPS} == {
-            "/api/workflows/trigger",
-            "/api/workflows/trigger/{api_key}",
-            "/api/workflows/{workflow_id}/run",
-            "/api/workflows/{workflow_id}/batch-run",
-            "/api/workflows/{workflow_id}/test-node",
             "/api/workflows/{workflow_id}/runs/{run_id}/cancel",
         }
 
