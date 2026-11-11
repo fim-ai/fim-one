@@ -20,6 +20,7 @@ import contextvars
 import logging
 import os
 import threading
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -344,7 +345,31 @@ def _report_to(
             f"model {model!r} consumed {total} tokens with no usage meter open: "
             "the entry point that made this call must open one (core.usage.meter)"
         )
-    logger.debug("Usage outside any meter: model=%s total_tokens=%d", model, total)
+    _warn_unattributed(model, total)
+
+
+# A model call that reports with no meter open comes from an entry point
+# that opens none: its usage is in nobody's ledger. Said at WARNING, at most
+# once a minute so that a busy unmetered path does not flood the log; the
+# running total is in every message.
+_UNATTRIBUTED_WARNING_INTERVAL = 60.0
+_last_unattributed_warning = 0.0
+
+
+def _warn_unattributed(model: str | None, total: int) -> None:
+    global _last_unattributed_warning
+    now = time.monotonic()
+    if now - _last_unattributed_warning < _UNATTRIBUTED_WARNING_INTERVAL:
+        return
+    _last_unattributed_warning = now
+    logger.warning(
+        "Model usage outside any usage meter: model=%s total_tokens=%d "
+        "(%d tokens unattributed in this process so far). The entry point that made "
+        "the call does not open a metering scope, so it is recorded against nobody.",
+        model,
+        total,
+        unattributed_tokens(),
+    )
 
 
 def report_usage(

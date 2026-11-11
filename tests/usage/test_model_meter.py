@@ -131,6 +131,20 @@ class TestWithNoMeterOpen:
         report_usage("m", {"total_tokens": 9})
         assert unattributed_tokens() == before + 9
 
+    def test_it_is_said_in_the_log_but_not_for_every_call(
+        self, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import logging
+
+        monkeypatch.setattr(usage_mod, "_last_unattributed_warning", 0.0)
+        with caplog.at_level(logging.WARNING, logger="fim_one.core.model.usage"):
+            for _ in range(50):
+                report_usage("m", {"total_tokens": 9})
+
+        (record,) = caplog.records
+        assert "outside any usage meter" in record.getMessage()
+        assert "model=m total_tokens=9" in record.getMessage()
+
     def test_strict_metering_raises(self) -> None:
         set_strict_metering(True)
         try:
