@@ -202,12 +202,18 @@ class UsageMeter:
     from a ``finally`` block, from a child task and from a worker thread.
     ``total`` is everything reported so far; ``drain`` hands out what was
     reported since the last drain, for the ledger to store.
+
+    A streamed call reports its count when its stream ends. Until then the
+    client keeps ``in_flight`` up to date with an estimate of what the
+    stream has produced so far, so that a turn can watch a quota while its
+    answer is being written.
     """
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._pending: dict[tuple[str | None, bool], ModelUsage] = {}
         self._total = 0
+        self._in_flight = 0
         # Called (outside the lock) after every ``add``; ``core.usage.meter``
         # uses it to store usage that arrives once the scope has ended.
         self.on_add: Callable[[], None] | None = None
@@ -247,6 +253,20 @@ class UsageMeter:
         """Tokens reported in this scope so far, drained or not."""
         with self._lock:
             return self._total
+
+    def stream_progress(self, tokens: int) -> None:
+        """A stream in flight produced *tokens* more (estimated); negative
+        when the stream ends and its real count is about to be added."""
+        with self._lock:
+            self._in_flight = max(self._in_flight + tokens, 0)
+
+    def in_flight(self) -> int:
+        """Estimated output tokens of the streams that have not ended yet.
+
+        Output only: what such a call was sent is counted when it ends.
+        """
+        with self._lock:
+            return self._in_flight
 
     def drain(self) -> list[ModelUsage]:
         """Take what was reported since the last drain, one item per model."""
@@ -361,6 +381,11 @@ class UsageReporter:
         estimated: bool = False,
     ) -> None:
         _report_to(self._meter, model, usage, estimated)
+
+    def progress(self, tokens: int) -> None:
+        """The stream produced *tokens* more so far (see ``UsageMeter.in_flight``)."""
+        if self._meter is not None and tokens:
+            self._meter.stream_progress(tokens)
 
 
 def estimate_tokens(text: str | None) -> int:

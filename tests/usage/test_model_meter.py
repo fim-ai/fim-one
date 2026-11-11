@@ -223,6 +223,41 @@ class TestAStreamedCall:
         (item,) = meter.drain()
         assert (item.total_tokens, item.estimated, item.calls) == (UNIT, False, 1)
 
+    async def test_while_it_streams_the_meter_holds_an_estimate_of_the_answer_so_far(
+        self, provider: Provider, meter: UsageMeter
+    ) -> None:
+        provider.text = "pong " * 40
+        seen: list[tuple[int, int]] = []
+        text = ""
+
+        async for chunk in _llm().stream_chat(MESSAGES):
+            text += chunk.delta_content or ""
+            seen.append((meter.in_flight(), meter.total()))
+
+        # It grows with the text, and nothing is counted until the end...
+        assert seen[0] == (estimate_tokens(provider.text[: len(provider.text) // 4]) - 0, 0) or (
+            seen[0][0] > 0 and seen[0][1] == 0
+        )
+        growing = [in_flight for in_flight, total in seen if total == 0]
+        assert growing == sorted(growing) and growing[-1] >= len(text) // 4 - 1
+        # ...when the call's own count replaces the estimate.
+        assert (meter.in_flight(), meter.total()) == (0, UNIT)
+
+    async def test_an_abandoned_stream_leaves_no_estimate_behind(
+        self, provider: Provider, meter: UsageMeter
+    ) -> None:
+        provider.text = "pong " * 40
+        stream = _llm().stream_chat(MESSAGES)
+        await stream.__anext__()
+        assert meter.in_flight() > 0
+
+        await stream.aclose()  # type: ignore[attr-defined]
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+        assert meter.in_flight() == 0
+        assert meter.total() > 0
+
     async def test_abandoned_by_its_reader_it_reports_an_estimate(
         self, provider: Provider, meter: UsageMeter
     ) -> None:

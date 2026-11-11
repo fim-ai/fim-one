@@ -68,6 +68,8 @@ class Provider:
     """What stands in for the provider; counts the calls that reached it."""
 
     text: str = field(default_factory=lambda: json.dumps(EVERY_ANSWER))
+    # What a streamed call answers, when it is to differ from ``text``.
+    stream_text: str | None = None
     calls: int = 0
     models: list[str] = field(default_factory=list)
     # Stream chunks carry no usage (a provider that sends none).
@@ -161,12 +163,13 @@ class Provider:
             yield chunk(tool_calls=[tool_call])
             yield chunk("tool_calls")
         else:
-            size = max(len(self.text) // self.pieces, 1)
-            for sent, start in enumerate(range(0, len(self.text), size)):
+            text = self.stream_text if self.stream_text is not None else self.text
+            size = max(len(text) // self.pieces, 1)
+            for sent, start in enumerate(range(0, len(text), size)):
                 if stall and sent == self.stall_after:
                     self.hung.set()
                     await asyncio.Event().wait()
-                piece = self.text[start : start + size]
+                piece = text[start : start + size]
                 self.streamed.append(piece)
                 yield chunk(content=piece)
                 if self.chunk_delay:

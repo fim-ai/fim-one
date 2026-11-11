@@ -707,19 +707,33 @@ class OpenAICompatibleLLM(BaseLLM):
             usage: dict[str, int] | None = None
             received: list[str] = []
             started = False
+            # What this stream has added to the meter's in-flight estimate:
+            # the scope can see the answer grow before the call reports.
+            ascii_chars = other_chars = in_flight = 0
             try:
                 async for chunk in chunks:
                     started = True
                     if chunk.usage:
                         usage = chunk.usage
-                    if chunk.delta_content:
-                        received.append(chunk.delta_content)
-                    if chunk.delta_reasoning:
-                        received.append(chunk.delta_reasoning)
-                    for call in chunk.tool_calls or ():
-                        received.append(json.dumps(call.arguments, default=str))
+                    pieces = [chunk.delta_content, chunk.delta_reasoning]
+                    pieces.extend(
+                        json.dumps(call.arguments, default=str) for call in chunk.tool_calls or ()
+                    )
+                    for piece in pieces:
+                        if not piece:
+                            continue
+                        received.append(piece)
+                        plain = sum(1 for ch in piece if ord(ch) < 128)
+                        ascii_chars += plain
+                        other_chars += len(piece) - plain
+                    so_far = int(ascii_chars / 4 + other_chars / 1.5)
+                    if so_far != in_flight:
+                        report.progress(so_far - in_flight)
+                        in_flight = so_far
                     yield chunk
             finally:
+                # The estimate goes; the call's own count takes its place.
+                report.progress(-in_flight)
                 if usage and usage.get("total_tokens"):
                     report(model, usage)
                 elif started:

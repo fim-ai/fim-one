@@ -164,6 +164,11 @@ class OpenMeter:
         """Tokens consumed in this scope so far, written or not."""
         return self.meter.total()
 
+    def used_so_far(self) -> int:
+        """:meth:`total`, plus an estimate of what the scope's streams in
+        flight have produced: the figure to hold against a quota mid-turn."""
+        return self.meter.total() + self.meter.in_flight()
+
     def enter(self) -> OpenMeter:
         """Make this the scope model calls report to, from here on in this context."""
         self._token = current_meter.set(self.meter)

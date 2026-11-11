@@ -225,7 +225,7 @@ Step 4 is the instance-wide cap for **No subscriptions**. Under **Paid only**, a
 ### Mid-stream enforcement
 
 - Pre-flight check at chat-call entry: cheapest path, blocks requests the user can't afford to start.
-- During streaming, the running token count is re-evaluated on every chunk. Crossing the cap closes the stream with a **structured terminator frame**, not a network error.
+- While an answer streams, the turn compares what the user had used when it started, plus what the turn itself has consumed so far (the calls that have finished, and an estimate of the answer being written), with the cap, about every 200 characters. No database query is made for this. Crossing the cap closes the stream with a **structured terminator frame**, not a network error. Usage from the same user's other tabs during the turn is seen by the next turn's pre-flight check.
 - The frontend interprets the terminator and surfaces `<QuotaExceededDialog>` with a deep link to `/settings?tab=billing`.
 - A request made when the quota is already used up is refused before any stream starts: HTTP `429` with `error_code` `token_quota_exceeded`. Under **Paid only**, a user with no plan gets HTTP `402` with `error_code` `subscription_required`.
 - The same pre-flight check guards the other endpoints that call a model: AI-assisted agent and connector create and refine, connector action generation, database chat and schema annotation, knowledge-base chat, starting an eval run, and every way of starting a workflow. What they consume counts against the quota like a chat turn does.

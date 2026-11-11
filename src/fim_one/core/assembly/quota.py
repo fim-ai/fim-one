@@ -108,13 +108,16 @@ async def quota_reset_at(user_id: str) -> datetime:
     return await get_quota_backend().reset_at(user_id)
 
 
-async def check_quota(principal: Principal) -> None:
+async def check_quota(principal: Principal) -> QuotaStatus:
     """Refuse a model call the principal's plan or quota does not cover.
 
     In order: ``subscription_required`` (402) when access is sold by plan
     and the user has none, then ``token_quota_exceeded`` (429). When the
     plan or the usage cannot be read the call is refused as
     ``quota_unavailable`` (503): an unknown is not a pass.
+
+    Returns the usage and cap the call was let through on, so that a long
+    turn can keep watching the cap without reading them again.
     """
     backend = get_quota_backend()
     try:
@@ -135,6 +138,7 @@ async def check_quota(principal: Principal) -> None:
         raise AssemblyRefusal(SUBSCRIPTION_REQUIRED, 402)
     if status.exhausted:
         raise AssemblyRefusal(TOKEN_QUOTA_EXCEEDED, 429)
+    return status
 
 
 class AssemblyRunGate:

@@ -31,7 +31,8 @@ from fim_one.core.assembly.quota import check_quota
 from fim_one.db.base import Base
 from fim_one.db.models import BillingPlan, SystemSetting, User
 from fim_one.db.models.usage_ledger import UsageLedger
-from fim_one.web.api.chat import _build_quota_terminator_payload
+from fim_one.core.usage.meter import OpenMeter
+from fim_one.web.api.chat import _build_quota_terminator_payload, _used_by_now
 from fim_one.web.services.quota_backend import next_month_reset, reset_at, usage_and_cap
 
 # ---------------------------------------------------------------------------
@@ -261,27 +262,33 @@ class TestNextMonthResetIso:
 
 
 class TestMidStreamGuardComposition:
-    """Smoke-test the composition that the streaming generator does:
-    fetch quota, decide whether to cut, then build the terminator."""
+    """Smoke-test the composition that the streaming generator does: what
+    the user had used when the turn was admitted plus what the turn's meter
+    holds, against the cap, then the terminator. (The guard itself is
+    driven end to end in ``tests/usage/test_midstream_guard.py``.)"""
 
     async def test_does_not_trigger_when_well_under_budget(
         self, factory: async_sessionmaker[AsyncSession]
     ) -> None:
         user = await _user(factory, user_quota=10_000, monthly_tokens=100)
-        used, cap = await usage_and_cap(user)
-        # Imagine 50 estimated completion tokens added on top.
-        assert not (cap > 0 and used + 50 >= cap)
+        admitted = await check_quota(provisional_principal(user))
+        turn = OpenMeter()
+        turn.meter.stream_progress(50)  # the answer so far, estimated
+        assert _used_by_now(admitted, turn) == 150 < admitted.cap
 
-    async def test_triggers_when_estimated_completion_pushes_over(
+    async def test_triggers_when_the_turn_pushes_over(
         self, factory: async_sessionmaker[AsyncSession]
     ) -> None:
         user = await _user(factory, user_quota=200, monthly_tokens=180)
-        used, cap = await usage_and_cap(user)
-        # 50 estimated completion tokens push us over 200.
-        assert cap > 0 and used + 50 >= cap
+        admitted = await check_quota(provisional_principal(user))
+        turn = OpenMeter()
+        turn.meter.add("main", {"total_tokens": 30})  # the turn's tool rounds
+        turn.meter.stream_progress(20)  # the answer so far, estimated
+        used = _used_by_now(admitted, turn)
+        assert used >= admitted.cap
         payload = _build_quota_terminator_payload(
-            monthly_tokens=used + 50,
-            user_quota=cap,
+            monthly_tokens=used,
+            user_quota=admitted.cap,
             reset_at="2026-07-01T00:00:00+00:00",
         )
         assert payload["tokens_used"] == 230
@@ -291,9 +298,9 @@ class TestMidStreamGuardComposition:
         self, factory: async_sessionmaker[AsyncSession]
     ) -> None:
         user = await _user(factory, user_quota=0, monthly_tokens=1_000_000)
-        used, cap = await usage_and_cap(user)
-        # cap == 0 short-circuits the guard regardless of usage.
-        assert not (cap > 0 and used + 50 >= cap)
+        admitted = await check_quota(provisional_principal(user))
+        # No cap: the guard never looks, whatever the usage.
+        assert admitted.unlimited
 
 
 class TestRunFailedPayload:

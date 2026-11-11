@@ -514,6 +514,18 @@ class TestTheMidStreamQuotaGuard:
             user.token_quota = self.QUOTA
             await db.commit()
 
+    @staticmethod
+    def _in_flight(chunk: str) -> None:
+        """What the model client does as a streamed call's text arrives: it
+        keeps the turn's meter up to date with an estimate of the answer so
+        far (four ASCII characters a token). The scripted model of these
+        tests is not that client, so the stand-in stream does it."""
+        from fim_one.core.model.usage import current_meter, estimate_tokens
+
+        meter = current_meter.get()
+        assert meter is not None, "the answer is streamed outside the turn's usage meter"
+        meter.stream_progress(estimate_tokens(chunk))
+
     def _assert_stopped(self, body: str) -> None:
         events = _payloads(body)
         streamed = sum(
@@ -521,8 +533,9 @@ class TestTheMidStreamQuotaGuard:
             for name, data in events
             if name == "answer" and data.get("status") == "delta"
         )
-        # Cut at the first check after the estimate reaches the limit
-        # (4 characters a token, checked every 200 characters), not at the end.
+        # Cut at the first check after what the turn's meter holds reaches
+        # the limit (4 characters a token, checked every 200 characters),
+        # not at the end.
         assert self.QUOTA * 4 <= streamed <= self.QUOTA * 4 + 200, streamed
         assert streamed < self.CHUNKS * len(self.CHUNK)
         (terminator,) = [data for name, data in events if name == "error"]
@@ -542,6 +555,7 @@ class TestTheMidStreamQuotaGuard:
     ) -> None:
         async def _long(_self: Any, *_args: Any, **_kwargs: Any) -> AsyncIterator[str]:
             for _ in range(self.CHUNKS):
+                self._in_flight(self.CHUNK)
                 yield self.CHUNK
 
         monkeypatch.setattr(ReActAgent, "stream_answer", _long)
@@ -562,6 +576,7 @@ class TestTheMidStreamQuotaGuard:
 
         async def _long(_self: Any, *_args: Any, **_kwargs: Any) -> AsyncIterator[str]:
             for _ in range(self.CHUNKS):
+                self._in_flight(self.CHUNK)
                 yield self.CHUNK
 
         monkeypatch.setattr(chat_mod.PlanAnalyzer, "stream_synthesize", _long)
@@ -584,6 +599,7 @@ class TestTheMidStreamQuotaGuard:
 
         async def _short(_self: Any, *_args: Any, **_kwargs: Any) -> AsyncIterator[str]:
             for _ in range(10):
+                self._in_flight(self.CHUNK)
                 yield self.CHUNK
 
         monkeypatch.setattr(ReActAgent, "stream_answer", _short)
