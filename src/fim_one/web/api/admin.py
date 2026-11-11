@@ -379,13 +379,17 @@ async def get_stats(
             token_label_counts[_model_label(usage_slice.model or "Unknown")] += (
                 usage_slice.total_tokens
             )
+    # A slice is negative where adjustments outweigh usage; it stays in, so
+    # the slices add up to the total. Only the totals are clamped.
     tokens_by_model = [
         ModelStat(model=label, count=count)
         for label, count in token_label_counts.most_common(10)
-        if count > 0
+        if count != 0
     ]
-    if total_fast_llm_tokens > 0:
+    if total_fast_llm_tokens != 0:
         tokens_by_model.append(ModelStat(model=fast_label, count=total_fast_llm_tokens))
+    total_tokens = max(total_tokens, 0)
+    total_fast_llm_tokens = max(total_fast_llm_tokens, 0)
 
     # Top agents by conversation count (top 5), joined to get agent name
     agent_rows = await db.execute(

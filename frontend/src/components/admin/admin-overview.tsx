@@ -132,7 +132,11 @@ export function AdminOverview() {
   }
 
   const topModels = stats
-    ? [...(stats.tokens_by_model ?? stats.conversations_by_model)].sort((a, b) => b.count - a.count).slice(0, 5)
+    ? [...(stats.tokens_by_model ?? stats.conversations_by_model)]
+        // A slice can be negative (adjustments); a pie cannot draw it.
+        .filter((m) => m.count > 0)
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5)
     : []
 
   const topAgents = stats ? stats.top_agents.slice(0, 5) : []

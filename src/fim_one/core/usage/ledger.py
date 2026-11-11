@@ -226,7 +226,9 @@ def usage_per_user_subquery(since: datetime | None = None) -> Any:
 async def used_by_day(db: AsyncSession, user_id: str, since: datetime) -> list[tuple[str, int]]:
     """*user_id*'s usage from *since* on per day it was recorded, oldest first.
 
-    The day is the UTC date, as ``YYYY-MM-DD``.
+    The day is the UTC date, as ``YYYY-MM-DD``. A day is the plain sum of
+    its rows, negative when its adjustments outweigh its usage, so the days
+    add up to the window's total; clamp the total, not the days.
     """
     from sqlalchemy import func, select
 
@@ -241,7 +243,7 @@ async def used_by_day(db: AsyncSession, user_id: str, since: datetime) -> list[t
             .order_by(day)
         )
     ).all()
-    return [(str(found), max(int(total or 0), 0)) for found, total in rows]
+    return [(str(found), int(total or 0)) for found, total in rows]
 
 
 @dataclass(frozen=True)
@@ -376,7 +378,12 @@ async def used_by(
     until: datetime | None = None,
 ) -> list[UsageSlice]:
     """Tokens recorded by everyone in the window, grouped by the dimensions
-    in *by*. Ordered by day when grouped by day."""
+    in *by*. Ordered by day when grouped by day.
+
+    A slice is the plain sum of its rows, negative when its adjustments
+    outweigh its usage, so the slices add up to :func:`used_between` over
+    the same window. Clamp the totals shown, not the slices.
+    """
     from sqlalchemy import case, func, select
 
     from fim_one.db.models.usage_ledger import UsageLedger
@@ -406,7 +413,7 @@ async def used_by(
         values = dict(zip(keys, row[:-1], strict=True))
         slices.append(
             UsageSlice(
-                total_tokens=max(int(row[-1] or 0), 0),
+                total_tokens=int(row[-1] or 0),
                 day=str(values["day"]) if "day" in values else None,
                 model=values.get("model"),
                 agent_id=values.get("agent"),

@@ -554,6 +554,47 @@ class TestDashboard:
 
 
 # ---------------------------------------------------------------------------
+# A slice below zero
+# ---------------------------------------------------------------------------
+
+
+class TestANegativeSlice:
+    """An adjustment can outweigh the usage of its slice (here a model with
+    no usage in the window). The slices are not clamped one by one, only
+    the totals, so every page that shows the same window shows the same
+    number."""
+
+    async def test_the_pages_agree(self, usage: Usage, alice: User, root: User) -> None:  # noqa: F811
+        from fim_one.db.models.usage_ledger import UsageLedger
+
+        recent = datetime.now(UTC) - timedelta(hours=1)
+        await usage.add(
+            UsageLedger(user_id=alice.id, source_type="conversation", entry="chat",
+                        model="model-a", total_tokens=100, created_at=recent),
+            UsageLedger(user_id=alice.id, source_type="conversation", entry="chat",
+                        model="model-b", total_tokens=-30, kind="adjustment",
+                        created_at=recent),
+            UsageLedger(user_id=alice.id, source_type="conversation", entry="background",
+                        model=None, kind="backfill", total_tokens=20, created_at=recent),
+        )  # fmt: skip
+        net = 100 - 30 + 20
+
+        stats = await _get(usage, "/api/admin/stats", root)
+        assert stats["total_tokens"] == net
+        assert sum(slice_["count"] for slice_ in stats["tokens_by_model"]) == net
+        projection = await _get(usage, "/api/admin/analytics/cost-projection", root)
+        assert projection["trailing_7d_tokens"] == net
+        trend = await _get(usage, "/api/admin/analytics/trends", root)
+        assert sum(day["total_tokens"] for day in trend) == net
+        overview = (await _get(usage, "/api/metrics/overview?period=7d", root))["data"]
+        split = overview["token_usage"]
+        assert split["total_input"] + split["total_output"] == net
+        dashboard = await _get(usage, "/api/dashboard/stats", alice)
+        assert dashboard["total_tokens"] == net
+        assert sum(day["tokens"] for day in dashboard["activity_trend"]) == net
+
+
+# ---------------------------------------------------------------------------
 # The gate
 # ---------------------------------------------------------------------------
 

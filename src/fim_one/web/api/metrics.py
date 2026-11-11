@@ -179,6 +179,7 @@ async def get_metrics_overview(
             total_output += usage_slice.total_tokens
         else:
             total_input += usage_slice.total_tokens
+    total_input, total_output = max(total_input, 0), max(total_output, 0)
 
     # -- Active users --------------------------------------------------------
     active_users = (
@@ -267,7 +268,7 @@ async def get_token_usage(
     result = TokenUsageResponse(
         daily=daily,
         by_model=by_model,
-        total=TokenUsageTotals(input=grand_input, output=grand_output),
+        total=TokenUsageTotals(input=max(grand_input, 0), output=max(grand_output, 0)),
     )
     return ApiResponse(data=result.model_dump())
 
