@@ -30,7 +30,7 @@ import { useChatDraft, NEW_CHAT_DRAFT_KEY, type ChatDraft } from "@/hooks/use-ch
 import { useStateWithRef } from "@/hooks/use-state-with-ref"
 import { useAuth } from "@/contexts/auth-context"
 import { useConversation } from "@/contexts/conversation-context"
-import { agentApi, fileApi, chatApi, modelApi, conversationApi, ApiError } from "@/lib/api"
+import { agentApi, fileApi, chatApi, modelApi, ApiError } from "@/lib/api"
 import { getApiBaseUrl, getApiDirectUrl, ACCESS_TOKEN_KEY } from "@/lib/constants"
 import { cn, formatFileSize, isDocumentFile, isImageFile } from "@/lib/utils"
 import {
@@ -137,8 +137,6 @@ export function PlaygroundPage({ isNewChat, embedded, initialAgentId, onTurnComp
     reconcileActiveDetail,
     animateTitle,
     clearActive,
-    businessRef,
-    setBusinessRef,
   } = useConversation()
 
   const [mode, setMode] = useState<AgentMode>("react")
@@ -273,25 +271,6 @@ export function PlaygroundPage({ isNewChat, embedded, initialAgentId, onTurnComp
     }
   }, [authLoading, user]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ?business_ref=<id> (a host system opening the chat for one business
-  // object): the sidebar lists only that object's conversations, the most
-  // recently active one is resumed, and without one the first message starts
-  // a new conversation carrying the reference. Read once at mount.
-  const businessRefInitRef = useRef(false)
-  useEffect(() => {
-    if (embedded || businessRefInitRef.current || authLoading || !user) return
-    businessRefInitRef.current = true
-    const ref = searchParams.get("business_ref")?.trim() || null
-    setBusinessRef(ref)
-    if (!ref || searchParams.get("c")) return
-    conversationApi
-      .latestForRef(ref)
-      .then((conv) => {
-        if (conv) selectConversation(conv.id)
-      })
-      .catch((err) => toast.error(getErrorMessage(err, tError)))
-  }, [authLoading, user]) // eslint-disable-line react-hooks/exhaustive-deps
-
   // State -> URL: sync activeId to URL search param (use history API to avoid RSC flight request)
   // Skip the first run -- on mount activeId is null but URL may have ?c=xxx from direct navigation
   const urlSyncSkipRef = useRef(true)
@@ -304,9 +283,7 @@ export function PlaygroundPage({ isNewChat, embedded, initialAgentId, onTurnComp
     }
     if (activeId) {
       // When conversation is created (e.g. from /new), always navigate to /?c=<id>
-      const targetUrl = businessRef
-        ? `/?c=${activeId}&business_ref=${encodeURIComponent(businessRef)}`
-        : `/?c=${activeId}`
+      const targetUrl = `/?c=${activeId}`
       const currentUrl = window.location.pathname + window.location.search
       if (targetUrl !== currentUrl) {
         window.history.replaceState(null, "", targetUrl)

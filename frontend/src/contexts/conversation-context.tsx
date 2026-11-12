@@ -30,13 +30,6 @@ interface ConversationContextValue {
    * Playground watches this; reconcile/create do not bump it.
    */
   composerFocusKey: number
-  /**
-   * Business reference the chat page was opened with (`?business_ref=`).
-   * While set, the sidebar lists only conversations carrying it and new
-   * conversations are created with it.
-   */
-  businessRef: string | null
-  setBusinessRef: (ref: string | null) => void
   loadConversations: () => Promise<void>
   selectConversation: (id: string) => Promise<void>
   /**
@@ -77,7 +70,6 @@ export function ConversationProvider({
   const [isLoadingDetail, setIsLoadingDetail] = useState(false)
   const [typingTitles, setTypingTitles] = useState<Record<string, string>>({})
   const [composerFocusKey, setComposerFocusKey] = useState(0)
-  const [businessRef, setBusinessRef] = useState<string | null>(null)
   const animationTimers = useRef<Record<string, ReturnType<typeof setInterval>>>({})
 
   const bumpComposerFocus = useCallback(() => {
@@ -87,7 +79,7 @@ export function ConversationProvider({
   const loadConversations = useCallback(async () => {
     setIsLoadingList(true)
     try {
-      const res = await conversationApi.list(1, 20, undefined, businessRef ?? undefined)
+      const res = await conversationApi.list(1, 20)
       setConversations(res.items)
     } catch (err) {
       console.error("Failed to load conversations:", err)
@@ -95,7 +87,7 @@ export function ConversationProvider({
     } finally {
       setIsLoadingList(false)
     }
-  }, [businessRef])
+  }, [])
 
   // Load when user changes
   useEffect(() => {
@@ -145,18 +137,13 @@ export function ConversationProvider({
 
   const createConversation = useCallback(
     async (mode: "react" | "dag" | "auto", title?: string, agentId?: string) => {
-      const conv = await conversationApi.create({
-        mode,
-        title,
-        agent_id: agentId,
-        business_ref: businessRef ?? undefined,
-      })
+      const conv = await conversationApi.create({ mode, title, agent_id: agentId })
       setConversations((prev) => [conv, ...prev])
       setActiveId(conv.id)
       setActiveConversation({ ...conv, messages: [] })
       return conv
     },
-    [businessRef],
+    [],
   )
 
   const deleteConversation = useCallback(
@@ -260,8 +247,6 @@ export function ConversationProvider({
         isLoadingDetail,
         typingTitles,
         composerFocusKey,
-        businessRef,
-        setBusinessRef,
         loadConversations,
         selectConversation,
         reconcileActiveDetail,
