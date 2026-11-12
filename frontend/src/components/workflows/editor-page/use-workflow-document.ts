@@ -274,6 +274,9 @@ export function useWorkflowDocument({
         // they were made, and each must send the document as it then is.
         while (inFlightRef.current) await inFlightRef.current
         if (suspendedRef.current) return false
+        // An automatic save that waited its turn behind another request
+        // while the question came up: held like one not yet started.
+        if (!manual && autoSaveHeldRef.current) return false
         const wf = workflowRef.current
         if (!wf) return false
 

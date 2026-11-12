@@ -600,6 +600,31 @@ describe("useWorkflowDocument", () => {
       expect(result.current.isDirty).toBe(false)
     })
 
+    it("an automatic save waiting behind a slow request is held too", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      vi.useFakeTimers()
+      const slow = deferred<WorkflowResponse>()
+      api.update.mockReturnValueOnce(slow.promise)
+      act(() => result.current.changeBlueprint(canvasOf("second")))
+      let saving: Promise<unknown> = Promise.resolve()
+      act(() => {
+        saving = result.current.save()
+      })
+      // Edited while that request is out; the automatic save comes due and waits.
+      act(() => result.current.changeBlueprint(canvasOf("third")))
+      await act(() => vi.advanceTimersByTimeAsync(6000))
+      expect(api.update).toHaveBeenCalledTimes(1)
+
+      act(() => result.current.holdAutoSave())
+      await act(async () => {
+        slow.resolve(workflowWith(canvasOf("second")))
+        await saving
+      })
+      await act(() => vi.advanceTimersByTimeAsync(20000))
+      expect(api.update).toHaveBeenCalledTimes(1)
+      expect(result.current.isDirty).toBe(true)
+    })
+
     it("saves itself again once the user chose to stay", async () => {
       const { result } = await mountDocument(canvasOf("first"))
       vi.useFakeTimers()
