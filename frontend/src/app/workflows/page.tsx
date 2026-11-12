@@ -112,8 +112,8 @@ function WorkflowsPageInner() {
       const updated = await workflowApi.resubmit(id)
       setWorkflows((prev) => prev.map((w) => (w.id === id ? updated : w)))
       toast.success(to("resubmitSuccess"))
-    } catch {
-      toast.error(to("resubmitFailed"))
+    } catch (err) {
+      toastWorkflowError(err, to("resubmitFailed"), tError, t)
     }
   }
 
@@ -140,8 +140,8 @@ function WorkflowsPageInner() {
       await workflowApi.delete(id)
       setWorkflows((prev) => prev.filter((w) => w.id !== id))
       toast.success(t("workflowDeleted"))
-    } catch {
-      toast.error(t("workflowDeleteFailed"))
+    } catch (err) {
+      toastWorkflowError(err, t("workflowDeleteFailed"), tError, t)
     }
   }
 
@@ -156,8 +156,10 @@ function WorkflowsPageInner() {
       })
       setWorkflows((prev) => prev.map((w) => (w.id === id ? updated : w)))
       toast.success(t("workflowPublished"))
-    } catch {
-      toast.error(t("workflowPublishFailed"))
+    } catch (err) {
+      // The refusal names what blocks the publish (a step, an assignee);
+      // the bare "failed" would leave the user guessing.
+      toastWorkflowError(err, t("workflowPublishFailed"), tError, t)
     }
   }
 
@@ -169,8 +171,8 @@ function WorkflowsPageInner() {
       const updated = await workflowApi.unpublish(id)
       setWorkflows((prev) => prev.map((w) => (w.id === id ? updated : w)))
       toast.success(t("workflowUnpublished"))
-    } catch {
-      toast.error(t("workflowUnpublishFailed"))
+    } catch (err) {
+      toastWorkflowError(err, t("workflowUnpublishFailed"), tError, t)
     }
   }
 
