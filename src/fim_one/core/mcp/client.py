@@ -268,7 +268,14 @@ class MCPClient:
 
         # Defense-in-depth: validate command even if caller already checked
         from fim_one.core.security import validate_stdio_command
+        from fim_one.core.security.host_access import local_execution_refusal
         validate_stdio_command(command)
+
+        # A stdio server is a command run next to the application: none is
+        # started while this container can reach a container runtime.
+        refusal = await asyncio.to_thread(local_execution_refusal)
+        if refusal is not None:
+            raise RuntimeError(refusal)
 
         server_params = StdioServerParameters(
             command=command,

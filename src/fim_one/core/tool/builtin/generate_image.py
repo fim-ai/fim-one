@@ -94,7 +94,9 @@ class GenerateImageTool(BaseTool):
         # Snapshot files before generation for artifact detection.
         before: set[str] = set()
         if self._artifacts_dir:
-            before = {f.name for f in self._output_dir.iterdir() if f.is_file()}
+            from ..artifact_utils import list_file_names
+
+            before = list_file_names(self._output_dir)
 
         from fim_one.core.image_gen import get_image_gen
 

@@ -502,3 +502,204 @@ class TestDockerBackendShell:
             "sleep 60", sandbox_dir=self.sandbox_dir, timeout=3
         )
         assert result.timed_out
+
+
+# ---------------------------------------------------------------------------
+# What the docker backend asks the daemon for
+# ---------------------------------------------------------------------------
+
+
+class TestDockerBackendCommand:
+    """The sandbox proxy only lets through what is built here; keep them in step."""
+
+    @pytest.fixture()
+    def commands(self, monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
+        seen: list[list[str]] = []
+
+        async def _spawn(*cmd: str, **_kwargs: Any) -> Any:
+            seen.append(list(cmd))
+            proc = MagicMock()
+            proc.communicate = AsyncMock(return_value=(b"", b""))
+            proc.returncode = 0
+            return proc
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", _spawn)
+        return seen
+
+    def _backend(self, base: Path, **kwargs: Any) -> DockerBackend:
+        kwargs.setdefault("sandbox_user", "10001:10001")
+        return DockerBackend(
+            host_data_dir="/srv/fim/data",
+            container_data_dir=str(base.parent),
+            sandbox_base=base,
+            **kwargs,
+        )
+
+    @staticmethod
+    def _value(cmd: list[str], flag: str) -> str:
+        return cmd[cmd.index(flag) + 1]
+
+    async def test_a_subdirectory_is_reached_through_the_workspace(
+        self, tmp_path: Path, commands: list[list[str]]
+    ) -> None:
+        """The workspace is what is mounted; a directory below it is entered."""
+        base = tmp_path / "data" / "sandbox"
+        workspace = base / "conv-1" / "workspace"
+        backend = self._backend(base)
+
+        await backend.run_shell("ls", sandbox_dir=workspace / "sub" / "dir", timeout=5)
+        result = await backend.run_code(
+            "print(1)", language="python", exec_dir=workspace, timeout=5
+        )
+
+        shell, code = commands
+        mount = "/srv/fim/data/sandbox/conv-1/workspace:/workspace"
+        assert self._value(shell, "-v") == mount and self._value(code, "-v") == mount
+        assert self._value(shell, "-w") == "/workspace/sub/dir"
+        assert self._value(code, "-w") == "/workspace"
+        assert result.script_path is not None
+        assert code[-1] == f"/workspace/{result.script_path.name}"
+
+    async def test_the_conversation_directory_itself_is_never_mounted(
+        self, tmp_path: Path, commands: list[list[str]]
+    ) -> None:
+        """Only the workspace is mounted, never the directory above it."""
+        base = tmp_path / "data" / "sandbox"
+        backend = self._backend(base)
+
+        outside = await backend.run_shell("ls", sandbox_dir=base / "conv-1", timeout=5)
+        sibling = await backend.run_shell("ls", sandbox_dir=base / "conv-1" / "exec", timeout=5)
+
+        assert commands == []
+        assert "workspace" in (outside.error or "") and "workspace" in (sibling.error or "")
+
+    async def test_a_symlink_out_of_the_workspace_is_not_followed(
+        self, tmp_path: Path, commands: list[list[str]]
+    ) -> None:
+        base = tmp_path / "data" / "sandbox"
+        workspace = base / "conv-1" / "workspace"
+        workspace.mkdir(parents=True)
+        (base / "conv-2" / "workspace").mkdir(parents=True)
+        (workspace / "exec").symlink_to("/")
+        (workspace / "sub").symlink_to(base / "conv-2" / "workspace")
+        backend = self._backend(base)
+
+        code = await backend.run_code(
+            "print(1)", language="python", exec_dir=workspace / "exec", timeout=5
+        )
+        shell = await backend.run_shell("ls", sandbox_dir=workspace / "sub", timeout=5)
+
+        assert commands == []
+        assert "outside its sandbox" in (code.error or "")
+        assert "outside its sandbox" in (shell.error or "")
+        assert not list(Path("/").glob("script_*.py"))
+
+    async def test_a_workspace_that_is_itself_a_symlink_is_refused(
+        self, tmp_path: Path, commands: list[list[str]]
+    ) -> None:
+        base = tmp_path / "data" / "sandbox"
+        (base / "other").mkdir(parents=True)
+        (base / "other" / "workspace").symlink_to("/")
+
+        result = await self._backend(base).run_shell(
+            "ls", sandbox_dir=base / "other" / "workspace", timeout=5
+        )
+
+        assert commands == [] and "symlink" in (result.error or "")
+
+    async def test_the_script_is_not_written_through_a_symlink(
+        self, tmp_path: Path, commands: list[list[str]], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The script is created as a new regular file."""
+        import fim_one.core.tool.sandbox.docker_backend as module
+
+        base = tmp_path / "data" / "sandbox"
+        workspace = base / "conv-1" / "workspace"
+        workspace.mkdir(parents=True)
+        outside = tmp_path / "outside.py"
+        outside.write_text("original")
+        monkeypatch.setattr(module.uuid, "uuid4", lambda: MagicMock(hex="0123456789abcdef"))
+        (workspace / "script_01234567.py").symlink_to(outside)
+
+        result = await self._backend(base).run_code(
+            "print(1)", language="python", exec_dir=workspace, timeout=5
+        )
+
+        assert commands == [] and result.error
+        assert outside.read_text() == "original"
+
+    async def test_no_network_for_shell_or_code(
+        self, tmp_path: Path, commands: list[list[str]]
+    ) -> None:
+        """Shell and code containers alike."""
+        base = tmp_path / "data" / "sandbox"
+        workspace = base / "conv-1" / "workspace"
+        backend = self._backend(base)
+
+        await backend.run_shell("ls", sandbox_dir=workspace, timeout=5)
+        await backend.run_code("print(1)", language="python", exec_dir=workspace, timeout=5)
+
+        assert all("--network=none" in cmd for cmd in commands) and len(commands) == 2
+
+    async def test_a_shell_joins_only_the_network_the_operator_named(
+        self, tmp_path: Path, commands: list[list[str]]
+    ) -> None:
+        base = tmp_path / "data" / "sandbox"
+        workspace = base / "conv-1" / "workspace"
+        backend = self._backend(base, shell_network="fim-egress")
+
+        await backend.run_shell("ls", sandbox_dir=workspace, timeout=5)
+        await backend.run_code("print(1)", language="python", exec_dir=workspace, timeout=5)
+
+        shell, code = commands
+        assert "--network=fim-egress" in shell and "--network=none" in code
+
+    async def test_containers_are_hardened_and_run_as_the_given_user(
+        self, tmp_path: Path, commands: list[list[str]]
+    ) -> None:
+        base = tmp_path / "data" / "sandbox"
+
+        await self._backend(base, pids_limit=128).run_shell(
+            "ls", sandbox_dir=base / "conv-1" / "workspace", timeout=5
+        )
+
+        (cmd,) = commands
+        assert self._value(cmd, "--security-opt") == "no-new-privileges"
+        assert self._value(cmd, "--user") == "10001:10001"
+        assert "--cap-drop=ALL" in cmd and "--pids-limit=128" in cmd
+        assert "--privileged" not in cmd and cmd.count("-v") == 1
+
+    async def test_what_is_built_passes_the_proxy(
+        self, tmp_path: Path, commands: list[list[str]]
+    ) -> None:
+        """The mount and the flags, as the proxy's policy reads them."""
+        from fim_one.core.tool.sandbox.docker_proxy import Policy
+
+        base = tmp_path / "data" / "sandbox"
+        backend = self._backend(base)
+        await backend.run_shell(
+            "ls", sandbox_dir=base / "conv-1" / "workspace" / "sub", timeout=5
+        )
+        (cmd,) = commands
+        policy = Policy(images=frozenset({"python:3.11-slim"}), sandbox_root="/srv/fim/data/sandbox")
+        flags = {item.split("=", 1)[0]: item.split("=", 1)[1] for item in cmd if "=" in item}
+
+        reason = policy.check_container(
+            {
+                "Image": cmd[-2],
+                "User": self._value(cmd, "--user"),
+                "WorkingDir": self._value(cmd, "-w"),
+                "HostConfig": {
+                    "Binds": [self._value(cmd, "-v")],
+                    "SecurityOpt": [self._value(cmd, "--security-opt")],
+                    "CapDrop": [flags["--cap-drop"]],
+                    "NetworkMode": flags["--network"],
+                    "PidsLimit": int(flags["--pids-limit"]),
+                    "Memory": 256 * 1024 * 1024,
+                    "NanoCpus": int(float(flags["--cpus"]) * 10**9),
+                    "AutoRemove": True,
+                },
+            }
+        )
+
+        assert reason is None

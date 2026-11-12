@@ -44,8 +44,19 @@ RUN pnpm build
 # ---------------------------------------------------------------------------
 FROM python:3.11-slim AS runtime
 
-# Docker CLI — enables CODE_EXEC_BACKEND=docker (runs sandboxed code via host Docker)
-COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
+# No Docker CLI in this image. With CODE_EXEC_BACKEND=docker the application
+# talks to the sandbox proxy itself (DOCKER_HOST=tcp://docker-socket-proxy:2375,
+# see core/tool/sandbox/docker_api.py); it is never given the Docker daemon's
+# socket, and nothing it starts has a `docker` to run.
+
+# Unprivileged users. The API (and anything it starts: stdio MCP servers,
+# the local code-execution backend) runs as `fim`; the Next.js frontend as
+# `fimweb`. Fixed ids so that the ownership of ./data and ./uploads on the
+# host is predictable.
+RUN groupadd --gid 10001 fim \
+    && useradd --uid 10001 --gid fim --home-dir /home/fim --create-home --shell /usr/sbin/nologin fim \
+    && groupadd --gid 10002 fimweb \
+    && useradd --uid 10002 --gid fimweb --home-dir /home/fimweb --create-home --shell /usr/sbin/nologin fimweb
 
 # Copy Node.js binary from build stage (avoids apt-get network issues)
 COPY --from=frontend-build /usr/local/bin/node /usr/local/bin/node
@@ -79,9 +90,33 @@ COPY scripts/fetch_export_fonts.py /tmp/fetch_export_fonts.py
 RUN python /tmp/fetch_export_fonts.py /usr/share/fonts/truetype/fim-one \
     && rm /tmp/fetch_export_fonts.py
 
+# The sandbox proxy: one standard-library file, run by the
+# `docker-socket-proxy` service from this same image (no application import).
+COPY src/fim_one/core/tool/sandbox/docker_proxy.py /app/docker_proxy.py
+
 # Copy entrypoint
 COPY docker-entrypoint.sh /app/
 RUN chmod +x /app/docker-entrypoint.sh
+
+# The key store logic the entrypoint runs as root (standard library only).
+COPY src/fim_one/core/security/container_keys.py /app/container_keys.py
+
+# What the unprivileged users may write besides the mounted volumes:
+#   /app/tmp              scratch space of tools used outside a conversation
+#   frontend build cache  Next.js image and fetch cache
+# The key store (/var/lib/fim-one/secrets) is root's and private: keys that
+# are not set in the environment are kept there, outside data/ (which the
+# API's user owns), so that user can neither read nor replace them. Mount a
+# volume on it (the bundled compose file does) or the keys go with the
+# container.
+RUN mkdir -p /app/tmp /app/data /app/uploads /app/frontend/.next-build/cache \
+        /var/lib/fim-one/secrets \
+    && chown fim:fim /app/tmp /app/data /app/uploads \
+    && chown -R fimweb:fimweb /app/frontend/.next-build/cache \
+    && chmod 700 /var/lib/fim-one/secrets
+
+# Tells the application it runs in a container (core/security/host_access.py).
+ENV FIM_IN_CONTAINER=1
 
 # Put the venv on PATH so `uvicorn`, `alembic` etc. are available
 ENV PATH="/app/.venv/bin:$PATH"
@@ -95,4 +130,6 @@ RUN python -m compileall -b /app/src/fim_one/ \
 
 EXPOSE 3000
 
+# The entrypoint starts as root only to fix the ownership of the mounted
+# volumes, then drops to `fim` / `fimweb` for everything it runs.
 CMD ["/app/docker-entrypoint.sh"]

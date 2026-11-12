@@ -52,3 +52,6 @@ evals/.eval-metrics.json
 # PDF-export CJK font, fetched by scripts/fetch_export_fonts.py
 assets/fonts/
 .env.bak*
+
+# Written by deploy.sh once it has removed the earlier proxy's unlabelled sandboxes.
+/.deploy-swept-unlabelled

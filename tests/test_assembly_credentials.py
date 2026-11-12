@@ -477,14 +477,26 @@ class TestMcpServerThatStoresNothing:
         assert refusal.error_code == "credential_required"
 
     async def test_a_key_the_user_brought_is_still_used(self, session: AsyncSession) -> None:
-        await _save_mcp(session, OTHER, env={"API_KEY": "mine"})
+        """Over HTTP. (A stdio server takes only the variables its owner declared.)"""
+        await _save_mcp(session, OTHER, headers={"Authorization": "Bearer mine"})
+        server = self._bare(allow_fallback=False)
+        server.transport = "streamable_http"
 
-        got = await resolve_credential(
-            session, provisional_principal(OTHER), self._bare(allow_fallback=False)
-        )
+        got = await resolve_credential(session, provisional_principal(OTHER), server)
 
         assert got.source is CredentialSource.PERSONAL
-        assert got.env == {"API_KEY": "mine"}
+        assert got.headers == {"Authorization": "Bearer mine"}
+
+    async def test_a_variable_the_stdio_server_did_not_declare_is_refused(
+        self, session: AsyncSession
+    ) -> None:
+        """The environment decides what the command loads: it is the owner's to list."""
+        await _save_mcp(session, OTHER, env={"API_KEY": "mine"})
+
+        refusal = await _refusal(session, OTHER, self._bare(allow_fallback=False))
+
+        assert refusal.error_code == "stdio_mcp_env_not_allowed"
+        assert "API_KEY" in refusal.detail
 
 
 class TestMcpServerWhoseAddressCarriesACredential:

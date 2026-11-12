@@ -202,6 +202,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
     """
     import asyncio
 
+    # Each worker process: its /proc entries (environment, memory) are not
+    # for the commands it starts to read. No-op outside Linux.
+    from fim_one.core.security.host_access import harden_process
+
+    harden_process()
+    # The sandbox proxy's token: out of the environment before anything is
+    # started that would inherit it.
+    from fim_one.core.tool.sandbox import take_proxy_token
+
+    take_proxy_token()
+
     from fim_one.db import init_db, shutdown_db
     from fim_one.core.model import close_shared_http_client
     from fim_one.core.workflow.scheduler import WorkflowScheduler
@@ -302,7 +313,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
     # Graceful shutdown: stop sweepers, scheduler, then dispose the DB.
     # Each wait is bounded: a loop that does not end is logged and left,
     # and the shutdown goes on (core.utils.stop_background).
+    from fim_one.core.tool.sandbox.docker_backend import finish_cleanups
     from fim_one.core.utils import stop_background
+
+    # First: sandbox containers whose run ended early and whose removal is
+    # still under way are not left behind by the exit. Done before the other
+    # stops, which can take their full bounds, so that a stop signal's grace
+    # period is not spent before these removals get their turn.
+    await finish_cleanups(timeout=10)
 
     await stop_background(
         subscription_lifecycle_task, timeout=10, name="Subscription lifecycle loop"
@@ -329,6 +347,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
         scheduler_task, timeout=35, name="Workflow scheduler", cancel=False
     ):
         await stop_background(scheduler_task, timeout=5, name="Workflow scheduler")
+    # Removals that the stops above set off (runs they cut short); returns
+    # at once when there are none.
+    await finish_cleanups(timeout=5)
     await close_shared_http_client()
     # Usage metered and not yet written (turns and runs cut short by the
     # shutdown, background writes in flight) goes to the ledger first.

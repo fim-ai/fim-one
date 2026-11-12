@@ -30,10 +30,28 @@ __all__ = [
     "SandboxBackend",
     "LocalBackend",
     "DockerBackend",
+    "take_proxy_token",
 ]
 
 # Module-level singleton — created once on first call.
 _backend: SandboxBackend | None = None
+
+_proxy_token: str | None = None
+
+
+def take_proxy_token() -> str | None:
+    """The sandbox proxy's token, taken out of the process environment.
+
+    The entrypoint hands it over as ``SANDBOX_PROXY_TOKEN``. It is kept in
+    memory from the first call on and removed from ``os.environ``, so that
+    nothing the application starts (a stdio MCP server, a local-backend
+    command, the Docker CLI's own children) inherits it by accident.
+    """
+    global _proxy_token
+    taken = os.environ.pop("SANDBOX_PROXY_TOKEN", None)
+    if taken:
+        _proxy_token = taken.strip() or None
+    return _proxy_token
 
 
 def get_sandbox_backend() -> SandboxBackend:
@@ -59,6 +77,17 @@ def get_sandbox_backend() -> SandboxBackend:
                 default_memory=os.environ.get("DOCKER_MEMORY", "256m"),
                 default_cpu=float(os.environ.get("DOCKER_CPUS", "0.5")),
                 host_data_dir=host_data_dir,
+                sandbox_user=os.environ.get("DOCKER_SANDBOX_USER") or None,
+                shell_network=os.environ.get("DOCKER_SHELL_NETWORK") or None,
+                pids_limit=int(os.environ.get("DOCKER_PIDS_LIMIT", "256")),
+                proxy_token=take_proxy_token(),
+                # tcp://: the sandbox proxy. The backend then talks to it
+                # itself; no Docker CLI, no child that carries the token.
+                proxy_endpoint=(
+                    os.environ.get("DOCKER_HOST")
+                    if os.environ.get("DOCKER_HOST", "").startswith("tcp://")
+                    else None
+                ),
             )
             logger.info("Sandbox backend: docker (python=%s, node=%s, shell=%s, host_data_dir=%s)",
                         os.environ.get("DOCKER_PYTHON_IMAGE", "python:3.11-slim"),
@@ -68,4 +97,19 @@ def get_sandbox_backend() -> SandboxBackend:
         else:
             _backend = LocalBackend()
             logger.info("Sandbox backend: local (in-process exec, no container isolation)")
+            from fim_one.core.security.host_access import (
+                local_execution_refusal,
+                running_in_container,
+            )
+
+            refusal = local_execution_refusal()
+            if refusal is not None:
+                logger.error("Code execution is refused. %s", refusal)
+            elif running_in_container():
+                logger.warning(
+                    "CODE_EXEC_BACKEND=local inside a container: every user who can "
+                    "use the code tools runs commands in the application container "
+                    "(its data volume and the other users' files included). "
+                    "Use CODE_EXEC_BACKEND=docker for anything shared."
+                )
     return _backend

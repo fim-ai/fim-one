@@ -567,7 +567,6 @@ TOOL_CONSTRUCTORS: dict[str, frozenset[str]] = {
     "MCPClient(": frozenset(
         {
             "core/mcp/client.py",
-            "web/deps.py",  # instance-level servers from the MCP_SERVERS env var
             "web/api/mcp_servers.py",  # the owner's "test connection"
         }
     ),

@@ -42,7 +42,7 @@ Conditional. When an agent has bound `kb_ids`, the generic `kb_retrieve` tool is
 
 ### MCP
 
-External MCP servers provide third-party tools via the standard protocol. Each server runs in its own process (stdio or HTTP transport), fully isolated from the platform. Tools are adapted into the `Tool` protocol and registered under category `mcp`. Admins can provision **global MCP servers** that load for all users automatically. MCP is the ecosystem play -- any MCP-compatible server works without custom integration.
+External MCP servers provide third-party tools via the standard protocol. An HTTP server is a remote endpoint; a stdio server is a process the platform starts inside its own container, which is why only system administrators can configure one. Tools are adapted into the `Tool` protocol and registered under category `mcp`. Admins can provision **global MCP servers** that load for all users automatically. MCP is the ecosystem play -- any MCP-compatible server works without custom integration.
 
 ### Skills
 

@@ -6,10 +6,13 @@ import asyncio
 import csv
 import io
 import json
-import shutil
+import os
+import stat as stat_module
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from fim_one.core.security import safe_fs
 
 from ..base import Artifact, BaseTool, ToolResult
 
@@ -195,28 +198,26 @@ class FileOpsTool(BaseTool):
 
     def _maybe_register_artifact(self, result: str, file_path: Path) -> str | ToolResult:
         """If artifacts_dir is set and the file exists, register it as an artifact."""
-        if (
-            self._artifacts_dir is None
-            or result.startswith("[Error]")
-            or not file_path.exists()
-            or not file_path.is_file()
-        ):
+        if self._artifacts_dir is None or result.startswith("[Error]"):
             return result
 
         from ..artifact_utils import MAX_ARTIFACT_SIZE, _guess_mime, file_sha256
 
-        size = file_path.stat().st_size
-        if size > MAX_ARTIFACT_SIZE:
-            return result
-
-        import shutil
         import uuid
 
         self._artifacts_dir.mkdir(parents=True, exist_ok=True)
         artifact_id = uuid.uuid4().hex[:12]
         stored_name = f"{artifact_id}_{file_path.name}"
         dest = self._artifacts_dir / stored_name
-        shutil.copy2(file_path, dest)
+        try:
+            # The file as it is opened now, never what its name leads to.
+            size = safe_fs.copy_to(
+                self._workspace_dir, self._parts(file_path), dest, max_bytes=MAX_ARTIFACT_SIZE
+            )
+        except OSError:
+            return result
+        if size is None:
+            return result
 
         try:
             rel_path = dest.relative_to(self._artifacts_dir.parent.parent.parent).as_posix()
@@ -237,14 +238,38 @@ class FileOpsTool(BaseTool):
     # ------------------------------------------------------------------
 
     def _resolve_safe_path(self, raw_path: str) -> Path | None:
-        """Resolve *raw_path* within the workspace and validate containment."""
+        """Where *raw_path* is within the workspace, or ``None`` when it is not within it.
+
+        The path is normalised as text; symlinks are not resolved here. Code
+        running in the sandbox can put a symlink anywhere in the workspace
+        at any moment, so every operation below goes through
+        ``core.security.safe_fs``, which refuses to cross one when it opens
+        the file.
+        """
         workspace = self._workspace_dir
-        target = (workspace / raw_path).resolve()
+        target = Path(os.path.normpath(workspace / raw_path))
         # Compare path components, not strings: a hard-coded "/" separator
         # rejected every path on Windows.
-        if not target.is_relative_to(workspace.resolve()):
+        if not target.is_relative_to(workspace):
             return None
         return target
+
+    def _parts(self, path: Path) -> tuple[str, ...]:
+        return path.relative_to(self._workspace_dir).parts
+
+    def _kind(self, path: Path) -> tuple[str, os.stat_result] | None:
+        """``file`` / ``directory`` / ``symlink`` / ``other`` and the entry's stat; ``None`` if absent."""
+        try:
+            info = safe_fs.lstat(self._workspace_dir, self._parts(path))
+        except (FileNotFoundError, NotADirectoryError):
+            return None
+        if stat_module.S_ISDIR(info.st_mode):
+            return "directory", info
+        if stat_module.S_ISREG(info.st_mode):
+            return "file", info
+        if stat_module.S_ISLNK(info.st_mode):
+            return "symlink", info
+        return "other", info
 
     # ------------------------------------------------------------------
     # Operation implementations (synchronous — run via to_thread)
@@ -253,97 +278,103 @@ class FileOpsTool(BaseTool):
     def _read(self, path: Path) -> str:
         """Read file contents, truncating at ``_MAX_READ_BYTES``."""
         workspace = self._workspace_dir
-        if not path.exists():
+        found = self._kind(path)
+        if found is None:
             return f"[Error] File not found: {path.relative_to(workspace)}"
-        if not path.is_file():
+        if found[0] != "file":
             return f"[Error] Not a file: {path.relative_to(workspace)}"
 
-        size = path.stat().st_size
-        if size > _MAX_READ_BYTES:
-            with open(path, "rb") as f:
-                data = f.read(_MAX_READ_BYTES)
-        else:
-            data = path.read_bytes()
+        # One more than the limit: whether there is more is read off the
+        # opened file, not off a size taken earlier.
+        data = safe_fs.read_bytes(workspace, self._parts(path), max_bytes=_MAX_READ_BYTES + 1)
+        truncated = len(data) > _MAX_READ_BYTES
+        data = data[:_MAX_READ_BYTES]
 
         try:
             text = data.decode("utf-8")
         except UnicodeDecodeError:
             return "[Error] File is not valid UTF-8 text."
 
-        if size > _MAX_READ_BYTES:
+        if truncated:
             text += (
                 f"\n\n[Truncated — showing first {_MAX_READ_BYTES // 1024} KB "
-                f"of {size:,} bytes total]"
+                f"of {found[1].st_size:,} bytes total]"
             )
         return text
 
     def _write(self, path: Path, content: str) -> str:
         """Write *content* to file, creating parent directories as needed."""
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
+        safe_fs.write_text(self._workspace_dir, self._parts(path), content)
         return f"Written {len(content)} chars to {path.relative_to(self._workspace_dir)}"
 
     def _append(self, path: Path, content: str) -> str:
         """Append *content* to file, creating it if it does not exist."""
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(content)
+        safe_fs.write_text(self._workspace_dir, self._parts(path), content, append=True)
         return f"Appended {len(content)} chars to {path.relative_to(self._workspace_dir)}"
 
     def _delete(self, path: Path) -> str:
         """Delete a file or directory tree."""
         workspace = self._workspace_dir
         rel = path.relative_to(workspace)
-        if not path.exists():
+        if not rel.parts:
+            return "[Error] The workspace itself cannot be deleted."
+        found = self._kind(path)
+        if found is None:
             return f"[Error] Path not found: {rel}"
-        if path.is_dir():
-            shutil.rmtree(path)
+        if found[0] == "directory":
+            safe_fs.rmtree(workspace, rel.parts)
             return f"Deleted directory: {rel}"
-        path.unlink()
+        # A symlink is removed itself; what it points at is left alone.
+        safe_fs.unlink(workspace, rel.parts)
         return f"Deleted file: {rel}"
 
     def _list(self, path: Path) -> str:
         """List directory contents with file sizes."""
         workspace = self._workspace_dir
-        if not path.exists():
+        found = self._kind(path)
+        if found is None:
             return f"[Error] Directory not found: {path.relative_to(workspace)}"
-        if not path.is_dir():
+        if found[0] != "directory":
             return f"[Error] Not a directory: {path.relative_to(workspace)}"
 
-        entries = sorted(path.iterdir(), key=lambda p: (not p.is_dir(), p.name))
+        entries = sorted(
+            safe_fs.listdir(workspace, self._parts(path)), key=lambda e: (not e.is_dir, e.name)
+        )
         if not entries:
             return "(empty directory)"
 
         lines: list[str] = []
         for entry in entries:
-            if entry.is_dir():
+            if entry.is_dir:
                 lines.append(f"  {entry.name}/")
+            elif entry.is_symlink:
+                # Named, never followed: its size is the link's own.
+                lines.append(f"  {entry.name}  (symlink, not followed)")
             else:
-                size = entry.stat().st_size
-                lines.append(f"  {entry.name}  ({_human_size(size)})")
+                lines.append(f"  {entry.name}  ({_human_size(entry.size)})")
         return "\n".join(lines)
 
     def _mkdir(self, path: Path) -> str:
         """Create directory with parents."""
-        path.mkdir(parents=True, exist_ok=True)
+        safe_fs.mkdir(self._workspace_dir, self._parts(path))
         return f"Directory created: {path.relative_to(self._workspace_dir)}"
 
     def _exists(self, path: Path) -> str:
         """Return whether the path exists and its type."""
         rel = path.relative_to(self._workspace_dir)
-        if not path.exists():
+        found = self._kind(path)
+        if found is None:
             return f"false — {rel} does not exist"
-        kind = "directory" if path.is_dir() else "file"
-        return f"true — {rel} exists ({kind})"
+        return f"true — {rel} exists ({found[0]})"
 
     def _get_info(self, path: Path) -> str:
         """Return file/directory metadata."""
         workspace = self._workspace_dir
         rel = path.relative_to(workspace)
-        if not path.exists():
+        found = self._kind(path)
+        if found is None:
             return f"[Error] Path not found: {rel}"
-        stat = path.stat()
-        kind = "directory" if path.is_dir() else "file"
+        kind, stat = found
         mtime = datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds")
         return "\n".join([
             f"path: {rel}",
@@ -402,7 +433,6 @@ class FileOpsTool(BaseTool):
 
     def _write_csv(self, path: Path, content: str) -> str:
         """Write CSV from a JSON array of row arrays, or a raw CSV string."""
-        path.parent.mkdir(parents=True, exist_ok=True)
         try:
             rows = json.loads(content)
             if not isinstance(rows, list):
@@ -415,7 +445,7 @@ class FileOpsTool(BaseTool):
         except (json.JSONDecodeError, ValueError):
             # Treat as raw CSV string.
             csv_text = content
-        path.write_text(csv_text, encoding="utf-8")
+        safe_fs.write_text(self._workspace_dir, self._parts(path), csv_text)
         return f"Written CSV to {path.relative_to(self._workspace_dir)}"
 
     def _find_replace(self, path: Path, old_text: str, new_text: str) -> str:
@@ -443,20 +473,21 @@ class FileOpsTool(BaseTool):
 
         workspace = self._workspace_dir
         rel = path.relative_to(workspace)
-        if not path.exists():
+        found = self._kind(path)
+        if found is None:
             return f"[Error] File not found: {rel}"
-        if not path.is_file():
+        if found[0] != "file":
             return f"[Error] Not a file: {rel}"
 
-        size = path.stat().st_size
-        if size > _MAX_READ_BYTES:
+        data = safe_fs.read_bytes(workspace, rel.parts, max_bytes=_MAX_READ_BYTES + 1)
+        if len(data) > _MAX_READ_BYTES:
             return (
-                f"[Error] File too large for apply_patch ({size:,} bytes > "
+                f"[Error] File too large for apply_patch ({found[1].st_size:,} bytes > "
                 f"{_MAX_READ_BYTES:,} byte limit): {rel}"
             )
 
         try:
-            original = path.read_text(encoding="utf-8")
+            original = data.decode("utf-8")
         except UnicodeDecodeError:
             return "[Error] File is not valid UTF-8 text."
 
@@ -474,7 +505,7 @@ class FileOpsTool(BaseTool):
         except ValueError as exc:
             return f"[Error] Patch parse/apply failed: {exc}"
 
-        path.write_text(updated, encoding="utf-8")
+        safe_fs.write_text(workspace, rel.parts, updated)
         return f"Patch applied to {rel} (fuzz={parsed.fuzz})"
 
 

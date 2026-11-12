@@ -22,6 +22,9 @@ _SENSITIVE_ENV_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^MONGO_URL$", re.IGNORECASE),
     re.compile(r"^DSN$", re.IGNORECASE),
     re.compile(r"^SHELL$", re.IGNORECASE),
+    # Where the Docker daemon (or the sandbox proxy) is: nothing a sandboxed
+    # command has any use for.
+    re.compile(r"^DOCKER_", re.IGNORECASE),
 )
 
 _EXPLICIT_REMOVE = frozenset({

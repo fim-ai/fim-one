@@ -10,6 +10,42 @@ services:
     command: ["true"]
     restart: "no"
 
+  # The only holder of the Docker socket. It forwards exactly what the code
+  # sandbox needs: starting `fim-sandbox-*` containers from the configured
+  # sandbox images, with ./data/sandbox/<id>/workspace mounted at /workspace
+  # and nothing else (no host paths, no privileged mode, no host namespaces,
+  # no network). It rebuilds every request it forwards and asks for a token
+  # only the API holds. Everything else is refused, and everything is when
+  # CODE_EXEC_BACKEND is not `docker`. Not published on any host port.
+  # See src/fim_one/core/tool/sandbox/docker_proxy.py.
+  docker-socket-proxy:
+    build: .
+    command: ["python", "/app/docker_proxy.py"]
+    user: root   # needs the socket; runs nothing but the proxy
+    mem_limit: 96m
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # The proxy writes its token here (root only). The application's
+      # entrypoint reads it as root and hands it to the API alone.
+      - sandbox_proxy_secret:/run/fim-sandbox-proxy
+    environment:
+      CODE_EXEC_BACKEND: ${CODE_EXEC_BACKEND:-docker}
+      # Set the same value for both services to manage the token yourself.
+      SANDBOX_PROXY_TOKEN: ${SANDBOX_PROXY_TOKEN:-}
+      # Sandboxes have no network. Naming a network here lets shell_exec
+      # containers join it; read "Code execution" in docs/security.mdx first.
+      SANDBOX_PROXY_EGRESS_NETWORK: ${DOCKER_SHELL_NETWORK:-}
+      DOCKER_HOST_DATA_DIR: ${DOCKER_HOST_DATA_DIR:-${PWD}/data}
+      DOCKER_PYTHON_IMAGE: fim-sandbox:python
+      DOCKER_SHELL_IMAGE: fim-sandbox:python
+      DOCKER_NODE_IMAGE: ${DOCKER_NODE_IMAGE:-node:20-slim}
+      # Only the application container may connect.
+      SANDBOX_PROXY_CLIENT_HOSTS: fim-one
+      # The user every sandbox container runs as (the application's, so that
+      # it can manage the files they write). Decided here, not by the client.
+      SANDBOX_PROXY_USER: ${DOCKER_SANDBOX_USER:-10001:10001}
+    restart: unless-stopped
+
   fim-one:
     build: .
     mem_limit: 1400m
@@ -20,9 +56,15 @@ services:
     volumes:
       - ./data:/app/data             # Vector store (lancedb) + misc data
       - ./uploads:/app/uploads       # User-uploaded files (REQUIRED)
-      # Code sandbox: mount Docker socket to run AI-generated code in isolated containers.
-      # Required when CODE_EXEC_BACKEND=docker in .env (recommended for multi-user deployments).
-      - /var/run/docker.sock:/var/run/docker.sock
+      - sandbox_proxy_secret:/run/fim-sandbox-proxy:ro   # the proxy's token, root only
+      # Keys generated on the first start when .env sets none (root only).
+      # Back this volume up with ./data, or set the keys in .env.
+      - app_secrets:/var/lib/fim-one/secrets
+      # NO Docker socket here, in any mode: access to /var/run/docker.sock is
+      # equivalent to root on the host. The sandbox reaches Docker through the
+      # proxy above.
+      # If you add the socket back, code execution with CODE_EXEC_BACKEND=local
+      # and stdio MCP servers refuse to start.
     env_file: .env
     environment:
       # Internal services — auto-configured by compose, no user action needed.
@@ -31,6 +73,14 @@ services:
       # any deployment where the DB network isn't fully isolated.
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-fim}:${POSTGRES_PASSWORD:-fim}@postgres:5432/${POSTGRES_DB:-fim_one}
       REDIS_URL: redis://redis:6379/0
+      # Code execution runs in throw-away sandbox containers unless .env says
+      # otherwise. `local` runs the code inside THIS container, as the
+      # application user, next to the application's data: single-user or
+      # development setups only.
+      CODE_EXEC_BACKEND: ${CODE_EXEC_BACKEND:-docker}
+      # The sandbox proxy: the application talks to it itself (there is no
+      # Docker CLI in the image) and proves who it is with a token.
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
       # DooD sandbox: host-side absolute path of the ./data volume mount.
       # The sandbox writes scripts to /app/data/sandbox/ inside the container;
       # this tells DockerBackend the corresponding host path for -v bind mounts.
@@ -39,9 +89,13 @@ services:
       # Use the pre-built sandbox image with common packages (pdfplumber, pandas, etc.)
       DOCKER_PYTHON_IMAGE: fim-sandbox:python
       DOCKER_SHELL_IMAGE: fim-sandbox:python
+      DOCKER_NODE_IMAGE: ${DOCKER_NODE_IMAGE:-node:20-slim}
+      DOCKER_SHELL_NETWORK: ${DOCKER_SHELL_NETWORK:-}
     depends_on:
       sandbox:
         condition: service_completed_successfully
+      docker-socket-proxy:
+        condition: service_started
       postgres:
         condition: service_healthy
       redis:
@@ -86,3 +140,5 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  sandbox_proxy_secret:
+  app_secrets:

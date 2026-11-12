@@ -180,6 +180,9 @@ async def _chat_connect(
         ),
         patch("fim_one.core.mcp.MCPClient", return_value=client),
         patch("fim_one.core.security.is_stdio_allowed", return_value=True),
+        # The owner is taken to be an administrator: these tests are about
+        # credentials (tests/test_stdio_mcp_admin_only.py covers the rule).
+        patch("fim_one.core.assembly.toolset.stdio_refusals", AsyncMock(return_value={})),
     ):
         await _connect_pending_mcp_servers(
             tools,
@@ -354,6 +357,9 @@ async def _run_node(
         ),
         patch("fim_one.core.mcp.MCPClient", return_value=client),
         patch("fim_one.core.security.is_stdio_allowed", return_value=True),
+        # The owner is taken to be an administrator: these tests are about
+        # credentials (tests/test_stdio_mcp_admin_only.py covers the rule).
+        patch("fim_one.core.assembly.toolset.stdio_refusals", AsyncMock(return_value={})),
     ):
         result = await MCPExecutor().execute(node, VariableStore(), context)
     return result, client

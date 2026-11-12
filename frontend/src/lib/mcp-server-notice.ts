@@ -15,6 +15,33 @@ export const MCP_SERVER_ADDRESS_PRIVATE = "mcp_server_address_private"
  */
 export type MCPServerNotice = "addressPrivateOwner" | "addressPrivateMember" | "keysRequired"
 
+/** Why a stdio server cannot be configured by this user, as `GET /api/mcp-servers/capabilities` says it. */
+export type StdioUnavailableReason = "disabled" | "admin_only"
+
+/**
+ * The `tools` message that tells a user why the form offers no stdio
+ * transport, or `null` when it does. A stdio server runs a command inside
+ * the application, so only a system administrator may configure one; until
+ * the capabilities are known the form offers none.
+ */
+export function stdioUnavailableMessageKey(
+  allowStdio: boolean,
+  reason: StdioUnavailableReason | null | undefined,
+): "stdioUnavailableAdminOnly" | "stdioUnavailableDisabled" | null {
+  if (allowStdio) return null
+  return reason === "admin_only" ? "stdioUnavailableAdminOnly" : "stdioUnavailableDisabled"
+}
+
+/** The `tools` message for a stdio server that is never started (`stdio_blocked`), or `null`. */
+export function stdioBlockedMessageKey(
+  server: Pick<MCPServerResponse, "stdio_blocked">,
+): "stdioBlockedOwnerNotAdmin" | "stdioBlockedDisabled" | null {
+  if (!server.stdio_blocked) return null
+  return server.stdio_blocked === "stdio_mcp_disabled"
+    ? "stdioBlockedDisabled"
+    : "stdioBlockedOwnerNotAdmin"
+}
+
 /** The parts of an address the backend can name; each has a label in `tools.addressReasons`. */
 export const ADDRESS_REASONS = [
   "url_user_info",

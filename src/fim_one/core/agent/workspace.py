@@ -24,6 +24,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from fim_one.core.security import safe_fs
+
 logger = logging.getLogger(__name__)
 
 # Default offload threshold (characters).  Override via env var.
@@ -97,7 +99,9 @@ class AgentWorkspace:
     def _internal_dir(self) -> Path:
         """Directory for runtime-internal files (transcripts, handoffs)."""
         path = self._dir / _INTERNAL_SUBDIR
-        path.mkdir(parents=True, exist_ok=True)
+        # Created without crossing a symlink: the directory is shared with
+        # sandboxed code.
+        safe_fs.mkdir(self._dir, (_INTERNAL_SUBDIR,))
         return path
 
     # ------------------------------------------------------------------
@@ -137,7 +141,7 @@ class AgentWorkspace:
         filename = f"tool_result_{safe_name}_{uuid.uuid4().hex[:8]}.txt"
         filepath = self._dir / filename
         with self._lock:
-            filepath.write_text(output, encoding="utf-8")
+            safe_fs.write_text(self._dir, (filename,), output)
         logger.debug(
             "Saved tool output for '%s' (%d chars) to %s",
             tool_name,
@@ -226,9 +230,11 @@ class AgentWorkspace:
                     getattr(tc, "name", "unknown") for tc in tool_calls
                 ]
             lines.append(json.dumps(record, ensure_ascii=False))
-        filepath = self._internal_dir / filename
+        filepath = self._dir / _INTERNAL_SUBDIR / filename
         with self._lock:
-            filepath.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            safe_fs.write_text(
+                self._dir, (_INTERNAL_SUBDIR, filename), "\n".join(lines) + "\n"
+            )
         logger.info(
             "Saved pre-compaction transcript (%d messages) to %s",
             len(messages),
@@ -262,21 +268,31 @@ class AgentWorkspace:
             ValueError: If the filename tries to escape the workspace.
         """
         self._validate_filename(filename)
-        filepath = self._dir / filename
-        if not filepath.exists():
-            # Runtime-internal files (transcripts, handoffs) live in a
-            # subdirectory but are addressed by bare filename in their
-            # workspace:// URIs; legacy conversations may still hold files
-            # at the pre-merge location.
-            for fallback_dir in (self._internal_dir, self._legacy_dir):
-                candidate = fallback_dir / filename
-                if candidate.exists():
-                    filepath = candidate
-                    break
-            else:
-                raise FileNotFoundError(f"Workspace file not found: {filename}")
+        # The workspace is shared with sandboxed code: a file is read only
+        # when it is a regular file reached without crossing a symlink.
+        # Runtime-internal files (transcripts, handoffs) live in a
+        # subdirectory but are addressed by bare filename in their
+        # workspace:// URIs; legacy conversations may still hold files at
+        # the pre-merge location.
+        text: str | None = None
         with self._lock:
-            lines = filepath.read_text(encoding="utf-8").splitlines()
+            for root, parts in (
+                (self._dir, (filename,)),
+                (self._dir, (_INTERNAL_SUBDIR, filename)),
+                (self._legacy_dir, (filename,)),
+            ):
+                try:
+                    text = safe_fs.read_text(root, parts)
+                    break
+                except (FileNotFoundError, NotADirectoryError):
+                    continue
+                except safe_fs.UnsafePathError as exc:
+                    raise ValueError(
+                        f"Invalid workspace file (not a regular file): {filename}"
+                    ) from exc
+        if text is None:
+            raise FileNotFoundError(f"Workspace file not found: {filename}")
+        lines = text.splitlines()
         if end_line is not None:
             lines = lines[start_line:end_line]
         else:
@@ -292,14 +308,14 @@ class AgentWorkspace:
         """
         files: list[dict[str, str | int]] = []
         with self._lock:
-            for f in self._dir.iterdir():
-                if f.is_file():
-                    stat = f.stat()
+            # Entries are described, never followed: a symlink is not a file.
+            for entry in safe_fs.listdir(self._dir):
+                if entry.is_file:
                     files.append({
-                        "name": f.name,
-                        "size_bytes": stat.st_size,
+                        "name": entry.name,
+                        "size_bytes": entry.size,
                         "created_at": datetime.fromtimestamp(
-                            stat.st_mtime, tz=timezone.utc
+                            entry.mtime, tz=timezone.utc
                         ).isoformat(),
                     })
         return sorted(files, key=lambda x: str(x["created_at"]), reverse=True)
@@ -321,9 +337,9 @@ class AgentWorkspace:
             A ``workspace://`` URI pointing to the handoff file.
         """
         filename = f"HANDOFF_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.md"
-        filepath = self._internal_dir / filename
+        filepath = self._dir / _INTERNAL_SUBDIR / filename
         with self._lock:
-            filepath.write_text(summary, encoding="utf-8")
+            safe_fs.write_text(self._dir, (_INTERNAL_SUBDIR, filename), summary)
         logger.debug("Wrote handoff note: %s", filepath)
         return f"workspace://{filename}"
 
@@ -334,18 +350,35 @@ class AgentWorkspace:
             The handoff content as a string, or ``None`` if no handoff
             notes exist in this workspace.
         """
+        def handoffs_in(root: Path, parts: tuple[str, ...]) -> list[str]:
+            try:
+                entries = safe_fs.listdir(root, parts)
+            except OSError:
+                return []
+            return sorted(
+                (
+                    e.name
+                    for e in entries
+                    if e.is_file and e.name.startswith("HANDOFF_") and e.name.endswith(".md")
+                ),
+                reverse=True,
+            )
+
         with self._lock:
-            handoffs = sorted(self._internal_dir.glob("HANDOFF_*.md"), reverse=True)
-            if not handoffs:
-                # Pre-merge conversations wrote handoffs at the workspace
-                # root (old dedicated dir); keep them readable.
-                for legacy in (self._dir, self._legacy_dir):
-                    handoffs = sorted(legacy.glob("HANDOFF_*.md"), reverse=True)
-                    if handoffs:
-                        break
-            if not handoffs:
-                return None
-            return handoffs[0].read_text(encoding="utf-8")
+            # Pre-merge conversations wrote handoffs at the workspace root
+            # (old dedicated dir); keep them readable.
+            for root, parts in (
+                (self._dir, (_INTERNAL_SUBDIR,)),
+                (self._dir, ()),
+                (self._legacy_dir, ()),
+            ):
+                names = handoffs_in(root, parts)
+                if names:
+                    try:
+                        return safe_fs.read_text(root, (*parts, names[0]))
+                    except OSError:
+                        continue
+            return None
 
     # ------------------------------------------------------------------
     # Cleanup
@@ -365,15 +398,19 @@ class AgentWorkspace:
         cutoff = time.time() - max_age_hours * 3600
         deleted = 0
         with self._lock:
-            candidates = list(self._dir.iterdir())
-            internal = self._dir / _INTERNAL_SUBDIR
-            if internal.is_dir():
-                candidates.extend(internal.iterdir())
-            for f in candidates:
-                if f.is_file() and f.stat().st_mtime < cutoff:
-                    f.unlink()
-                    deleted += 1
-                    logger.debug("Cleaned up workspace file: %s", f.name)
+            for parts in ((), (_INTERNAL_SUBDIR,)):
+                try:
+                    entries = safe_fs.listdir(self._dir, parts)
+                except OSError:
+                    continue
+                for entry in entries:
+                    if entry.is_file and entry.mtime < cutoff:
+                        try:
+                            safe_fs.unlink(self._dir, (*parts, entry.name))
+                        except OSError:
+                            continue
+                        deleted += 1
+                        logger.debug("Cleaned up workspace file: %s", entry.name)
         if deleted:
             logger.info(
                 "Workspace cleanup: deleted %d file(s) older than %dh",

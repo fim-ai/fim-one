@@ -84,3 +84,41 @@ describe("keys that would not help are not asked for", () => {
     expect(depsOnlyOwnerCanUse(null)).toEqual([])
   })
 })
+
+describe("stdio servers: who is offered the transport, and what a blocked one says", () => {
+  const messages = toolsMessages as Record<string, unknown>
+
+  it("offers stdio only to someone the server says may configure one", async () => {
+    const { stdioUnavailableMessageKey } = await import("../mcp-server-notice")
+    expect(stdioUnavailableMessageKey(true, null)).toBeNull()
+    expect(stdioUnavailableMessageKey(false, "admin_only")).toBe("stdioUnavailableAdminOnly")
+    expect(stdioUnavailableMessageKey(false, "disabled")).toBe("stdioUnavailableDisabled")
+    // Capabilities not loaded (or the request failed): not offered either.
+    expect(stdioUnavailableMessageKey(false, null)).toBe("stdioUnavailableDisabled")
+    expect(stdioUnavailableMessageKey(false, undefined)).toBe("stdioUnavailableDisabled")
+  })
+
+  it("says why a stdio server is never started", async () => {
+    const { stdioBlockedMessageKey } = await import("../mcp-server-notice")
+    expect(stdioBlockedMessageKey({})).toBeNull()
+    expect(stdioBlockedMessageKey({ stdio_blocked: null })).toBeNull()
+    expect(stdioBlockedMessageKey({ stdio_blocked: "stdio_mcp_owner_not_admin" })).toBe(
+      "stdioBlockedOwnerNotAdmin",
+    )
+    expect(stdioBlockedMessageKey({ stdio_blocked: "stdio_mcp_disabled" })).toBe(
+      "stdioBlockedDisabled",
+    )
+  })
+
+  it("has a message for every key", () => {
+    for (const key of [
+      "stdioUnavailableAdminOnly",
+      "stdioUnavailableDisabled",
+      "stdioBlockedBadge",
+      "stdioBlockedOwnerNotAdmin",
+      "stdioBlockedDisabled",
+    ]) {
+      expect(typeof messages[key]).toBe("string")
+    }
+  })
+})

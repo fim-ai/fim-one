@@ -110,7 +110,9 @@ class NodeExecTool(BaseTool):
         # Snapshot files before execution for artifact detection.
         before: set[str] = set()
         if self._artifacts_dir:
-            before = {f.name for f in self._exec_dir.iterdir() if f.is_file()}
+            from ..artifact_utils import list_file_names
+
+            before = list_file_names(self._exec_dir)
 
         backend = get_sandbox_backend()
         result = await backend.run_code(

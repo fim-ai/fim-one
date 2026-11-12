@@ -27,7 +27,11 @@ import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { mcpServerApi } from "@/lib/api"
-import { MCP_SERVER_ADDRESS_PRIVATE } from "@/lib/mcp-server-notice"
+import {
+  MCP_SERVER_ADDRESS_PRIVATE,
+  stdioUnavailableMessageKey,
+  type StdioUnavailableReason,
+} from "@/lib/mcp-server-notice"
 import { useAddressPrivateWarning } from "@/hooks/use-address-private-warning"
 import { toast } from "sonner"
 import type { MCPServerResponse, MCPServerCreate, MCPServerUpdate } from "@/types/mcp-server"
@@ -49,6 +53,8 @@ interface MCPServerDialogProps {
   initialValues?: MCPServerInitialValues | null
   onSuccess: (server: MCPServerResponse) => void
   allowStdio?: boolean
+  /** Why stdio is not offered, when it is not. */
+  stdioReason?: StdioUnavailableReason | null
 }
 
 export function MCPServerDialog({
@@ -58,11 +64,13 @@ export function MCPServerDialog({
   initialValues,
   onSuccess,
   allowStdio = true,
+  stdioReason = null,
 }: MCPServerDialogProps) {
   const t = useTranslations("tools")
   const addressWarning = useAddressPrivateWarning()
   const tc = useTranslations("common")
   const isEdit = !!server
+  const stdioUnavailableKey = stdioUnavailableMessageKey(allowStdio, stdioReason)
 
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
@@ -129,7 +137,11 @@ export function MCPServerDialog({
       } else {
         setName(initialValues?.name ?? "")
         setDescription(initialValues?.description ?? "")
-        setTransport(initialValues?.transport ?? (allowStdio ? "stdio" : "sse"))
+        // A catalog entry that installs locally (stdio) is not offered as
+        // stdio to someone who may not configure one; the note under the
+        // transport buttons says why.
+        const wanted = initialValues?.transport ?? (allowStdio ? "stdio" : "sse")
+        setTransport(!allowStdio && wanted === "stdio" ? "sse" : wanted)
         setCommand(initialValues?.command ?? "")
         setArgs(initialValues?.args ?? "")
         setUrl(initialValues?.url ?? "")
@@ -370,6 +382,9 @@ export function MCPServerDialog({
                 {t("streamableHttp")}
               </Button>
             </div>
+            {stdioUnavailableKey && (
+              <p className="text-xs text-muted-foreground">{t(stdioUnavailableKey)}</p>
+            )}
           </div>
 
           {/* STDIO fields */}

@@ -2147,7 +2147,14 @@ export const mcpServerApi = {
     }).then((r) => r.data),
 
   capabilities: () =>
-    apiFetch<{ allow_stdio: boolean }>("/api/mcp-servers/capabilities"),
+    apiFetch<{
+      /** Whether this user may create or edit a stdio server. */
+      allow_stdio: boolean
+      /** The instance switch alone (ALLOW_STDIO_MCP). */
+      stdio_enabled?: boolean
+      /** Why `allow_stdio` is false. */
+      stdio_reason?: "disabled" | "admin_only" | null
+    }>("/api/mcp-servers/capabilities"),
 
   test: (id: string) =>
     apiFetch<ApiResponse<{ ok: boolean; tool_count?: number; tools?: string[]; error?: string }>>(

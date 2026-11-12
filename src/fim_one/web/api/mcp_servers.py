@@ -15,7 +15,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fim_one.core.assembly.credentials import address_is_private, personal_credential_fits
 from fim_one.core.assembly.errors import MCP_SERVER_ADDRESS_PRIVATE
 from fim_one.core.assembly.mcp_address import address_secret_reasons, error_without_url_secrets
+from fim_one.core.assembly.stdio import stdio_refusals
 from fim_one.core.security import is_stdio_allowed, validate_stdio_command, validate_url
+from fim_one.core.security.mcp import (
+    STDIO_ADMIN_ONLY_DETAIL,
+    STDIO_MCP_ADMIN_ONLY,
+    STDIO_MCP_DISABLED,
+    STDIO_MCP_ENV_NOT_ALLOWED,
+    stdio_env_violations,
+)
 from fim_one.core.audit import actions
 from fim_one.db import get_session
 from fim_one.web.exceptions import AppError
@@ -62,6 +70,7 @@ def _to_response(
     is_owner: bool,
     my_has_credentials: bool = False,
     bound_to_shared: bool = False,
+    stdio_blocked: str | None = None,
 ) -> MCPServerResponse:
     # Non-owners: mask sensitive fields, strip internal content (command/args/url)
     if is_owner:
@@ -105,6 +114,7 @@ def _to_response(
         address_private=address_private,
         warning=MCP_SERVER_ADDRESS_PRIVATE if warn else None,
         warning_reasons=address_secret_reasons(srv) if warn else [],
+        stdio_blocked=stdio_blocked,
         forked_from=getattr(srv, "forked_from", None),
         my_has_credentials=my_has_credentials,
         visibility=getattr(srv, "visibility", "personal"),
@@ -198,14 +208,36 @@ async def _get_owned_server(
     return server
 
 
-def _enforce_stdio_policy(transport: str) -> None:
-    """Raise AppError if stdio transport is requested but disabled."""
-    if transport == "stdio" and not is_stdio_allowed():
+def _enforce_stdio_policy(transport: str, user: User) -> None:
+    """Refuse a stdio server unless stdio is enabled and *user* is a system administrator.
+
+    A stdio server is a command run inside the application container, so
+    configuring one is an administrator's act: creating it, editing it,
+    copying it, testing it and publishing it all go through here. The
+    command allow-list is not what protects the container (``python -c``,
+    ``npx <package>``); this check is.
+    """
+    if transport != "stdio":
+        return
+    if not is_stdio_allowed():
         raise AppError(
-            "stdio_mcp_disabled",
+            STDIO_MCP_DISABLED,
             status_code=403,
             detail="Stdio MCP servers are disabled by administrator",
         )
+    if not user.is_admin:
+        raise AppError(STDIO_MCP_ADMIN_ONLY, status_code=403, detail=STDIO_ADMIN_ONLY_DETAIL)
+
+
+async def _stdio_blocked(
+    db: AsyncSession, servers: list[MCPServer]
+) -> dict[str, str]:
+    """Why each stdio server among *servers* is not started, as an error code by id.
+
+    The same decision the run time makes (``core.assembly.stdio``), shown to
+    whoever is listed the server.
+    """
+    return {sid: refusal.error_code for sid, refusal in (await stdio_refusals(db, servers)).items()}
 
 
 def _validate_mcp_url(transport: str, url: str | None) -> None:
@@ -228,8 +260,21 @@ def _validate_mcp_url(transport: str, url: str | None) -> None:
 
 
 @router.get("/capabilities")
-async def get_capabilities() -> dict[str, bool]:
-    return {"allow_stdio": is_stdio_allowed()}
+async def get_capabilities(
+    current_user: User = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """What the caller may do with MCP servers.
+
+    ``allow_stdio``: whether *this user* may create or edit a stdio server
+    (stdio is enabled on the instance and the user is a system
+    administrator). ``stdio_enabled`` is the instance switch alone, and
+    ``stdio_reason`` says why ``allow_stdio`` is false: ``disabled`` or
+    ``admin_only``.
+    """
+    enabled = is_stdio_allowed()
+    allowed = enabled and bool(current_user.is_admin)
+    reason = None if allowed else ("admin_only" if enabled else "disabled")
+    return {"allow_stdio": allowed, "stdio_enabled": enabled, "stdio_reason": reason}
 
 
 # ---------------------------------------------------------------------------
@@ -243,7 +288,7 @@ async def create_mcp_server(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
-    _enforce_stdio_policy(body.transport)
+    _enforce_stdio_policy(body.transport, current_user)
     _validate_mcp_url(body.transport, body.url)
 
     if body.transport == "stdio" and body.command:
@@ -345,6 +390,7 @@ async def list_mcp_servers(
 
     subscribed_mcp_ids_set = set(subscribed_mcp_ids)
     bound = await _bound_to_shared(db, current_user.id, list(servers))
+    blocked = await _stdio_blocked(db, list(servers))
     items = []
     for s in servers:
         _is_owner = s.user_id == current_user.id
@@ -353,6 +399,7 @@ async def list_mcp_servers(
             is_owner=_is_owner,
             my_has_credentials=s.id in cred_set,
             bound_to_shared=s.id in bound,
+            stdio_blocked=blocked.get(s.id),
         )
         if _is_owner:
             resp.source = "own"
@@ -405,12 +452,14 @@ async def get_mcp_server(
     my_has_credentials = _cred is not None and _credential_fits(server.transport, _cred)
     _is_owner = server.user_id == current_user.id
     bound = await _bound_to_shared(db, current_user.id, [server])
+    blocked = await _stdio_blocked(db, [server])
     return ApiResponse(
         data=_to_response(
             server,
             is_owner=_is_owner,
             my_has_credentials=my_has_credentials,
             bound_to_shared=server.id in bound,
+            stdio_blocked=blocked.get(server.id),
         ).model_dump()
     )
 
@@ -427,9 +476,13 @@ async def update_mcp_server(
 
     update_data = body.model_dump(exclude_unset=True)
 
-    # If transport is being changed to stdio, enforce the policy
-    new_transport = update_data.get("transport", server.transport)
-    _enforce_stdio_policy(new_transport)
+    # A server that is, or would become, stdio is an administrator's to
+    # change: its command, arguments, environment and working directory are
+    # what the application container runs. Somebody who is not one may only
+    # turn a stdio server of theirs into an HTTP one (which runs nothing) or
+    # delete it; a null ``transport`` leaves it stdio and is refused too.
+    new_transport = update_data.get("transport") or server.transport
+    _enforce_stdio_policy(new_transport, current_user)
 
     new_url = update_data.get("url", server.url)
     _validate_mcp_url(new_transport, new_url)
@@ -484,7 +537,17 @@ async def test_mcp_server(
 ) -> ApiResponse:
     """Test connectivity to an MCP server and update its tool_count."""
     server = await _get_owned_server(server_id, current_user.id, db)
-    _enforce_stdio_policy(server.transport)
+    _enforce_stdio_policy(server.transport, current_user)
+    # The run-time rule as well (the owner must be an active administrator),
+    # so this endpoint starts nothing an agent turn would not.
+    not_started = (await stdio_refusals(db, [server])).get(server.id)
+    if not_started is not None:
+        raise AppError(
+            not_started.error_code,
+            status_code=not_started.status_code,
+            detail=not_started.detail,
+            detail_args=not_started.detail_args,
+        )
 
     try:
         from fim_one.core.mcp import MCPClient
@@ -544,6 +607,9 @@ async def publish_mcp_server(
 ) -> ApiResponse:
     """Publish MCP server to org or global scope."""
     server = await _get_owned_server(server_id, current_user.id, db)
+    # Only an administrator's stdio server is ever started; one that is not
+    # would be published to people who can do nothing with it.
+    _enforce_stdio_policy(server.transport, current_user)
 
     if body.scope == "org":
         if not body.org_id:
@@ -583,6 +649,7 @@ async def resubmit_mcp_server(
 ) -> ApiResponse:
     """Resubmit a rejected MCP server for review."""
     server = await _get_owned_server(server_id, current_user.id, db)
+    _enforce_stdio_policy(server.transport, current_user)
     if server.publish_status != "rejected":
         raise AppError("not_rejected", status_code=400)
     server.publish_status = "pending_review"
@@ -703,6 +770,8 @@ async def fork_mcp_server(
     source = await _get_accessible_server(server_id, current_user.id, db)
     if source.user_id != current_user.id:
         raise AppError("fork_denied", status_code=403, detail="Only the owner can fork this resource")
+    # A copy of a stdio server is another stdio server.
+    _enforce_stdio_policy(source.transport, current_user)
 
     fork_name = (body.name if body and body.name else f"{source.name} (Copy)")[:200]
 
@@ -814,6 +883,24 @@ async def upsert_my_mcp_credentials(
 
     env_data: dict[str, str] = body.env or {}
     headers_data: dict[str, str] = body.headers or {}
+
+    # The environment of a stdio server decides what its command loads
+    # (PATH, NODE_OPTIONS, PYTHONPATH, LD_PRELOAD, ...). Somebody who is
+    # not an administrator fills in the variables the owner declared and
+    # nothing else; the same rule is applied when the server is started.
+    if server.transport == "stdio" and env_data and not current_user.is_admin:
+        refused = stdio_env_violations(server.env or {}, env_data)
+        if refused:
+            raise AppError(
+                STDIO_MCP_ENV_NOT_ALLOWED,
+                status_code=400,
+                detail=(
+                    "These environment variables cannot be set on this MCP server: "
+                    f"{', '.join(refused)}. Only the variables its administrator "
+                    "declared can be filled in."
+                ),
+                detail_args={"variables": ", ".join(refused)},
+            )
 
     if (env_data or headers_data) and not personal_credential_fits(
         server.transport, env_data, headers_data

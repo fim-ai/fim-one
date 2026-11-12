@@ -5,9 +5,10 @@ from __future__ import annotations
 import hashlib
 import mimetypes
 import os
-import shutil
 import uuid
 from pathlib import Path
+
+from fim_one.core.security import safe_fs
 
 from .base import Artifact
 
@@ -52,6 +53,20 @@ def _guess_mime(path: Path) -> str:
     return _FALLBACK_MIMES.get(path.suffix.lower(), "application/octet-stream")
 
 
+def list_file_names(directory: Path) -> set[str]:
+    """The names of the regular files in *directory*, for a before/after comparison.
+
+    The directory is one sandboxed code writes to: entries are described
+    without being followed, so a symlink is not a file, and a directory that
+    was swapped for a symlink lists nothing.
+    """
+    root, parts = safe_fs.anchor_of(directory)
+    try:
+        return {entry.name for entry in safe_fs.listdir(root, parts) if entry.is_file}
+    except OSError:
+        return set()
+
+
 def scan_new_files(directory: Path, before: set[str], artifacts_dir: Path) -> list[Artifact]:
     """Compare directory contents before/after execution, copy new files to *artifacts_dir*.
 
@@ -63,29 +78,31 @@ def scan_new_files(directory: Path, before: set[str], artifacts_dir: Path) -> li
     Returns:
         List of Artifact objects for newly created files.
     """
-    if not directory.exists():
+    # The content of *directory* is untrusted: nothing here is followed. A
+    # file is copied from the descriptor it was opened with, which must be
+    # a regular file below the workspace.
+    root, parts = safe_fs.anchor_of(directory)
+    after = list_file_names(directory)
+    new_files = after - before
+    if not new_files:
         return []
 
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     artifacts: list[Artifact] = []
 
-    after = {f.name for f in directory.iterdir() if f.is_file()}
-    new_files = after - before
-
     for filename in sorted(new_files):
         if filename.startswith(_NON_ARTIFACT_PREFIXES):
             continue
         src = directory / filename
-        if not src.is_file():
-            continue
-        size = src.stat().st_size
-        if size > MAX_ARTIFACT_SIZE:
-            continue
-
         artifact_id = uuid.uuid4().hex[:12]
         stored_name = f"{artifact_id}_{filename}"
         dest = artifacts_dir / stored_name
-        shutil.copy2(src, dest)
+        try:
+            size = safe_fs.copy_to(root, (*parts, filename), dest, max_bytes=MAX_ARTIFACT_SIZE)
+        except OSError:
+            continue
+        if size is None:
+            continue
 
         # Build path relative to the uploads root (3 levels up from artifacts_dir:
         # uploads / conversations / {id} / artifacts).

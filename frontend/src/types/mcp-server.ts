@@ -23,6 +23,12 @@ export interface MCPServerResponse {
   warning?: string | null
   /** With `warning`: which part of the address counted (never its value). */
   warning_reasons?: string[]
+  /**
+   * Why this stdio server is not started, when it is not:
+   * `stdio_mcp_disabled` (stdio is off on the instance) or
+   * `stdio_mcp_owner_not_admin` (its owner is not an active system administrator).
+   */
+  stdio_blocked?: string | null
   my_has_credentials: boolean
   visibility?: string
   org_id?: string | null

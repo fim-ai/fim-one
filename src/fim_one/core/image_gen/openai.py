@@ -90,8 +90,12 @@ class OpenAIImageGen(BaseImageGen):
         filename = f"{int(time.time())}_{slug}{ext}"
 
         out_path = Path(output_dir) / filename
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_bytes(image_bytes)
+        # The output directory is the conversation's workspace, which
+        # sandboxed code can write to: never through a symlink left there.
+        from fim_one.core.security import safe_fs
+
+        _root, _parts = safe_fs.anchor_of(Path(output_dir))
+        safe_fs.write_bytes(_root, (*_parts, filename), image_bytes)
 
         url_path = Path(output_dir).as_posix()
         return ImageResult(

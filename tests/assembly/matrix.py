@@ -349,7 +349,9 @@ async def seed_scene(factory: async_sessionmaker[AsyncSession], key: SceneKey) -
 
     async with factory() as s:
         for uid in users.values():
-            s.add(User(id=uid, email=f"{uid}@x.io", username=uid))
+            # The owner is a system administrator: a stdio MCP server is only
+            # started for one (core/assembly/stdio.py). Nobody else is.
+            s.add(User(id=uid, email=f"{uid}@x.io", username=uid, is_admin=uid == owner))
         s.add(Organization(id=org, name=org, slug=org, owner_id=owner))
         s.add(
             Organization(id=other_org, name=other_org, slug=other_org, owner_id=users["outsider"])

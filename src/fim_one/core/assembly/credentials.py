@@ -505,6 +505,14 @@ def _mcp_answer(
         env = _read(personal_blobs[0]) if personal_blobs[0] is not None else None
         headers = _read(personal_blobs[1]) if personal_blobs[1] is not None else None
         if personal_credential_fits(server.transport, env, headers):
+            # A stdio server's environment decides what the command loads:
+            # somebody who is not an administrator fills in the variables
+            # the owner declared and nothing else (core/assembly/stdio.py).
+            from .stdio import personal_env_refusal
+
+            env_refusal = personal_env_refusal(principal, server, env)
+            if env_refusal is not None:
+                raise env_refusal
             # Only the caller's own values, never merged with the owner's.
             return ResolvedCredential(
                 source=CredentialSource.PERSONAL, env=env or None, headers=headers or None

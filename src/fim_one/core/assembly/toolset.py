@@ -14,10 +14,13 @@ import logging
 from collections.abc import Collection, Sequence
 from typing import TYPE_CHECKING, Any, Literal
 
+from fim_one.core.security.mcp import STDIO_MCP_DISABLED
+
 from .calls import call_recorder
 from .credentials import CredentialSource, resolve_credential, resolve_credentials
 from .errors import AssemblyRefusal
 from .mcp_address import traceback_without_url_secrets
+from .stdio import stdio_refusals
 from .visibility import ResourceKind, authorize_use
 
 if TYPE_CHECKING:
@@ -265,14 +268,20 @@ class ToolsetError(Exception):
 async def _connect_mcp_server(
     client: MCPClient, server: Any, credential: ResolvedCredential
 ) -> list[Any]:
-    """Open *server* with *credential* and return its tools."""
-    if server.transport == "stdio" and server.command:
+    """Open *server* with *credential* and return its tools.
+
+    Whether a stdio server may be started at all is decided by the caller
+    (:func:`_open_mcp_servers`, with :func:`.stdio.stdio_refusals`), the
+    only one there is: nothing else may call this for a stdio server.
+    """
+    if server.transport == "stdio":
         from fim_one.core.security import is_stdio_allowed
 
         if not is_stdio_allowed():
             raise ToolsetError(
                 "STDIO MCP transport is disabled. Set ALLOW_STDIO_MCP=true to enable."
             )
+    if server.transport == "stdio" and server.command:
         return list(
             await client.connect_stdio(
                 name=server.name,
@@ -363,6 +372,9 @@ async def _open_mcp_servers(
     # One lookup for the whole set, however many servers there are.
     async with create_session() as db:
         answers = await resolve_credentials(db, ctx.principal, servers)
+        # Which stdio servers may be started at all: decided here, for every
+        # caller, whoever wrote the row and whenever.
+        not_started = await stdio_refusals(db, servers)
     for server, credential in zip(servers, answers, strict=True):
         if server.name in connected:
             # The client and the meta-tool key a server by name: a second one
@@ -374,6 +386,12 @@ async def _open_mcp_servers(
             )
             continue
         try:
+            not_start = not_started.get(server.id)
+            if not_start is not None and not_start.error_code != STDIO_MCP_DISABLED:
+                # Said before anything about credentials: no credential
+                # changes it. (Disabled on the instance is said by
+                # ``_connect_mcp_server``, as it always was.)
+                raise not_start
             if isinstance(credential, AssemblyRefusal):
                 raise credential
             adapters = await _connect_mcp_server(client, server, credential)

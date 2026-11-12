@@ -135,10 +135,11 @@ class TemplateRenderTool(BaseTool):
             # deliverable card.
             if self._workspace_dir is not None:
                 try:
-                    self._workspace_dir.mkdir(parents=True, exist_ok=True)
-                    (self._workspace_dir / filename).write_text(
-                        result, encoding="utf-8",
-                    )
+                    # The workspace is shared with sandboxed code: written
+                    # without following a symlink left under that name.
+                    from fim_one.core.security import safe_fs
+
+                    safe_fs.write_text(self._workspace_dir, (filename,), result)
                 except OSError:
                     pass  # workspace write is best-effort; the artifact still exists
 

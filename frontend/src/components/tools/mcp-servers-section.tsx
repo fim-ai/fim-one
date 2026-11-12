@@ -21,7 +21,7 @@ import { MCPServerCard } from "@/components/tools/mcp-server-card"
 import { MCPServerDialog, type MCPServerInitialValues } from "@/components/tools/mcp-server-dialog"
 import { MCPHubDialog } from "@/components/tools/mcp-hub-dialog"
 import { EmptyState } from "@/components/shared/empty-state"
-import { MCP_SERVER_ADDRESS_PRIVATE } from "@/lib/mcp-server-notice"
+import { MCP_SERVER_ADDRESS_PRIVATE, type StdioUnavailableReason } from "@/lib/mcp-server-notice"
 import { useAddressPrivateWarning } from "@/hooks/use-address-private-warning"
 import type { MCPServerResponse } from "@/types/mcp-server"
 import type { ScopeValue } from "@/hooks/use-scope-filter"
@@ -46,7 +46,10 @@ export function MCPServersSection({ onReady, currentUserId, scope = "all", searc
   const tc = useTranslations("common")
   const [servers, setServers] = useState<MCPServerResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [allowStdio, setAllowStdio] = useState(true)
+  // Not offered until the server says this user may: a stdio server runs a
+  // command inside the application, which is a system administrator's to set up.
+  const [allowStdio, setAllowStdio] = useState(false)
+  const [stdioReason, setStdioReason] = useState<StdioUnavailableReason | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [hubOpen, setHubOpen] = useState(false)
   const [editingServer, setEditingServer] = useState<MCPServerResponse | null>(null)
@@ -75,7 +78,13 @@ export function MCPServersSection({ onReady, currentUserId, scope = "all", searc
 
   useEffect(() => {
     loadServers()
-    mcpServerApi.capabilities().then((c) => setAllowStdio(c.allow_stdio)).catch(() => {})
+    mcpServerApi
+      .capabilities()
+      .then((c) => {
+        setAllowStdio(c.allow_stdio)
+        setStdioReason(c.allow_stdio ? null : (c.stdio_reason ?? "disabled"))
+      })
+      .catch(() => {})
   }, [loadServers])
 
   const handleEdit = (server: MCPServerResponse) => {
@@ -316,6 +325,7 @@ export function MCPServersSection({ onReady, currentUserId, scope = "all", searc
         initialValues={dialogInitialValues}
         onSuccess={handleSuccess}
         allowStdio={allowStdio}
+        stdioReason={stdioReason}
       />
 
       {/* MCP Hub / catalog dialog */}

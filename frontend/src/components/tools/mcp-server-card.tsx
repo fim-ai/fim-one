@@ -40,7 +40,7 @@ import {
 import { mcpServerApi } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
 import { MARKET_ORG_ID } from "@/lib/constants"
-import { canConfigureOwnKeys, mcpServerNotice } from "@/lib/mcp-server-notice"
+import { canConfigureOwnKeys, mcpServerNotice, stdioBlockedMessageKey } from "@/lib/mcp-server-notice"
 import { useAddressPrivateWarning } from "@/hooks/use-address-private-warning"
 import type { MCPServerResponse } from "@/types/mcp-server"
 
@@ -101,6 +101,7 @@ export function MCPServerCard({
   // What the card says about using the server: keys to configure, or that
   // its address holds a credential and only the owner can connect.
   const notice = mcpServerNotice(server, isOwner)
+  const stdioBlockedKey = stdioBlockedMessageKey(server)
   const addressWarning = useAddressPrivateWarning()
   // Keys of one's own do not open a server only its owner can connect to.
   const canConfigureKeys = canConfigureOwnKeys(server, isOwner)
@@ -409,6 +410,26 @@ export function MCPServerCard({
               </Tooltip>
             </TooltipProvider>
           )}
+        </div>
+      )}
+
+      {/* A stdio server that is never started: its owner is not an administrator, or stdio is off */}
+      {stdioBlockedKey && (
+        <div className="flex items-center gap-1 mb-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge
+                variant="outline"
+                className="text-[10px] px-1.5 py-0 h-5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 cursor-default"
+              >
+                <AlertTriangle className="h-2.5 w-2.5 mr-0.5" />
+                {t("stdioBlockedBadge")}
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" sideOffset={5} className="max-w-72">
+              <p>{t(stdioBlockedKey)}</p>
+            </TooltipContent>
+          </Tooltip>
         </div>
       )}
 

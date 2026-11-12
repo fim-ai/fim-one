@@ -396,7 +396,14 @@ class TestMcpTools:
             }
         }
 
-    async def test_legacy_is_one_tool_per_server_tool(self, mcp_world: _FakeMCPClient) -> None:
+    async def test_legacy_is_one_tool_per_server_tool(
+        self, mcp_world: _FakeMCPClient, session: AsyncSession
+    ) -> None:
+        from fim_one.db.models.user import User
+
+        # A stdio server is started only for an owner who is an administrator.
+        session.add(User(id=OWNER, email="owner@x.io", username=OWNER, is_admin=True))
+        await session.commit()
         tools, _ = await mcp_tools(
             _ctx(OWNER),
             [_mcp_server("files", transport="stdio", allow_fallback=False)],

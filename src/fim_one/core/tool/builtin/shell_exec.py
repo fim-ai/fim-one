@@ -113,6 +113,24 @@ _BLOCKED_COMMAND_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bcurl\b"), "network tool (curl)"),
     (re.compile(r"\bwget\b"), "network tool (wget)"),
 
+    # Container runtimes and their socket. This list is a courtesy to the
+    # model, not the protection: the local backend refuses every command
+    # while the Docker socket is mounted (core/security/host_access.py), and
+    # the default deployment does not mount it.
+    (re.compile(r"\bdocker\b"), "container runtime (docker)"),
+    (re.compile(r"\bdocker-compose\b"), "container runtime (docker-compose)"),
+    (re.compile(r"\bpodman\b"), "container runtime (podman)"),
+    (re.compile(r"\bnerdctl\b"), "container runtime (nerdctl)"),
+    (re.compile(r"\bctr\b"), "container runtime (ctr)"),
+    (re.compile(r"\bcrictl\b"), "container runtime (crictl)"),
+    (re.compile(r"\bkubectl\b"), "container runtime (kubectl)"),
+    (re.compile(r"docker\.sock"), "container runtime socket (docker.sock)"),
+
+    # Other processes' secrets. The application's environment holds its
+    # keys; the image also makes these files unreadable to its children.
+    (re.compile(r"/proc/[^\s/]+/(?:environ|mem|maps|cmdline|fd|cwd|root)\b"),
+     "read of another process (/proc/<pid>/...)"),
+
     # Command wrappers
     (re.compile(r"\benv\b"), "command wrapper (env)"),
     (re.compile(r"\bxargs\b"), "command wrapper (xargs)"),
@@ -342,7 +360,9 @@ class ShellExecTool(BaseTool):
         # Snapshot files before execution for artifact detection.
         before: set[str] = set()
         if self._artifacts_dir:
-            before = {f.name for f in sandbox.iterdir() if f.is_file()}
+            from ..artifact_utils import list_file_names
+
+            before = list_file_names(sandbox)
 
         # 3. Resolve working directory.
         working_dir_arg: str | None = kwargs.get("working_dir")
@@ -357,7 +377,8 @@ class ShellExecTool(BaseTool):
             err = _validate_working_dir(str(wd_path), sandbox)
             if err is not None:
                 return f"[Error] {err}"
-            wd_path.mkdir(parents=True, exist_ok=True)
+            # Not created here: the backend creates it, below the workspace
+            # and without following anything on the way.
             cwd = str(wd_path)
         else:
             cwd = str(sandbox)

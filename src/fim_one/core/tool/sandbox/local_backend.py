@@ -17,6 +17,7 @@ import importlib.machinery
 import io
 import logging
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -25,6 +26,8 @@ import traceback
 import uuid
 from pathlib import Path
 from typing import Any
+
+from fim_one.core.security.host_access import local_execution_refusal
 
 from .protocol import SandboxResult
 from ._env_utils import build_safe_env
@@ -285,6 +288,10 @@ class LocalBackend:
         memory: str | None = None,
         cpu: float | None = None,
     ) -> SandboxResult:
+        # Off the event loop: it may ask a network endpoint what it is.
+        refusal = await asyncio.to_thread(local_execution_refusal)
+        if refusal is not None:
+            return SandboxResult(stdout="", stderr="", exit_code=-1, error=refusal)
         if language == "python":
             return await self._run_python(code, exec_dir=exec_dir, timeout=timeout)
         elif language == "javascript":
@@ -306,6 +313,12 @@ class LocalBackend:
         memory: str | None = None,
         cpu: float | None = None,
     ) -> SandboxResult:
+        # Not a word list: with the Docker socket in reach, no command is
+        # started at all (core/security/host_access.py).
+        # Off the event loop: it may ask a network endpoint what it is.
+        refusal = await asyncio.to_thread(local_execution_refusal)
+        if refusal is not None:
+            return SandboxResult(stdout="", stderr="", exit_code=-1, error=refusal)
         sandbox_dir.mkdir(parents=True, exist_ok=True)
         logger.debug("local run_shell: sandbox_dir=%s timeout=%ds", sandbox_dir, timeout)
 
@@ -451,11 +464,18 @@ class LocalBackend:
         script.write_text(code, encoding="utf-8")
 
         try:
+            # Found with the application's PATH, started with the cleaned one.
+            node = shutil.which("node")
+            if node is None:
+                raise FileNotFoundError("node")
             proc = await asyncio.create_subprocess_exec(
-                "node", str(script),
+                node, str(script),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=str(exec_dir),
+                # The same cleaned environment the shell gets: the
+                # application's own holds its keys and its database URL.
+                env=build_safe_env(str(exec_dir)),
                 start_new_session=True,
             )
             try:

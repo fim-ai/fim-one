@@ -127,8 +127,9 @@ On the target host, load the archive and give the images the names Docker Compos
 
 ```bash
 docker load -i fim-one-latest-arm64.tar
-docker compose config --images          # e.g. fim-one-fim-one, fim-sandbox:python, ...
+docker compose config --images          # e.g. fim-one-fim-one, fim-one-docker-socket-proxy, fim-sandbox:python, ...
 docker tag fim-one:latest-arm64 <project>-fim-one:latest
+docker tag fim-one:latest-arm64 <project>-docker-socket-proxy:latest   # the sandbox proxy runs from the app image
 docker tag fim-sandbox:python-arm64 fim-sandbox:python
 docker compose up -d --no-build
 ```
@@ -167,13 +168,20 @@ Behind a reverse proxy, set `FORWARDED_ALLOW_IPS` to the proxy's address or netw
 
 #### Code Execution Sandbox
 
-If you use the code execution sandbox (`CODE_EXEC_BACKEND=docker`), the container needs the Docker socket. The bundled `docker-compose.yml` already mounts it:
+With the bundled `docker-compose.yml`, code execution runs in throw-away sandbox containers without a network (`CODE_EXEC_BACKEND=docker`, the compose default). The application container does **not** get the Docker socket. A small `docker-socket-proxy` service holds it and only starts sandbox containers:
 
 ```yaml
 # docker-compose.yml
-volumes:
-  - /var/run/docker.sock:/var/run/docker.sock
+docker-socket-proxy:
+  command: ["python", "/app/docker_proxy.py"]
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock   # here, and nowhere else
+fim-one:
+  environment:
+    DOCKER_HOST: tcp://docker-socket-proxy:2375
 ```
+
+Do not add the socket to the `fim-one` service: access to it is equivalent to root on the host. The application runs as an unprivileged user (`fim`, uid 10001); on first start the entrypoint hands `./data` and `./uploads` over to that user. See [Security → Code execution and the Docker socket](/security#code-execution-and-the-docker-socket), which also has the upgrade steps for an existing deployment.
 
 #### Cloudflare Tunnel
 

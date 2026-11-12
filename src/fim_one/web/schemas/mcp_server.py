@@ -77,6 +77,10 @@ class MCPServerResponse(BaseModel):
     # ``url_path_parameter``, ``url_token``, ``url_unparseable``, ``arg_name``,
     # ``arg_token``, ``arg_env``, ``arg_connection_string``.
     warning_reasons: list[str] = []
+    # Why this stdio server is not started, when it is not: ``stdio_mcp_disabled``
+    # (stdio is off on the instance) or ``stdio_mcp_owner_not_admin`` (its
+    # owner is not an active system administrator). Absent otherwise.
+    stdio_blocked: str | None = None
     forked_from: str | None = None
     my_has_credentials: bool = False
     visibility: str = "personal"

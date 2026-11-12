@@ -43,7 +43,8 @@ CODE = "mcp_server_address_private"
 
 
 def _user(user_id: str) -> Any:
-    return SimpleNamespace(id=user_id, username=user_id, is_admin=False)
+    # The owner is a system administrator: only one may configure a stdio server.
+    return SimpleNamespace(id=user_id, username=user_id, is_admin=user_id == OWNER)
 
 
 @pytest.fixture()
@@ -56,7 +57,7 @@ async def session() -> AsyncIterator[AsyncSession]:
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as s:
         for uid in (OWNER, SUBSCRIBER):
-            s.add(User(id=uid, email=f"{uid}@x.io", username=uid))
+            s.add(User(id=uid, email=f"{uid}@x.io", username=uid, is_admin=uid == OWNER))
         s.add(Organization(id=ORG, name=ORG, slug=ORG, owner_id=OWNER))
         for uid in (OWNER, SUBSCRIBER):
             s.add(OrgMembership(org_id=ORG, user_id=uid, role="member"))

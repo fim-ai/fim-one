@@ -51,13 +51,10 @@ FAST_LLM_CONTEXT_SIZE : Total context window of the fast LLM
                     (default: falls back to ``LLM_CONTEXT_SIZE``).
 FAST_LLM_MAX_OUTPUT_TOKENS : Max output tokens for the fast LLM
                     (default: falls back to ``LLM_MAX_OUTPUT_TOKENS``).
-MCP_SERVERS      : Optional JSON array of MCP server configs.  Each entry
-                    is ``{"name": str, "command": str, "args": [str], "env": {}}``.
 """
 
 from __future__ import annotations
 
-import json
 import os
 import logging
 from dataclasses import dataclass
@@ -77,7 +74,6 @@ from fim_one.rag.store.lancedb import LanceDBVectorStore
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from fim_one.core.mcp import MCPClient
     from fim_one.core.model import BaseLLM
 
 logger = logging.getLogger(__name__)
@@ -985,66 +981,3 @@ def get_kb_manager() -> KnowledgeBaseManager:
         embedding=get_embedding(),
         reranker=get_reranker(),
     )
-
-
-async def get_mcp_tools(registry: ToolRegistry) -> MCPClient | None:
-    """Connect to MCP servers defined in ``MCP_SERVERS`` and register their tools.
-
-    The ``MCP_SERVERS`` environment variable should be a JSON array of server
-    config objects::
-
-        [
-          {
-            "name": "filesystem",
-            "command": "npx",
-            "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
-            "env": {}
-          }
-        ]
-
-    Each server's tools are discovered and registered in *registry* with
-    names prefixed by the server name (e.g. ``filesystem__read_file``).
-
-    Returns
-    -------
-    MCPClient | None
-        The connected :class:`MCPClient` instance, or ``None`` if
-        ``MCP_SERVERS`` is not set.  The caller is responsible for calling
-        ``await client.disconnect_all()`` on shutdown.
-    """
-    servers_json = os.environ.get("MCP_SERVERS", "")
-    if not servers_json:
-        return None
-
-    try:
-        from fim_one.core.mcp import MCPClient
-    except ImportError:
-        logger.warning(
-            "MCP_SERVERS is set but the 'mcp' package is not installed. "
-            "Install it with: uv sync --extra mcp"
-        )
-        return None
-
-    servers: list[dict[str, Any]] = json.loads(servers_json)
-    client = MCPClient()
-
-    for server in servers:
-        name = str(server["name"])
-        command = str(server["command"])
-        raw_args = server.get("args", [])
-        args = [str(a) for a in raw_args] if isinstance(raw_args, list) else []
-        env: dict[str, str] | None = server.get("env")
-
-        try:
-            tools = await client.connect_stdio(
-                name=name,
-                command=command,
-                args=args,
-                env=env,
-            )
-            for tool in tools:
-                registry.register(tool)
-        except Exception:
-            logger.exception("Failed to connect to MCP server %r", name)
-
-    return client
