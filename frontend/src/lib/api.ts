@@ -1,3 +1,4 @@
+import { fetchAllPages } from "./paginate"
 import { getApiBaseUrl, ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, USER_KEY, MARKET_ORG_ID } from "./constants"
 import type { UserInfo, TokenResponse, LoginRequest, LoginWithCodeRequest, RegisterRequest, ChangePasswordRequest, SetPasswordRequest, SetupRequest } from "@/types/auth"
 import type { WorkflowResponse, WorkflowCreate, WorkflowUpdate, WorkflowRunResponse, WorkflowStats, WorkflowTemplate, NodeStatsResponse, WorkflowValidateResponse, WorkflowVersionResponse, WorkflowAnalyticsResponse, WorkflowScheduleResponse, WorkflowScheduleUpdate, WorkflowBatchRunResponse, WorkflowImportResult, NodeTestRequest, NodeTestResponse, ApprovalInboxItem } from "@/types/workflow"
@@ -1871,6 +1872,13 @@ export const adminApi = {
     if (q) sp.set('q', q)
     return apiFetch<{ items: AdminOrganization[]; total: number; page: number; size: number; pages: number }>(`/api/admin/organizations?${sp}`)
   },
+  /** Every organization, read page by page within the endpoint's size cap (100). */
+  listAllOrganizations: () =>
+    fetchAllPages<AdminOrganization>((page, size) =>
+      apiFetch<{ items: AdminOrganization[]; total: number; pages: number }>(
+        `/api/admin/organizations?${new URLSearchParams({ page: String(page), size: String(size) })}`,
+      ),
+    ),
   adminDeleteOrganization: (orgId: string) =>
     apiFetch(`/api/admin/organizations/${orgId}`, { method: 'DELETE' }),
 
