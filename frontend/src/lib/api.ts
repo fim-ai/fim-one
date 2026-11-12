@@ -404,11 +404,18 @@ interface ApiResponse<T> {
 }
 
 export const conversationApi = {
-  list: (page = 1, size = 50, q?: string) => {
+  list: (page = 1, size = 50, q?: string, businessRef?: string) => {
     let url = `/api/conversations?page=${page}&size=${size}`
     if (q) url += `&q=${encodeURIComponent(q)}`
+    if (businessRef) url += `&business_ref=${encodeURIComponent(businessRef)}`
     return apiFetch<PaginatedResponse<ConversationResponse>>(url)
   },
+
+  /** The caller's most recently active conversation for a business ref, or null. */
+  latestForRef: (businessRef: string) =>
+    apiFetch<ApiResponse<ConversationResponse | null>>(
+      `/api/conversations/latest?business_ref=${encodeURIComponent(businessRef)}`,
+    ).then((r) => r.data),
 
   create: (body: ConversationCreate) =>
     apiFetch<ApiResponse<ConversationResponse>>("/api/conversations", {
@@ -421,7 +428,10 @@ export const conversationApi = {
       `/api/conversations/${id}`,
     ).then((r) => r.data),
 
-  update: (id: string, body: { title?: string; status?: string; starred?: boolean }) =>
+  update: (
+    id: string,
+    body: { title?: string; status?: string; starred?: boolean; business_ref?: string | null },
+  ) =>
     apiFetch<ApiResponse<ConversationResponse>>(
       `/api/conversations/${id}`,
       { method: "PATCH", body: JSON.stringify(body) },
