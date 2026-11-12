@@ -18,7 +18,7 @@ import importlib
 import json
 import os
 import uuid
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -293,6 +293,30 @@ def _engine_params() -> list[Any]:
     ]
 
 
+def _engine_for(url: str) -> tuple[sa.Engine, Callable[[], None]]:
+    """An engine and its cleanup. On PostgreSQL the tables live in a schema
+    of their own, so tables other tests left in the shared database do not
+    get in the way and none are left behind."""
+    if not url.startswith("postgresql"):
+        engine = sa.create_engine(url, future=True)
+        return engine, engine.dispose
+    schema = f"mig_{uuid.uuid4().hex[:12]}"
+    admin = sa.create_engine(url, future=True)
+    with admin.begin() as conn:
+        conn.execute(sa.text(f'CREATE SCHEMA "{schema}"'))
+    engine = sa.create_engine(
+        url, future=True, connect_args={"options": f"-csearch_path={schema}"}
+    )
+
+    def cleanup() -> None:
+        engine.dispose()
+        with admin.begin() as conn:
+            conn.execute(sa.text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()
+
+    return engine, cleanup
+
+
 _TABLES = {
     "workflows": "blueprint",
     "workflow_versions": "blueprint",
@@ -303,7 +327,7 @@ _TABLES = {
 
 @pytest.fixture(params=_engine_params())
 def legacy_db(request: pytest.FixtureRequest) -> Iterator[sa.Engine]:
-    engine = sa.create_engine(request.param, future=True)
+    engine, cleanup = _engine_for(request.param)
     with engine.begin() as conn:
         for table, column in _TABLES.items():
             conn.execute(sa.text(f"DROP TABLE IF EXISTS {table}"))
@@ -320,7 +344,7 @@ def legacy_db(request: pytest.FixtureRequest) -> Iterator[sa.Engine]:
     with engine.begin() as conn:
         for table in _TABLES:
             conn.execute(sa.text(f"DROP TABLE IF EXISTS {table}"))
-    engine.dispose()
+    cleanup()
 
 
 def _run(engine: sa.Engine, module: str, fn: str) -> None:

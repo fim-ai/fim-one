@@ -17,7 +17,7 @@ import hashlib
 import importlib
 import os
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 from unittest.mock import patch
 
@@ -375,9 +375,33 @@ def _engines() -> list[Any]:
     return params
 
 
+def _engine_for(url: str) -> tuple[sa.Engine, Callable[[], None]]:
+    """An engine and its cleanup. On PostgreSQL the tables live in a schema
+    of their own, so tables other tests left in the shared database do not
+    get in the way and none are left behind."""
+    if not url.startswith("postgresql"):
+        engine = sa.create_engine(url, future=True)
+        return engine, engine.dispose
+    schema = f"mig_{uuid.uuid4().hex[:12]}"
+    admin = sa.create_engine(url, future=True)
+    with admin.begin() as conn:
+        conn.execute(sa.text(f'CREATE SCHEMA "{schema}"'))
+    engine = sa.create_engine(
+        url, future=True, connect_args={"options": f"-csearch_path={schema}"}
+    )
+
+    def cleanup() -> None:
+        engine.dispose()
+        with admin.begin() as conn:
+            conn.execute(sa.text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()
+
+    return engine, cleanup
+
+
 @pytest.fixture(params=_engines())
 def legacy_engine(request: pytest.FixtureRequest) -> Any:
-    engine = sa.create_engine(request.param, future=True)
+    engine, cleanup = _engine_for(request.param)
     with engine.begin() as conn:
         conn.execute(sa.text("DROP TABLE IF EXISTS workflows"))
         conn.execute(
@@ -400,7 +424,7 @@ def legacy_engine(request: pytest.FixtureRequest) -> Any:
     yield engine
     with engine.begin() as conn:
         conn.execute(sa.text("DROP TABLE IF EXISTS workflows"))
-    engine.dispose()
+    cleanup()
 
 
 def _run(engine: Any, fn: str) -> None:

@@ -14,6 +14,7 @@ Properties:
 from __future__ import annotations
 
 import os
+import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -24,7 +25,7 @@ import pytest_asyncio
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import make_url, select
+from sqlalchemy import make_url, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import fim_one.db.models  # noqa: F401
@@ -90,13 +91,19 @@ _BACKENDS = [
 async def env(
     request: pytest.FixtureRequest, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> AsyncIterator[_Env]:
+    admin = None
     if request.param == "sqlite":
         engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'app.db'}")
     else:
-        engine = create_async_engine(make_url(_PG or "").set(drivername="postgresql+asyncpg"))
+        # A schema of its own, dropped afterwards: the shared database keeps
+        # no tables for the tests that run later.
+        url = make_url(_PG or "").set(drivername="postgresql+asyncpg")
+        schema = f"unverified_reg_{uuid.uuid4().hex[:12]}"
+        admin = create_async_engine(url)
+        async with admin.begin() as conn:
+            await conn.execute(text(f'CREATE SCHEMA "{schema}"'))
+        engine = create_async_engine(url, connect_args={"server_settings": {"search_path": schema}})
     async with engine.begin() as conn:
-        if request.param == "postgresql":
-            await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     # An installed system: the first account is the administrator's.
@@ -129,6 +136,10 @@ async def env(
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
         yield _Env(client, sessions, settings)
     await engine.dispose()
+    if admin is not None:
+        async with admin.begin() as conn:
+            await conn.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        await admin.dispose()
 
 
 class TestRegistrationRecordsWhetherTheAddressWasProven:
