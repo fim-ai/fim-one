@@ -191,8 +191,8 @@ class TestPlatformOverview:
         old_fast = await backfilled.old_one("SELECT SUM(fast_llm_tokens) FROM conversations")
         assert stats["total_fast_llm_tokens"] == old_fast
 
-        # By model: the conversations' main part under their model, the fast
-        # part as one slice, as before; the runs carried no model.
+        # By model: the conversations' main part under their model's plain
+        # name, the fast part as one slice; the runs carried no model.
         old_by_model = dict(
             await backfilled.old(
                 "SELECT COALESCE(model_name, 'Unknown'), SUM(total_tokens - fast_llm_tokens)"
@@ -200,7 +200,7 @@ class TestPlatformOverview:
             )
         )
         expected = {
-            "LLM (main-model)": old_by_model["main-model"],
+            "main-model": old_by_model["main-model"],
             "other-model": old_by_model["other-model"],
             "Unknown": old_by_model["Unknown"] + run_tokens,
             "Fast LLM (fast-model)": old_fast,
@@ -256,6 +256,39 @@ class TestPlatformOverview:
         assert [(a["agent_id"], a["total_tokens"]) for a in stats["tokens_by_agent"]] == [
             (f"agent-{n:02}", 100 + 10 * n) for n in range(11, 1, -1)
         ]
+
+
+    async def test_a_turn_on_the_fast_model_is_its_own_slice_not_a_second_fast_slice(
+        self, usage: Usage, alice: User, root: User  # noqa: F811
+    ) -> None:
+        """A turn whose model is FAST_LLM_MODEL is a per-model slice under the
+        model's plain name; only the background work is "Fast LLM (...)", so
+        no two slices carry the same label."""
+        from fim_one.db.models.usage_ledger import UsageLedger
+
+        await usage.add(
+            UsageLedger(
+                user_id=alice.id, source_type="conversation", entry="chat",
+                model="fast-model", total_tokens=300,
+            ),
+            UsageLedger(
+                user_id=alice.id, source_type="conversation", entry="chat",
+                model="main-model", total_tokens=200,
+            ),
+            UsageLedger(
+                user_id=alice.id, source_type="conversation", entry="background",
+                model="fast-model", total_tokens=50,
+            ),
+        )  # fmt: skip
+
+        stats = await _get(usage, "/api/admin/stats", root)
+        assert stats["tokens_by_model"] == [
+            {"model": "fast-model", "count": 300},
+            {"model": "main-model", "count": 200},
+            {"model": "Fast LLM (fast-model)", "count": 50},
+        ]
+        labels = [s["model"] for s in stats["tokens_by_model"]]
+        assert len(labels) == len(set(labels))
 
 
 # ---------------------------------------------------------------------------
