@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { NextIntlClientProvider } from "next-intl"
 
 import workflows from "../../../../messages/en/workflows.json"
@@ -113,6 +113,8 @@ describe("workflow list: a refused action says why", () => {
     const title = String(toast.error.mock.calls[0][0])
     expect(title).toContain("Yi Review")
     expect(title).toContain("t2yi")
+    // Coded refusals share an id, so a repeat replaces the toast.
+    expect(toast.error.mock.calls[0][1]).toMatchObject({ id: "approval_assignee_not_in_org" })
   })
 
   it("falls back to the plain message when the failure has no code", async () => {
@@ -127,11 +129,33 @@ describe("workflow list: a refused action says why", () => {
   })
 
   it("shows the refusal's own message for a refused resubmit", async () => {
-    api.resubmit.mockRejectedValue(refusal())
+    api.resubmit.mockRejectedValue(
+      new ApiError(400, "Only rejected submissions can be resubmitted", "not_rejected"),
+    )
     await renderPage()
     fireEvent.click(screen.getByText("card-resubmit"))
-    await flush()
 
-    expect(String(toast.error.mock.calls[0][0])).toContain("Yi Review")
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1))
+    expect(toast.error.mock.calls[0][0]).toBe(errors.not_rejected)
+  })
+
+  it("shows the refusal's own message for a refused unpublish", async () => {
+    api.unpublish.mockRejectedValue(new ApiError(403, "denied", "unpublish_denied"))
+    await renderPage()
+    fireEvent.click(screen.getByText("card-unpublish"))
+    fireEvent.click(await screen.findByRole("button", { name: common.unpublish }))
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1))
+    expect(toast.error.mock.calls[0][0]).toBe(errors.unpublish_denied)
+  })
+
+  it("shows the refusal's own message for a refused delete", async () => {
+    api.delete.mockRejectedValue(new ApiError(404, "Workflow not found", "workflow_not_found"))
+    await renderPage()
+    fireEvent.click(screen.getByText("card-delete"))
+    fireEvent.click(await screen.findByRole("button", { name: common.delete }))
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1))
+    expect(toast.error.mock.calls[0][0]).toBe(errors.workflow_not_found)
   })
 })
