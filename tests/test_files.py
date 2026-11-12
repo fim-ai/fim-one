@@ -72,3 +72,88 @@ class TestFileLock:
         async with files._file_lock("u1"):
             files._save_index("u1", {"f1": {"name": "a.txt"}})
             assert files._load_index("u1") == {"f1": {"name": "a.txt"}}
+
+
+def _zip(members: dict[str, bytes]) -> bytes:
+    import io
+    import zipfile
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, data in members.items():
+            archive.writestr(name, data)
+    return buffer.getvalue()
+
+
+class TestUploadOverArchiveLimits:
+    """A document that unpacks beyond the archive limits is refused with a 4xx
+    and leaves nothing behind."""
+
+    @pytest.fixture(autouse=True)
+    def _limits(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("MARKITDOWN_MAX_ARCHIVE_MEMBERS", "50")
+
+    @staticmethod
+    def _client() -> object:
+        from types import SimpleNamespace
+
+        from fastapi import FastAPI
+        from fastapi.responses import JSONResponse
+        from fastapi.testclient import TestClient
+
+        from fim_one.web.auth import get_current_user
+        from fim_one.web.exceptions import AppError
+
+        app = FastAPI()
+        app.include_router(files.router)
+
+        @app.exception_handler(AppError)
+        async def _app_error(_request: object, exc: AppError) -> JSONResponse:
+            return JSONResponse(
+                {"detail": exc.detail, "error_code": exc.error_code},
+                status_code=exc.status_code,
+            )
+
+        app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id="u1")
+        return TestClient(app, raise_server_exceptions=False)
+
+    def test_the_upload_is_refused_and_removed(self, tmp_path: Path) -> None:
+        from fim_one.core.document.markitdown_core import (
+            ArchiveLimitError,
+            check_archive_limits,
+        )
+
+        bomb = _zip({f"word/m{i}.xml": b"<a/>" for i in range(51)})
+        with pytest.raises(ArchiveLimitError) as limit:
+            check_archive_limits(bomb)
+
+        client = self._client()
+        r = client.post(  # type: ignore[attr-defined]
+            "/api/files/upload",
+            files={"file": ("report.docx", bomb, "application/octet-stream")},
+        )
+
+        assert r.status_code == 422, r.text
+        assert r.json() == {"detail": str(limit.value), "error_code": "document_archive_limit"}
+        user_dir = tmp_path / "user_u1"
+        left = sorted(p.name for p in user_dir.iterdir()) if user_dir.exists() else []
+        assert [name for name in left if name != ".lock"] == []
+        assert files._load_index("u1") == {}
+
+    def test_a_document_within_the_limits_is_kept(self, tmp_path: Path) -> None:
+        client = self._client()
+        r = client.post(  # type: ignore[attr-defined]
+            "/api/files/upload",
+            files={"file": ("notes.txt", b"hello", "text/plain")},
+        )
+
+        assert r.status_code == 200, r.text
+        file_id = r.json()["data"]["file_id"]
+        assert set(files._load_index("u1")) == {file_id}
+
+    def test_images_of_an_office_document_over_the_limits(self, tmp_path: Path) -> None:
+        from fim_one.core.document.processor import _extract_with_images_sync
+
+        path = tmp_path / "deck.pptx"
+        path.write_bytes(_zip({f"ppt/m{i}.xml": b"<a/>" for i in range(51)}))
+        assert _extract_with_images_sync(path) == (None, [])

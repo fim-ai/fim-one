@@ -16,6 +16,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, UploadFile
 from fastapi.responses import FileResponse
 
+from fim_one.core.document.markitdown_core import ArchiveLimitError
 from fim_one.web.auth import get_current_user
 from fim_one.web.exceptions import AppError
 from fim_one.db.models import User
@@ -24,6 +25,10 @@ from fim_one.web.schemas.common import ApiResponse
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/files", tags=["files"])
+
+# A document that unpacks beyond the archive limits
+# (``fim_one.core.document.markitdown_core.check_archive_limits``).
+DOCUMENT_ARCHIVE_LIMIT = "document_archive_limit"
 
 UPLOAD_ROOT = Path(os.environ.get("UPLOADS_DIR", "uploads"))
 MAX_UPLOAD_SIZE_MB = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "50"))
@@ -171,52 +176,67 @@ async def upload_file(
     stored_name = f"{file_id}_{safe_name}"
     dest = user_dir / stored_name
 
-    # Read in chunks and enforce size limit
-    total_size = 0
-    with dest.open("wb") as f:
-        while True:
-            chunk = await file.read(8192)
-            if not chunk:
-                break
-            total_size += len(chunk)
-            if total_size > MAX_FILE_SIZE:
-                dest.unlink(missing_ok=True)
-                max_mb = MAX_FILE_SIZE // (1024 * 1024)
-                raise AppError(
-                    "file_too_large",
-                    status_code=413,
-                    detail=f"File exceeds maximum size of {max_mb} MB",
-                    detail_args={"max_mb": max_mb},
-                )
-            f.write(chunk)
-
-    # Extract text content for preview. Offloaded to a thread because
-    # _extract_text_sync does heavy CPU+I/O parsing (PDF/DOCX/etc) that would
-    # otherwise block the event loop for the duration of the extraction.
-    extracted = await asyncio.to_thread(_extract_content, dest)
-    content_preview: str | None = None
-    content_length: int | None = None
-    if extracted:
-        content_preview = extracted[:500]
-        content_length = len(extracted)
-        content_path = dest.parent / f"{stored_name}.content"
-        content_path.write_text(extracted, encoding="utf-8")
-
-    # Update index (locked to prevent concurrent read-modify-write races)
+    content_path = dest.parent / f"{stored_name}.content"
     file_url = f"/uploads/user_{current_user.id}/{stored_name}"
     mime_type = _guess_mime(ext)
-    async with _file_lock(current_user.id):
-        index = _load_index(current_user.id)
-        index[file_id] = {
-            "filename": file.filename,
-            "stored_name": stored_name,
-            "file_url": file_url,
-            "size": total_size,
-            "content_preview": content_preview,
-            "content_length": content_length,
-            "mime_type": mime_type,
-        }
-        _save_index(current_user.id, index)
+    # The upload is kept only once it is in the index: a refusal or a
+    # failure on the way leaves nothing under the user's directory.
+    try:
+        # Read in chunks and enforce size limit
+        total_size = 0
+        with dest.open("wb") as f:
+            while True:
+                chunk = await file.read(8192)
+                if not chunk:
+                    break
+                total_size += len(chunk)
+                if total_size > MAX_FILE_SIZE:
+                    max_mb = MAX_FILE_SIZE // (1024 * 1024)
+                    raise AppError(
+                        "file_too_large",
+                        status_code=413,
+                        detail=f"File exceeds maximum size of {max_mb} MB",
+                        detail_args={"max_mb": max_mb},
+                    )
+                f.write(chunk)
+
+        # Extract text content for preview. Offloaded to a thread because
+        # _extract_text_sync does heavy CPU+I/O parsing (PDF/DOCX/etc) that
+        # would otherwise block the event loop for the duration of the
+        # extraction.
+        try:
+            extracted = await asyncio.to_thread(_extract_content, dest)
+        except ArchiveLimitError as exc:
+            # The message the knowledge-base ingest records for the same file.
+            raise AppError(
+                DOCUMENT_ARCHIVE_LIMIT,
+                status_code=422,
+                detail=str(exc),
+            ) from exc
+        content_preview: str | None = None
+        content_length: int | None = None
+        if extracted:
+            content_preview = extracted[:500]
+            content_length = len(extracted)
+            content_path.write_text(extracted, encoding="utf-8")
+
+        # Update index (locked to prevent concurrent read-modify-write races)
+        async with _file_lock(current_user.id):
+            index = _load_index(current_user.id)
+            index[file_id] = {
+                "filename": file.filename,
+                "stored_name": stored_name,
+                "file_url": file_url,
+                "size": total_size,
+                "content_preview": content_preview,
+                "content_length": content_length,
+                "mime_type": mime_type,
+            }
+            _save_index(current_user.id, index)
+    except BaseException:
+        dest.unlink(missing_ok=True)
+        content_path.unlink(missing_ok=True)
+        raise
 
     return ApiResponse(
         data={

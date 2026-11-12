@@ -373,6 +373,10 @@ def _extract_text_sync(file_path: Path) -> str | None:
     This is the single source of truth for text extraction logic.
     Both the async :meth:`DocumentProcessor.extract_text` and the
     upload-time ``_extract_content`` call this function.
+
+    Raises:
+        ArchiveLimitError: an Office document unpacks beyond the limits of
+            :func:`fim_one.core.document.markitdown_core.check_archive_limits`.
     """
     suffix = file_path.suffix.lower()
 
@@ -567,11 +571,27 @@ def _extract_with_images_sync(file_path: Path) -> tuple[str | None, list[bytes]]
     For DOCX/PPTX files, returns text with ``[Figure N]`` markers and
     the corresponding image bytes.  For all other formats, delegates to
     :func:`_extract_text_sync` and returns an empty image list.
+    An Office document over the archive limits gives ``(None, [])``.
 
     Returns:
         A tuple of ``(text_with_figure_markers, list_of_image_bytes)``.
     """
     suffix = file_path.suffix.lower()
+
+    if suffix in (".docx", ".doc", ".pptx", ".ppt"):
+        # python-docx / python-pptx unpack the archive themselves, past the
+        # check the shared converter makes; a document over the limits has
+        # neither text nor images to give here.
+        from fim_one.core.document.markitdown_core import (
+            ArchiveLimitError,
+            check_archive_limits,
+        )
+
+        try:
+            check_archive_limits(file_path)
+        except ArchiveLimitError as exc:
+            logger.warning("Not reading %s: %s", file_path.name, exc)
+            return None, []
 
     if suffix in (".docx", ".doc"):
         try:

@@ -73,6 +73,7 @@
   "invalid_filename": "Invalid filename: {filename}.",
   "unsupported_file_type": "Unsupported file type: {ext}.",
   "file_too_large": "File too large (max {max_mb} MB).",
+  "document_archive_limit": "This document unpacks to more than the allowed size, number of files or nesting depth.",
   "file_not_found": "File not found.",
   "file_not_found_disk": "File not found on disk.",
 
