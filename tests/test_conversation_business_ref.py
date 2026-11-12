@@ -18,6 +18,7 @@ import importlib
 import logging
 import os
 import tempfile
+import unicodedata
 import uuid
 from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime, timedelta
@@ -361,6 +362,99 @@ class TestValidation:
         await _create(client, h, business_ref=REF)
         await _create(client, h, business_ref=REF)
         assert (await _list(client, h, business_ref=REF))["total"] == 2
+
+
+class TestUnicode:
+    """NFC before storing and matching; invisible characters are refused."""
+
+    NFC = "Vertrag-Gr\u00fc\u00dfe-caf\u00e9"  # composed: u-umlaut, e-acute
+    NFD = unicodedata.normalize("NFD", NFC)
+
+    async def test_nfd_stored_is_found_by_nfc_and_back(self, client: AsyncClient) -> None:
+        assert self.NFC != self.NFD
+        _, h = await _user()
+        a = await _create(client, h, business_ref=self.NFD)
+        assert a["business_ref"] == self.NFC
+        for ref in (self.NFC, self.NFD):
+            assert (await _latest(client, h, ref))["id"] == a["id"]
+            assert (await _list(client, h, business_ref=ref))["total"] == 1
+
+        _, h2 = await _user()
+        b = await _create(client, h2, business_ref=self.NFC)
+        assert (await _latest(client, h2, self.NFD))["id"] == b["id"]
+
+    async def test_patch_normalises_too(self, client: AsyncClient) -> None:
+        _, h = await _user()
+        cid = (await _create(client, h))["id"]
+        resp = await client.patch(
+            f"/api/conversations/{cid}", headers=h, json={"business_ref": self.NFD}
+        )
+        assert resp.json()["data"]["business_ref"] == self.NFC
+
+    async def test_matching_is_case_sensitive(self, client: AsyncClient) -> None:
+        _, h = await _user()
+        await _create(client, h, business_ref="HT-1")
+        assert await _latest(client, h, "ht-1") is None
+
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            "a\x85b",  # C1 NEL
+            "a\x9fb",  # C1
+            "\x80ab",  # C1 at the start
+            "a\u2028b",  # line separator
+            "a\u2029",  # paragraph separator at the end
+            "\u2028ab",
+            "a\u200bb",  # zero-width space (Cf)
+            "a\u200db",  # zero-width joiner
+            "\ufeffab",  # BOM
+            "a\u2060b",  # word joiner
+            "a\u00adb",  # soft hyphen
+            "a\u202eb",  # right-to-left override
+        ],
+    )
+    async def test_invisible_and_control_characters_are_refused(
+        self, client: AsyncClient, bad: str
+    ) -> None:
+        _, h = await _user()
+        resp = await client.post(
+            "/api/conversations", headers=h, json={"mode": "react", "business_ref": bad}
+        )
+        assert resp.status_code == 422
+        cid = (await _create(client, h))["id"]
+        resp = await client.patch(
+            f"/api/conversations/{cid}", headers=h, json={"business_ref": bad}
+        )
+        assert resp.status_code == 422
+        for path in ("/api/conversations", "/api/conversations/latest"):
+            resp = await client.get(path, headers=h, params={"business_ref": bad})
+            assert resp.status_code == 422, path
+            assert resp.json()["error_code"] == "invalid_business_ref"
+
+    async def test_ordinary_unicode_and_space_trimming(self, client: AsyncClient) -> None:
+        _, h = await _user()
+        raw = "\u3000\u00a0\t合同 HT/2026\u00a0#7\n"
+        assert (await _create(client, h, business_ref=raw))["business_ref"] == (
+            "合同 HT/2026\u00a0#7"
+        )
+
+    async def test_length_is_counted_after_normalisation(self, client: AsyncClient) -> None:
+        _, h = await _user()
+        # 200 characters composed, 400 code points as sent: accepted.
+        decomposed = unicodedata.normalize("NFD", "\u00e9" * 200)
+        assert len(decomposed) == 400
+        assert (await _create(client, h, business_ref=decomposed))["business_ref"] == (
+            "\u00e9" * 200
+        )
+        # U+0958 becomes two code points under NFC: 101 sent, 202 stored.
+        expanding = "\u0958" * 101
+        assert len(unicodedata.normalize("NFC", expanding)) == 202
+        resp = await client.post(
+            "/api/conversations",
+            headers=h,
+            json={"mode": "react", "business_ref": expanding},
+        )
+        assert resp.status_code == 422
 
 
 # ---------------------------------------------------------------------------
