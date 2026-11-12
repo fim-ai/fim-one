@@ -17,6 +17,7 @@
             "index",
             "why",
             "quickstart",
+            "deployment/production-compose",
             "faq"
           ]
         },

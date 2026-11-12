@@ -1,0 +1,162 @@
+# Production layout: FIM One behind a reverse proxy that runs in another
+# compose project (Caddy, Nginx, Traefik) and reaches the application over a
+# shared external Docker network. Self-contained: use it instead of
+# docker-compose.yml, not on top of it.
+#
+#   .env:  COMPOSE_FILE=docker-compose.prod.yml
+#          FIM_EDGE_NETWORK=<the reverse proxy's network>   (must exist)
+#          POSTGRES_PASSWORD=<a password of your own>
+#          JWT_SECRET_KEY=... / CREDENTIAL_ENCRYPTION_KEY=...  (recommended)
+#
+# Differences from docker-compose.yml:
+#   - no host ports: the reverse proxy reaches fim-one:3000 (frontend) and
+#     fim-one:8000 (API, SSE) on the shared network;
+#   - fixed container names (fim-one, fim-one-db, fim-one-redis,
+#     fim-one-docker-socket-proxy). Container names are unique per host, so
+#     the application's addresses for the database, cache and sandbox proxy
+#     cannot be answered by a container of another stack on the shared
+#     network;
+#   - only the application joins the shared network; the database, the cache
+#     and the sandbox proxy stay on this project's own network;
+#   - POSTGRES_PASSWORD has no default.
+# The security layout is the same as docker-compose.yml: the application runs
+# unprivileged without the Docker socket, sandboxes are started through the
+# docker-socket-proxy service, and generated keys live in the app_secrets
+# volume. See docs/deployment/production-compose.mdx and docs/security.mdx.
+#
+# Volume names are "<project>_postgres_data" etc., where <project> is the
+# compose project name (by default the checkout directory's name). Switching
+# an existing deployment to this file in the same directory reuses its volumes.
+
+services:
+  # Build-only service: produces the fim-sandbox:python image used for
+  # python_exec / shell_exec. Exits immediately and is never restarted.
+  sandbox:
+    build:
+      context: .
+      dockerfile: Dockerfile.sandbox
+    image: fim-sandbox:python
+    command: ["true"]
+    restart: "no"
+
+  # The only holder of the Docker socket; starts sandbox containers and
+  # nothing else. See the same service in docker-compose.yml and
+  # src/fim_one/core/tool/sandbox/docker_proxy.py. Not on the shared network
+  # and not published on any host port.
+  docker-socket-proxy:
+    build: .
+    container_name: fim-one-docker-socket-proxy
+    command: ["python", "/app/docker_proxy.py"]
+    user: root   # needs the socket; runs nothing but the proxy
+    mem_limit: 96m
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # The proxy writes its token here (root only); the application's
+      # entrypoint reads it as root and hands it to the API alone.
+      - sandbox_proxy_secret:/run/fim-sandbox-proxy
+    environment:
+      CODE_EXEC_BACKEND: ${CODE_EXEC_BACKEND:-docker}
+      SANDBOX_PROXY_TOKEN: ${SANDBOX_PROXY_TOKEN:-}
+      SANDBOX_PROXY_EGRESS_NETWORK: ${DOCKER_SHELL_NETWORK:-}
+      DOCKER_HOST_DATA_DIR: ${DOCKER_HOST_DATA_DIR:-${PWD}/data}
+      DOCKER_PYTHON_IMAGE: fim-sandbox:python
+      DOCKER_SHELL_IMAGE: fim-sandbox:python
+      DOCKER_NODE_IMAGE: ${DOCKER_NODE_IMAGE:-node:20-slim}
+      # Only the application container may connect. The proxy resolves this
+      # name on the only network it is on (this project's), where it is the
+      # fim-one service.
+      SANDBOX_PROXY_CLIENT_HOSTS: fim-one
+      SANDBOX_PROXY_USER: ${DOCKER_SANDBOX_USER:-10001:10001}
+    restart: unless-stopped
+
+  fim-one:
+    build: .
+    image: fim-one:latest
+    container_name: fim-one
+    mem_limit: 1400m
+    mem_reservation: 512m
+    # No host ports: the reverse proxy reaches fim-one:3000 / fim-one:8000 on
+    # the shared network.
+    volumes:
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+      - sandbox_proxy_secret:/run/fim-sandbox-proxy:ro   # the proxy's token, root only
+      # Keys generated on the first start when .env sets none (root only).
+      # Back this volume up with ./data, or set the keys in .env.
+      - app_secrets:/var/lib/fim-one/secrets
+      # NO Docker socket here: access to it is root on the host. Sandboxes
+      # are started through docker-socket-proxy.
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-fim}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@fim-one-db:5432/${POSTGRES_DB:-fim_one}
+      REDIS_URL: redis://fim-one-redis:6379/0
+      CODE_EXEC_BACKEND: ${CODE_EXEC_BACKEND:-docker}
+      # The sandbox proxy, by its container name (unique on the host).
+      DOCKER_HOST: tcp://fim-one-docker-socket-proxy:2375
+      # Host-side absolute path of ./data, for the sandbox workspace mounts.
+      DOCKER_HOST_DATA_DIR: ${DOCKER_HOST_DATA_DIR:-${PWD}/data}
+      DOCKER_PYTHON_IMAGE: fim-sandbox:python
+      DOCKER_SHELL_IMAGE: fim-sandbox:python
+      DOCKER_NODE_IMAGE: ${DOCKER_NODE_IMAGE:-node:20-slim}
+      DOCKER_SHELL_NETWORK: ${DOCKER_SHELL_NETWORK:-}
+      # On two networks Next.js listens on the first one's address only; the
+      # reverse proxy comes in on the shared one, so listen on all.
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+    depends_on:
+      sandbox:
+        condition: service_completed_successfully
+      docker-socket-proxy:
+        condition: service_started
+      fim-one-db:
+        condition: service_healthy
+      fim-one-redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - default
+      - edge
+
+  fim-one-db:
+    image: postgres:16-alpine
+    container_name: fim-one-db
+    mem_limit: 350m
+    mem_reservation: 128m
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fim}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-fim_one}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fim} -d ${POSTGRES_DB:-fim_one}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  fim-one-redis:
+    image: redis:7-alpine
+    container_name: fim-one-redis
+    mem_limit: 200m
+    mem_reservation: 64m
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  sandbox_proxy_secret:
+  app_secrets:
+
+networks:
+  # The reverse proxy's network, created outside this project.
+  edge:
+    external: true
+    name: ${FIM_EDGE_NETWORK:?FIM_EDGE_NETWORK must name the reverse proxy's Docker network}

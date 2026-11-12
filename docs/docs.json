@@ -52,6 +52,7 @@
                   "index",
                   "why",
                   "quickstart",
+                  "deployment/production-compose",
                   "faq"
                 ]
               },
@@ -214,6 +215,7 @@
                   "zh/index",
                   "zh/why",
                   "zh/quickstart",
+                  "zh/deployment/production-compose",
                   "zh/faq"
                 ]
               },
@@ -376,6 +378,7 @@
                   "ja/index",
                   "ja/why",
                   "ja/quickstart",
+                  "ja/deployment/production-compose",
                   "ja/faq"
                 ]
               },
@@ -538,6 +541,7 @@
                   "ko/index",
                   "ko/why",
                   "ko/quickstart",
+                  "ko/deployment/production-compose",
                   "ko/faq"
                 ]
               },
@@ -700,6 +704,7 @@
                   "de/index",
                   "de/why",
                   "de/quickstart",
+                  "de/deployment/production-compose",
                   "de/faq"
                 ]
               },
@@ -862,6 +867,7 @@
                   "fr/index",
                   "fr/why",
                   "fr/quickstart",
+                  "fr/deployment/production-compose",
                   "fr/faq"
                 ]
               },

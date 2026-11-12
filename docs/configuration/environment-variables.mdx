@@ -370,6 +370,7 @@ Reranker re-scores retrieved documents to improve relevance. Three providers are
 | `SANDBOX_MAX_OUTPUT_BYTES` | No | `10485760` | The most that is kept of a sandbox container's stdout, and of its stderr, before the tool-level truncation applies |
 | `SANDBOX_PROXY_MAX_MEMORY` / `SANDBOX_PROXY_MAX_CPUS` / `SANDBOX_PROXY_MAX_PIDS` | No | 4 GiB / `4` / `4096` | Read by the proxy: the most a sandbox container may ask for. Raise them if an agent's `sandbox_config` needs more |
 | `SANDBOX_PROXY_CLIENT_HOSTS` | No | `fim-one` in `docker-compose.yml` | Read by the proxy: host names whose addresses may connect to it |
+| `FIM_EDGE_NETWORK` | With `docker-compose.prod.yml` | none | Read by `docker-compose.prod.yml`: name of the existing external network that the reverse proxy uses to reach the app. See [Production compose file](/deployment/production-compose) |
 
 > **Security**: `local` runs AI-generated code inside the application container, as the application's user: every user who can use the code tools can read and change what the application can. Its Python restrictions and shell word list are not a security boundary. Use it for single-user or development setups only. The application container is never given the Docker socket; if it can reach a container runtime anyway (a Docker, Podman or containerd socket, or a `DOCKER_HOST` that is a daemon), `local` code execution and stdio MCP servers refuse to start. See [Security → Code execution and the Docker socket](/security#code-execution-and-the-docker-socket).
 
