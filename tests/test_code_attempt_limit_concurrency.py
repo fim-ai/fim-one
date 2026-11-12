@@ -370,6 +370,15 @@ class TestIssuanceAndCheckWindows:
                 .where(EmailVerification.purpose.in_(["login", "reset_password", "register"]))
                 .values(created_at=datetime.now(UTC) - timedelta(minutes=5))
             )
+            # The per-address count keeps when its last code went.
+            await s.execute(
+                update(EmailVerification)
+                .where(
+                    EmailVerification.email.like("cooldown:%"),
+                    EmailVerification.verified_at != None,  # noqa: E711
+                )
+                .values(verified_at=datetime.now(UTC) - timedelta(minutes=5))
+            )
             await s.commit()
 
     async def _send(self, env: _Env, path: str, email: str = _EMAIL) -> int:
@@ -466,6 +475,72 @@ class TestIssuanceAndCheckWindows:
         outcome = await env.burst(self._SEND["login"], [{"email": _EMAIL}] * 40)
         assert outcome["accepted"] <= 3, outcome
         assert len(env.sent) <= 3  # type: ignore[attr-defined]
+
+    @pytest.mark.parametrize("flow", ["login", "forgot", "register"])
+    async def test_asking_again_within_the_minute_does_not_use_up_the_free_codes(
+        self, env: _Env, flow: str
+    ) -> None:
+        """Four requests in a minute issue one code and count one."""
+        email = "someone@example.com"
+        within_a_minute = [
+            (await env.client.post(self._SEND[flow], json={"email": email})).status_code
+            for _ in range(4)
+        ]
+        assert within_a_minute == [200, 429, 429, 429]
+        # The two other free codes of the day are still there, a minute apart.
+        await self._age_codes(env)
+        later = [await self._send(env, self._SEND[flow], email) for _ in range(3)]
+        assert later == [200, 200, 429]
+
+    @pytest.mark.parametrize("flow", ["login", "forgot"])
+    async def test_refusals_within_the_minute_answer_alike_for_any_address(
+        self, env: _Env, flow: str
+    ) -> None:
+        async def statuses(email: str) -> list[int]:
+            first = [
+                (await env.client.post(self._SEND[flow], json={"email": email})).status_code
+                for _ in range(4)
+            ]
+            await self._age_codes(env)
+            return first + [await self._send(env, self._SEND[flow], email) for _ in range(3)]
+
+        known, unknown = await statuses(_EMAIL), await statuses("nobody@example.com")
+        assert known == unknown == [200, 429, 429, 429, 200, 200, 429]
+        assert len(env.sent) == 3  # type: ignore[attr-defined]
+
+    @pytest.mark.parametrize("flow", ["login", "forgot"])
+    async def test_simultaneous_requests_issue_one_code_and_count_one(
+        self, env: _Env, flow: str
+    ) -> None:
+        outcome = await env.burst(self._SEND[flow], [{"email": _EMAIL}] * 40)
+        assert outcome["accepted"] == 1, outcome
+        assert outcome["verification_rate_limited"] == 39, outcome
+        assert len(env.sent) == 1  # type: ignore[attr-defined]
+        await self._age_codes(env)
+        assert [await self._send(env, self._SEND[flow]) for _ in range(3)] == [200, 200, 429]
+
+    async def test_the_minute_holds_across_midnight(self, env: _Env) -> None:
+        from sqlalchemy import update
+
+        from fim_one.web.services.verification_codes import _DAY_SECONDS, _cooldown_row_id
+
+        assert await self._send(env, self._SEND["login"]) == 200
+        # Make today's row yesterday's, its code sent a few seconds ago.
+        today = int(datetime.now(UTC).timestamp()) // _DAY_SECONDS * _DAY_SECONDS
+        key = f"login|{_EMAIL}"
+        async with env.sessions() as s:
+            await s.execute(
+                update(EmailVerification)
+                .where(EmailVerification.id == _cooldown_row_id("send-address", key, today))
+                .values(
+                    id=_cooldown_row_id("send-address", key, today - _DAY_SECONDS),
+                    verified_at=datetime.now(UTC) - timedelta(seconds=5),
+                )
+            )
+            await s.commit()
+        r = await env.client.post(self._SEND["login"], json={"email": _EMAIL})
+        assert r.status_code == 429
+        assert 50 <= r.json()["error_args"]["seconds"] <= 60
 
     async def test_the_window_itself_is_atomic(self, env: _Env) -> None:
         from fim_one.web.services.verification_codes import take_from_window

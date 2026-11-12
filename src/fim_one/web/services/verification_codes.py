@@ -395,19 +395,30 @@ def send_cooldown(sent_today: int, *, free: int, longest: timedelta) -> timedelt
 
 
 async def take_after_cooldown(
-    db: AsyncSession, *, scope: str, key: str, free: int, longest: timedelta
+    db: AsyncSession,
+    *,
+    scope: str,
+    key: str,
+    free: int,
+    longest: timedelta,
+    min_interval: timedelta = timedelta(0),
 ) -> timedelta | None:
-    """Admit one code for ``(scope, key)`` unless its wait is still running.
+    """Admit one code for ``(scope, key)`` unless a wait is still running.
 
-    Returns ``None`` when admitted, else the time left to wait.  The count
-    starts again each day (UTC).  ``longest <= 0`` switches the rule off.
-    Committed before returning.
+    Two waits apply: *min_interval* after every code (the one-a-minute
+    rule), and the cooldown of :func:`send_cooldown` once the *free* codes
+    of the day (UTC) are used.  Returns ``None`` when admitted, else the
+    time left to wait.  Only an admitted request is counted: a request
+    refused for either wait leaves the day's count as it was.  Of requests
+    arriving together, one is admitted and the others are told to wait.
+    ``longest <= 0`` switches the cooldown off; ``min_interval`` still
+    applies.  Committed before returning.
     """
-    if longest <= timedelta(0):
+    if longest <= timedelta(0) and min_interval <= timedelta(0):
         return None
     now = datetime.now(UTC)
     start = int(now.timestamp()) // _DAY_SECONDS * _DAY_SECONDS
-    row_id = str(uuid.uuid5(_COOLDOWN_NAMESPACE, f"{scope}|{key}|{start}"))
+    row_id = _cooldown_row_id(scope, key, start)
     dialect = db.get_bind().dialect.name
     insert_stmt: Any = (pg_insert if dialect == "postgresql" else sqlite_insert)(EmailVerification)
     await db.execute(
@@ -417,29 +428,48 @@ async def take_after_cooldown(
             code="-",
             purpose=RATE_PURPOSE,
             attempts=0,
-            # Here ``expires_at`` is the earliest time the next code may go.
+            # Here ``expires_at`` is the earliest time the next code may go
+            # under the cooldown, and ``verified_at`` the time the last code
+            # went (for ``min_interval``).
             expires_at=datetime.fromtimestamp(start, UTC),
         ).on_conflict_do_nothing(index_elements=["id"])
     )
     await db.commit()
+    # A code sent just before midnight still holds the one-a-minute rule.
+    yesterday_last = (
+        await db.execute(
+            select(EmailVerification.verified_at).where(
+                EmailVerification.id == _cooldown_row_id(scope, key, start - _DAY_SECONDS)
+            )
+        )
+    ).scalar_one_or_none()
     for _ in range(3):
-        sent, not_before = (
+        sent, cooldown_until, last_sent = (
             await db.execute(
-                select(EmailVerification.attempts, EmailVerification.expires_at).where(
-                    EmailVerification.id == row_id
-                )
+                select(
+                    EmailVerification.attempts,
+                    EmailVerification.expires_at,
+                    EmailVerification.verified_at,
+                ).where(EmailVerification.id == row_id)
             )
         ).one()
-        not_before = _aware(not_before)
+        not_before = _aware(cooldown_until) if longest > timedelta(0) else now
+        for last in (last_sent, yesterday_last):
+            if last is not None:
+                not_before = max(not_before, _aware(last) + min_interval)
         if not_before > now:
             await db.commit()
-            return not_before - now
+            wait: timedelta = not_before - now
+            return wait
+        # Compare-and-set on the count read above: of requests that read the
+        # same count, one moves it and the rest read again and find a wait.
         taken = await db.execute(
             update(EmailVerification)
             .where(EmailVerification.id == row_id, EmailVerification.attempts == sent)
             .values(
                 attempts=sent + 1,
                 expires_at=now + send_cooldown(sent + 1, free=free, longest=longest),
+                verified_at=now,
             )
             .execution_options(synchronize_session=False)
         )
@@ -447,7 +477,11 @@ async def take_after_cooldown(
         if getattr(taken, "rowcount", 0) == 1:
             return None
     # Others are taking codes for this key at this very moment.
-    return COOLDOWN_STEP
+    return max(COOLDOWN_STEP, min_interval)
+
+
+def _cooldown_row_id(scope: str, key: str, day_start: int) -> str:
+    return str(uuid.uuid5(_COOLDOWN_NAMESPACE, f"{scope}|{key}|{day_start}"))
 
 
 # ---------------------------------------------------------------------------

@@ -265,8 +265,10 @@ async def _admit_code_send(
     whether the address belongs to an account.
 
     * Per client address (anonymous requests): ``AUTH_CODE_SENDS_PER_IP_HOUR``.
-    * Per address and purpose: the first ``AUTH_CODE_SENDS_BEFORE_COOLDOWN``
-      codes of a day (UTC) are issued at once; after that each code waits
+    * Per address and purpose: one code a minute
+      (``VERIFICATION_CODE_RATE_LIMIT_SECONDS``), and the first
+      ``AUTH_CODE_SENDS_BEFORE_COOLDOWN`` codes of a day (UTC) are issued
+      without a longer wait; after that each code waits
       for a cooldown that starts at one minute and doubles with every code,
       up to ``AUTH_CODE_SEND_COOLDOWN_MAX_MINUTES``.  The ceiling bounds the
       codes issued per address a day (about 30 with the defaults).  The
@@ -276,6 +278,9 @@ async def _admit_code_send(
       codes issued is the number of guesses an address is exposed to.
 
     Addresses are counted in the form :func:`normalize_email` gives them.
+    Only a request that passes both waits is counted against the address,
+    in one atomic step, so asking again too soon does not use up the day's
+    codes.
 
     A signed-in request is counted under the account, not the address: what
     a stranger uses up for an address does not take the signed-in owner's
@@ -296,6 +301,7 @@ async def _admit_code_send(
         key=key,
         free=_limit("AUTH_CODE_SENDS_BEFORE_COOLDOWN", 3),
         longest=timedelta(minutes=_limit("AUTH_CODE_SEND_COOLDOWN_MAX_MINUTES", 60)),
+        min_interval=timedelta(seconds=VERIFICATION_CODE_RATE_LIMIT_SECONDS),
     )
     if wait is not None:
         raise _rate_limited(wait)
@@ -539,19 +545,6 @@ async def send_verification_code(
     if existing.scalars().first() is not None:
         raise AppError("email_already_registered", status_code=409)
 
-    # Rate limit: no new code if one was sent < 60s ago for same email+purpose
-    recent = await db.execute(
-        select(EmailVerification)
-        .where(
-            EmailVerification.email == body.email,
-            EmailVerification.purpose == "register",
-            EmailVerification.created_at > datetime.now(UTC) - timedelta(seconds=VERIFICATION_CODE_RATE_LIMIT_SECONDS),
-        )
-        .order_by(EmailVerification.created_at.desc())
-        .limit(1)
-    )
-    if (last := recent.scalar_one_or_none()) is not None:
-        raise _rate_limited(_seconds_until_next_code(last))
 
     code = f"{secrets.randbelow(1000000):06d}"
     verification = EmailVerification(
@@ -850,19 +843,6 @@ async def send_login_code(
     user = await db.scalar(_by_email(body.email).limit(1))
     deliver = user is not None and user.is_active
 
-    # Rate limit: no new code if one was sent < 60s ago for same email+purpose
-    recent = await db.execute(
-        select(EmailVerification)
-        .where(
-            EmailVerification.email == body.email,
-            EmailVerification.purpose == "login",
-            EmailVerification.created_at > datetime.now(UTC) - timedelta(seconds=VERIFICATION_CODE_RATE_LIMIT_SECONDS),
-        )
-        .order_by(EmailVerification.created_at.desc())
-        .limit(1)
-    )
-    if (last := recent.scalar_one_or_none()) is not None:
-        raise _rate_limited(_seconds_until_next_code(last))
 
     code = f"{secrets.randbelow(1000000):06d}"
     verification = EmailVerification(
@@ -1627,19 +1607,6 @@ async def send_reset_code(
         signed_in_user_id=current_user.id,
     )
 
-    # Rate limit: no new code if one was sent < 60s ago for same email+purpose
-    recent = await db.execute(
-        select(EmailVerification)
-        .where(
-            EmailVerification.email == current_user.email,
-            EmailVerification.purpose == "reset_password",
-            EmailVerification.created_at > datetime.now(UTC) - timedelta(seconds=VERIFICATION_CODE_RATE_LIMIT_SECONDS),
-        )
-        .order_by(EmailVerification.created_at.desc())
-        .limit(1)
-    )
-    if (last := recent.scalar_one_or_none()) is not None:
-        raise _rate_limited(_seconds_until_next_code(last))
 
     code = f"{secrets.randbelow(1000000):06d}"
     verification = EmailVerification(
@@ -1720,19 +1687,6 @@ async def send_forgot_code(
     user = await db.scalar(_by_email(body.email).limit(1))
     deliver = user is not None and user.is_active
 
-    # Rate limit: no new code if one was sent < 60s ago
-    recent = await db.execute(
-        select(EmailVerification)
-        .where(
-            EmailVerification.email == body.email,
-            EmailVerification.purpose == "reset_password",
-            EmailVerification.created_at > datetime.now(UTC) - timedelta(seconds=VERIFICATION_CODE_RATE_LIMIT_SECONDS),
-        )
-        .order_by(EmailVerification.created_at.desc())
-        .limit(1)
-    )
-    if (last := recent.scalar_one_or_none()) is not None:
-        raise _rate_limited(_seconds_until_next_code(last))
 
     code = f"{secrets.randbelow(1000000):06d}"
     verification = EmailVerification(
