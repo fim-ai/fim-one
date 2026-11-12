@@ -19,28 +19,49 @@
 #
 # Building a non-native architecture runs under QEMU emulation and takes
 # several times longer. Docker Desktop ships QEMU; on a Linux host register it
-# once with:  docker run --privileged --rm tonistiigi/binfmt --install all
+# once with:  docker run --privileged --rm tonistiigi/binfmt --install arm64
+# (or amd64). That container is privileged because it registers the emulator
+# in the host kernel's binfmt_misc.
 #
 # Each architecture is built and loaded separately (`--load` cannot load a
 # multi-platform image into the classic image store).
 
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+# Resolved before the cd below: both may be relative to the caller's directory.
+script="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+caller_dir="$PWD"
 
 platform=""
 tag="latest"
 save_dir=""
 
+usage() { sed -n '2,27p' "${script}"; }
+
+need_value() {
+  if [[ $# -lt 2 || -z "$2" ]]; then
+    echo "$1 needs a value" >&2
+    usage >&2
+    exit 2
+  fi
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --platform) platform="$2"; shift 2 ;;
-    --tag) tag="$2"; shift 2 ;;
-    --save) save_dir="$2"; shift 2 ;;
-    -h|--help) sed -n '2,25p' "$0"; exit 0 ;;
+    --platform) need_value "$@"; platform="$2"; shift 2 ;;
+    --tag) need_value "$@"; tag="$2"; shift 2 ;;
+    --save) need_value "$@"; save_dir="$2"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
+
+# A relative --save is relative to where the script was called from.
+if [[ -n "${save_dir}" && "${save_dir}" != /* ]]; then
+  save_dir="${caller_dir}/${save_dir}"
+fi
+
+cd "$(dirname "${script}")/.."
 
 if [[ -z "${platform}" ]]; then
   platform=$(docker version --format '{{.Server.Arch}}')
