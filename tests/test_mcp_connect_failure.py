@@ -130,3 +130,100 @@ class TestACancellationStaysOne:
                     "down", f"http://127.0.0.1:{_closed_port()}/mcp"
                 )
         assert _cancelling() == 0
+
+
+class _SlowToClose:
+    """A transport whose failed connection takes a moment to close."""
+
+    def __init__(self, raises: BaseException | None = None) -> None:
+        self.raises = raises
+        self.closing = asyncio.Event()
+
+    async def __aenter__(self) -> _SlowToClose:
+        return self
+
+    async def __aexit__(self, *exc: Any) -> None:
+        self.closing.set()
+        try:
+            await asyncio.sleep(0.2)
+        except asyncio.CancelledError:
+            # As a transport does: what it raises on the way out is its own
+            # failure, not the cancellation that interrupted the close.
+            if self.raises is None:
+                raise
+        if self.raises is not None:
+            raise self.raises
+
+
+class TestACancellationThatArrivesWhileTheFailedConnectionCloses:
+    """It is delivered once, into the close. It must come out as one."""
+
+    async def _fail_then_cancel(self, exc: BaseException, transport: _SlowToClose) -> Any:
+        client = MCPClient()
+        went_on = False
+
+        async def connect() -> None:
+            nonlocal went_on
+            mark = client._exit_stack.mark()
+            await client._exit_stack.enter_async_context(transport)
+            try:
+                try:
+                    raise exc
+                except BaseException as failed:
+                    await client._give_up_connecting("down", mark, failed, None)
+                    raise
+            except Exception:
+                # What "skip this server" does with a failed connection.
+                went_on = True
+
+        task = asyncio.create_task(connect())
+        await transport.closing.wait()
+        task.cancel()
+        await asyncio.wait({task})
+        assert client._exit_stack.mark() == 0
+        return task, went_on
+
+    async def test_after_an_ordinary_failure(self) -> None:
+        task, went_on = await self._fail_then_cancel(RuntimeError("refused"), _SlowToClose())
+        assert task.cancelled()
+        assert not went_on, "a turn that was stopped went on to the next server"
+
+    async def test_after_an_ordinary_failure_whose_close_fails_too(self) -> None:
+        task, went_on = await self._fail_then_cancel(
+            RuntimeError("refused"), _SlowToClose(raises=OSError("broken pipe"))
+        )
+        assert task.cancelled()
+        assert not went_on
+
+    async def test_after_the_transport_cancelled_the_task_itself(self) -> None:
+        """The reason is there, and so is a real cancellation: the cancellation wins."""
+        task, went_on = await self._fail_then_cancel(
+            asyncio.CancelledError(), _SlowToClose(raises=ConnectionRefusedError())
+        )
+        assert task.cancelled()
+        assert not went_on
+
+    async def test_a_time_limit_that_runs_out_during_the_close(self) -> None:
+        client = MCPClient()
+        transport = _SlowToClose()
+        mark = client._exit_stack.mark()
+        await client._exit_stack.enter_async_context(transport)
+        with pytest.raises(TimeoutError):
+            async with asyncio.timeout(0.05):
+                try:
+                    raise RuntimeError("refused")
+                except BaseException as failed:
+                    await client._give_up_connecting("down", mark, failed, None)
+                    raise
+
+
+class TestTheNameOfAServerAlreadyConnected:
+    async def test_a_failed_second_connection_leaves_the_first_registered(self) -> None:
+        client = MCPClient()
+        first = object()
+        client._sessions["docs"] = first
+
+        with pytest.raises(MCPConnectionError):
+            await client.connect_streamable_http("docs", f"http://127.0.0.1:{_closed_port()}/mcp")
+
+        assert client._sessions == {"docs": first}
