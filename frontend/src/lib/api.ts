@@ -1873,12 +1873,15 @@ export const adminApi = {
     return apiFetch<{ items: AdminOrganization[]; total: number; page: number; size: number; pages: number }>(`/api/admin/organizations?${sp}`)
   },
   /** Every organization, read page by page within the endpoint's size cap (100). */
-  listAllOrganizations: () =>
-    fetchAllPages<AdminOrganization>((page, size) =>
+  listAllOrganizations: async () => {
+    const rows = await fetchAllPages<AdminOrganization>((page, size) =>
       apiFetch<{ items: AdminOrganization[]; total: number; pages: number }>(
         `/api/admin/organizations?${new URLSearchParams({ page: String(page), size: String(size) })}`,
       ),
-    ),
+    )
+    // Offset paging over a list that can change mid-read may repeat a row.
+    return [...new Map(rows.map((o) => [o.id, o])).values()]
+  },
   adminDeleteOrganization: (orgId: string) =>
     apiFetch(`/api/admin/organizations/${orgId}`, { method: 'DELETE' }),
 
