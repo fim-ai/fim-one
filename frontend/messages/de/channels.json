@@ -12,7 +12,11 @@
     "feishu": "Feishu",
     "wecom": "WeCom",
     "slack": "Slack",
-    "teams": "Microsoft Teams"
+    "teams": "Microsoft Teams",
+    "lark_webhook": "Lark / Feishu webhook",
+    "slack_webhook": "Slack webhook",
+    "wecom_webhook": "WeCom webhook",
+    "email": "Email"
   },
   "columns": {
     "name": "Name",
@@ -68,7 +72,20 @@
     "encrypt_key_edit_placeholder": "Konfiguriert - lassen Sie leer, um beizubehalten",
     "pickChat": "Aus Gruppenliste auswählen",
     "verification_token_hint": "Finden Sie es in der Feishu Open Platform -> Events & Callbacks -> Registerkarte Encryption Strategy -> Feld Verification Token. Klicken Sie auf das Augensymbol, um es anzuzeigen.",
-    "encrypt_key_required": "Verschlüsselungsschlüssel ist erforderlich. Aktivieren Sie die Verschlüsselung in Feishu Open Platform -> Events & Callbacks -> Encryption Strategy und fügen Sie den Schlüssel hier ein."
+    "encrypt_key_required": "Verschlüsselungsschlüssel ist erforderlich. Aktivieren Sie die Verschlüsselung in Feishu Open Platform -> Events & Callbacks -> Encryption Strategy und fügen Sie den Schlüssel hier ein.",
+    "typeHint": "Only a Feishu app can carry approval requests. Webhook and email channels send notifications.",
+    "sectionWebhook": "Webhook",
+    "sectionWebhookDescription": "Add a custom bot (incoming webhook) to the group on the platform and paste the URL it gives you. Anyone holding this URL can post to that group.",
+    "webhook_url": "Webhook URL",
+    "webhook_url_edit_placeholder": "Configured - leave blank to keep",
+    "webhook_url_required": "Webhook URL is required.",
+    "webhook_url_invalid": "Enter the https webhook URL issued by this platform.",
+    "sectionEmail": "Recipients",
+    "sectionEmailDescription": "Messages are sent from this instance's SMTP account. The operator's recipient allowlist applies.",
+    "email_to": "Recipient addresses",
+    "email_to_placeholder": "ops@example.com, oncall@example.com",
+    "email_to_hint": "Separate several addresses with commas.",
+    "email_to_required": "Enter at least one recipient email address."
   },
   "discard": {
     "title": "Ungespeicherte Änderungen verwerfen?",
@@ -99,7 +116,12 @@
     "playgroundHint": "Simulieren Sie einen sensiblen Tool-Aufruf, senden Sie eine echte Genehmigungskarte an die Feishu-Gruppe und beobachten Sie die Entscheidung in Echtzeit.",
     "testSend": "Testnachricht senden",
     "testing": "Wird gesendet...",
-    "testSendHint": "Senden Sie eine einfache Benachrichtigung an den konfigurierten Chat – nützlich zur Überprüfung der Anmeldedaten ohne Genehmigungsablauf."
+    "testSendHint": "Senden Sie eine einfache Benachrichtigung an den konfigurierten Chat – nützlich zur Überprüfung der Anmeldedaten ohne Genehmigungsablauf.",
+    "typeLabel": "Type",
+    "webhookUrlLabel": "Webhook URL",
+    "webhookConfigured": "Configured (hidden)",
+    "recipientsLabel": "Recipients",
+    "testSendHintOutbound": "Send a short notice to this channel's target to check that it can deliver."
   },
   "actions": {
     "viewDetails": "Details anzeigen",
@@ -186,5 +208,6 @@
       "close": "Schließen",
       "closeStopsPolling": "Schließen"
     }
-  }
+  },
+  "webhookTarget": "Webhook"
 }

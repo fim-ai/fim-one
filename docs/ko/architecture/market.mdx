@@ -14,28 +14,30 @@ Market은 FIM One의 리소스 마켓플레이스입니다. 사용자는 자신�
 
 Market은 리소스가 어떻게 구현되었는지가 아니라 리소스가 무엇을 하는지에 따라 리소스를 두 가지 범주로 구성합니다.
 
-### 솔루션
+### Solutions
 
-솔루션은 **당신을 위해 작동하는 것**입니다. 사용자는 솔루션을 구독하고 즉시 사용 가능한 기능을 얻습니다.
+Solutions are things that **do work for you**. A user subscribes to a Solution and gets a ready-to-use capability.
 
-| 리소스 유형 | 기능 |
+| Resource Type | What It Does |
 |---|---|
-| **에이전트** | 바인딩된 도구, 지식 및 지침을 갖춘 대화형 AI 어시스턴트 |
-| **스킬** | `call_agent`를 통해 여러 에이전트를 조율할 수 있는 글로벌 SOP(표준 운영 절차) |
-| **워크플로우** | 시각적 편집 및 결정론적 실행이 가능한 DAG 기반 자동화 흐름 |
+| **Agent** | A conversational AI assistant with bound tools, knowledge, and instructions |
+| **Skill** | A global SOP (Standard Operating Procedure) that can orchestrate multiple agents via `call_agent` |
+| **Workflow** | A DAG-based automation flow with visual editing and deterministic execution |
 
-솔루션은 다른 리소스에 의존할 수 있습니다. 에이전트는 API 호출을 위한 특정 커넥터와 검색 파이프라인을 위한 지식 베이스가 필요할 수 있습니다. 마켓은 구독 중에 이러한 종속성을 자동으로 처리합니다([아래의 종속성 해결](#dependency-resolution) 참조).
+Skills and Workflows are optional modules, off by default. While a module is off its resources are absent from the Market and cannot be subscribed to.
 
-### 컴포넌트
+Solutions may depend on other resources. An Agent might require a specific Connector for its API calls and a Knowledge Base for its retrieval pipeline. The Market handles these dependencies automatically during subscription (see [Dependency resolution](#dependency-resolution) below).
 
-컴포넌트는 개발자를 위한 **재사용 가능한 빌딩 블록**입니다. 솔루션이 사용하는 기능을 제공합니다.
+### Components
 
-| 리소스 유형 | 역할 |
+Components are **reusable building blocks** for developers. They provide capabilities that Solutions consume.
+
+| Resource Type | What It Does |
 |---|---|
-| **커넥터** | API 또는 데이터베이스 통합 어댑터 정의 |
-| **MCP 서버** | Model Context Protocol을 사용하는 도구 서비스 구성 |
+| **Connector** | An API integration adapter definition (database connectors cannot be published) |
+| **MCP Server** | A tool service configuration using the Model Context Protocol |
 
-컴포넌트는 구독하기가 더 간단합니다. 내부 종속성이 없고 자격증명 요구사항만 있습니다.
+Components are simpler to subscribe to — they have no internal dependencies, only credential requirements.
 
 ### Knowledge Bases가 독립적으로 나열되지 않는 이유
 
@@ -92,29 +94,24 @@ flowchart TD
 마켓은 특수 규칙이 있는 조직일 뿐이므로, 조직을 위해 구축된 모든 기능 — 검토 워크플로우, 자격 증명 관리, 리소스 라이프사이클 — 추가 구현 없이 마켓에서 자동으로 작동합니다.
 </Tip>
 
-### 가시성 필터가 이를 처리하는 방식
+### How the visibility filter handles it
 
-아무도 Market 조직의 멤버십을 보유하지 않습니다. 사용자는 Market에 "가입"하지 않으며, 개별 리소스를 구독합니다. 이는 `MARKET_ORG_ID`가 사용자의 `user_org_ids` 목록에 절대 나타나지 않으며, Market 리소스에 대해 조직 멤버십 가시성 조건이 자연스럽게 건너뛰어진다는 의미입니다.
+Nobody holds membership in the Market org. Users do not "join" the Market — they subscribe to individual resources. This means `MARKET_ORG_ID` is never present in a user's `user_org_ids` list, and the org-membership visibility condition is naturally skipped for Market resources.
 
-대신, 구독된 Market 리소스는 `build_visibility_filter()`의 `subscribed_ids` 경로를 통해 흐릅니다:
+Instead, subscribed Market resources flow through the `subscribed_ids` path in `build_visibility_filter()`, the same path org-shared resources take:
 
 ```mermaid
 flowchart LR
     subgraph Filter["build_visibility_filter()"]
         C1["user_id == me<br/>(own resources)"]
-        C2["visibility == 'org'<br/>AND org_id IN my_orgs<br/>AND approved"]
-        C3["id IN subscribed_ids"]
+        C2["id IN subscribed_ids<br/>AND visibility == 'org'<br/>AND publish_status is unset or approved"]
     end
 
     C1 -->|OR| Result["Visible"]
     C2 -->|OR| Result
-    C3 -->|OR| Result
-
-    Note1["Market resources<br/>skip C2 (not a member)<br/>match C3 (subscribed)"]
-    Note1 -.-> C3
 ```
 
-이 3개 조건의 OR 절이 전체 가시성 모델입니다. 개인 리소스, 조직 공유 리소스, Market 구독 리소스는 하나의 쿼리로 해결되며, 리소스 출처에 따른 분기 로직이 없습니다.
+This two-condition OR clause is the entire visibility model. Org membership alone grants nothing: org-shared and Market resources both reach a user through a subscription, and the share state is re-read on every query, so a subscription stops working as soon as the owner unpublishes the resource or it is awaiting or refused by review.
 
 ### 범위 기반 탐색
 
@@ -173,23 +170,23 @@ sequenceDiagram
 
 컴포넌트(커넥터 및 MCP 서버)는 더 간단한 흐름을 가지고 있습니다 — 종속성 분석이 필요하지 않습니다. 사용자가 구독하고, 선택적으로 자격증명을 구성한 후 컴포넌트를 사용할 수 있습니다.
 
-### 자격증명 구성
+### Credential configuration
 
-자격증명은 편의성과 유연성의 균형을 맞추는 **하이브리드 모델**을 따릅니다:
+Credentials follow a **hybrid model** that balances convenience with flexibility:
 
-- **구독 중에 제공됨.** 연결 유형 종속성이 자격증명을 요구할 때, 온보딩 마법사가 자격증명 양식을 즉시 표시합니다.
-- **건너뛸 수 있음.** 사용자는 "나중에 구성, 건너뛰기"를 선택할 수 있습니다. 리소스는 구독되지만 해당 자격증명이 필요한 도구는 호출될 때 "자격증명을 구성하세요" 메시지를 반환합니다.
-- **지연된 구성.** 사용자는 설정 페이지에서 언제든지 자격증명을 구성하거나 업데이트할 수 있습니다.
+- **Offered during subscription.** When a connection-type dependency requires credentials, the onboarding wizard presents the credential form immediately.
+- **Skippable.** The user can choose "Skip, configure later." The resource is subscribed, but the tools that need those credentials stay out of the agent's toolset until the user configures them (or the publisher allows fallback).
+- **Deferred configuration.** Users can configure or update credentials at any time from their settings page.
 
-이는 조직에서 사용되는 동일한 `allow_fallback` 메커니즘입니다. 게시자가 폴백을 활성화하고 기본 자격증명을 설정한 경우, 구독자는 자신의 키를 제공하지 않고도 리소스를 즉시 사용할 수 있습니다. 폴백이 비활성화된 경우, 각 구독자는 자신의 자격증명을 제공해야 합니다.
+This is the same `allow_fallback` mechanism used in organizations. If the publisher has enabled fallback and set a default credential, subscribers can use the resource immediately without providing their own key. If fallback is disabled, each subscriber must bring their own.
 
 <Warning>
-자격증명 폴백이 활성화된 Market 리소스를 사용할 때, API 요청이 게시자의 자격증명을 통해 흐릅니다. 민감한 작업의 경우, 자신의 자격증명을 제공하거나 게시자의 신뢰성을 확인하는 것을 고려하세요.
+When using a Market resource with credential fallback enabled, your API requests flow through the publisher's credentials. For sensitive operations, consider providing your own credentials or verifying the publisher's trustworthiness.
 </Warning>
 
-### 구독 취소
+### Unsubscribing
 
-구독 취소는 `ResourceSubscription` 레코드를 제거합니다. 리소스는 사용자의 가시성 필터에서 사라지고 더 이상 도구 세트에 로드되지 않습니다. 자동 구독된 종속성이 있는 솔루션의 경우 종속 리소스(KB, 기술)도 정리됩니다. 리소스에 대한 사용자 구성 자격증명이 제거됩니다.
+Unsubscribing removes the `ResourceSubscription` record. The resource disappears from the user's visibility filter and is no longer loaded into tool sets. For Solutions, dependencies that were subscribed automatically (Skills, Connectors, MCP Servers) are removed as well when no other subscribed Solution needs them, along with the credentials saved for those Connectors and MCP Servers. Unsubscribing from a Connector or MCP Server directly removes the user's credential for it.
 
 ## 의존성 해결
 
@@ -204,13 +201,12 @@ sequenceDiagram
 - **액세스 모델:** 원본 작성자의 리소스에 대한 읽기 전용 참조입니다. 구독자는 콘텐츠를 수정할 수 없습니다.
 - **구독 해제 시:** 자동 구독 종속성은 부모 솔루션이 구독 해제될 때 자동으로 정리됩니다.
 
-### 연결 유형 종속성
+### Connection-type dependencies
 
-**커넥터** 및 **MCP 서버**는 솔루션에서 참조되는 연결 유형 종속성입니다. 이들은 작동하기 위해 자격 증명이 필요합니다.
+**Connectors** and **MCP Servers** referenced by a Solution are connection-type dependencies. They require credentials to function.
 
-- **구독 시:** 온보딩 마법사에서 요구 사항으로 나열됩니다. 사용자에게 자격 증명을 구성하거나 건너뛸 것을 요청합니다.
-- **스마트 매칭:** 사용자가 이미 호환되는 커넥터(동일한 유형, 동일한 기본 URL)를 가지고 있으면 시스템은 새 구독을 만드는 대신 이를 재사용할 것을 제안합니다.
-- **구독 해제 시:** 구독은 제거되지만 사용자가 만든 자격 증명은 보존됩니다(사용자는 다른 곳에서 동일한 커넥터를 사용할 수 있습니다).
+- **On subscription:** subscribed together with the Solution and listed as requirements in the onboarding wizard. The user is prompted to configure credentials (or skip).
+- **On unsubscription:** a Connector or MCP Server that was subscribed automatically with the Solution is removed with it, credentials included, unless another subscribed Solution still needs it. One the user subscribed to on their own is left in place with its credentials.
 
 ```mermaid
 flowchart TD
@@ -222,11 +218,9 @@ flowchart TD
 
     CT --> AS["Auto-subscribe<br/>(silent, read-only)"]
 
-    CN --> SM{"User already has<br/>compatible resource?"}
-    SM -->|Yes| RE["Offer reuse"]
-    SM -->|No| OB["Onboarding wizard<br/>(credential collection)"]
+    CN --> OB["Onboarding wizard<br/>(credential collection)"]
     OB --> SK{"Skip?"}
-    SK -->|Yes| DEF["Deferred config<br/>(tools show 'please configure')"]
+    SK -->|Yes| DEF["Deferred config<br/>(tools hidden until configured)"]
     SK -->|No| CONF["Credentials saved<br/>(ready to use)"]
 ```
 
@@ -269,9 +263,9 @@ flowchart TD
 
 ## 구현 참고 사항
 
-### 섀도우 조직
+### The shadow org
 
-Market 조직은 잘 알려진 고정 ID(`00000000-0000-0000-0000-000000000001`)와 슬러그(`market`)를 가지고 있습니다. 플랫폼 초기화 중에 `ensure_market_org()`에 의해 생성되며, 일반적으로 첫 번째 관리자 사용자의 로그인 시 생성됩니다. 이 함수는 멱등성을 가지므로 여러 번 호출해도 안전합니다.
+The Market organization has a well-known fixed ID (`00000000-0000-0000-0000-000000000001`) and slug (`market`). It is created by `ensure_market_org()` during platform initialization, when the first user (the administrator) registers. The function is idempotent; calling it multiple times is safe.
 
 ### ResourceSubscription
 
@@ -286,14 +280,14 @@ Market 조직은 잘 알려진 고정 ID(`00000000-0000-0000-0000-000000000001`)
 
 `(user_id, resource_type, resource_id)`에 대한 고유 제약은 중복 구독을 방지합니다. `org_id` 열은 구독의 출처를 추적하여 범위 인식 구독 해제를 가능하게 합니다.
 
-### 가시성 필터 통합
+### Visibility filter integration
 
-`resolve_visibility()` 함수는 단일 호출에서 두 가지 조회를 수행합니다:
+The `resolve_visibility()` function performs two lookups in a single call:
 
-1. 사용자의 조직 멤버십을 가져옵니다 (`user_org_ids`)
-2. 사용자의 구독을 가져옵니다 (`subscribed_ids`)
+1. Fetches the user's org memberships (`user_org_ids`)
+2. Fetches the user's subscriptions (`subscribed_ids`)
 
-이들은 `build_visibility_filter()`에 전달되며, 이 함수는 세 가지 가시성 계층(자신의 것, 조직 공유, 구독)을 모두 결합하는 단일 SQL WHERE 절을 생성합니다. 이 함수는 리소스를 쿼리하는 모든 곳에서 사용됩니다 — 에이전트 목록, 커넥터 드롭다운, 스킬 주입, 자동 발견 모드 — 전체 플랫폼에서 일관된 가시성을 보장합니다.
+These are passed to `build_visibility_filter()`, which produces a single SQL WHERE clause combining the two visibility conditions (own, or subscribed and still shared). This function is used everywhere resources are queried — agent lists, connector dropdowns, skill injection, auto-discovery mode — ensuring consistent visibility across the entire platform.
 
 ### 자격증명 암호화
 

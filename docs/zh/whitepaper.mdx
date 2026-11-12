@@ -93,38 +93,38 @@ FIM One刻意不是iPaaS，这种区别不仅仅是表面的。iPaaS是字段级
 | 治理 | 外部附加组件 | 内置钩子 |
 | 分类（Gartner 2025） | iPaaS MQ（衰退中） | AI Agent Platform |
 
-## 4. 架构原则
+## 4. Architecture Principles
 
 <CardGroup cols={2}>
-  <Card title="提供商无关" icon="shuffle">
-    任何OpenAI兼容的LLM——OpenAI、Anthropic、DeepSeek、Qwen、本地Ollama、信创认证模型。模型选择是部署变量，而非架构承诺。
+  <Card title="Provider-Agnostic" icon="shuffle">
+    Any OpenAI-compatible LLM — OpenAI, Anthropic, DeepSeek, Qwen, local Ollama, Xinchuang-certified models. Model choice is a deployment variable, not an architectural commitment.
   </Card>
-  <Card title="协议优先" icon="network-wired">
-    每个连接器都发布类型化的模式。智能体看到的是操作、参数和返回类型——永远不是原始HTTP。OpenAPI、MCP和直接数据库连接都是一等公民。
+  <Card title="Protocol-First" icon="network-wired">
+    Every connector publishes a typed schema. The agent sees actions, parameters, and return types — never raw HTTP. OpenAPI, MCP, and direct database connections are first-class.
   </Card>
-  <Card title="三个执行引擎" icon="sitemap">
-    **ReAct**用于探索性任务，**DAG**用于结构化管道，**Workflow**（最多25个节点）用于确定性的人工设计管道。一个智能体核心根据任务选择引擎。
+  <Card title="Three Execution Engines" icon="sitemap">
+    **ReAct** for exploratory tasks, **DAG** for structured pipelines, **Workflow** (visual editor, 9 node types, an optional module) for deterministic human-designed pipelines. One agent core picks the engine per task.
   </Card>
-  <Card title="模式优先工具加载" icon="bolt">
-    工具模式以~30个token的成本预先加载；智能体按需扩展。每个会话的提示词开销下降~80%，平台可扩展到**10,000+个API**而不会爆炸上下文窗口。
+  <Card title="Schema-First Tool Loading" icon="bolt">
+    Tool schemas are pre-seeded at ~30 tokens each; the agent expands on demand. Per-session prompt overhead drops ~80%, and the platform scales to **10,000+ APIs** without blowing the context window.
   </Card>
-  <Card title="钩子治理" icon="shield-halved">
-    每个工具调用都通过可配置的钩子链：审计、策略、人工审批。钩子在LLM循环外运行——确定性且可审计。
+  <Card title="Hook-Governed" icon="shield-halved">
+    Every tool call passes through a configurable hook chain: audit, policy, human-in-the-loop approval. Hooks run outside the LLM loop — deterministic and auditable.
   </Card>
-  <Card title="内存感知" icon="brain">
-    短期对话、长期知识库和跨会话内存是一等原语，而非附加功能。
+  <Card title="Memory-Aware" icon="brain">
+    Short-term conversation, long-term knowledge base, and cross-session memory are first-class primitives, not bolt-ons.
   </Card>
 </CardGroup>
 
-## 5. 三种交付模式——一个智能体核心
+## 5. Three Delivery Modes — One Agent Core
 
-相同的规划器、记忆和连接器库支持三种不同的产品形态。选择是部署决策，而非代码分支。
+The same planner, memory, and connector library power three distinct product shapes. The choice is a deployment decision, not a code fork.
 
-**独立版** ——自包含的门户。买方需要在精选知识库上的聊天界面，或代码沙箱，或通用助手。不涉及主机系统。适用于内部IT帮助台、工程生产力、客户支持知识库。
+**Standalone** — a self-contained portal. The buyer wants a chat interface over a curated knowledge base, or a code sandbox, or a general assistant. No host system involved. Fits internal IT help desks, engineering productivity, customer-support KBs.
 
-**副驾驶** ——通过iframe、小部件或直接嵌入集成到现有主机系统内的智能体。主机处理身份验证；副驾驶继承用户上下文。适用于SAP Fiori内的财务副驾驶、Salesforce内的销售副驾驶、内部开发者门户内的DevOps副驾驶。
+**Copilot** — the agent embedded inside an existing host system. Today the host UI calls the FIM One API; a drop-in iframe / widget embed, with the user's identity passed from the host, is planned. Fits Finance Copilot inside SAP Fiori, Sales Copilot inside Salesforce, DevOps Copilot inside an internal developer portal.
 
-**中枢** ——中央编排表面。每个连接的系统都在此终止。用户提出跨系统问题；智能体在系统间规划和执行。适用于"关闭所有亚太地区实体的Q1"、"查找每个错过续约的客户并起草外展"、"协调昨天网关和账本之间的付款"。
+**Hub** — the central orchestration surface. Every connected system terminates here. Users ask cross-system questions; the agent plans and executes across systems. Fits "close out Q1 for all APAC entities", "find every customer who missed a renewal and draft outreach", "reconcile yesterday's payments between gateway and ledger".
 
 ```mermaid
 flowchart LR
@@ -153,83 +153,83 @@ flowchart LR
   C --> Reports
 ```
 
-## 6. 连接器对齐模型
+## 6. Connector Alignment Model
 
-连接器是由身份验证策略支持的类型化操作界面。FIM One 定义了三个身份验证层级，覆盖绝大多数企业系统。
+A connector is a typed action surface backed by an auth strategy. FIM One defines three auth tiers that cover the vast majority of enterprise systems.
 
 <AccordionGroup>
-  <Accordion title="层级 1——数据库连接器（完整或基础）">
-    直接连接关系型数据库。**Full** 模式向智能体开放任意 SQL，并通过只读角色进行限制；**Basic** 模式仅开放预先注册的参数化查询。原生支持 **Xinchuang 兼容数据库——Dameng（DM8）、KingbaseES、HighGo**，以及 PostgreSQL 和 MySQL。中央企业、国有企业和受监管客户从第一天起即可通过合规采购。
+  <Accordion title="Tier 1 — Database Connectors">
+    Direct connection to a relational database. The agent writes SQL against the introspected schema; a connector is read-only by default, stays private to its owner, and columns marked as personal data come back masked. Native support for **Xinchuang-compliant databases — Dameng (DM8), KingbaseES, HighGo** — alongside PostgreSQL and MySQL. Central/state-owned and regulated customers pass compliance procurement day-one.
   </Accordion>
-  <Accordion title="层级 2——OpenAPI 连接器（用户密钥）">
-    任何具有 OpenAPI 规范的 REST API。智能体读取规范，选择端点，并使用已登录用户的密钥调用该端点。覆盖现代 SaaS（Slack、Linear、GitHub）以及文档完善的内部 API。
+  <Accordion title="Tier 2 — OpenAPI Connectors (User-Key)">
+    Any REST API with an OpenAPI specification. The agent reads the spec, selects the endpoint, and calls it with the logged-in user's key. Covers modern SaaS (Slack, Linear, GitHub) and well-documented internal APIs.
   </Accordion>
-  <Accordion title="层级 3——登录票据／旧系统连接器">
-    适用于通过登录票据服务而非 OAuth2 进行身份验证的系统——这类系统在中国市场尤其常见。连接器管理票据生命周期（获取、刷新、失效），并向上层提供标准的类型化界面。该层级解锁了其他供应商都会跳过的系统。
+  <Accordion title="Tier 3 — Login-Ticket / Legacy Connectors (planned)">
+    For systems — particularly common in the Chinese market — that authenticate via a login-ticket service rather than OAuth2. The connector will manage the ticket lifecycle (acquire, refresh, invalidate) and present a normal typed surface upward. Not shipped yet: today API connectors authenticate with a bearer token, an API key, or basic auth.
   </Accordion>
 </AccordionGroup>
 
-每个连接器还会声明**通道／集成双重性**：同一个底层系统既可以作为*通道*（通知接收端、审批界面），也可以作为*集成*（数据源、操作目标）呈现。Feishu 同时是通知通道和群聊数据源；DingTalk 和 WeCom 也遵循相同模式。
+Each connector also declares a **Channel/Integration duality**: the same underlying system can appear both as a *channel* (notification sink, approval surface) and as an *integration* (data source, action target). Feishu is both a notification channel and a group-chat data source; DingTalk and WeCom follow the same pattern.
 
-## 7. 可信的企业级AI——三大支柱
+## 7. Trustworthy Enterprise AI — Three Pillars
 
-企业级AI在生产环境中失败，不是因为模型有问题，而是因为组织无法证明它是正确的。FIM One将信任视为架构，通过三大支柱来体现。
+Enterprise AI fails in production not because the model is wrong but because the organization cannot prove it is right. FIM One treats trust as architecture, expressed in three pillars.
 
 <CardGroup cols={3}>
-  <Card title="每个结论都有引用" icon="paperclip">
-    RAG检索+引用链让智能体为每个声明引用特定文档中的特定段落。结论可追溯且可审计。没有黑盒输出。
+  <Card title="Every Conclusion Is Cited" icon="paperclip">
+    RAG retrieval + citation chain lets the agent reference a specific paragraph in a specific document for every claim. Conclusions are traceable and auditable. No black-box output.
   </Card>
-  <Card title="每次写入都需确认" icon="hand">
-    写操作被强制暂停，在执行前等待人工审批——可在门户中内联进行，也可通过Feishu审批组进行带外审批。钩子链是架构约束，而非政策建议。它无法被绕过。
+  <Card title="Sensitive Actions Are Confirmed" icon="hand">
+    Actions marked as requiring confirmation (or every tool call, when an agent is set to confirm all) pause before execution, waiting for a human approval — inline in the portal or out-of-band via a Feishu approval group. The hook chain is an architectural constraint, not a policy suggestion. It cannot be bypassed.
   </Card>
-  <Card title="每次发布都有度量" icon="chart-bar">
-    数据驱动的评估在每次发布前量化质量。每次迭代都可度量；企业采购获得的是证据，而非承诺。
+  <Card title="Every Release Is Measured" icon="chart-bar">
+    Dataset-driven evaluation quantifies quality before each release. Every iteration is measurable; enterprise procurement gets evidence, not promises.
   </Card>
 </CardGroup>
 
-为此提供支持，每次智能体运行都会生成结构化追踪：计划、工具调用、参数、观察、审批、最终答案。追踪是审计的基本单位。凭证使用Fernet加密（AES-128-CBC + HMAC-SHA256）。完整的审计日志被存储并可导出。
+Supporting this, every agent run emits a structured trace: plan, tool calls, arguments, observations, approvals, final answer. Traces are the unit of audit. Credentials use Fernet encryption (AES-128-CBC + HMAC-SHA256). Full audit logs are stored and exportable.
 
-当操作员拒绝工具调用时，智能体停止——它不会改述并重试。拒绝是一项政策决定，而非要恢复的错误。
+When an operator rejects a tool call, the agent stops — it does not paraphrase and retry. Rejection is a policy decision, not an error to recover from.
 
-## 8. 部署和商业模式
+## 8. Deployment and Business Model
 
-FIM One采用FIM One Source Available License（FIM-SAL）公开源代码——源代码可用，非OSI批准的开源——提供三种部署形式和三个版本层级。
+FIM One ships with public source under the FIM One Source Available License (FIM-SAL) — source-available, not OSI-approved open source — with three deployment shapes and three edition tiers.
 
 <CardGroup cols={3}>
   <Card title="Community" icon="code">
-    永久免费。自托管。适用于开发者和评估团队。
+    Free forever. Self-hosted. For developers and evaluation teams.
   </Card>
   <Card title="Cloud" icon="cloud">
-    由FIM.AI托管在cloud.fim.ai上。按用户+按连接器订阅。新加坡实体处理海外合同。
+    FIM.AI-hosted on cloud.fim.ai. Per-user + per-connector subscription. Singapore entity handles overseas contracts.
   </Card>
   <Card title="Enterprise" icon="briefcase">
-    私有部署、定制定价、合规工具、专属技术支持。适用于大型企业和政府/国有客户。
+    Private deployment, custom pricing, compliance tooling, dedicated technical support. For large enterprises and government/state-owned customers.
   </Card>
 </CardGroup>
 
-代码库包含约170,000行Python代码，跨1,590+个模块，约100个测试文件，内置支持6种UI语言。源代码在FIM-SAL下公开可用——企业可以自行审计安全性。主要运行成本是LLM令牌，而非基础设施；提供商无关性意味着当前沿技术推动价格下降时，你可以受益，无需迁移。
+The backend is ~106,000 lines of Python across 440+ modules, with 230+ test files and built-in support for 6 UI languages. Source is publicly available under FIM-SAL — enterprises can audit security themselves. The dominant runtime cost is LLM tokens, not infrastructure; provider-agnosticism means you benefit as the frontier pushes prices down, without migration.
 
-## 9. 交付路径
+## 9. Delivery Path
 
-生产部署遵循三步路径，确保风险可控且快速实现价值。
+Production deployment follows a three-step path that keeps risk bounded and time-to-value short.
 
-| 步骤 | 时间表 | 发生的事情 |
+| Step | Timeline | What happens |
 |---|---|---|
-| **1. 概念验证** | 2 周 | 1–2 个代表性场景（财务审计、合同审查、数据报告），端到端真实数据验证。第 7 天完成初版，第 14 天交付验证报告。 |
-| **2. 试点** | 1–2 个月 | 私有部署到您的服务器。首批 3–5 个连接器（ERP / OA / Feishu / DingTalk / 数据库）。覆盖一条业务线。建立审计和审批基线。 |
-| **3. 扩展** | 3–6 个月 | 扩展到更多业务线和连接器。积累行业技能包。培训内部管理员。交付运营手册和 SLA。 |
+| **1. PoC** | 2 weeks | 1–2 representative scenarios (finance audit, contract review, data reporting), end-to-end on real data. First version in 7 days, validation report in 14. |
+| **2. Pilot** | 1–2 months | Private deployment to your servers. First 3–5 connectors (ERP / OA / Feishu / DingTalk / database). One business line covered. Audit and approval baselines established. |
+| **3. Scale** | 3–6 months | Expansion to more business lines and connectors. Industry Skill packs accumulated. Internal administrators trained. Operations runbook and SLA delivered. |
 
-八个垂直预构建解决方案模板涵盖最常见的场景：财务审计、合同审查、数据报告、采购对账、客户收款、合规筛查、人力资源筛查、运维值班。
+Eight pre-built Solution templates cover common scenarios: financial audit, contract review, data reporting, IT operations, HR onboarding, sales proposals, content creation, and meeting summaries.
 
-## 10. 这将走向何处
+## 10. Where This Goes
 
-**近期——连接器深度。** 为中国市场提供更多第三层级遗留连接器、更深入的信创认证，以及一个AI Builder，能在几分钟内将OpenAPI规范或数据库架构截图转化为可工作的连接器。
+**Near-term — connector depth.** Tier-3 legacy connectors for the Chinese market, deeper Xinchuang certification, and an AI Builder that turns an OpenAPI spec or a database schema screenshot into a working connector in minutes.
 
-**近期——治理深度。** 更丰富的RBAC、四层连接器权限、独立IdP、默认SSO、SOC 2和ISO 27001合规态势。
+**Near-term — governance depth.** Richer RBAC, four-tier connector permissions, independent IdP, SSO by default, SOC 2 and ISO 27001 posture.
 
-**中期——生态系统。** 云SaaS、连接器市场和行业解决方案包——第三方构建的基础设施层。
+**Mid-term — ecosystem.** Cloud SaaS, a Connector Marketplace, and industry Solution packs — the infrastructure layer that third parties build on top of.
 
-长期的赌注是企业AI的形态将远比CLI更像一个跨系统智能体平台。知识工作者不会安装十个AI助手；他们会询问公司的智能体平台，该平台将知道如何到达任何持有答案的系统——全球SaaS、中国企业堆栈或两者之间的任何东西。FIM One正在构建这个平台。
+The longer-term bet is that the shape of enterprise AI will look far more like a cross-system agent platform than a CLI. Knowledge workers will not install ten AI assistants; they will ask their company's agent platform, and the platform will know how to reach whatever system holds the answer — global SaaS, the China enterprise stack, or anything in between. FIM One is building that platform.
 
 ## 11. 附录——深入了解
 

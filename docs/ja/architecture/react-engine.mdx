@@ -6,19 +6,19 @@ description: "FIM One の ReAct エンジンの仕組み — デュアルモー�
 
 このループが DAG スケジューリング、ワークフロー ブループリント、および業界の**グラフ エンジニアリング**とどのように並行して機能するかについては、[Planning Landscape](/architecture/planning-landscape) を参照してください。
 
-## アーキテクチャ
+## The architecture
 
-ReActエンジンは、2フェーズの実行モデルを実装しています。第1フェーズは反復的なツール使用ループです。エージェントはLLMにアクションを繰り返し要求し、要求されたツールを実行してその結果を追加し、LLMが「完了」を示すまで処理を続けます。第2フェーズは回答の合成です。独立したストリーミングLLM呼び出しが実行トレース全体を読み取り、ユーザーに表示するレスポンスを生成します。
+The ReAct engine implements a two-phase execution model. The first phase is an iterative tool-use loop: the agent repeatedly asks the LLM for an action, executes any requested tool, appends the observation, and continues until the LLM signals "done." The second phase is answer delivery: `stream_answer()` streams the user-facing response. When the loop ended on the `finish` signal (the chat path, `REACT_FINISH_SIGNAL` default on) it continues the same message history as one more streamed turn; when the loop already wrote a final answer, that text is replayed as is; only when neither applies does it fall back to a separate synthesis call over the execution trace.
 
-この分割は意図的なものです。ツールの反復処理は速度を重視して最適化されています。ループ内のすべてのLLM呼び出しでは、ユーザーが部分的なJSONアクションや中間推論トークンを見る必要がないため、非ストリーミングの`chat()`を使用します。回答生成はUXを重視して最適化されており、ストリーミングの`stream_chat()`を使用することで、ユーザーはトークンがリアルタイムで表示されるのを確認できます。その結果、高速なツール実行と応答性の高い回答配信という、両方の利点を実現できます。
+This split is deliberate. Tool iterations are optimized for speed — in JSON mode every LLM call in the loop uses non-streaming `chat()`, because the user does not need to see partial JSON actions; in native function-calling mode the loop uses `stream_chat()` so reasoning tokens reach the client as `thinking` deltas. Answer generation is optimized for UX — it uses streaming `stream_chat()` so the user sees tokens appearing in real time. The result is the best of both worlds: fast tool execution with responsive answer delivery.
 
 ```mermaid
 flowchart TD
-    A["User query"] --> B["Tool loop<br/>(non-streaming chat() x N)"]
+    A["User query"] --> B["Tool loop<br/>(LLM call x N)"]
     B -->|"tool_call"| E["Execute tool"]
     E --> F{"Cycle<br/>detected?"}
     F -->|"No"| B
-    F -->|"Yes"| G["Inject warning:<br/>try different approach"]
+    F -->|"Yes"| G["Warn, then refuse<br/>repeated calls"]
     G --> B
     B -->|"done signal"| H{"tools ≥<br/>threshold?"}
     H -->|"Yes (once)"| I["Completion checklist:<br/>verify answer"]
@@ -27,42 +27,42 @@ flowchart TD
     C --> D["SSE token stream → frontend"]
 ```
 
-ツールループは、完全な会話履歴を含む`AgentResult`を生成します。そこには、システムプロンプト、ユーザーのクエリ、すべてのアシスタントメッセージ、すべてのツール結果が含まれます。`stream_answer()`メソッドは、このトレースを簡潔で一貫性のある回答にまとめます。合成コンテキスト内では、各ツール結果を2,000文字に切り詰めます。これにより、複雑な複数ツールのワークフローの後でもプロンプトを簡潔に保てます。
+The tool loop produces an `AgentResult` containing the full conversation history — system prompt, user query, every assistant message, every tool result. The `stream_answer()` method distills this trace into a concise, coherent answer. In the synthesis fallback, tool results are truncated to 8,000 characters each (`REACT_TOOL_OBS_TRUNCATION`), keeping the prompt lean even after complex multi-tool workflows.
 
-**モデルのバインディング。** LLMは`ReActAgent.__init__()`に注入され、`self._llm`として保存されます。単一の`run()`呼び出し内で行われるすべての呼び出し（ツールループのすべての反復と最終回答の合成）では、同じインスタンスが使用されます。反復の途中でモデルが変更されることはありません。別のモデルを使用するには、新しい`ReActAgent`を構築する必要があります。DAGモードでは、`DAGExecutor._resolve_agent()`がこのパターンを活用します。各ステップの直前、ReActループが始まる前に、`step.model_hint`に基づいて`ModelRegistry`からモデルを選択し、ステップごとに新しいエージェントを作成します。詳しくは、[DAG Engine — ステップごとのオーバーライド](/architecture/dag-engine#multi-llm-architecture)を参照してください。
+**Model binding.** Two LLMs are injected into `ReActAgent.__init__()`: `llm` (stored as `self._llm`) and an optional `fast_llm`. Tool-decision iterations and tool selection run on the fast model when one is given (`self._tool_llm = fast_llm or llm`); `stream_answer()` uses the primary `llm`. Neither changes between iterations. To use a different model, a new `ReActAgent` must be constructed. In DAG mode, `DAGExecutor._resolve_agent()` exploits this pattern: it creates a fresh agent per step (selecting the model from `ModelRegistry` based on `step.model_hint`) immediately before that step's ReAct loop begins. See [DAG Engine — Per-step override](/architecture/dag-engine#multi-llm-architecture) for details.
 
-## デュアルモード実行
+## Dual-mode execution
 
-ReActエンジンは、ツールループ中にLLMと相互作用する2つの異なるモードをサポートしています。
+The ReAct engine supports two distinct modes of interacting with the LLM during the tool loop.
 
-**JSONモード** (`_run_json`) はツール説明をシステムプロンプトに直接埋め込み、LLMに`tool_call`アクション（ツール名と引数を含む）または`final_answer`シグナルのいずれかのJSONオブジェクトで応答するよう指示します。エージェントはレスポンスコンテンツからJSONを解析し、ツールを実行し、観察結果をユーザーメッセージとして追加します。
+**JSON Mode** (`_run_json`) embeds tool descriptions directly in the system prompt and instructs the LLM to respond with a JSON object — either a `tool_call` action with a tool name and arguments, or a `final_answer` signal. The agent parses the JSON from the response content, executes the tool, and appends the observation as a user message.
 
-**ネイティブ関数呼び出し** (`_run_native`) はLLMプロバイダーの組み込みツール呼び出しAPIを使用します。ツール説明は`tools`パラメータを介して渡され、LLMはコンテンツ内でJSONを出力する代わりに、APIレスポンスで構造化された`tool_calls`を返します。これはそれをサポートするモデルの推奨モードです。
+**Native Function Calling** (`_run_native`) uses the LLM provider's built-in tool-calling API. Tool descriptions are passed via the `tools` parameter, and the LLM returns structured `tool_calls` in the API response rather than emitting JSON in its content. This is the preferred mode for models that support it.
 
-モード選択は自動的に行われます。`_native_mode_active`プロパティは、エージェントが`use_native_tools=True`（デフォルト）で作成され、かつLLMが`abilities["tool_call"] = True`をアドバタイズしている場合にのみ`True`を返します。いずれかの条件が失敗した場合、エンジンはJSONモードにフォールバックします。
+Mode selection is automatic. The property `_native_mode_active` returns `True` only when both conditions hold: the agent was created with `use_native_tools=True` (the default) and the LLM advertises `abilities["tool_call"] = True`. If either condition fails, the engine falls back to JSON mode.
 
-| 側面 | JSONモード | ネイティブ関数呼び出し |
+| Aspect | JSON Mode | Native Function Calling |
 |--------|-----------|------------------------|
-| LLM出力 | メッセージコンテンツ内のJSONオブジェクト | APIレスポンス内の`tool_calls` |
-| システムプロンプト | テキスト内に完全なツール説明を埋め込む | `tools`パラメータを介してツールを渡す |
-| 並列ツール呼び出し | 反復ごとに1つのツール | `asyncio.gather`経由で複数 |
-| 解析失敗処理 | 再フォーマットプロンプトで再試行 | 該当なし（APIによって構造化） |
-| ループLLM呼び出し | ストリーミングなし`chat()` | ストリーミングなし`chat()` |
-| 最適な用途 | ツール呼び出しサポートなしのモデル | GPT-4、Claude、および同様のモデル |
+| LLM output | JSON object in message content | `tool_calls` in API response |
+| System prompt | Embeds full tool descriptions in text | Tools passed via `tools` parameter |
+| Parallel tool calls | One tool per iteration | Multiple via `asyncio.gather` |
+| Parse failure handling | Retry with reformat prompt | N/A (structured by API) |
+| Loop LLM calls | Non-streaming `chat()` | Streaming `stream_chat()` |
+| Best for | Models without tool-call support | GPT-4, Claude, and similar |
 
-両モードは同じ回答合成フェーズを共有します — `stream_answer()`はツールループの実行方法に関わらず同じように機能します。
+Both modes share the same answer synthesis phase — `stream_answer()` works identically regardless of how the tool loop ran.
 
-## structured_llm_call — 統一された出力抽出
+## structured_llm_call — unified output extraction
 
-LLMがJSONスキーマに準拠したデータを返す必要があるあらゆるコールサイトは、`structured_llm_call()`を使用します。これはフレームワーク全体における構造化出力の単一エントリーポイント — DAGプランナー、プラン分析器、ツール選択、およびLLMから解析されたJSONが必要な将来のコンポーネント。
+Any call site that needs the LLM to return data conforming to a JSON schema uses `structured_llm_call()`. This is the single entry point for structured output across the entire framework — the DAG planner, plan analyzer, tool selection, and any future component that needs parsed JSON from an LLM.
 
-この関数は3段階の劣化チェーンを実装し、LLMの公表された機能に基づいて各段階を順番に試みます:
+The function implements a 3-level degradation chain, attempting each level in order based on the LLM's advertised capabilities:
 
-**レベル1: ネイティブ関数呼び出し。** LLMの`tool_call` / `tool_choice` APIを使用して構造化応答を強制します。`abilities["tool_call"] = True`の場合に利用可能です。LLMが`tool_calls`を返す場合、引数は直接抽出されます。解析に失敗した場合、次のレベルにフォールスルーします。
+**Level 1: Native Function Calling.** Uses the LLM's `tool_call` / `tool_choice` API to force a structured response. Available when `abilities["tool_call"]` is true and `tool_choice` is not disabled. If the LLM returns `tool_calls`, the arguments are extracted directly. If parsing fails, falls through to the next level.
 
-**レベル2: JSONモード。** `response_format={"type": "json_object"}`を設定してLLMの出力形式を制限します。`abilities["json_mode"] = True`の場合に利用可能です。応答を解析できない場合、リフォーマットプロンプト（「前の応答は有効なJSONとして解析できませんでした...」）で1回再試行してから、次のレベルにフォールスルーします。
+**Level 2: JSON Mode.** Sets `response_format={"type": "json_object"}` to constrain the LLM's output format. Available when `abilities["json_mode"] = True`. If the response cannot be parsed, retries once with a reformat prompt ("Your previous response could not be parsed as valid JSON..."), then falls through.
 
-**レベル3: プレーンテキスト。** 形式制約なしでLLMを呼び出し、`extract_json()`を使用してフリーフォームテキストからJSONを抽出します。抽出に失敗した場合、オプションの`regex_fallback`関数が試されます。リフォーマットプロンプトで1回再試行してから、諦めます。
+**Level 3: Plain Text.** Calls the LLM with no format constraints and extracts JSON from free-form text using `extract_json()`. If extraction fails, an optional `regex_fallback` function is tried. Retries once with the reformat prompt before giving up.
 
 ```mermaid
 flowchart TD
@@ -85,31 +85,31 @@ flowchart TD
     DEFAULT -->|No| ERR["Raise StructuredOutputError"]
 ```
 
-劣化チェーンは、フルツール呼び出しサポートを備えたGPT-4からプレーンテキストのみを生成できるローカルLLMまで、あらゆるモデルが構造化出力シナリオに参加できることを意味します。最悪のケースは5回のLLM呼び出し（1回のネイティブ + 1回のJSON + 1回のJSON再試行 + 1回のプレーン + 1回のプレーン再試行）ですが、実際にはほとんどの呼び出しはレベル1で1回の試行で解決されます。
+The degradation chain means every model — from GPT-4 with full tool-call support to a local LLM that can only produce plain text — can participate in structured output scenarios. The worst case is 5 LLM calls (1 native + 1 JSON + 1 JSON retry + 1 plain + 1 plain retry), but in practice most calls resolve at Level 1 in a single attempt.
 
-| モデル機能 | 取られるパス | 最大LLM呼び出し |
+| Model capability | Path taken | Max LLM calls |
 |-----------------|------------|---------------|
 | tool_call + json_mode | L1 → L2 → L3 | 5 |
-| json_mode のみ | L2 → L3 | 4 |
-| プレーンテキストのみ | L3 | 2 |
+| json_mode only | L2 → L3 | 4 |
+| Plain text only | L3 | 2 |
 
-結果は、解析された値、生のdict、成功したレベル、および累積トークン使用量を含む`StructuredCallResult`です。コールサイトは`parse_fn`を使用して生のdictをドメインオブジェクト（例：DAGプラン）に変換し、`default_value`を使用して完全な失敗が許容可能な場合のフォールバックを提供します。
+The result is a `StructuredCallResult` containing the parsed value, the raw dict, which level succeeded, and cumulative token usage. Call sites use `parse_fn` to transform the raw dict into a domain object (e.g., a DAG plan) and `default_value` to provide a fallback when total failure is acceptable.
 
-`structured_llm_call`は以下によって使用されます: DAGプランナー（プランスキーマ）、プラン分析器（分析スキーマ）、ツール選択（ツールリストスキーマ）、および信頼性の高い構造化出力が必要なあらゆるコンポーネント。これは[Planning Landscape](/architecture/planning-landscape)でも説明されています。
+`structured_llm_call` is used by: the DAG planner (plan schema), the plan analyzer (analysis schema), tool selection (tool list schema), and any component that needs reliable structured output. It is also discussed in [Planning Landscape](/architecture/planning-landscape).
 
-## ツール選択
+## Tool selection
 
-エージェントが多くのツールにアクセスできる場合（複数のコネクタがそれぞれ複数のアクションを公開するハブモードで一般的）、すべてのツールの完全なスキーマを会話コンテキストに注入することは無駄です。20個のツールを持つコネクタハブは、ツール説明だけで約5Kトークンを消費し、会話履歴とツール結果のスペースを圧迫します。
+When an agent has access to many tools — common when an agent is bound to several connectors that each expose several actions — injecting every tool's full schema into the conversation context is wasteful. An agent with 20 tools consumes roughly 5K tokens in tool descriptions alone, crowding out space for conversation history and tool results.
 
-エンジンはこれを軽量な選択フェーズで対処します。登録されたツールの総数が `TOOL_SELECTION_THRESHOLD`（12）を超える場合、エージェントはメインループに入る前に予備的なLLM呼び出しを実行します。この呼び出しはコンパクトなカタログを受け取ります。ツールあたり約80文字で、名前と1行の説明のみを含み、パラメータスキーマは含みません。そして現在のクエリに最も関連するツールを選択し、最大 `_TOOL_SELECTION_MAX`（6）個までです。
+The engine addresses this with a lightweight selection phase. When the total number of registered tools exceeds `TOOL_SELECTION_THRESHOLD` (12), the agent selects a subset before entering the main loop. It first tries a keyword match between the query and the tool names and descriptions; when no tool clearly dominates, it runs a selection call on the fast LLM. This call receives a compact catalog — approximately 80 characters per tool, containing only the name and a one-line description, no parameter schemas — and picks the most relevant tools for the current query, up to `_TOOL_SELECTION_MAX` (6). Pinned tools (`read_skill`, `update_plan`, and in chat `web_search` and `ask_user_question`) and the `request_tools` meta-tool are added on top.
 
-選択は `structured_llm_call` を使用して、シンプルなスキーマ（`{"tools": ["tool_name_1", "tool_name_2"]}`）で実行されるため、同じ3レベルの低下から恩恵を受けます。選択されたツール名は、メインループがシステムプロンプト構築とツール実行の両方に使用するフィルタリングされた `ToolRegistry` を構築するために使用されます。
+The selection uses `structured_llm_call` with a simple schema (`{"tools": ["tool_name_1", "tool_name_2"]}`), so it benefits from the same 3-level degradation. The selected tool names are used to build a filtered `ToolRegistry` that the main loop uses for both system prompt construction and tool execution.
 
-選択の失敗は意図的に致命的ではありません。LLMが解析不可能な出力を返す場合、選択されたすべての名前が無効な場合、または例外が発生した場合、エージェントは完全なツールセットにフォールバックします。これにより、不完全な選択がエージェントの機能を妨げることはなく、最適より多くのコンテキストを使用するだけです。
+Selection failure is deliberately non-fatal. If the LLM returns unparseable output, if all selected names are invalid, or if any exception occurs, the agent falls back to the full tool set. This ensures that a flawed selection never prevents the agent from functioning — it just uses more context than optimal.
 
-## 反復ループ
+## The iteration loop
 
-コアループはJSONモードとネイティブモードの両方を駆動し、メッセージ処理に若干の違いがあります。各反復は同じ高レベルパターンに従います：コンテキスト予算をチェック、LLMを呼び出し、レスポンスを処理し、ツールを実行するか中断するかのいずれかです。
+The core loop drives both JSON mode and native mode, with minor differences in message handling. Each iteration follows the same high-level pattern: check the context budget, call the LLM, process the response, and either execute a tool or break.
 
 ```mermaid
 sequenceDiagram
@@ -119,13 +119,13 @@ sequenceDiagram
     participant Hooks as HookRegistry
     participant Tool as Tool Registry
 
-    loop Each iteration (max 50)
+    loop Each iteration (max 20 by default)
         Agent->>CG: check_and_compact(messages)
         CG-->>Agent: messages (within budget)
-        Agent->>LLM: chat(messages) [non-streaming]
+        Agent->>LLM: chat(messages) or stream_chat(messages)
         LLM-->>Agent: response
         alt tool_call action
-            Agent->>Hooks: run_pre_tool_use_hooks(ctx)
+            Agent->>Hooks: run_pre_tool(ctx)
             alt hook blocks
                 Hooks-->>Agent: allow=False, error="..."
                 Agent->>Agent: append block message, continue
@@ -133,11 +133,11 @@ sequenceDiagram
                 Hooks-->>Agent: allow=True, modified_args?
                 Agent->>Tool: execute(tool_name, args)
                 Tool-->>Agent: observation
-                Agent->>Hooks: run_post_tool_use_hooks(ctx, result)
+                Agent->>Hooks: run_post_tool(ctx)
                 Hooks-->>Agent: modified_result?
-                Agent->>Agent: cycle check (hash args)
+                Agent->>Agent: cycle check (hash args, before the call runs)
                 opt identical call ≥ threshold
-                    Agent->>Agent: inject "try different approach" warning
+                    Agent->>Agent: warn at 2 identical calls, refuse from 3
                 end
                 Agent->>Agent: append observation, continue
             end
@@ -153,29 +153,29 @@ sequenceDiagram
     LLM-->>Agent: token stream → SSE to client
 ```
 
-**JSONモードループ。** LLMのレスポンスは`_parse_action()`を介して解析され、`extract_json()`を使用してコンテンツ内のJSONオブジェクトを見つけます。解析に失敗した場合、エージェントは生のレスポンスと再フォーマットリクエストを追加してから続行します — これは`max_iterations`に対してカウントされ、無限再試行ループを防ぎます。成功時、アクションは`tool_call`（ツールを実行し、観察結果をユーザーメッセージとして追加）または`final_answer`（中断して合成に進む）のいずれかです。
+**JSON mode loop.** The LLM's response is parsed via `_parse_action()`, which uses `extract_json()` to find a JSON object in the content. If parsing fails, the agent appends the raw response and a reformat request, then continues — this counts against `max_iterations`, preventing infinite retry loops. On success, the action is either a `tool_call` (execute the tool, append the observation as a user message) or a `final_answer` (break and proceed to synthesis).
 
-**ネイティブモードループ。** LLMのレスポンスは1つ以上の`tool_calls`を含む場合があります。単一のレスポンス内のすべてのツール呼び出しは`asyncio.gather`を介して並列実行され、すべてのツール結果メッセージは他のメッセージの前に追加されます。この順序制約は重要です — OpenAI API（および互換性のあるプロバイダー）は、`tool`メッセージが`tool_calls`を生成した`assistant`メッセージの直後に続くことを要求します。それらの間に他のメッセージ（ユーザー割り込みなど）を挿入すると、プロトコルが破損します。`tool_calls`が存在しない場合、レスポンスは最終回答として扱われます。
+**Native mode loop.** The LLM's response may contain one or more `tool_calls`. All tool calls in a single response are executed in parallel via `asyncio.gather`, and all tool result messages are appended before any other message. This ordering constraint is critical — the OpenAI API (and compatible providers) requires that `tool` messages immediately follow the `assistant` message that produced the `tool_calls`. Inserting any other message (such as a user interrupt) between them would break the protocol. When no `tool_calls` are present, the response is treated as the final answer.
 
-**最大反復回数。** デフォルト制限は50反復です。ループがこの制限を使い果たして`final_answer`を生成しない場合、エージェントは累積されたステップ結果から フォールバックレスポンスを合成します — どのツールが呼び出されたか、および成功したか失敗したかの要約です。これは安全ネットであり、通常の終了パスではありません。
+**Max iterations.** The web app defaults to 20 iterations (`REACT_MAX_ITERATIONS`; the `ReActAgent` library default is 50), and DAG steps to 15 (`DAG_STEP_MAX_ITERATIONS`). If the loop exhausts this limit without producing a `final_answer`, the agent synthesizes a fallback response from the accumulated step results — a summary of which tools were called and whether they succeeded or failed. This is a safety net, not a normal exit path.
 
-[コンテキスト管理](/architecture/context-management)は、ContextGuardが毎回の反復でトークン予算を強制する方法を説明しており、最近の推理チェーンを保持するようにコンパクション LLMに指示するヒントシステムが含まれています。
+[Context Management](/architecture/context-management) explains how ContextGuard enforces the token budget on every iteration, including the hint system that tells the compaction LLM to preserve recent reasoning chains.
 
-## ツール実行フック
+## Tool execution hooks
 
-反復ループ内のすべてのツール呼び出しは、2つのフックポイントでラップされます：
+Every tool call in the iteration loop is wrapped by two hook points:
 
-- **`PreToolUse`** — LLMがツールを選択した後、ツール実行前に発火します。フックは以下を実行できます：
-  - **ブロック** `allow=False`を返すことで呼び出しをブロック（LLMは理由を説明する観測値を受け取ります。例：「人間の承認を待機中」または「組織が読み取り専用モード」）
-  - **書き換え** 実行前にツール引数を書き換え
-  - **副作用をトリガー** （Feishuカードを投稿、監査行を作成、メトリクスを発行）
-- **`PostToolUse`** — ツール実行後、観測値がLLMに到達する前に発火します。フックは以下を実行できます：
-  - **書き換え** 観測値を書き換え（例：200 KB SQLの結果を4 KBサマリーに切り詰め）
-  - **副作用をトリガー** （`ConnectorCallLog`に書き込み、使用量カウンターを更新）
+- **`PreToolUse`** — fires after the LLM picks a tool, before the tool runs. A hook can:
+  - **Block** the call by returning `allow=False` (the LLM sees an observation explaining why, e.g. "waiting for human approval" or "org is in read-only mode")
+  - **Rewrite** the tool arguments before execution
+  - **Trigger side effects** (post a Feishu card, create an audit row, emit a metric)
+- **`PostToolUse`** — fires after the tool returns, before the observation reaches the LLM. A hook can:
+  - **Rewrite** the observation (e.g. truncate a 200 KB SQL result to a 4 KB summary)
+  - **Trigger side effects** (write to `ConnectorCallLog`, update usage counters)
 
-フックは**LLMループの外で実行**されます — LLMが言ったり実行したりすることは、フックをスキップできません。これはプロンプト指示に信頼できないポリシーの決定論的な強制レイヤーです：人間参加型の承認（`FeishuGateHook`）、監査ログ、レート制限、読み取り専用モードガード。詳細な設計については[フックシステム](/architecture/hook-system)を参照してください。
+Hooks run **outside the LLM loop** — nothing the LLM says or does can skip them. This is the deterministic enforcement layer for policies that cannot be trusted to a prompt instruction: today human-in-the-loop approval (`ApprovalGateHook`); the same layer can carry audit logging, rate limiting, and read-only-mode guards. See [Hook System](/architecture/hook-system) for the full design.
 
-同じフックポイントが[DAGエンジン](/architecture/dag-engine)に存在します — 各DAGステップは独自のReActループを実行するため、どの実行エンジンがツール呼び出しを駆動しているかに関わらず、フックが均一に適用されます。
+The same hook points exist in the [DAG engine](/architecture/dag-engine) — each DAG step runs its own ReAct loop, so hooks apply uniformly regardless of which execution engine is driving the tool call.
 
 ## ミッド・ループ自己反省
 
@@ -192,61 +192,61 @@ sequenceDiagram
 
 これは注入ごとに約100トークンのコスト（追加のLLM呼び出しなし）であり、短い実行（`< 6`ツール呼び出し）には影響がありません。ContextGuard（トークン予算を管理）とステップごとの検証（個別の結果を検証）を補完し、異なる障害モード（エージェントが多くの反復にわたって目標を見失うこと）に対処します。
 
-## サイクル検出
+## Cycle detection
 
-自己反省はLLMに対してループしているかどうかを尋ねますが、LLMはしばしば「いいえ」と答えてループを続けます。サイクル検出は決定論的な代替手段であり、バイパスできません。
+Self-reflection asks the LLM whether it is going in circles — but the LLM often answers "no" and keeps looping. Cycle detection is a deterministic alternative that cannot be bypassed.
 
-ツール実行後、エージェントは `(tool_name, arguments)` ペアをハッシュ化します。同じハッシュが `_CYCLE_DETECTION_THRESHOLD` 回（デフォルト: **3**、`REACT_CYCLE_DETECTION_THRESHOLD` で設定可能）表示されると、警告メッセージが会話に挿入されます:
+Before each tool call runs, the agent hashes the `(tool_name, arguments)` pair. On the 2nd identical call (`REACT_CYCLE_DETECTION_THRESHOLD`, default **2**) the call still runs and a warning message is injected into the conversation. From the 3rd (`REACT_CYCLE_BLOCK_THRESHOLD`, default **3**) the call is refused and the refusal is returned as the tool result. Three consecutive rounds in which every call was refused (`REACT_STALL_ROUNDS`) end the run with a summary of the steps taken. A second counter tracks calls per URL host and path, ignoring the query string, and warns at 8 and refuses at 15 (`REACT_ENDPOINT_WARN_THRESHOLD` / `REACT_ENDPOINT_BLOCK_THRESHOLD`). The warning reads:
 
 > You have called `{tool}` with identical arguments N times and received the same result. Please try a different approach or tool.
 
-警告はエージェントの内部履歴内の通常のユーザーメッセージです。エンドユーザーに対して個別のUIイベントとしてサーフェスされることはありません。エージェントは次のLLM呼び出しで警告を確認し、戦略を変更することを強制されます。トラッカーは各 `run()` 呼び出しの開始時にリセットされます。
+The warning is a regular user message in the agent's internal history — it is not surfaced to the end user as a separate UI event. The agent sees the warning on its next LLM call and is forced to change strategy. The tracker resets at the start of each `run()` call.
 
-DAGステップはReActAgentを介して実行されるため、サイクル検出は個別のDAGステップもツール呼び出しループから保護します。
+Because DAG steps execute via ReActAgent, cycle detection also protects individual DAG steps from tool-call loops.
 
-## 完了チェックリスト
+## Completion checklist
 
-エージェントが最低限の`_COMPLETION_CHECK_MIN_TOOLS`個のツール（デフォルト：**3**、`REACT_COMPLETION_CHECK_MIN_TOOLS`で設定可能）を使用し、最終的な回答を生成することを決定した場合、回答が受け入れられる前に、1回限りの検証プロンプトが挿入されます：
+When the agent has used at least `_COMPLETION_CHECK_MIN_TOOLS` tools (default: **3**, configurable via `REACT_COMPLETION_CHECK_MIN_TOOLS`) and decides to produce a final answer, a one-time verification prompt is injected before the answer is accepted:
 
-1. 回答は元の質問に完全に対応していますか？
-2. ツール結果から重要な事実が検証されていますか？
-3. 収集された情報に矛盾がありますか？
+1. Does the answer fully address the original question?
+2. Were key facts verified from tool results?
+3. Are there contradictions in the gathered information?
 
-チェックリストは内部交換です。これに回答するターンは検証であり、回答ではありません。それを逐語的に受け入れることは、「検証させてください：1. ... ✓」がチャットに漏れることになります。そのため、そのターンは内部で消費され、エージェントはユーザー向けの回答を求められ、これが`stream_answer()`がストリーミングするものです。エージェントが代わりに何か不足していると判断した場合、ツール呼び出しループを再開し、その後の回答はそのまま採用されます。
+The checklist is an internal exchange. The turn that answers it is verification, not the answer — accepting it verbatim is what leaks "Let me verify: 1. ... ✓" into the chat. So that turn is consumed internally and the agent is asked once more for the user-facing answer, which is what `stream_answer()` streams. If the agent instead decides something is missing, it resumes the tool-call loop and its later answer is taken as-is.
 
-チェックリストは実行ごとに最大1回発火し、ツールが使用されていない単純な会話応答ではトリガーされず、残りのイテレーション予算が検証ターンと回答ターンの両方をカバーできない場合はスキップされます。
+The checklist fires at most once per run, does not trigger for simple conversational responses (no tools used), and is skipped when the remaining iteration budget cannot cover both the verification turn and the answer turn, or when the inline final answer is longer than `REACT_COMPLETION_CHECK_SKIP_CHARS` (default 800). An open `update_plan` item forces the check regardless of tool count.
 
-このしきい値は単純なタスクの不要なレイテンシを防ぎます。単一のツール呼び出し（例：簡単な計算の実行）は検証を保証しませんが、複数ツールの調査は最終的なサニティチェックから利益を得ます。常時検証を行うには`REACT_COMPLETION_CHECK_MIN_TOOLS=1`を設定してください。
+The threshold prevents unnecessary latency on simple tasks — a single tool call (e.g., running a quick calculation) does not warrant verification, while a multi-tool investigation benefits from a final sanity check. Set `REACT_COMPLETION_CHECK_MIN_TOOLS=1` and raise `REACT_COMPLETION_CHECK_SKIP_CHARS` for always-on verification.
 
-この機能はデフォルトで有効になっており（`ReActAgent`の`completion_check=True`）、エージェントインスタンスごとに無効にできます。DAGステップはデフォルトを継承します。各ステップは独自の1回限りのチェックリストを取得します。
+The feature is enabled by default (`completion_check=True` on `ReActAgent`) and can be disabled per agent instance. DAG steps inherit the default — each step gets its own one-shot checklist.
 
-## 回答の合成 (stream_answer)
+## Answer synthesis (stream_answer)
 
-ツールループと回答合成の分離は、コアアーキテクチャの決定です。ツール反復は生データを生成します — JSON アクション、ツール観察、エラーメッセージ。ユーザーは、エージェントの内部トレースのダンプではなく、一貫性のある、よくフォーマットされた回答が必要です。
+The separation between the tool loop and answer synthesis is a core architectural decision. Tool iterations produce raw data — JSON actions, tool observations, error messages. The user needs a coherent, well-formatted answer, not a dump of the agent's internal trace.
 
-`stream_answer()` は 2 つのコンポーネントから合成プロンプトを構築します。システムプロンプトは LLM に合成者として機能するよう指示します：結果を直接提示し、マークダウンフォーマットを使用し、メタコメンタリー（「ツール出力に基づいて...」）を避け、元のクエリの言語に一致させます。ユーザーメッセージには、元の質問とフォーマットされた実行トレースが含まれます — 各ツール呼び出しとその結果で、ツール結果は 2,000 文字に切り詰められます。
+On the synthesis fallback path, `stream_answer()` builds a synthesis prompt from two components. The system prompt instructs the LLM to act as a synthesizer: present results directly, use markdown formatting, avoid meta-commentary ("based on the tool output..."), and match the language of the original query. The user message contains the original question and a formatted execution trace — each tool call and its result, with tool results truncated to 8,000 characters.
 
-合成呼び出しは `stream_chat()` を使用し、トークンを段階的に生成します。ウェブレイヤーはこれらのトークンを SSE `answer` イベントで `delta` ステータスでラップするため、フロントエンドは到着時にそれらをレンダリングできます。
+The synthesis call uses `stream_chat()`, yielding tokens incrementally. The web layer wraps these tokens in SSE `answer` events with `delta` status so the frontend can render them as they arrive.
 
-`stream_answer()` が失敗した場合 — ネットワークエラー、LLM タイムアウト、任意の例外 — ウェブレイヤーは `result.answer` にフォールバックします。これはツールループの最終反復からの簡潔なテキストです。これは低下した体験です（ストリーミングなし、潜在的にあまり洗練されていないプロース）が、ユーザーが常に応答を取得することを保証します。
+If `stream_answer()` fails — network error, LLM timeout, any exception — the web layer falls back to `result.answer`, the brief text from the tool loop's final iteration. This is a degraded experience (no streaming, potentially less polished prose), but it ensures the user always gets a response.
 
-## 割り込み処理
+## Interruption handling
 
-ユーザーはエージェントがまだ処理中に後続メッセージを送信できます。これらは`interrupt_queue`経由で配信されます。これは会話ごとに登録された`InterruptQueue`で、反復間でメッセージを蓄積します。
+Users can send follow-up messages while the agent is still processing. These are delivered via an `interrupt_queue` — an `InterruptQueue` registered per conversation that accumulates messages between iterations.
 
-ドレイン タイミングはツール呼び出しの順序制約のため、モード間で異なります:
+The drain timing differs between modes because of the tool-call ordering constraint:
 
-- **JSONモード**: キューは各アシスタント メッセージの直後にドレインされ、アクションが`final_answer`であるかどうかをチェックする前です。JSONモードは構造的なペアリング要件のない通常のユーザー/アシスタント メッセージを使用するため、これは安全です。
+- **JSON mode**: the queue is drained immediately after each assistant message, before checking whether the action is a `final_answer`. This is safe because JSON mode uses plain user/assistant messages with no structural pairing requirements.
 
-- **ネイティブFC モード**: キューはツール結果メッセージが追加された後にのみドレインされます。`tool`メッセージは`tool_calls`を含むアシスタント メッセージの直後に続く必要があります。その間にユーザー メッセージを挿入するとAPIプロトコルに違反し、エラーが発生します。
+- **Native FC mode**: the queue is drained only after tool result messages have been appended. The `tool` messages must immediately follow the `assistant` message containing `tool_calls` — inserting a user message between them would violate the API protocol and cause errors.
 
-注入されたメッセージは`pinned=True`としてマークされ、その後のContextGuardによる圧縮で生き残ることが保証されます。ピン留めメカニズムが重要なメッセージの圧縮による破棄を防ぐ方法については、[ピン留めメッセージ](/architecture/context-management#pinned-messages)を参照してください。
+Injected messages are marked as `pinned=True`, ensuring they survive any subsequent compaction by ContextGuard. See [Pinned Messages](/architecture/context-management#pinned-messages) for how the pinning mechanism prevents compaction from discarding critical messages.
 
-`final_answer`が保留中だが注入されたメッセージが到着した場合、エージェントは最終回答を抑制し、ユーザーのフォローアップに対応できるようにループを続けます。同じドレインからの複数の注入は単一の`[USER INTERRUPT]`メッセージに結合されます。これにより、LLMが短いメッセージの断片化されたシーケンスを見ることを防ぎ、すべてのフォローアップに全体的に対応することを促進します。
+When a `final_answer` is pending but injected messages have arrived, the agent suppresses the final answer and continues looping so it can address the user's follow-up. Each injected message is appended as its own pinned `[USER INTERRUPT]` user message, capped at 25,000 characters (`REACT_MAX_INJECT_CHARS`); only the last one carries the instruction to acknowledge and adjust.
 
-## エラーハンドリングとフォールバック
+## Error handling and fallbacks
 
-エンジンは LLM またはツールの障害でクラッシュしないように設計されています。すべてのエラーパスは、サイレントに復旧するか、ユーザーに有用なメッセージを表示します。
+The engine is designed to never crash on LLM or tool failures. Every error path either recovers silently or surfaces a useful message to the user.
 
 ```mermaid
 flowchart TD
@@ -259,17 +259,17 @@ flowchart TD
     L["stream_answer() failure"] --> M["Fall back to result.answer"]
 ```
 
-**JSON パース失敗。** LLM が JSON モードで JSON 以外のコンテンツを返す場合、`_parse_action()` はそれを `final_answer` としてラップし、推論を `"(could not parse LLM output as JSON)"` とします。ループはこのセンチネルを検出し、生のコンテンツと再フォーマット指示を追加して続行します。再試行も失敗した場合、生のコンテンツが答えになります — 完璧ではありませんが、クラッシュしません。
+**JSON parse failure.** When the LLM returns non-JSON content in JSON mode, `_parse_action()` wraps it as a `final_answer` with the reasoning `"(could not parse LLM output as JSON)"`. The loop detects this sentinel, appends the raw content and a reformat instruction, and continues. If the retry also fails, the raw content becomes the answer — imperfect, but not a crash.
 
-**ツールエラー。** 「ツールが見つからない」と「ツール実行例外」の両方は、会話に追加されるエラー観測を生成します。LLM は次の反復でエラーを見て、異なる引数で再試行するか先に進むかを決定できます。これにより、エージェントは一時的なツール障害に対して自己修復可能になります。
+**Tool errors.** Both "tool not found" and "tool execution exception" produce error observations that are appended to the conversation. The LLM sees the error on the next iteration and can decide whether to retry with different arguments or move on. This makes the agent self-healing for transient tool failures.
 
-**拡張思考。** DeepSeek R1 のようなモデルは、推論コンテンツを JSON ボディではなく、別の `reasoning_content` フィールドで返します。エンジンはこれをチェックし、JSON の `reasoning` フィールドが空の場合のフォールバックとして使用します。
+**Extended thinking.** Models like DeepSeek R1 return reasoning content in a separate `reasoning_content` field rather than in the JSON body. The engine checks for this and uses it as a fallback when the JSON `reasoning` field is empty.
 
-**リッチコンテンツ。** ツールが HTML またはマークダウンアーティファクトを生成する場合、LLM に送信される観測は短いサマリーに置き換えられます（`"[Artifact generated: filename] The content is rendered as a preview in the UI..."`）。これにより、LLM が最終的な答えで大きな HTML ブロブをエコーバックするのを防ぎます — モデルが親切にツール出力全体を貼り付け直す一般的な障害モードです。
+**Rich content.** In native mode, when a tool produces HTML or markdown artifacts, the observation sent to the LLM is replaced with a short summary (`"[Artifact generated: filename] The content is rendered as a preview in the UI..."`). This prevents the LLM from echoing large HTML blobs in its final answer — a common failure mode where the model helpfully pastes back the entire tool output.
 
-## SSE イベントプロトコル
+## SSE event protocol
 
-ウェブレイヤーはエージェントの反復コールバックをServer-Sent Eventsに変換してフロントエンドに送信します。イベントは2つのSSEチャネルで発行されます：ツールループ用の `step` と合成フェーズ用の `answer` です。
+The web layer translates the agent's iteration callbacks into Server-Sent Events for the frontend. Events are emitted on two SSE channels: `step` for the tool loop, and `answer` for the synthesis phase.
 
 ```mermaid
 sequenceDiagram
@@ -278,7 +278,7 @@ sequenceDiagram
     participant UI as Frontend
 
     Agent->>SSE: step {type: "thinking", status: "start"}
-    Note over Agent: LLM call (non-streaming)
+    Note over Agent: LLM call
     Agent->>SSE: step {type: "thinking", status: "done", reasoning}
     Agent->>SSE: step {type: "iteration", status: "start", tool_name, tool_args}
     Note over Agent: Tool execution
@@ -293,19 +293,19 @@ sequenceDiagram
     Agent->>SSE: done {answer, iterations, usage, elapsed}
 ```
 
-| イベント | チャネル | ペイロード | タイミング |
+| Event | Channel | Payload | When |
 |-------|---------|---------|------|
-| 思考開始 | `step` | `{type: "thinking", status: "start", iteration}` | 各LLM呼び出しの前 |
-| 思考完了 | `step` | `{type: "thinking", status: "done", iteration, reasoning}` | LLMが応答した後、ツール実行前 |
-| 反復開始 | `step` | `{type: "iteration", status: "start", iteration, tool_name, tool_args}` | ツール実行が開始される時 |
-| 反復完了 | `step` | `{type: "iteration", status: "done", iteration, tool_name, observation, error, iter_elapsed}` | ツール実行が完了した時 |
-| 回答シグナル | `step` | `{type: "answer", status: "start"}` | エージェントが最終回答を通知した時 |
-| 回答開始 | `answer` | `{status: "start"}` | 合成ストリーミングが開始される時 |
-| 回答デルタ | `answer` | `{status: "delta", content}` | ストリーミングされた各トークン |
-| 回答完了 | `answer` | `{status: "done"}` | 合成ストリーミングが完了した時 |
-| コンパクト | `compact` | `{original_messages, kept_messages}` | ロード時にコンテキストが圧縮された時 |
-| フェーズ | `phase` | `{phase: "selecting_tools", total_tools}` | ツール選択フェーズがアクティブな時 |
-| インジェクト | `inject` | `{type: "inject", content}` | ユーザー割り込みを受け取った時 |
-| 完了 | `done` | `{answer, iterations, usage, elapsed}` | 最終結果ペイロード |
+| Thinking start | `step` | `{type: "thinking", status: "start", iteration}` | Before each LLM call |
+| Thinking done | `step` | `{type: "thinking", status: "done", iteration, reasoning}` | After LLM responds, before tool execution |
+| Iteration start | `step` | `{type: "iteration", status: "start", iteration, tool_name, tool_args}` | Tool execution begins |
+| Iteration done | `step` | `{type: "iteration", status: "done", iteration, tool_name, observation, error, iter_elapsed}` | Tool execution completes |
+| Answer signal | `step` | `{type: "answer", status: "start"}` | Agent signals final_answer |
+| Answer start | `answer` | `{status: "start"}` | Synthesis streaming begins |
+| Answer delta | `answer` | `{status: "delta", content}` | Each streamed token |
+| Answer done | `answer` | `{status: "done"}` | Synthesis streaming completes |
+| Compact | `compact` | `{original_messages, kept_messages}` | Context was compacted on load |
+| Phase | `phase` | `{phase: "selecting_tools", total_tools}` | Tool selection phase active |
+| Inject | `inject` | `{type: "inject", content}` | User interrupt received |
+| Done | `done` | `{answer, iterations, usage, elapsed}` | Final result payload |
 
-フロントエンドは `step` イベントを使用して折りたたみ可能なツール呼び出しカード（実行中のツール、その引数、観測結果を表示）をレンダリングし、`answer` デルタを使用して応答テキストをストリーミングし、`compact` を使用してコンテキスト要約区切り線を表示します。`done` イベントは完全なメタデータ（総反復回数、トークン使用量、経過時間）を含み、応答フッターに使用されます。
+The frontend uses `step` events to render the collapsible tool-call cards (showing which tool is running, its arguments, and the observation), the `answer` deltas to stream the response text, and `compact` to display the context-summarization divider. The `done` event carries the complete metadata — total iterations, token usage, and elapsed time — for the response footer.

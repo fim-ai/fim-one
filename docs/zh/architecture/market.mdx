@@ -14,28 +14,30 @@ Market 是 FIM One 的资源市场。用户发布他们构建的资源，其他�
 
 Market 根据资源的功能而非实现方式，将资源组织为两个类别。
 
-### 解决方案
+### Solutions
 
-解决方案是**为您工作的东西**。用户订阅解决方案后会获得一个开箱即用的功能。
+Solutions are things that **do work for you**. A user subscribes to a Solution and gets a ready-to-use capability.
 
-| 资源类型 | 功能说明 |
+| Resource Type | What It Does |
 |---|---|
-| **智能体** | 一个具有绑定工具、知识和指令的对话式 AI 助手 |
-| **技能** | 一个全局标准操作流程 (SOP)，可以通过 `call_agent` 编排多个智能体 |
-| **工作流** | 一个基于 DAG 的自动化流程，具有可视化编辑和确定性执行 |
+| **Agent** | A conversational AI assistant with bound tools, knowledge, and instructions |
+| **Skill** | A global SOP (Standard Operating Procedure) that can orchestrate multiple agents via `call_agent` |
+| **Workflow** | A DAG-based automation flow with visual editing and deterministic execution |
 
-解决方案可能依赖于其他资源。智能体可能需要特定的连接器来进行 API 调用，以及知识库来支持其检索管道。市场在订阅期间会自动处理这些依赖关系（请参阅下面的[依赖关系解析](#dependency-resolution)）。
+Skills and Workflows are optional modules, off by default. While a module is off its resources are absent from the Market and cannot be subscribed to.
 
-### 组件
+Solutions may depend on other resources. An Agent might require a specific Connector for its API calls and a Knowledge Base for its retrieval pipeline. The Market handles these dependencies automatically during subscription (see [Dependency resolution](#dependency-resolution) below).
 
-组件是**开发者可复用的构建块**。它们提供解决方案所消费的功能。
+### Components
 
-| 资源类型 | 功能说明 |
+Components are **reusable building blocks** for developers. They provide capabilities that Solutions consume.
+
+| Resource Type | What It Does |
 |---|---|
-| **连接器** | API 或数据库集成适配器定义 |
-| **MCP Server** | 使用 Model Context Protocol 的工具服务配置 |
+| **Connector** | An API integration adapter definition (database connectors cannot be published) |
+| **MCP Server** | A tool service configuration using the Model Context Protocol |
 
-组件订阅更简单——它们没有内部依赖关系，只有凭证要求。
+Components are simpler to subscribe to — they have no internal dependencies, only credential requirements.
 
 ### 为什么知识库不单独列出
 
@@ -92,29 +94,24 @@ flowchart TD
 因为市场只是一个具有特殊规则的组织，为组织构建的任何功能 — 审查工作流、凭证管理、资源生命周期 — 自动适用于市场，无需任何额外实现。
 </Tip>
 
-### 可见性过滤器如何处理它
+### How the visibility filter handles it
 
-没有人在 Market 组织中拥有成员资格。用户不会"加入" Market — 他们订阅单个资源。这意味着 `MARKET_ORG_ID` 永远不会出现在用户的 `user_org_ids` 列表中，并且对于 Market 资源，组织成员资格可见性条件会自然跳过。
+Nobody holds membership in the Market org. Users do not "join" the Market — they subscribe to individual resources. This means `MARKET_ORG_ID` is never present in a user's `user_org_ids` list, and the org-membership visibility condition is naturally skipped for Market resources.
 
-相反，订阅的 Market 资源通过 `build_visibility_filter()` 中的 `subscribed_ids` 路径流动：
+Instead, subscribed Market resources flow through the `subscribed_ids` path in `build_visibility_filter()`, the same path org-shared resources take:
 
 ```mermaid
 flowchart LR
     subgraph Filter["build_visibility_filter()"]
         C1["user_id == me<br/>(own resources)"]
-        C2["visibility == 'org'<br/>AND org_id IN my_orgs<br/>AND approved"]
-        C3["id IN subscribed_ids"]
+        C2["id IN subscribed_ids<br/>AND visibility == 'org'<br/>AND publish_status is unset or approved"]
     end
 
     C1 -->|OR| Result["Visible"]
     C2 -->|OR| Result
-    C3 -->|OR| Result
-
-    Note1["Market resources<br/>skip C2 (not a member)<br/>match C3 (subscribed)"]
-    Note1 -.-> C3
 ```
 
-这个三条件 OR 子句是整个可见性模型。个人资源、组织共享资源和 Market 订阅资源在一个查询中解决，没有针对不同资源来源的分支逻辑。
+This two-condition OR clause is the entire visibility model. Org membership alone grants nothing: org-shared and Market resources both reach a user through a subscription, and the share state is re-read on every query, so a subscription stops working as soon as the owner unpublishes the resource or it is awaiting or refused by review.
 
 ### 基于范围的浏览
 
@@ -173,23 +170,23 @@ sequenceDiagram
 
 组件（连接器和 MCP 服务器）的流程更简单——不需要进行依赖分析。用户订阅、可选地配置凭证，组件就可以使用了。
 
-### 凭证配置
+### Credential configuration
 
-凭证遵循**混合模型**，在便利性和灵活性之间取得平衡：
+Credentials follow a **hybrid model** that balances convenience with flexibility:
 
-- **在订阅期间提供。** 当连接类型依赖项需要凭证时，入门向导会立即呈现凭证表单。
-- **可跳过。** 用户可以选择"跳过，稍后配置"。资源已订阅，但需要这些凭证的工具在调用时会返回"请配置您的凭证"消息。
-- **延迟配置。** 用户可以随时从其设置页面配置或更新凭证。
+- **Offered during subscription.** When a connection-type dependency requires credentials, the onboarding wizard presents the credential form immediately.
+- **Skippable.** The user can choose "Skip, configure later." The resource is subscribed, but the tools that need those credentials stay out of the agent's toolset until the user configures them (or the publisher allows fallback).
+- **Deferred configuration.** Users can configure or update credentials at any time from their settings page.
 
-这与组织中使用的 `allow_fallback` 机制相同。如果发布者启用了回退并设置了默认凭证，订阅者可以立即使用该资源，无需提供自己的密钥。如果禁用回退，每个订阅者必须提供自己的凭证。
+This is the same `allow_fallback` mechanism used in organizations. If the publisher has enabled fallback and set a default credential, subscribers can use the resource immediately without providing their own key. If fallback is disabled, each subscriber must bring their own.
 
 <Warning>
-使用启用了凭证回退的 Market 资源时，您的 API 请求会通过发布者的凭证流动。对于敏感操作，请考虑提供您自己的凭证或验证发布者的可信度。
+When using a Market resource with credential fallback enabled, your API requests flow through the publisher's credentials. For sensitive operations, consider providing your own credentials or verifying the publisher's trustworthiness.
 </Warning>
 
-### 取消订阅
+### Unsubscribing
 
-取消订阅会删除 `ResourceSubscription` 记录。该资源将从用户的可见性筛选器中消失，并且不再加载到工具集中。对于具有自动订阅依赖项的解决方案，依赖资源（知识库、技能）也会被清理。资源的用户配置凭证将被删除。
+Unsubscribing removes the `ResourceSubscription` record. The resource disappears from the user's visibility filter and is no longer loaded into tool sets. For Solutions, dependencies that were subscribed automatically (Skills, Connectors, MCP Servers) are removed as well when no other subscribed Solution needs them, along with the credentials saved for those Connectors and MCP Servers. Unsubscribing from a Connector or MCP Server directly removes the user's credential for it.
 
 ## 依赖项解析
 
@@ -204,13 +201,12 @@ sequenceDiagram
 - **访问模型：** 对原作者资源的只读引用。订阅者无法修改内容。
 - **取消订阅时：** 当父解决方案被取消订阅时，自动订阅的依赖会自动清理。
 
-### 连接类型依赖
+### Connection-type dependencies
 
-**连接器**和**MCP 服务器**由解决方案引用，属于连接类型依赖。它们需要凭证才能运行。
+**Connectors** and **MCP Servers** referenced by a Solution are connection-type dependencies. They require credentials to function.
 
-- **订阅时：** 在入职向导中列为要求。系统会提示用户配置凭证（或跳过）。
-- **智能匹配：** 如果用户已有兼容的连接器（相同类型、相同基础 URL），系统会提供重用它而不是创建新订阅的选项。
-- **取消订阅时：** 订阅被移除，但用户创建的凭证被保留（用户可能在其他地方使用相同的连接器）。
+- **On subscription:** subscribed together with the Solution and listed as requirements in the onboarding wizard. The user is prompted to configure credentials (or skip).
+- **On unsubscription:** a Connector or MCP Server that was subscribed automatically with the Solution is removed with it, credentials included, unless another subscribed Solution still needs it. One the user subscribed to on their own is left in place with its credentials.
 
 ```mermaid
 flowchart TD
@@ -222,11 +218,9 @@ flowchart TD
 
     CT --> AS["Auto-subscribe<br/>(silent, read-only)"]
 
-    CN --> SM{"User already has<br/>compatible resource?"}
-    SM -->|Yes| RE["Offer reuse"]
-    SM -->|No| OB["Onboarding wizard<br/>(credential collection)"]
+    CN --> OB["Onboarding wizard<br/>(credential collection)"]
     OB --> SK{"Skip?"}
-    SK -->|Yes| DEF["Deferred config<br/>(tools show 'please configure')"]
+    SK -->|Yes| DEF["Deferred config<br/>(tools hidden until configured)"]
     SK -->|No| CONF["Credentials saved<br/>(ready to use)"]
 ```
 
@@ -269,9 +263,9 @@ flowchart TD
 
 ## 实现说明
 
-### 影子组织
+### The shadow org
 
-Market 组织有一个众所周知的固定 ID（`00000000-0000-0000-0000-000000000001`）和 slug（`market`）。它由 `ensure_market_org()` 在平台初始化期间创建——通常在第一个管理员用户登录时。该函数是幂等的；多次调用是安全的。
+The Market organization has a well-known fixed ID (`00000000-0000-0000-0000-000000000001`) and slug (`market`). It is created by `ensure_market_org()` during platform initialization, when the first user (the administrator) registers. The function is idempotent; calling it multiple times is safe.
 
 ### ResourceSubscription
 
@@ -286,14 +280,14 @@ Market 组织有一个众所周知的固定 ID（`00000000-0000-0000-0000-000000
 
 `(user_id, resource_type, resource_id)` 上的唯一约束防止重复订阅。`org_id` 列跟踪订阅的来源，启用范围感知的取消订阅。
 
-### 可见性过滤器集成
+### Visibility filter integration
 
-`resolve_visibility()` 函数在单次调用中执行两次查询：
+The `resolve_visibility()` function performs two lookups in a single call:
 
-1. 获取用户的组织成员身份（`user_org_ids`）
-2. 获取用户的订阅（`subscribed_ids`）
+1. Fetches the user's org memberships (`user_org_ids`)
+2. Fetches the user's subscriptions (`subscribed_ids`)
 
-这些数据被传递给 `build_visibility_filter()`，它生成一个单一的 SQL WHERE 子句，组合所有三个可见性层级（自有、组织共享、已订阅）。该函数在查询资源的任何地方都会使用——智能体列表、连接器下拉菜单、技能注入、自动发现模式——确保整个平台的可见性保持一致。
+These are passed to `build_visibility_filter()`, which produces a single SQL WHERE clause combining the two visibility conditions (own, or subscribed and still shared). This function is used everywhere resources are queried — agent lists, connector dropdowns, skill injection, auto-discovery mode — ensuring consistent visibility across the entire platform.
 
 ### 凭证加密
 

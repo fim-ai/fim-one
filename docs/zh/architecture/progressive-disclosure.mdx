@@ -39,21 +39,21 @@ sequenceDiagram
 
 关键洞察：**完整工具模式是对话范围的，而非提示范围的。** 它们作为工具结果消息出现，上下文管理系统可以在后续轮次中对其进行摘要或截断。相比之下，系统提示内容在整个对话中以完整大小持续存在。
 
-## 五种披露机制
+## Five disclosure mechanisms
 
-FIM One 在五种资源类型中统一应用渐进式披露。每种都使用相同的两层模式，但配备针对其语义定制的元工具。
+FIM One applies progressive disclosure uniformly across five resource types. Each uses the same two-tier pattern but with a meta-tool tailored to its semantics.
 
-| 资源 | 元工具 | 存根显示 | 按需返回 | 配置变量 | 默认值 |
+| Resource | Meta-Tool | Stubs Show | On-Demand Returns | Config Var | Default |
 |---|---|---|---|---|---|
-| 技能 | `read_skill` | 名称 + 描述（120 字符） | 完整 SOP 内容 + 嵌入式脚本 | `SKILL_TOOL_MODE` | `progressive` |
-| API 连接器 | `connector` | 连接器名称 + 操作列表 | 完整操作模式及参数 | `CONNECTOR_TOOL_MODE` | `progressive` |
-| 数据库连接器 | `database` | 数据库名称 + 表名称 + 计数 | 列模式、SQL 查询执行 | `DATABASE_TOOL_MODE` | `progressive` |
-| MCP 服务器 | `mcp` | 服务器名称 + 工具列表 | 完整工具模式 + 调用 | `MCP_TOOL_MODE` | `progressive` |
-| 内置工具 | `request_tools` | 紧凑目录（名称 + 80 字符描述） | 完整工具模式注入会话 | _（自动）_ | 工具 >12 时自动 |
+| Skills (when the module is enabled; off by default) | `read_skill` | Name + description (120 chars) | Full SOP content + embedded script | `SKILL_TOOL_MODE` | `progressive` |
+| API Connectors | `connector` | Connector name + action list | Full action schemas with parameters | `CONNECTOR_TOOL_MODE` | `progressive` |
+| Database Connectors | `database` | DB name + table names + counts | Column schemas, SQL query execution | `DATABASE_TOOL_MODE` | `progressive` |
+| MCP Servers | `mcp` | Server name + tool list | Full tool schemas + invocation | `MCP_TOOL_MODE` | `progressive` |
+| Built-in Tools | `request_tools` | Compact catalog (name + 80-char desc) | Full tool schema injected into session | _(auto)_ | Auto when >12 tools |
 
-### 技能 -- `read_skill`
+### Skills -- `read_skill`
 
-**LLM 最初看到的内容：**
+**What the LLM sees initially:**
 
 ```
 ## Available Skills
@@ -62,13 +62,13 @@ Call read_skill(name) to load full content before executing any of these:
 - Refund Processing: Step-by-step refund workflow with approval gates...
 ```
 
-每个存根大约 30 个令牌 -- 一个名称加上从完整技能内容截断的 120 个字符描述。
+Each stub is roughly 30 tokens -- a name plus the Skill's description, truncated to 120 characters (`SKILL_STUB_DESC_LENGTH`).
 
-**按需发生的情况：** LLM 调用 `read_skill("Customer Complaint SOP")` 并接收完整的 SOP 文本 -- 可能包含数千个令牌的分步说明、决策树和嵌入式脚本。此内容作为工具结果输入，而不是系统提示文本，因此在后续轮次中受到正常上下文管理（摘要、截断）的约束。
+**What happens on demand:** The LLM calls `read_skill("Customer Complaint SOP")` and receives the complete SOP text -- potentially thousands of tokens of step-by-step instructions, decision trees, and embedded scripts. This content enters as a tool result, not as system prompt text, so it is subject to normal context management (summarization, truncation) in later turns.
 
-**旧版模式：** `SKILL_TOOL_MODE=inline` 将完整的技能内容直接嵌入到系统提示中。适用于技能数量少、规模小的情况 -- 但扩展性差。
+**Legacy mode:** `SKILL_TOOL_MODE=inline` embeds the full Skill content directly in the system prompt. Suitable when you have few, small Skills -- but scales poorly.
 
-**上下文节省：** 部署 10 个平均 2,000 个令牌的技能在渐进模式下消耗约 300 个令牌（仅存根），而在内联模式下消耗约 20,000 个令牌。这是持久上下文成本的 98% 减少。
+**Context savings:** A deployment with 10 Skills averaging 2,000 tokens each consumes ~300 tokens in progressive mode (stubs only) vs. ~20,000 tokens in inline mode. That is a 98% reduction in persistent context cost.
 
 ### API 连接器 -- `connector`
 
@@ -143,17 +143,17 @@ MCP 服务器是渐进式信息披露最显著的案例。GitHub MCP 服务器�
 
 **上下文节省：** 这里的节省是极端的。GitHub MCP 服务器的 35 个工具可能消耗 10,000+ 个 token 的模式。在渐进式模式下，存根成本约为 100 个 token。如果用户在该对话中从不需要 GitHub，那么这 10,000 个 token 永远不会被消耗。
 
-### 内置工具 -- `request_tools`
+### Built-in Tools -- `request_tools`
 
-第五种机制在架构上与其他四种不同。它不会在元工具后面整合资源类型。相反，它解决了**工具选择瓶颈** -- 当智能体有超过 12 个工具可用时会发生什么。
+The fifth mechanism is architecturally different from the other four. It does not consolidate a resource type behind a meta-tool. Instead, it addresses the **tool selection bottleneck** -- what happens when the agent has more than 12 tools available.
 
-**工作原理：** 当工具总数超过 `REACT_TOOL_SELECTION_THRESHOLD`（默认值：12）时，ReAct 引擎运行一个轻量级 LLM 调用来为当前查询选择前 6 个最相关的工具。其余工具存储在完整注册表中。会自动注册一个 `request_tools` 元工具，将所有未加载的工具列为紧凑目录（名称 + 80 字符描述）。
+**How it works:** When the total tool count exceeds `REACT_TOOL_SELECTION_THRESHOLD` (default: 12), the ReAct engine selects up to 6 relevant tools for the current query (a keyword match first, a lightweight fast-LLM call otherwise) and adds pinned tools such as `read_skill` and `update_plan` on top. The remaining tools are stored in a full registry. A `request_tools` meta-tool is automatically registered, listing all unloaded tools as a compact catalog (name + 80-character description).
 
 ```mermaid
 flowchart TD
     A["30 tools available"] --> B{"Count > 12?"}
-    B -->|Yes| C["LLM selects top 6"]
-    C --> D["6 active tools +<br/>request_tools meta-tool"]
+    B -->|Yes| C["Select top 6<br/>(keyword match or LLM)"]
+    C --> D["6 active tools + pinned tools +<br/>request_tools meta-tool"]
     D --> E["LLM uses active tools"]
     E --> F{"Needs a tool<br/>not in active set?"}
     F -->|Yes| G["request_tools(['web_search', 'email_send'])"]
@@ -162,7 +162,7 @@ flowchart TD
     F -->|No| J["Continue normally"]
 ```
 
-**LLM 最初看到的内容：**
+**What the LLM sees initially:**
 
 ```
 Load additional tools into the current session.
@@ -172,28 +172,28 @@ Available tools not yet loaded:
 - python_exec: Execute Python code in a sandboxed environment and return the output...
 ```
 
-**按需发生的情况：** `request_tools(tool_names=["web_search", "email_send"])` 将这些工具从完整注册表复制到活跃注册表中。系统提示在下一次迭代时重建，以便 LLM 看到完整的模式。这是一个副作用 -- 该工具在对话中途改变活跃工具集。
+**What happens on demand:** `request_tools(tool_names=["web_search", "email_send"])` copies those tools from the full registry into the active registry. The system prompt is rebuilt on the next iteration so the LLM sees the full schemas. This is a side-effect -- the tool mutates the active tool set mid-conversation.
 
-**无环境变量：** 当工具选择过滤集合时，此机制会自动激活。没有 `REQUEST_TOOLS_MODE` 环境变量。如果要完全禁用工具选择，请将 `REACT_TOOL_SELECTION_THRESHOLD` 设置为一个很大的数字。
+**No env var:** This mechanism activates automatically when tool selection filters the set. There is no `REQUEST_TOOLS_MODE` environment variable. If you want to disable tool selection entirely, set `REACT_TOOL_SELECTION_THRESHOLD` to a very high number.
 
-**上下文节省：** 节省取决于有多少可用工具以及选择选择了多少工具。一个拥有 30 个工具的智能体只看到 6 个活跃模式 + `request_tools` 目录可节省大约 60--70% 的工具模式上下文。
+**Context savings:** The savings depend on how many tools are available and how many the selection picks. An agent with 30 tools seeing only 6 active schemas + the `request_tools` catalog saves roughly 60--70% of the tool schema context.
 
-## 它如何融入工具组装管道
+## How it fits into the tool assembly pipeline
 
-[系统概述](/architecture/system-overview)描述了一个每请求8步的工具组装管道。渐进式披露在多个点起作用：
+The [System Overview](/architecture/system-overview) describes an 8-step per-request tool assembly pipeline. Progressive disclosure acts at multiple points:
 
-| 管道步骤 | 渐进式披露角色 |
+| Pipeline Step | Progressive Disclosure Role |
 |---|---|
-| **1. 基础发现** | 无影响 -- 内置工具正常加载 |
-| **2. 智能体类别过滤** | 无影响 -- 类别过滤无论模式如何都适用 |
-| **3. KB 注入** | 无影响 -- KB 工具本身轻量级（1-2 个工具） |
-| **4. 连接器加载** | `ConnectorMetaTool` 整合所有 API 连接器；`DatabaseMetaTool` 整合所有数据库连接器 |
-| **5. MCP 加载** | `MCPServerMetaTool` 将所有 MCP 服务器整合为一个工具 |
-| **6. 技能注入** | `ReadSkillTool` 在系统提示中用紧凑的存根替换完整内容 |
-| **7. CallAgent 注册** | 无影响 -- `call_agent` 已是单个工具，带有目录 |
-| **8. 运行时选择** | 当选择过滤集合时注册 `request_tools` 元工具 |
+| **1. Base discovery** | No effect -- built-in tools are loaded normally |
+| **2. Agent category filter** | No effect -- category filtering applies regardless of mode |
+| **3. KB injection** | No effect -- KB tools are naturally lightweight (1--2 tools) |
+| **4. Connector loading** | `ConnectorMetaTool` consolidates all API connectors; `DatabaseMetaTool` consolidates all DB connectors |
+| **5. MCP loading** | `MCPServerMetaTool` consolidates all MCP servers into one tool |
+| **6. Skills injection** | `ReadSkillTool` replaces full content with compact stubs in system prompt |
+| **7. CallAgent registration** | No effect -- `call_agent` is already a single tool with a catalog |
+| **8. Runtime selection** | `request_tools` meta-tool registered when selection filters the set |
 
-净效果：步骤 4-6 各自将工具数量减少到 1 个（或一个小常数），步骤 8 为动态加载选择阶段遗漏的任何内容添加了安全网。在旧版模式下会有 50+ 个工具的 Hub 智能体在渐进式模式下可能呈现 8-10 个 -- 远低于选择阈值。
+The net effect: steps 4--6 each reduce their tool count to 1 (or a small constant), and step 8 adds a safety net for dynamically loading anything the selection phase missed. An agent that would have 50+ tools in legacy mode might present 8--10 in progressive mode -- well below the selection threshold.
 
 ## 配置
 
@@ -237,13 +237,13 @@ Available tools not yet loaded:
 
 3. **上下文效率。** 框架无法知道LLM需要连接器内的哪些操作。扩展连接器的所有操作会在无关的操作上浪费token。LLM 首先看到操作名称（通过存根），然后仅请求特定操作的模式 -- 这是两层级披露的最纯粹形式。
 
-### 为什么使用按资源的元工具而不是一个通用工具？
+### Why per-resource meta-tools rather than one universal tool?
 
-单个 `discover_resource(type, name)` 工具实现起来更简单，但对 LLM 来说更差。按资源的元工具提供：
+A single `discover_resource(type, name)` tool would be simpler to implement but worse for the LLM. Per-resource meta-tools provide:
 
-- **类型化参数。** `connector` 有 `subcommand`、`connector`、`action`、`parameters`。`database` 有 `subcommand`、`database`、`table`、`sql`。参数模式告诉 LLM 确切期望的内容。
-- **枚举约束。** 每个元工具在模式中将其有效名称（连接器名称、数据库名称、服务器名称）列为枚举值。LLM 无法凭空捏造连接器名称。
-- **类别语义。** `connector` 工具的类别为 `connector`，`database` 的类别为 `database`，`mcp` 的类别为 `mcp`。这会进入智能体类别过滤 -- 仅配置了 `connector` 类别的智能体将看不到 `database` 或 `mcp` 元工具。
+- **Typed parameters.** `connector` has `subcommand`, `connector`, `action`, `parameters`. `database` has `subcommand`, `database`, `table`, `sql`. The parameter schemas tell the LLM exactly what is expected.
+- **Enum constraints.** Each meta-tool lists its valid names (connector names, database names, server names) as enum values in the schema. The LLM cannot hallucinate a connector name.
+- **Category semantics.** The `connector` tool has category `connector`, `database` has category `database`, `mcp` has category `mcp`. An agent's `tool_categories` filter applies to built-in tools only; which meta-tools appear is decided by the agent's bound connectors and MCP servers.
 
 ### 为什么同时支持渐进式和传统模式？
 

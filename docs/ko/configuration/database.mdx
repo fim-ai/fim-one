@@ -1,10 +1,10 @@
 ---
-title: "데이터베이스"
+title: "Database"
 icon: "database"
-description: "배포를 위한 적절한 데이터베이스 백엔드를 선택하고 구성하세요"
+description: "Choose and configure the right database backend for your deployment"
 ---
 
-FIM One은 두 가지 데이터베이스 백엔드를 지원합니다: **SQLite**(기본값, 설정 불필요) 및 **PostgreSQL**(프로덕션 환경 권장). 백엔드는 `DATABASE_URL` 환경 변수에 의해 결정됩니다.
+FIM One supports two database backends: **SQLite** (default, zero-config) and **PostgreSQL** (recommended for production). The backend is determined by the `DATABASE_URL` environment variable.
 
 ```bash
 # SQLite (default — no configuration needed)
@@ -14,7 +14,7 @@ DATABASE_URL=sqlite+aiosqlite:///./data/fim_one.db
 DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/fim_one
 ```
 
-테이블은 첫 시작 시 자동으로 생성되므로 수동 마이그레이션 단계가 필요하지 않습니다.
+`start.sh` and the Docker entrypoint run the Alembic migrations on every start, so tables are created automatically — no manual migration step is required.
 
 ---
 
@@ -37,40 +37,40 @@ DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/fim_one
 
 ---
 
-## 알려진 제한사항: SQLite 동시 스트리밍
+## Known Limitation: SQLite Concurrent Streaming
 
 <Warning>
-**SQLite는 동시 부하 상황에서 병목이 될 수 있습니다.**
+**SQLite can become a bottleneck under concurrent load.**
 
-FIM One은 AI 응답 스트리밍을 위해 Server-Sent Events (SSE)를 사용합니다. 스트리밍 중에 각 활성 SSE 연결은 스트림 지속 시간 동안 연결 풀에서 데이터베이스 연결을 유지합니다. SQLite는 전역 쓰기 잠금을 적용하므로 한 번에 하나의 쓰기 작업만 진행될 수 있으며, 다른 모든 쓰기 작업은 그 뒤에서 대기합니다.
+FIM One uses Server-Sent Events (SSE) for streaming AI responses. During streaming, each active SSE connection holds a database connection from the pool for the duration of the stream. SQLite enforces a global write lock, meaning only one write operation can proceed at a time — all other writes queue behind it.
 
-연결 풀이 최대 30개의 동시 연결을 지원하더라도(`pool_size=20` + `max_overflow=10`), 병목은 풀이 아니라 잠금 자체입니다. 여러 사용자가 동시에 채팅할 때, 메시지 저장 및 토큰 수 업데이트와 같은 쓰기 작업이 서로에 대해 직렬화됩니다.
+Even though the connection pool supports up to 15 simultaneous connections (`pool_size=10` + `max_overflow=5`), the bottleneck is the lock itself, not the pool. When multiple users are chatting simultaneously, their write operations (saving messages, updating token counts) serialize against each other.
 
-**관찰할 수 있는 증상:**
-- 다른 사용자가 스트리밍 중일 때 대화 목록이 느리게 로드됨
-- 활성 채팅 세션 중에 설정 페이지가 느려짐
-- 여러 스트림이 활성화되어 있을 때 API 응답이 지연됨
+**Symptoms you may observe:**
+- Conversation list loads slowly while another user is streaming
+- Settings pages feel sluggish during active chat sessions
+- API responses are delayed when multiple streams are active
 
-**권장사항:** 동시 사용자가 2-3명 이상인 경우 PostgreSQL로 전환하세요. PostgreSQL은 MVCC(Multi-Version Concurrency Control)와 행 수준 잠금을 사용하므로 동시 읽기 및 쓰기가 서로를 차단하지 않고 독립적으로 진행됩니다.
+**Recommendation:** If you have more than 2-3 concurrent users, switch to PostgreSQL. PostgreSQL uses MVCC (Multi-Version Concurrency Control) with row-level locking, so concurrent reads and writes proceed independently without blocking each other.
 </Warning>
 
 ---
 
-## 연결 풀 구성
+## Connection Pool Configuration
 
-FIM One은 각 백엔드에 대해 SQLAlchemy 연결 풀 설정을 내부적으로 구성합니다. 이는 환경 변수가 필요하지 않은 조정된 기본값이며, `DATABASE_URL` 스키마를 기반으로 자동으로 적용됩니다. 이를 이해하면 런타임 동작을 설명하는 데 도움이 됩니다.
+FIM One configures SQLAlchemy connection pool settings internally for each backend. These are tuned defaults that do not require environment variables (the SQLite pool can be resized with `SQLITE_POOL_SIZE` / `SQLITE_MAX_OVERFLOW`) — they are applied automatically based on the `DATABASE_URL` scheme. Understanding them helps explain runtime behavior.
 
-### SQLite 풀 설정
+### SQLite Pool Settings
 
-| 설정 | 값 | 설명 |
+| Setting | Value | Description |
 |---|---|---|
-| `pool_size` | `20` | 풀의 기본 영구 연결 수 |
-| `max_overflow` | `10` | 부하 시 생성되는 추가 연결 (최대 30개) |
-| WAL 저널 모드 | 활성화됨 | Write-Ahead Logging은 쓰기 작업 중에도 동시 읽기를 허용하여 잠금 경합을 크게 줄임 |
-| `busy_timeout` | `30s` | 쓰기 잠금이 유지되는 동안 다른 쓰기 작업은 오류를 발생시키기 전에 최대 30초 동안 대기하며, 즉시 실패하지 않음 |
-| `synchronous` | `NORMAL` | WAL 모드에서 안전하며, 기본값인 `FULL`보다 더 나은 쓰기 처리량 제공 |
+| `pool_size` | `10` | Base number of persistent connections in the pool |
+| `max_overflow` | `5` | Additional connections created under load (up to 15 total) |
+| WAL journal mode | Enabled | Write-Ahead Logging allows concurrent reads while a write is in progress, significantly reducing lock contention |
+| `busy_timeout` | `30s` | When the write lock is held, other writers wait up to 30 seconds before raising an error, instead of failing immediately |
+| `synchronous` | `NORMAL` | Safe with WAL mode; provides better write throughput than the default `FULL` |
 
-WAL 모드와 30초 busy timeout은 모든 새 연결에서 SQLite PRAGMA를 통해 설정됩니다. 이 조합은 단기 읽기(대화 목록 로드, 설정 가져오기)가 장기 실행 쓰기 트랜잭션에 의해 차단되지 않도록 하고, 동시 쓰기가 실패하지 않고 우아하게 대기열에 들어가도록 보장합니다.
+WAL mode and the 30-second busy timeout are set via SQLite PRAGMAs on every new connection. This combination ensures that short-lived reads (loading a conversation list, fetching settings) are not blocked by long-running write transactions, and that concurrent writes queue gracefully instead of failing.
 
 ### PostgreSQL 풀 설정
 
@@ -123,16 +123,16 @@ DATABASE_URL=postgresql+asyncpg://postgres:secret@localhost:5432/fim_one
 **기존 SQLite 데이터는 자동으로 마이그레이션되지 않습니다.** `DATABASE_URL`을 SQLite에서 PostgreSQL로 전환하면 새로운 데이터베이스로 시작됩니다. SQLite에 기존 대화, 에이전트 또는 커넥터가 있고 이를 보존해야 하는 경우 아래의 [데이터 마이그레이션](#data-migration) 섹션을 참조하세요.
 </Note>
 
-### Docker Compose (프로덕션용 권장)
+### Docker Compose (Recommended for Production)
 
-Docker Compose로 배포하는 경우, **PostgreSQL과 Redis가 이미 포함되어 있고 자동으로 구성됩니다** — 추가로 설정할 것이 없습니다. `docker-compose.yml`은 `DATABASE_URL`을 내부적으로 설정하므로 `.env` 값이 재정의됩니다:
+If you deploy with Docker Compose, **PostgreSQL and Redis are already included and auto-configured** — there is nothing extra to set up. The `docker-compose.yml` sets `DATABASE_URL` internally — your `.env` value is overridden:
 
 ```yaml
 environment:
-  DATABASE_URL: postgresql+asyncpg://fim:fim@postgres:5432/fim_one
+  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-fim}:${POSTGRES_PASSWORD:-fim}@postgres:5432/${POSTGRES_DB:-fim_one}
 ```
 
-Docker Compose를 사용할 때는 추가 데이터베이스 설정이 필요하지 않습니다.
+No additional database setup is needed when using Docker Compose.
 
 ---
 

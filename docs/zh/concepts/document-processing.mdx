@@ -12,21 +12,21 @@ FIM One 自动处理上传的文档，以便 AI 智能体能够理解其内容�
 视觉模式默认自动启用。如果您配置的模型已启用视觉支持，上传的文档将使用该格式可用的最丰富的处理管道。
 </Info>
 
-## 格式支持矩阵
+## Format Support Matrix
 
-每种文档格式都有专门的处理管道。行为取决于模型是否支持视觉能力。
+Each document format has a dedicated processing pipeline. The behavior changes depending on whether the model supports vision.
 
-| 格式 | 文本提取 | 视觉模式 (`supports_vision=ON`) | 回退模式 (`supports_vision=OFF`) |
+| Format | Text Extraction | Vision Mode (`supports_vision=ON`) | Fallback (`supports_vision=OFF`) |
 |--------|----------------|--------------------------------------|-----------------------------------|
-| **PDF** | pdfplumber（逐页文本） | 智能处理：文本丰富的页面提取文本 + 嵌入图像（令牌高效）；扫描/仅图像页面通过 PyMuPDF 渲染为全页 PNG | 仅文本提取；智能体通过 `read_uploaded_file` 工具读取 |
-| **DOCX / DOC** | markitdown（Markdown 转换） | 通过 python-docx 提取嵌入图像，带有 `[Figure N]` 位置标记 | 仅文本提取；图像丢失 |
-| **PPTX / PPT** | markitdown（每张幻灯片的文本） | 通过 python-pptx 提取嵌入图像，带有 `[Figure N]` 标记和幻灯片分隔符 | 仅文本提取；幻灯片视觉效果丢失 |
-| **XLSX / XLS** | markitdown（保留表格结构） | 与文本模式相同（表格不受益于视觉能力） | 相同 |
-| **图像** (JPG, PNG, GIF, WebP) | 不适用 | 作为 `image_url` 视觉内容块发送 | 标注为 `[Attached image: filename]` — 模型知道但无法看到内容 |
-| **文本文件** (TXT, MD, PY, JS, HTML, CSV, JSON) | 直接读取/解析 | 不适用（文本就是文本） | 相同 |
+| **PDF** | pdfplumber (page-by-page text) | Smart processing: text-rich pages extract text + embedded images (token-efficient); scanned/image-only pages render as full-page PNG via PyMuPDF | Text extraction only; agent reads via `read_uploaded_file` tool |
+| **DOCX / DOC** | markitdown (Markdown conversion) | Embedded images extracted with `[Figure N]` positional markers via python-docx | Text extraction only; images lost |
+| **PPTX / PPT** | markitdown (text from each slide) | Embedded images extracted with `[Figure N]` markers and slide separators via python-pptx | Text extraction only; slide visuals lost |
+| **XLSX / XLS** | markitdown (table structure preserved) | Same as text mode (tables do not benefit from vision) | Same |
+| **Images** (JPG, PNG, GIF, WebP) | N/A | Sent as `image_url` vision content blocks | Annotated as `[Attached images (text-only model, not displayed): filename (file_id: ...)]` — model is aware but cannot see the content |
+| **Text files** (TXT, MD, PY, JS, HTML, CSV, JSON) | Direct read / parse | N/A (text is text) | Same |
 
 <Tip>
-**为了获得最大的视觉保真度**，在上传前将 DOCX 或 PPTX 文件导出为 PDF。PDF 视觉模式渲染完整的页面布局 — 文本、图像、图表和格式 — 全部在一张图像中。
+**For maximum visual fidelity**, export DOCX or PPTX files to PDF before uploading. PDF vision mode renders the full page layout — text, images, charts, and formatting — all in one image.
 </Tip>
 
 ## 工作原理
@@ -77,20 +77,20 @@ DOCUMENT_PROCESSING_MODE=vision
 DOCUMENT_PROCESSING_MODE=text
 ```
 
-### 3. 按请求参数
+### 3. Per-Request Parameter
 
-在聊天 API 中传递 `doc_mode` 参数来控制单个请求的处理：
+Pass the `doc_mode` parameter in the chat API to control processing for a single request:
 
 ```json
 {
-  "message": "Analyze this financial report",
+  "q": "Analyze this financial report",
   "doc_mode": "vision",
-  "attachments": [...]
+  "image_ids": "<file_id>,<file_id>"
 }
 ```
 
 <Note>
-`auto` 模式（默认）在模型具有 `supports_vision=true` **且**文档是受益于视觉处理的类型时使用视觉。这是大多数部署的推荐设置。
+The `auto` mode (default) uses vision when the model has `supports_vision=true` **and** the document is a type that benefits from vision processing. This is the recommended setting for most deployments.
 </Note>
 
 ## 环境变量
@@ -177,13 +177,13 @@ LibreOffice 可以生成 DOCX 和 PPTX 文件的像素完美页面渲染，但�
 
 ## 最佳实践
 
-### 对于管理员
+### For Administrators
 
-- **有选择地启用视觉功能。** 仅在模型确实支持图像输入时启用 `supports_vision`。配置错误会浪费令牌在回退重试循环中。
-- **从 `auto` 模式开始。** 默认行为对大多数部署都是正确的——视觉功能在有益且可用时使用。
-- **监控令牌使用情况。** 启用视觉功能后，观察令牌消耗仪表板。如果成本意外激增，调整 `DOCUMENT_VISION_MAX_PAGES` 或 `DOCUMENT_VISION_DPI`。
+- **Enable vision selectively.** Only enable `supports_vision` on models that genuinely support image input. Misconfiguration wastes tokens on the fallback retry cycle.
+- **Start with `auto` mode.** The default behavior is correct for most deployments — vision is used when beneficial and available.
+- **Monitor token usage.** After enabling vision, watch the token consumption dashboard. If costs spike unexpectedly, adjust `DOCUMENT_VISION_MAX_PAGES` or `DOCUMENT_VISION_DPI`.
 
-- **使用预构建的沙箱镜像。** `Dockerfile.sandbox` 包含 AI 代码执行所需的常见数据科学包（pdfplumber、Pillow、pandas 等）。通过 `docker compose` 或使用 `docker build -f Dockerfile.sandbox -t fim-sandbox .` 手动构建，以确保代码执行在 `--network=none` 容器中正常工作。
+- **Use the pre-built sandbox image.** The `Dockerfile.sandbox` includes common data-science packages (pdfplumber, Pillow, pandas, etc.) needed for AI code execution against documents. Build it via `docker compose` or manually with `docker build -f Dockerfile.sandbox -t fim-sandbox:python .` to ensure code execution works in `--network=none` containers.
 
 ### 对于最终用户
 

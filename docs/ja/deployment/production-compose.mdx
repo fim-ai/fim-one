@@ -1,0 +1,68 @@
+---
+title: "Production Compose File"
+icon: "server"
+description: "Run FIM One behind a reverse proxy on a shared Docker network with docker-compose.prod.yml: no host ports, fixed container names, the same sandbox and key store layout as the default file."
+---
+
+`docker-compose.prod.yml` is a second, self-contained compose file for hosts where the reverse proxy (Caddy, Nginx, Traefik) runs as a container of another compose project and reaches FIM One over a Docker network that both projects join. Use it **instead of** `docker-compose.yml`, not as an overlay.
+
+## When to use it
+
+| | `docker-compose.yml` | `docker-compose.prod.yml` |
+|---|---|---|
+| Reached through | host ports `3000` and `8000` | a shared external network (`FIM_EDGE_NETWORK`); no host ports |
+| Container names | `<project>-<service>-1` | `fim-one`, `fim-one-db`, `fim-one-redis`, `fim-one-docker-socket-proxy` |
+| Database / cache services | `postgres`, `redis` | `fim-one-db`, `fim-one-redis` |
+| `POSTGRES_PASSWORD` | defaults to `fim` | required; compose stops with an error without it |
+
+Everything else is the same as the default file: the application runs unprivileged and without the Docker socket, sandboxes are started by the `docker-socket-proxy` service, generated keys are kept in the `app_secrets` volume at `/var/lib/fim-one/secrets`. See [Security → Code execution and the Docker socket](/security#code-execution-and-the-docker-socket).
+
+Only the `fim-one` service joins the shared network. The database, the cache and the sandbox proxy stay on the project's own network, so other stacks on the shared network cannot reach them. The application addresses them by container name; container names are unique on a host, so a service of another stack on the shared network with a generic name such as `postgres` cannot answer in their place.
+
+## Settings in `.env`
+
+```bash
+COMPOSE_FILE=docker-compose.prod.yml
+FIM_EDGE_NETWORK=<the reverse proxy's network>   # must already exist: docker network ls
+POSTGRES_PASSWORD=<a password of your own>
+JWT_SECRET_KEY=<64 hex characters>               # recommended: see "Keys" below
+CREDENTIAL_ENCRYPTION_KEY=<64 hex characters>
+FORWARDED_ALLOW_IPS=127.0.0.1,172.16.0.0/12      # the shared network's range
+```
+
+`COMPOSE_FILE` in `.env` makes plain `docker compose …` commands and `./deploy.sh` use this file in this directory. Optional: `DOCKER_HOST_DATA_DIR` (host path of `./data`, default `$PWD/data`), and the variables in [Environment Variables → Code execution](/configuration/environment-variables).
+
+Point the reverse proxy at `fim-one:3000` (the frontend; it proxies `/api/*`). Point it at `fim-one:8000` as well only if it sends SSE streams to the API directly.
+
+Keys: with both keys in `.env` the key store stays empty and nothing is generated. Without them, a first start (empty database) generates them into the `app_secrets` volume; back that volume up with `./data`.
+
+## New installation
+
+```bash
+cp example.env .env        # set LLM_API_KEY and the settings above
+DEPLOY_DRY_RUN=1 ./deploy.sh   # prints what it would remove and run; changes nothing
+./deploy.sh
+```
+
+## Switching an existing deployment (one time)
+
+The volumes of a compose project are named `<project>_<volume>`; the project name is the checkout directory's name unless `COMPOSE_PROJECT_NAME` says otherwise. Switch in the same directory, with the same project name, and the existing `postgres_data`, `redis_data`, `./data` and `./uploads` are reused. Check before and after: `docker volume ls | grep _postgres_data` and the `volumes:` section of `docker compose config`.
+
+1. **Keys.** If `JWT_SECRET_KEY` and `CREDENTIAL_ENCRYPTION_KEY` are not both in `.env`, copy them from the running container (`docker exec fim-one cat /app/.env`) into `.env` first. Older images generated missing keys inside the container, and they are gone when it is replaced. The new image refuses to start on a database with data when a key is missing, rather than generating a new one.
+2. **Back up** the database (`docker exec <db container> pg_dump -U fim -d fim_one -Fc > fim_one.dump`), `.env`, and any local changes to tracked files (`git diff > local.diff`).
+3. **Drop local edits** to `docker-compose.yml` and `deploy.sh` (`git checkout -- docker-compose.yml deploy.sh`) so that `git pull` succeeds and the bundled `deploy.sh` is used. Move `docker-compose.override.yml` out of the directory: with `COMPOSE_FILE` set, compose no longer reads it, and an override that replaces the `fim-one` volumes would drop the key store and token mounts if someone added it back to `COMPOSE_FILE`.
+4. **Coming from the default file** (services `postgres` and `redis`): stop and remove those two containers before the first deploy (`docker compose -f docker-compose.yml rm -s -f postgres redis`). The new services use the same volumes, and `deploy.sh` does not remove containers of services the file in use does not list, so the old database container would otherwise keep running on the same data directory.
+5. **Set** the `.env` values above, pull the release, and run `DEPLOY_DRY_RUN=1 ./deploy.sh`. It must list `fim-one`, `sandbox` and `docker-socket-proxy` under "recreating" and nothing else; the database and cache containers are not removed or recreated.
+6. **Deploy**: `./deploy.sh`. The first start hands `./data` and `./uploads` to uid 10001 (see [Security → Upgrading an existing deployment](/security#upgrading-an-existing-deployment)).
+
+## Checks after a deploy
+
+```bash
+docker compose ps                                     # fim-one up, docker-socket-proxy up, sandbox exited 0
+docker compose top fim-one                            # uid 10001 / 10002, no process as root
+docker inspect fim-one --format '{{range .Mounts}}{{.Destination}} {{end}}'   # no /var/run/docker.sock
+docker compose logs docker-socket-proxy | grep 'sandbox proxy on'             # proxy enabled, labels include the project
+docker exec fim-one python -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8000/api/version').status)"
+```
+
+Then run a chat that uses a code tool and check that `docker compose logs docker-socket-proxy` shows no `refused` line for it.

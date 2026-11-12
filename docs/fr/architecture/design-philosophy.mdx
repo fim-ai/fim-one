@@ -14,13 +14,13 @@ Le moteur d'exécution DAG de FIM One a été conçu avec une retenue délibér�
 
 Ajouter un protocole de remise explicite dupliquerait ce que les dépendances d'étapes fournissent déjà, sans expressivité supplémentaire.
 
-## Rétroaction — Non nécessaire
+## Backflow — Not Needed
 
-**Motif** : Les étapes en aval renvoyant les résultats aux étapes en amont pour une réévaluation (également appelée rétropropagation des résultats).
+**Pattern**: Downstream steps feeding results back to upstream steps for re-evaluation (also called backpropagation of results).
 
-**Raison de l'exclusion** : La boucle de re-planification du PlanAnalyzer couvre déjà ce cas d'usage. Une fois que toutes les étapes sont terminées, l'analyseur évalue si l'objectif initial a été atteint. Si ce n'est pas le cas (et que la confiance est inférieure au seuil d'arrêt), il déclenche une re-planification complète avec le contexte des résultats de la ronde précédente — y compris ce qui s'est mal passé et ce qui a été appris.
+**Why excluded**: The PlanAnalyzer re-plan loop already covers this use case. After all steps complete, the analyzer evaluates whether the original goal was achieved. If not (and the analyzer does not judge the goal unreachable), it triggers a re-plan of the remaining work with context from the previous round's results — including what went wrong and what was learned.
 
-Il s'agit d'une approche plus grossière mais plus robuste que la rétroaction par étape. La rétroaction par étape crée des boucles de rétroaction complexes qui sont difficiles à déboguer et peuvent entraîner des cycles infinis. La boucle de re-planification réalise le même effet correctif avec un modèle d'exécution plus propre : planifier, exécuter, évaluer, re-planifier si nécessaire.
+This is a coarser-grained but more robust approach than per-step backflow. Per-step backflow creates complex feedback loops that are hard to debug and can lead to infinite cycles. The re-plan loop achieves the same corrective effect with a cleaner execution model: plan, execute, evaluate, re-plan if needed.
 
 ## Équipes (Communication inter-agents) — Non nécessaire
 

@@ -190,5 +190,10 @@
   "cannotLeaveMarketOrg": "마켓플레이스 조직을 떠날 수 없습니다",
   "cannotAddMemberToMarketOrg": "마켓플레이스에 멤버를 추가할 수 없습니다",
   "marketplaceReviewLocked": "마켓플레이스는 항상 검토가 필요합니다",
-  "reviewBypassExplanation": "조직 구성원과 관리자는 이 조직에 게시할 때 검토를 건너뜁니다. 다른 모든 사용자는 리소스가 표시되기 전에 관리자 승인이 필요합니다."
+  "reviewBypassExplanation": "조직 구성원과 관리자는 이 조직에 게시할 때 검토를 건너뜁니다. 다른 모든 사용자는 리소스가 표시되기 전에 관리자 승인이 필요합니다.",
+  "auditLog": "Audit Log",
+  "auditLogTitle": "Audit Log: {name}",
+  "auditLogDescription": "Events that belong to this organization and the calls made through its agents and workflows. IP addresses and browsers are not shown here.",
+  "auditEvents": "Events",
+  "auditNoEvents": "No events recorded for this organization yet."
 }

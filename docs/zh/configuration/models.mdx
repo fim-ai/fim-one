@@ -6,19 +6,21 @@ description: "为您的 FIM One 部署选择合适的 LLM。"
 
 FIM One 是**提供商无关的** — 任何 OpenAI 兼容的端点都可以工作。本页面帮助您为您的用例选择最佳的模型组合。有关配置详情，请参阅 [环境变量](/configuration/environment-variables)。
 
-## FIM One 如何使用模型
+## How FIM One Uses Models
 
-FIM One 有三个模型角色：
+FIM One has three model roles:
 
-| 角色 | 环境变量 | 用途 |
+| Role | Env Variable | Used For |
 |---|---|---|
-| **通用** | `LLM_MODEL` | 规划、分析、ReAct 智能体、复杂推理 |
-| **快速** | `FAST_LLM_MODEL` | DAG 步骤执行、上下文压缩（更便宜、更快） |
-| **推理** | `REASONING_LLM_MODEL` | 深度分析、复杂规划、数学证明 |
+| **General** | `LLM_MODEL` | Planning, analysis, ReAct agent, complex reasoning |
+| **Fast** | `FAST_LLM_MODEL` | DAG steps the planner marks `fast`, ReAct tool-decision iterations, context compaction (cheaper, faster) |
+| **Reasoning** | `REASONING_LLM_MODEL` | Deep analysis, complex planning, mathematical proofs |
 
-如果未配置，快速和推理模型将回退到通用模型。对于生产部署，至少分离为两个模型（通用 + 快速）可以获得最佳的成本/质量平衡。
+Fast and Reasoning fall back to General if not configured. For production deployments, splitting into at least two models (General + Fast) gives the best cost/quality balance.
 
-这些角色可以通过环境变量或通过管理 UI 的**模型组**功能进行配置，该功能允许一键切换模型集。有关完整的管理 UI 指南，请参阅 [模型管理](/configuration/model-management)。
+These roles can be configured via ENV variables or through the admin UI's **Model Groups** feature, which allows one-click switching between model sets. See [Model Management](/configuration/model-management) for the full admin UI guide.
+
+---
 
 ## 快速选择矩阵
 
@@ -119,19 +121,19 @@ FIM One的DAG规划器需要模型返回有效的结构化JSON。在内部，它
 
 ### OpenAI
 
-最经过实战检验的选择。OpenAI模型拥有最好的原生函数调用（工具调用）支持，这直接影响智能体的可靠性。GPT-5系列（2025年8月+）相比GPT-4是一个重大的代际飞跃。
+The most battle-tested option. OpenAI models have the best native function calling (tool-calling) support, which directly impacts agent reliability. The GPT-5 family (August 2025+) is a major generational leap over GPT-4.
 
-**推荐模型：**
-- 主力：`gpt-5.4`（最新旗舰版，2026年3月——100万+上下文，计算机使用）或`o3`（最佳推理准确度）
-- 快速：`gpt-5.4-mini`（$0.75/$4.50每百万token）或`gpt-5.4-nano`（最便宜，$0.20/$1.25每百万token）
-- 预算快速：`gpt-5-mini`（$0.25/$2.00）和`gpt-5-nano`（$0.05/$0.40）以更低价格继续可用
-- 旧版：`gpt-4.1`（仍在API中，100万上下文，适合编码）
+**Recommended models:**
+- Main: `gpt-5.4` (latest flagship, Mar 2026 — 1M+ context, computer use) or `o3` (best reasoning accuracy)
+- Fast: `gpt-5.4-mini` ($0.75/$4.50 per MTok) or `gpt-5.4-nano` (cheapest at $0.20/$1.25 per MTok)
+- Budget Fast: `gpt-5-mini` ($0.25/$2.00) and `gpt-5-nano` ($0.05/$0.40) remain available at lower prices
+- Legacy: `gpt-4.1` (still in API, 1M context, good for coding)
 
-**推理：** 设置`LLM_REASONING_EFFORT=medium`——原生支持o系列和GPT-5.x模型。GPT-5.4支持`reasoning_effort`，级别为`none`、`low`、`medium`、`high`、`xhigh`。o系列需要`max_completion_tokens`而非`max_tokens`，LiteLLM会自动处理。注意：`/v1/chat/completions`拒绝将工具与推理结合的GPT-5.x请求，因此FIM One直接调用Responses API处理GPT-5.x，两者可以协同工作。该路径还会将每个回合的加密推理传递到下一个回合，因此构建多步骤答案的智能体会保留已经推导出的内容，而不是在每次工具调用时重新推导。没有`/v1/responses`路由的端点会回退到聊天完成，在智能体工具使用步骤中显式设置`reasoning_effort: "none"`，`FIM_GPT5_RESPONSES_MODE`可以手动强制任一回退。OpenAI兼容端点上的其他模型系列保持在聊天完成上：它们从Responses中获益无多，代理垫片可能会严重缓冲流式传输。GPT-5.4需要`temperature=1`，FIM One通过LiteLLM的参数过滤（`drop_params`）自动处理。
+**Reasoning:** Set `LLM_REASONING_EFFORT=medium` — works natively with o-series and GPT-5.x models. GPT-5.4 supports `reasoning_effort` with levels `none`, `low`, `medium`, `high`, `xhigh`. The o-series requires `max_completion_tokens` instead of `max_tokens`, which LiteLLM handles automatically. Note: `/v1/chat/completions` rejects GPT-5.x requests that combine tools with reasoning, so FIM One talks the Responses API directly for GPT-5.x, where both work together. That path also carries each turn's encrypted reasoning into the next one, so an agent building a multi-step answer keeps what it already worked out instead of re-deriving it at every tool call. Endpoints without a `/v1/responses` route fall back to chat completions with an explicit `reasoning_effort: "none"` during agent tool-use steps, and `FIM_GPT5_RESPONSES_MODE` can force either fallback by hand. Other model families on OpenAI-compatible endpoints stay on chat completions: they gain nothing from Responses, and proxy shims for it can badly buffer streaming. GPT-5 and later accept only the default temperature; FIM One removes any other value from the request and sends `max_completion_tokens` instead of `max_tokens`.
 
-| 模型 | 输入$/百万token | 输出$/百万token | 上下文 |
+| Model | Input $/MTok | Output $/MTok | Context |
 |---|---|---|---|
-| `gpt-5.4` | $2.50 | $15.00 | 1,050K（超过272K收费） |
+| `gpt-5.4` | $2.50 | $15.00 | 1,050K (surcharge >272K) |
 | `gpt-5.4-mini` | $0.75 | $4.50 | 400K |
 | `gpt-5.4-nano` | $0.20 | $1.25 | 400K |
 | `o3` | $2.00 | $8.00 | 200K |
@@ -161,18 +163,18 @@ LLM_REASONING_EFFORT=medium
 
 ### Anthropic (Claude)
 
-Claude在细致推理和复杂多步骤任务中表现卓越。FIM One通过[LiteLLM](https://github.com/BerriAI/litellm)连接，自动通过其原生API路由Anthropic模型。当前版本为Claude 4.6（2026年2月）。
+Claude excels at nuanced reasoning and complex multi-step tasks. FIM One connects via [LiteLLM](https://github.com/BerriAI/litellm), which routes Anthropic models through their native API automatically. The current generation is Claude 4.6 (February 2026).
 
-**推荐模型：**
-- 主模型：`claude-sonnet-4-6`（能力与成本的最佳平衡——$3/$15 per MTok）
-- 快速模型：`claude-haiku-4-5`（快速且便宜——$1/$5 per MTok）
-- 高级模型：`claude-opus-4-6`（能力最强，最大输出128K——$5/$25 per MTok）
+**Recommended models:**
+- Main: `claude-sonnet-4-6` (best balance of capability and cost — $3/$15 per MTok)
+- Fast: `claude-haiku-4-5` (fast and cheap — $1/$5 per MTok)
+- Premium: `claude-opus-4-6` (most capable, 128K max output — $5/$25 per MTok)
 
-**基础URL：** `https://api.anthropic.com/v1/`
+**Base URL:** `https://api.anthropic.com/v1/`
 
-Opus 4.6和Sonnet 4.6拥有1M上下文窗口（自2026年3月13日GA——无需beta头）。Haiku 4.5拥有200K上下文窗口。
+Opus 4.6 and Sonnet 4.6 have a 1M context window (GA since March 13, 2026 — no beta header needed). Haiku 4.5 has a 200K context window.
 
-**推理：** 设置`LLM_REASONING_EFFORT=medium`。LiteLLM通过原生API路由Anthropic模型，因此`reasoning_content`（扩展思考）完全返回并在UI"thinking"步骤中可见。Claude 4.6及更新版本使用自适应思考（`thinking: {type: "adaptive"}`加`output_config.effort`）替代手动`budget_tokens`，FIM One直接发出而不依赖LiteLLM的映射。Anthropic在思考活跃时需要`temperature=1`，系统会为你强制执行：请求构建器在Anthropic路由上固定该值，在完全拒绝采样参数的模型上则移除`temperature`。不要手动设置`LLM_TEMPERATURE=1`。详见[扩展思考](/configuration/environment-variables#extended-thinking-reasoning)。
+**Reasoning:** Set `LLM_REASONING_EFFORT=medium`. LiteLLM routes Anthropic models through the native API, so `reasoning_content` (extended thinking) is fully returned and visible in the UI "thinking" step. Claude 4.6 and newer use Adaptive Thinking (`thinking: {type: "adaptive"}` plus `output_config.effort`) in place of a manual `budget_tokens`, which FIM One emits directly rather than relying on LiteLLM's mapping. Anthropic requires `temperature=1` while thinking is active, and the system enforces that for you: with thinking on, Claude 4.5 and older are sent `temperature=1.0`, and adaptive-thinking models (4.6 and newer) have `temperature` removed from the request; models that reject sampling parameters outright have it removed whether or not thinking is on. Do not set `LLM_TEMPERATURE=1` by hand. See [Extended Thinking](/configuration/environment-variables#extended-thinking-reasoning) for details.
 
 ```bash
 # .env — Anthropic Claude
@@ -492,28 +494,30 @@ LLM_REASONING_EFFORT=medium
 如果相同的中继 URL 改为 `https://my-relay.example.com/v1`，则会缺少 `/claude` 提示 — FIM One 会回退到 OpenAI 兼容协议，向 Claude 原生端点发送 `/v1/chat/completions` 请求，这会失败。**URL 路径很重要。**
 </Warning>
 
-### 为什么这很重要
+### Why This Matters
 
-- **Anthropic原生端点**为你提供适当的`reasoning_content`支持（扩展思考在UI中可见）、正确的工具调用格式和`x-api-key`身份验证——这些功能在使用OpenAI兼容翻译时会丢失。
-- **Google原生端点**提供原生Gemini参数和`x-goog-api-key`身份验证。
-- **OpenAI兼容**是通用后备方案，适用于任何中继，但提供商特定功能（如扩展思考输出）可能不可用。
-
-<Note>
-如果你的中继平台使用非标准路径约定（例如，URL中没有`/claude`或`/anthropic`），FIM One会回退到OpenAI兼容协议——这对大多数用例都有效。要获得完整的原生协议支持，你可以通过管理员模型配置UI显式设置`provider`字段。
-</Note>
-
-中继的故障方式与直接提供商不同，其中大多数故障是无声的：丢弃的参数、被剥离的缓存断点、永远不会出错的缓冲流。症状列表详见[中继/代理陷阱](/architecture/llm-provider-guide#relayproxy-gotchas)。
+- **Anthropic native endpoint** gives you proper `reasoning_content` support (extended thinking visible in the UI), correct tool-calling format, and `x-api-key` authentication — features lost when using OpenAI-compatible translation.
+- **Google native endpoint** gives you native Gemini parameters and `x-goog-api-key` authentication.
+- **OpenAI compatible** is the universal fallback and works with any relay, but provider-specific features (like extended thinking output) may be unavailable.
 
 <Note>
-**中继是尽力而为的。** FIM One的文档化行为仅对第一方端点有保证，即OpenAI、Anthropic、Google和其他直接提供自有模型的供应商。中继可以工作且被广泛使用，包括对于只能通过这种方式访问的模型，但中继对请求的处理不在我们的控制范围内，因此它们不提供此类保证。没有任何东西被主机名阻止：能力按端点探测，不支持的行为会自行回退。在报告模型层错误之前，请针对第一方端点重现该问题。
+If your relay platform uses non-standard path conventions (e.g., no `/claude` or `/anthropic` in the URL), FIM One falls back to OpenAI compatible protocol — which works for most use cases. For full native protocol support, use a base URL whose host or path identifies the protocol (`/claude`, `/anthropic`, `/gemini`); the admin model UI has no protocol selector.
 </Note>
+
+Relays also fail in ways a direct provider does not, and most of those failures are silent: a dropped parameter, a stripped cache breakpoint, a buffered stream that never errors. The symptom-by-symptom list is in [Relay/proxy gotchas](/architecture/llm-provider-guide#relayproxy-gotchas).
+
+<Note>
+**Relays are best-effort.** FIM One's documented behaviour is guaranteed for first-party endpoints, meaning OpenAI, Anthropic, Google, and other vendors serving their own models directly. Relays work and are widely used, including for models that are only reachable that way, but what a relay does to a request is outside our control, so they carry no such guarantee. Nothing is blocked by hostname: capability is probed per endpoint, and unsupported behaviour falls back on its own. Before reporting a model-layer bug, reproduce it against the first-party endpoint.
+</Note>
+
+---
 
 ## 配置策略
 
-### 主模型 vs 快速模型：何时拆分
+### Main vs Fast: When to Split
 
-- **拆分**当你的主模型昂贵或缓慢时（例如，`gpt-5.4` + `gpt-5.4-nano`）。DAG 模式运行许多并行步骤 — 使用更便宜的快速模型可以节省大量成本。
-- **相同模型**当你的模型已经很便宜时（例如，两者都使用 `deepseek-chat`）。管理两个模型的开销不值得。
+- **Split** when your main model is expensive or slow (e.g., `gpt-5.4` + `gpt-5.4-nano`). Tool-decision iterations, compaction, and the DAG steps the planner marks `fast` run on the fast model — using a cheaper one saves significant cost.
+- **Same model** when your model is already cheap (e.g., `deepseek-chat` for both). The overhead of managing two models isn't worth it.
 
 ### 何时启用推理
 

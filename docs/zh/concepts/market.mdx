@@ -1,18 +1,20 @@
 ---
-title: "市场"
+title: "Market"
 icon: "store"
-description: "在您的组织和全球社区中发现、订阅和发布解决方案和组件。"
+description: "Discover, subscribe to, and publish Solutions and Components across your organization and the global community."
 ---
 
-市场是 FIM One 的内置资源市场。它将共享资源组织为两个层级：
+The Market is FIM One's built-in resource marketplace. It organizes shared resources into two tiers:
 
-- **解决方案** -- 提供端到端功能的高级资源：智能体、技能和工作流。
-- **组件** -- 解决方案依赖的构建块：连接器和 MCP 服务器。
+- **Solutions** -- high-level resources that deliver end-to-end capabilities: Agents, Skills, and Workflows.
+- **Components** -- building blocks that Solutions depend on: Connectors and MCP Servers.
 
-您可以按范围（您的组织或全球市场）浏览、找到所需资源、订阅并开始使用 -- 所有操作都无需离开 FIM One。
+Skills and Workflows are optional modules, off by default. They appear in the Market only after an administrator enables them under Admin → Settings → Modules.
+
+You browse by scope (your Organization or the Global Market), find what you need, subscribe, and start using it -- all without leaving FIM One.
 
 <Info>
-市场使用**拉取模型**：资源通过浏览发现并明确订阅。没有自动加入或推送机制 -- 您选择要安装的内容，并且可以随时按范围筛选。
+The Market uses a **pull model**: resources are discovered by browsing and explicitly subscribed to. There is no auto-join or push mechanism -- you choose what to install, and you can filter by scope at any time.
 </Info>
 
 ## 我可以找到什么？
@@ -27,27 +29,27 @@ description: "在您的组织和全球社区中发现、订阅和发布解决方
 | **技能** | 解决方案 | 注入到系统提示中的全局标准操作流程，可以编排智能体 |
 | **工作流** | 解决方案 | 用于计划或触发执行的 DAG 自动化流 |
 
-### 组件
+### Components
 
-组件是解决方案构建的基础，包括集成和工具服务。
+Components are the integrations and tool services that Solutions are built from.
 
-| 资源 | 类别 | 功能 |
+| Resource | Category | What you get |
 |---|---|---|
-| **连接器** | 组件 | 可作为智能体工具使用的API/数据库集成 |
-| **MCP Server** | 组件 | 加载到会话中的第三方工具服务 |
+| **Connector** | Component | API integration available as agent tools (database connectors cannot be published) |
+| **MCP Server** | Component | Third-party tool service loaded into sessions |
 
 <Tip>
-知识库永远不会出现在市场中，也永远不会被订阅。使用知识库的智能体在运行时委托其所有者的内容，因此只需订阅该智能体即可。
+Knowledge Bases never appear in the Market and are never subscribed. An Agent that uses a KB delegates its owner's content at run time, so subscribing to the Agent is all you need.
 </Tip>
 
-## 范围
+## Scope
 
-Market 在页面顶部有一个范围选择器。两个范围中的 UI 和订阅流程相同 -- 只有资源的可见性会改变。
+The Market has a scope selector at the top of the page. The UI and subscription flow are identical in both scopes -- only the visibility of resources changes.
 
-- **Organization** -- 在您的团队或公司内共享的资源。在此处发布不需要审核。
-- **Global Market** -- 来自整个 FIM One 社区的资源。在此处发布需要管理员批准。
+- **Organization** -- resources shared within your team or company. Publishing here does not require review unless the organization has turned review on for that resource type.
+- **Global Market** -- resources from the entire FIM One community. Publishing here requires admin approval.
 
-随时在范围之间切换以探索可用的内容。
+Switch between scopes at any time to explore what is available.
 
 ## 我如何订阅？
 
@@ -65,9 +67,9 @@ Market 在页面顶部有一个范围选择器。两个范围中的 UI 和订阅
 
 订阅是即时的 -- 无需发布者的批准。你可以随时取消订阅以从工作区中删除该资源。
 
-## 我如何发布？
+## How Do I Publish?
 
-任何资源所有者都可以发布以使其资源可被发现。发布可以针对您的组织或全球市场。
+Any resource owner can publish to make their resource discoverable. Publishing can target either your Organization or the Global Market.
 
 ```mermaid
 flowchart LR
@@ -77,25 +79,25 @@ flowchart LR
     R -->|"Approved"| V["Visible in Market"]
 ```
 
-| 目标 | 谁可以看到 | 需要审查？ |
+| Target | Who can see it | Review required? |
 |---|---|---|
-| **组织** | 您组织的所有成员 | 否（组织级信任） |
-| **全球市场** | 所有已认证用户 | 是 -- 需要管理员批准 |
+| **Organization** | All members of your org | No by default; an org can require review per resource type |
+| **Global Market** | All authenticated users | Yes -- admin approval required |
 
-发布到全球市场始终需要通过审查门槛。管理员可以批准、拒绝（附注释）或将资源保留为待处理状态。被拒绝的资源可以修改后重新提交。
+Publishing to the Global Market always goes through a review gate. Admins can approve, reject (with a note), or leave the resource pending. Rejected resources can be revised and resubmitted.
 
-## 关于凭证？
+## What About Credentials?
 
-当你订阅需要凭证的资源（API 密钥、OAuth 令牌、数据库密码）时，入门向导会在订阅期间收集这些凭证。凭证被安全存储并限定在你的账户范围内——其他人无法看到它们。
+When you subscribe to a resource that requires credentials (API keys, OAuth tokens), the onboarding wizard collects them during subscription. Credentials are stored securely and scoped to your account -- no one else can see them.
 
-你可以随时从资源的设置页面更新或轮换凭证。
+You can update or rotate credentials at any time from the resource's settings page.
 
-## 它如何集成
+## How It Integrates
 
-在底层，Market 被实现为一个**影子组织** -- 一个不持有任何成员的隐形系统组织。发布到全球 Market 的资源在此影子组织内设置为 `visibility: "org"`，这允许现有的可见性系统自然地包含它们。
+Under the hood, the Market is implemented as a **shadow organization** -- an invisible system org that holds no members. Resources published to the Global Market are set to `visibility: "org"` within this shadow org, which allows the existing visibility system to include them naturally.
 
-这意味着 Market 在工具组装管道中**不需要任何特殊情况代码**。加载个人和组织资源的相同三层可见性过滤器（own -> org-shared -> subscribed）也会加载 Market 资源。当你订阅时，会创建一条订阅记录，资源会自动出现在你的可见性过滤器中。
+This means the Market requires **zero special-case code** in the tool assembly pipeline. The same visibility filter (own, or subscribed and still shared) that loads personal and org resources also loads Market resources. When you subscribe, a subscription record is created, and the resource appears in your visibility filter automatically.
 
-对于捆绑依赖项的解决方案（例如，带有绑定连接器和知识库的智能体），订阅过程会解析并配置这些依赖项，使一切开箱即用。
+For Solutions that bundle dependencies (e.g., an Agent with bound Connectors and Knowledge Bases), the subscription process resolves and provisions those dependencies so everything works out of the box.
 
-有关可见性过滤器如何跨所有资源类型工作的技术细节，请参阅[智能体和资源发现 -- 可见性模型](/architecture/agent-discovery#visibility-model)。
+For technical details on how the visibility filter works across all resource types, see [Agent & Resource Discovery -- Visibility Model](/architecture/agent-discovery#visibility-model).

@@ -1,12 +1,12 @@
 ---
-title: "飞书（Lark）频道"
+title: "Feishu (Lark) Channel"
 icon: "comment-dots"
-description: "将 FIM One 连接到飞书应用，用于出站消息、入站回复和交互式审批卡片。"
+description: "Wire FIM One to a Feishu app for outbound messages and interactive approval cards."
 ---
 
-飞书频道为一个组织中的智能体提供了一条进入飞书群组的单一热线：出站通知、入站回复和交互式的批准/拒绝卡片（通过 `feishu_gate` hook）。
+A Feishu Channel gives agents in one org a single hotline into a Feishu group: outbound notifications and interactive Approve / Reject cards (via the `approval_gate` hook).
 
-本指南介绍了端到端的设置过程。它假设 FIM One 可以在稳定的 HTTPS 源上访问——称之为 `API_BASE_URL`（例如 `https://one.yourdomain.com`）。
+This guide walks through the end-to-end setup. It assumes FIM One is reachable at a stable HTTPS origin — call this `API_BASE_URL` (e.g. `https://one.yourdomain.com`).
 
 ## 1. 创建飞书应用
 
@@ -30,38 +30,37 @@ description: "将 FIM One 连接到飞书应用，用于出站消息、入站回
 | `im:chat:readonly` | 群组发现的最小读取权限 |
 | `im:resource` | （可选）上传卡片上显示的图像/文件 |
 
-## 3. 启用事件订阅（暂时将请求 URL 留空）
+## 3. Enable event subscriptions (leave the Request URL blank for now)
 
-打开 **Event Subscriptions**，但**暂时不要填写请求 URL** — 你将在第 5 步从 FIM One 获取它。
+Open **Event Subscriptions**, but **don't fill in the Request URL yet** — you get it from FIM One in step 5.
 
-订阅以下事件：
+Subscribe the following events:
 
-- `im.message.receive_v1` — 来自用户的入站消息
-- `card.action.trigger` — 批准/拒绝按钮点击
+- `card.action.trigger` — Approve / Reject button clicks
 
-在同一页面上，可选地设置 **Verification Token** 和 **Encrypt Key**。FIM One 支持两种模式，并将使用提供的任何一种。
+Under the same page, set an **Encrypt Key** (required: FIM One rejects a Feishu channel without one, and uses it to verify and decrypt callbacks) and optionally a **Verification Token**.
 
-## 4. 在 FIM One 中添加频道
+## 4. Add the Channel in FIM One
 
-1. 以**组织所有者**或**管理员**身份登录。
-2. 转到**组织设置 → 频道 → 新建频道**。
-3. 选择 **Feishu** 作为类型，然后填写：
+1. Sign in as an **Org Owner** or **Admin**.
+2. Go to **Organization Settings → Channels → New Channel**.
+3. Pick **Feishu** as the type, then fill in:
 
-   | 字段 | 来源 |
+   | Field | Source |
    |---|---|
-   | **名称** | 任何内部标签（例如 `Ops team Feishu`） |
-   | **App ID** | 来自第 1 步（`cli_xxxxxxxxxxxxxxxx`） |
-   | **App Secret** | 来自第 1 步 |
-   | **验证 Token** | （可选）来自第 3 步 |
-   | **加密密钥** | （可选）来自第 3 步 |
+   | **Name** | Any internal label (e.g. `Ops team Feishu`) |
+   | **App ID** | From step 1 (`cli_xxxxxxxxxxxxxxxx`) |
+   | **App Secret** | From step 1 |
+   | **Verification Token** | (Optional) From step 3 |
+   | **Encrypt Key** | Required. From step 3 |
 
-4. 点击**浏览聊天** — FIM One 使用您的凭证调用 Feishu，并列出机器人当前所在的每个群组。
+4. Click **Browse chats** — FIM One calls Feishu with your credentials and lists every group the bot is currently a member of.
 
 <Tip>
-如果列表为空，说明机器人还未被添加到任何群组。打开 Feishu，将机器人添加到目标群组，然后重新打开选择器。
+If the list is empty, the bot hasn't been added to any group yet. Open Feishu, add the bot to the target group, then reopen the picker.
 </Tip>
 
-5. 选择要路由到的群组聊天，点击**保存**。
+5. Pick the group chat you want to route to, click **Save**.
 
 ## 5. 向飞书注册回调 URL
 
@@ -83,15 +82,15 @@ description: "将 FIM One 连接到飞书应用，用于出站消息、入站回
 - **静默失败** — 确认机器人确实在群组中（第 4 步选择器）且频道行上的 `is_active` 为 true。
 - **第 5 步验证失败** — 确认 `API_BASE_URL` 是 HTTPS 且可公开访问；飞书拒绝非 HTTPS 请求 URL。
 
-## 7. 连接智能体（可选 — 审批）
+## 7. Wire up an agent (optional — approvals)
 
-要在组审批后执行工具调用：
+To gate tool calls behind group approval:
 
-1. 在工具 / 连接器操作上，打开 **Requires confirmation**。
-2. 在智能体上，在 **Hooks → Class hooks** 下添加 `feishu_gate`。
-3. 确保智能体的组织恰好有一个**活跃的** Feishu 频道 — 钩子会自动路由到它。
+1. On the tool / connector action, flip **Requires confirmation** on.
+2. In the agent editor's **Approval** section, pick this channel as the **Approval channel** and set the mode to **Auto** or **Channel only**. The gate is attached to every agent automatically; no hook configuration is needed.
+3. Set the **Approver scope** (initiator, agent owner, or any org member). Approvers must have linked their Feishu account to their FIM One user, otherwise their click is ignored.
 
-当智能体尝试运行受限工具时，一张交互卡片会发布到组中，显示 **Approve** / **Reject**。工具会等待（SSE 流暂停），直到成员点击其中一个；判决流回，智能体要么完成，要么中止。
+When the agent tries to run a gated tool, an interactive card posts to the group with **Approve** / **Reject**. The tool waits (SSE stream pauses) until a permitted approver taps one; the verdict streams back and the agent either completes or aborts.
 
 ## 故障排除
 
@@ -138,6 +137,6 @@ curl -s "https://open.feishu.cn/open-apis/im/v1/chats?page_size=50" \
 
 webhook 现在在第一次决策时返回替换卡片 — 按钮被移除，卡片标题变为绿色（已批准）或红色（已拒绝）。如果第一次点击后仍然看到可点击的按钮，您的飞书客户端可能显示的是缓存副本；重新打开聊天，已决策的卡片将正确呈现。
 
-### 一个组织，两个飞书频道
+### One org, two Feishu channels
 
-`feishu_gate` 会选择它找到的第一个**活跃**频道。如果你需要在同一个组织中使用多个飞书端点（例如测试组和生产组），可以禁用除一个之外的所有频道，或编写一个自定义 hook 来按智能体标签选择。
+An approval goes to the channel chosen as the agent's **Approval channel**, and to no other. Several Feishu channels in one org (staging and production groups, say) coexist; bind each agent to the one it should use. A click counts only on the channel that delivered the card.

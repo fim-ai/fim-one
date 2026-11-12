@@ -21,38 +21,38 @@ Chaque système est un **silo d'information**. Les données vivent à un endroit
 
 **Chaque fournisseur de système propose maintenant sa propre IA.** Feishu a son IA. Salesforce a Einstein. SAP a Joule. Mais chacune n'est intelligente que **dans ses propres murs**. L'IA Feishu ne peut pas vérifier votre solde ERP. Einstein Salesforce ne peut pas déclencher votre approbation OA. Elles sont verrouillées par domaine par conception — parce que se connecter aux concurrents va à l'encontre de leurs intérêts commerciaux.
 
-## Ce que fait FIM One
+## What FIM One Does
 
-FIM One est la **plateforme externe, tierce et horizontale** qui connecte tous ces systèmes.
+FIM One is the **external, third-party, horizontal platform** that connects all of them.
 
-Imaginez Eywa dans *Avatar* — le réseau neuronal sous-jacent à Pandora, qui relie chaque arbre, chaque créature et chaque souvenir au sein d'un système vivant unique. Chaque organisme reste indépendant, mais grâce à Eywa, ils peuvent se percevoir, partager des informations et agir ensemble lorsque cela est nécessaire. Aucun organisme n'est modifié ; Eywa rend simplement la connexion possible.
+Think of Eywa from *Avatar* — the neural network beneath Pandora that connects every tree, every creature, every memory into one living system. Each organism stays independent, but through Eywa they sense each other, share information, and act together when needed. No organism is modified; Eywa simply makes the connection possible.
 
-FIM One est l'Eywa de votre entreprise. Votre ERP, votre CRM, votre OA et vos bases de données restent exactement tels qu'ils sont — FIM One tisse entre eux le réseau intelligent qui leur permet enfin de communiquer grâce à l'IA.
+FIM One is your enterprise's Eywa. Your ERP, CRM, OA, and databases remain exactly as they are — FIM One weaves the intelligent network between them, so they can finally talk to each other through AI.
 
 <Tip>
-**Le client ne modifie absolument aucun code.** FIM One se connecte de manière proactive aux systèmes existants — en lisant les bases de données, en appelant les API et en envoyant des notifications — en utilisant uniquement les identifiants et l'accès réseau que vous fournissez.
+**The client changes zero code.** FIM One bridges into existing systems proactively — reading databases, calling APIs, pushing notifications — using only the credentials and network access you provide.
 </Tip>
 
-Ce que vous fournissez :
-- Les identifiants des bases de données (comptes en lecture seule recommandés)
-- Les points de terminaison des API et les clés d'authentification
-- L'accès aux listes blanches du réseau
+What you provide:
+- Database credentials (read-only accounts recommended)
+- API endpoints and authentication keys
+- Network whitelist access
 
-Ce que FIM One fournit :
-- Une IA qui comprend et orchestre les opérations dans **tous** vos systèmes
-- Chaque opération est auditée, et chaque écriture est soumise à la confirmation d'un humain
-- Vos données restent dans vos systèmes — FIM One fournit la couche d'intelligence, pas un lac de données
+What FIM One delivers:
+- AI that understands and orchestrates across **all** your systems
+- Every connector call audited, sensitive actions gated by human confirmation
+- Your data stays in your systems — FIM One provides the intelligence layer, not a data lake
 
-## Deux modes, une plateforme
+## Two Modes, One Platform
 
-| Mode | Qu'est-ce que c'est | Commencer ici |
+| Mode | What it is | Start here |
 |------|-----------|------------|
-| **Copilot** | IA intégrée dans un seul système — fonctionne aux côtés des utilisateurs dans leur interface existante | Prouvez la valeur rapidement : intégrez un « Finance Copilot » dans votre ERP |
-| **Hub** | Portail IA central connectant tous les systèmes — orchestration multi-systèmes | Augmentez la valeur : connectez ERP + CRM + OA + Lark en un seul endroit |
+| **Copilot** | AI embedded inside one system — works alongside users in their existing UI (through the API today; a drop-in embed is planned) | Prove value fast: embed a "Finance Copilot" in your ERP |
+| **Hub** | Central AI portal connecting all systems — cross-system orchestration | Scale value: connect ERP + CRM + OA + Lark in one place |
 
-**Land and Expand** : commencez par un Copilot dans un système. Les utilisateurs voient une valeur immédiate sans apprendre un nouvel outil. Une fois le ROI prouvé, passez à l'échelle de la plateforme d'agent multi-systèmes — un portail central où chaque système que vous utilisez déjà rencontre l'IA via un cœur d'agent unique. Le Copilot continue de fonctionner ; la plateforme ajoute l'intelligence multi-systèmes.
+**Land and Expand**: Start with a Copilot in one system. Users see immediate value without learning a new tool. When the ROI is proven, scale it to the cross-system agent platform — a central portal where every system you already run meets AI through one agent core. The Copilot keeps running; the platform adds cross-system intelligence.
 
-> Copilot prouve la valeur dans un seul système. La plateforme d'agent déverrouille la valeur sur tous les systèmes.
+> Copilot proves value inside one system. The agent platform unlocks value across all systems.
 
 ## Pourquoi pas simplement...
 
@@ -78,12 +78,12 @@ Les agents autonomes sont puissants mais incontrôlés. Ils consomment des token
 
 L'IA Feishu fonctionne dans Feishu. Salesforce Einstein fonctionne dans Salesforce. Aucun ne peut franchir la limite. **Aucun fournisseur ne construira une véritable intégration inter-systèmes** — c'est contraire à leurs incitations de verrouillage. FIM One est le seul acteur sans ce conflit d'intérêts.
 
-## Comment FIM One se connecte
+## How FIM One Connects
 
-FIM One utilise une architecture à trois couches qui sépare le transport de la gouvernance :
+FIM One uses a three-layer architecture that separates transport from governance:
 
 ```
-FIM One Platform (orchestration IA, multi-tenant, UI)
+FIM One Platform (AI orchestration, multi-tenant, UI)
     ↓
 Connector Governance Layer (audit, auth, confirmation gate, circuit breaker)
     ↓
@@ -92,17 +92,17 @@ Connector (API / Database / MCP protocol)
 Your Systems (ERP, CRM, OA, databases, custom APIs)
 ```
 
-La **Couche de gouvernance** est ce qui rend cela prêt pour l'entreprise :
+The **Governance Layer** is what makes this enterprise-ready:
 
-| Capacité | Ce qu'elle fait |
+| Capability | What it does |
 |-----------|-------------|
-| **Journalisation d'audit** | Chaque appel d'outil enregistré — qui, quoi, quand, résultat |
-| **Confirmation humaine** | Les opérations d'écriture nécessitent une approbation explicite de l'utilisateur avant l'exécution |
-| **Disjoncteur** | Si un système tombe en panne, FIM One arrête immédiatement les nouvelles tentatives au lieu de consommer des tokens |
-| **Chiffrement des identifiants** | Chiffrement AES-GCM au repos, isolation des identifiants par utilisateur |
-| **Application de lecture seule** | Par défaut en lecture seule ; les opérations d'écriture sont explicitement contrôlées |
+| **Audit logging** | Every tool call recorded — who, what, when, result |
+| **Human confirmation** | Actions marked as requiring confirmation (or every tool call, when the agent is set to confirm all) wait for explicit approval before execution |
+| **Circuit breaker** | If a system goes down, FIM One stops retrying immediately instead of burning tokens |
+| **Credential encryption** | Fernet encryption at rest, per-user credential isolation |
+| **Read-only enforcement** | Database connectors default to read-only; the owner must switch writes on |
 
-L'agent ne sait pas et ne se soucie pas s'il communique avec SAP, une base de données PostgreSQL ou une API REST personnalisée. Les connecteurs sont des ponts standardisés — l'ajout d'un nouveau système ne nécessite que la configuration du connecteur, pas de modifications de code.
+The agent doesn't know or care whether it's talking to SAP, a PostgreSQL database, or a custom REST API. Connectors are standardized bridges — adding a new system requires only connector configuration, not code changes.
 
 ## Trois façons de créer des connecteurs
 

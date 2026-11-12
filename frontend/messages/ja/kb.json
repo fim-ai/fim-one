@@ -122,5 +122,13 @@
   "kbDisabled": "ナレッジベースが無効です",
   "kbToggleFailed": "ナレッジベースのステータス更新に失敗しました",
   "emptyTitle": "ナレッジベースがまだありません",
-  "emptyDescription": "最初のナレッジベースを作成して、情報を整理・検索してください。"
+  "emptyDescription": "最初のナレッジベースを作成して、情報を整理・検索してください。",
+  "retryWithImageRecognition": "Read again with image recognition",
+  "visionNoticeLabel": "Read as text only",
+  "visionNotice": {
+    "token_quota_exceeded": "Read as text only. Images and scanned pages were not recognised because your token quota was used up. Retry after your quota resets.",
+    "subscription_required": "Read as text only. Images and scanned pages were not recognised because your account has no plan that includes model use. Retry after you subscribe.",
+    "quota_unavailable": "Read as text only. Images and scanned pages were not recognised because your plan and token quota could not be checked. Retry shortly.",
+    "other": "Read as text only. Images and scanned pages were not recognised. Retry later."
+  }
 }

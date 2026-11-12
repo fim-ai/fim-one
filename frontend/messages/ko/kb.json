@@ -122,5 +122,13 @@
   "kbDisabled": "지식 기반 비활성화됨",
   "kbToggleFailed": "지식 기반 상태 업데이트에 실패했습니다",
   "emptyTitle": "아직 지식 베이스가 없습니다",
-  "emptyDescription": "정보를 구성하고 검색하기 위해 첫 번째 지식 베이스를 생성하세요."
+  "emptyDescription": "정보를 구성하고 검색하기 위해 첫 번째 지식 베이스를 생성하세요.",
+  "retryWithImageRecognition": "Read again with image recognition",
+  "visionNoticeLabel": "Read as text only",
+  "visionNotice": {
+    "token_quota_exceeded": "Read as text only. Images and scanned pages were not recognised because your token quota was used up. Retry after your quota resets.",
+    "subscription_required": "Read as text only. Images and scanned pages were not recognised because your account has no plan that includes model use. Retry after you subscribe.",
+    "quota_unavailable": "Read as text only. Images and scanned pages were not recognised because your plan and token quota could not be checked. Retry shortly.",
+    "other": "Read as text only. Images and scanned pages were not recognised. Retry later."
+  }
 }

@@ -78,125 +78,124 @@ description: "Häufig gestellte Fragen zu FIM One — Setup, Funktionen, Lizenzi
   </Accordion>
 </AccordionGroup>
 
-## Bereitstellung
+## Deployment
 
 <AccordionGroup>
-  <Accordion title="Welche Systemanforderungen gibt es?">
-    **Mindestanforderungen:**
+  <Accordion title="What are the system requirements?">
+    **Minimum requirements:**
 
-    | Ressource | Anforderung |
+    | Resource | Requirement |
     |----------|-------------|
     | **Python** | 3.11+ |
-    | **RAM** | Mindestens 2 GB |
-    | **Festplattenspeicher** | 1 GB frei (zuzüglich Speicherplatz für hochgeladene Dokumente und den Vektorspeicher) |
-    | **Node.js** | 18+ (für die lokale Entwicklung) |
+    | **RAM** | 2 GB minimum |
+    | **Disk** | 1 GB free (plus space for uploaded documents and vector store) |
+    | **Node.js** | 18+ (for local development) |
 
-    **Empfohlen für den Produktivbetrieb:**
+    **Recommended for production:**
 
-    | Ressource | Empfehlung |
+    | Resource | Recommendation |
     |----------|----------------|
-    | **RAM** | 4 GB+ (insbesondere bei lokal ausgeführten Einbettungsmodellen) |
-    | **CPU** | 2+ Kerne |
-    | **Datenbank** | PostgreSQL für Bereitstellungen mit mehreren Workern |
+    | **RAM** | 4 GB+ (especially if running embedding models locally) |
+    | **CPU** | 2+ cores |
+    | **Database** | PostgreSQL for multi-worker deployments |
 
-    **Docker-Alternative:** Docker 20+ und Docker Compose v2. Es sind weder lokales Python noch Node.js erforderlich — alles wird innerhalb des Containers erstellt.
+    **Docker alternative:** Docker 20+ and Docker Compose v2. No local Python or Node.js required — everything is built inside the container.
   </Accordion>
 
-  <Accordion title="Funktioniert FIM One auf ARM / Apple Silicon?">
-    Ja. Sowohl Docker als auch die lokale Entwicklung funktionieren auf ARM-Architekturen, einschließlich Macs mit Apple Silicon (M1/M2/M3/M4). Das Docker-Image wird nativ für `linux/arm64` erstellt, und alle Python- und Node.js-Abhängigkeiten verfügen über ARM-kompatible Wheels oder Fallbacks.
+  <Accordion title="Does FIM One work on ARM / Apple Silicon?">
+    Yes. Both Docker and local development work on ARM architectures, including Apple Silicon (M1/M2/M3/M4) Macs. The Docker image builds natively for `linux/arm64`, and all Python and Node.js dependencies have ARM-compatible wheels or fallbacks.
   </Accordion>
 
-  <Accordion title="Welche Datenbanken werden unterstützt?">
-    FIM One verwendet Datenbanken auf zwei verschiedene Arten:
+  <Accordion title="What databases are supported?">
+    FIM One uses databases in two distinct ways:
 
-    **1. Interne Datenbank (eigene Daten von FIM One):**
-    - **SQLite** — standardmäßig ohne Konfiguration, ideal für die Entwicklung und Bereitstellungen mit einem Worker.
-    - **PostgreSQL** — für den Produktivbetrieb empfohlen und für Setups mit mehreren Workern erforderlich (`WORKERS > 1`).
+    **1. Internal database (FIM One's own data):**
+    - **SQLite** — zero-config default, great for development and single-worker deployments.
+    - **PostgreSQL** — recommended for production, required for multi-worker setups (`WORKERS > 1`).
 
-    **2. Connector-Ziele (Systeme, mit denen Sie sich verbinden):**
+    **2. Connector targets (systems you connect to):**
 
-    FIM One kann über Database Connectors eine Verbindung zu externen Datenbanken als Datenquellen herstellen:
+    FIM One can connect to external databases as data sources via Database Connectors:
 
-    | Datenbank | Status |
+    | Database | Status |
     |----------|--------|
-    | PostgreSQL | Unterstützt |
-    | MySQL | Unterstützt |
-    | DM (Dameng) | Unterstützt |
-    | KingbaseES | Unterstützt |
-    | Highgo | Unterstützt |
+    | PostgreSQL | Supported |
+    | MySQL | Supported |
+    | DM (Dameng) | Supported |
+    | KingbaseES | Supported |
+    | Highgo | Supported |
 
-    Jeder Datenbank-Connector generiert automatisch drei Tools: `list_tables`, `describe_table` und `query`. Die Schema-Introspektion, die KI-gestützte Annotation und die schreibgeschützte Ausführung von Abfragen sind standardmäßig enthalten.
+    Database connectors are exposed to the agent through one `database` tool with `list_tables`, `discover`, and `query` operations (`DATABASE_TOOL_MODE=legacy` restores three tools per connector). Schema introspection and AI-powered annotation are included, and queries are read-only by default. A database connector is private to its owner and cannot be shared.
   </Accordion>
 
-  <Accordion title="Können mehrere Benutzer dieselbe Instanz gemeinsam nutzen?">
-    Ja. FIM One wurde von Grund auf für Bereitstellungen mit mehreren Mandanten entwickelt:
+  <Accordion title="Can multiple users share the same instance?">
+    Yes. FIM One is built for multi-tenant deployments from the ground up:
 
-    - **JWT-Authentifizierung** — tokenbasierte Authentifizierung mit sitzungsbezogener Isolierung pro Benutzer.
-    - **Organisationsisolierung** — Ressourcen (Agents, Connectors, MCP-Server) sind auf Organisationen beschränkt. Wissensdatenbanken bleiben privat für ihre Besitzer und werden niemals direkt geteilt.
-    - **Rollenbasierte Zugriffskontrolle** — Administrator- und Benutzerrollen mit entsprechenden Berechtigungsgrenzen.
-    - **Ressourcenbesitz** — Konversationen und Konfigurationen sind pro Benutzer isoliert.
+    - **JWT authentication** — token-based auth with per-user session isolation.
+    - **Organization isolation** — resources (agents, connectors, MCP servers) are scoped to organizations. Knowledge bases stay private to their owner and are never shared directly.
+    - **Role-based access** — admin and user roles with appropriate permission boundaries.
+    - **Resource ownership** — conversations and configurations are isolated per user.
 
-    Verwenden Sie für Bereitstellungen mit mehreren Benutzern im Produktivbetrieb PostgreSQL als interne Datenbank und setzen Sie `WORKERS` entsprechend der erwarteten gleichzeitigen Nutzung.
+    For multi-user production deployments, use PostgreSQL as the internal database and set `WORKERS` to match your expected concurrency.
   </Accordion>
 </AccordionGroup>
 
-## Funktionen
+## Features
 
 <AccordionGroup>
-  <Accordion title="Was ist der Unterschied zwischen ReAct und DAG-Modus?">
-    FIM One bietet zwei Ausführungs-Engines, die jeweils für verschiedene Aufgabentypen geeignet sind:
+  <Accordion title="What is the difference between ReAct and DAG mode?">
+    FIM One offers two execution engines, each suited to different task types:
 
     | | ReAct (Standard) | DAG (Planner) |
     |---|---|---|
-    | **Funktionsweise** | Einzelne Reasoning-Schleife: Reason, Act, Observe, wiederholen | LLM zerlegt das Ziel in einen Abhängigkeitsgraph; unabhängige Schritte laufen parallel |
-    | **Am besten geeignet für** | Fokussierte Abfragen, Lookups in einzelnen Systemen, Konversationsaufgaben | Multi-Step-Aufgaben, systemübergreifende Orchestrierung, parallele Datenerfassung |
-    | **Parallelität** | Sequenziell (ein Tool nach dem anderen) | Gleichzeitig (unabhängige Schritte laufen gleichzeitig via asyncio) |
-    | **Neuplanung** | N/A | Bis zu 3 Runden automatischer Neuplanung, wenn Ziele nicht erreicht werden |
+    | **How it works** | Single reasoning loop: Reason, Act, Observe, repeat | LLM decomposes the goal into a dependency graph; independent steps run in parallel |
+    | **Best for** | Focused queries, single-system lookups, conversational tasks | Multi-step tasks, cross-system orchestration, parallel data gathering |
+    | **Concurrency** | Sequential (one tool at a time) | Concurrent (independent steps run simultaneously via asyncio) |
+    | **Re-planning** | N/A | Up to 3 rounds in total (the first plan plus 2 automatic re-plans) if goals are not met |
 
-    **Auto-Modus** (Standard) verwendet einen schnellen LLM-Klassifizierer, um jede eingehende Abfrage zu analysieren und leitet sie automatisch an die optimale Engine weiter. Sie können den Modus auch manuell über den Drei-Wege-Schalter in der Chat-UI auswählen (Auto / Standard / Planner).
+    Chat and new agents start in **Standard** (ReAct) mode. **Auto mode** uses a fast LLM classifier to analyze each incoming query and routes it to the optimal engine automatically. Select the mode via the three-way toggle in the chat UI (Auto / Standard / Planner).
 
-    Für einen tieferen Einblick siehe [Execution Modes](/concepts/execution-modes).
+    For a deep dive, see [Execution Modes](/concepts/execution-modes).
   </Accordion>
 
-  <Accordion title="Wie füge ich einen neuen Connector hinzu?">
-    FIM One bietet drei Möglichkeiten zum Erstellen von Connectoren — ohne Python-Code erforderlich:
+  <Accordion title="How do I add a new connector?">
+    FIM One provides three ways to create connectors — no Python code required:
 
-    **1. OpenAPI-Spezifikation importieren** — Laden Sie eine YAML-, JSON- oder URL-Datei hoch, die auf eine OpenAPI-Spezifikation verweist. FIM One analysiert die Spezifikation und generiert automatisch Connectoren mit allen Aktionen.
+    **1. Import an OpenAPI spec** — Upload a YAML, JSON, or URL pointing to an OpenAPI specification. FIM One parses the spec and generates connectors with all actions automatically.
 
-    **2. AI Chat Builder** — Beschreiben Sie die API, die Sie verbinden möchten, in natürlicher Sprache. Die KI generiert und iteriert die Connector-Konfiguration im Gespräch mit 10 spezialisierten Builder-Tools für Einstellungen, Aktionen, Tests und Agent-Verdrahtung.
+    **2. AI chat builder** — Describe the API you want to connect in natural language. The AI generates and iterates on the connector configuration in conversation, using 10 specialized builder tools for settings, actions, testing, and agent wiring.
 
-    **3. MCP-Protokoll** — Verbinden Sie jeden MCP (Model Context Protocol) Server direkt. Das MCP-Ökosystem von Drittanbietern funktioniert sofort.
+    **3. MCP protocol** — Connect any MCP (Model Context Protocol) server directly. The third-party MCP ecosystem works out of the box.
 
-    Für Datenbank-Connectoren konfigurieren Sie die Verbindungsdetails (Host, Port, Anmeldedaten) und FIM One generiert automatisch Schema-Introspection und Query-Tools.
+    For database connectors, configure the connection details (host, port, credentials) and FIM One auto-generates schema introspection and query tools.
 
-    Siehe die [AI Builder](/concepts/ai-builder) Dokumentation und das [Extension Guide](/extension-guide) für Schritt-für-Schritt-Anweisungen.
+    See the [AI Builder](/concepts/ai-builder) documentation and the [Extension Guide](/extension-guide) for step-by-step instructions.
   </Accordion>
 
-  <Accordion title="Kann ich FIM One in mein bestehendes System einbetten?">
-    Ja. Der **Copilot-Modus** von FIM One ist speziell für die Einbettung in Host-Systeme konzipiert. Sie können ihn über folgende Methoden integrieren:
+  <Accordion title="Can I embed FIM One into my existing system?">
+    Yes, through the API. FIM One's **Copilot mode** means putting the agent inside a host system's UI:
 
-    - **iframe** — Betten Sie die FIM One Chat-Oberfläche direkt in jede Webseite ein.
-    - **Widget** — Ein leichtes Chat-Widget, das sich über Ihre bestehende UI legt.
-    - **API** — Verwenden Sie das FastAPI-Backend direkt für vollständig benutzerdefinierte Integrationen.
+    - **API** — Call the FastAPI backend (`POST /api/react`, `/api/dag`, `/api/auto`, streamed over SSE) from your own page or widget. This is what works today.
+    - **iframe / Widget** — A drop-in embed snippet is planned and not shipped yet.
 
-    Im Copilot-Modus arbeitet die KI neben Benutzern in ihrer vertrauten Oberfläche — fragt Daten ab, generiert Berichte und orchestriert Aktionen, ohne Benutzer zum Wechsel von Anwendungen zu zwingen.
+    In Copilot mode, the AI works alongside users in their familiar interface — querying data, generating reports, and orchestrating actions without forcing users to switch applications.
 
-    Siehe [Execution Modes](/concepts/execution-modes) für Konfigurationsdetails zu den Liefermodi Standalone, Copilot und Hub.
+    See [Execution Modes](/concepts/execution-modes) for the Standalone, Copilot, and Hub delivery modes, and the [API Overview](/api/overview) for the streaming endpoints.
   </Accordion>
 
-  <Accordion title="Wie funktioniert das Übersetzungssystem?">
-    FIM One unterstützt 6 Sprachen (Englisch, Chinesisch, Japanisch, Koreanisch, Deutsch, Französisch) mit einer vollständig automatisierten Übersetzungs-Pipeline:
+  <Accordion title="How does the translation system work?">
+    FIM One supports 6 languages (English, Chinese, Japanese, Korean, German, French) with a fully automated translation pipeline:
 
-    1. **Bearbeiten Sie nur englische Quelldateien** — UI-Strings in `frontend/messages/en/*.json`, Dokumentation in `docs/*.mdx` (Root-Ebene) und `README.md`.
-    2. **Auto-Übersetzung beim Commit** — Ein Pre-Commit-Hook erkennt Änderungen an englischen Dateien und übersetzt sie über das Fast LLM des Projekts. Übersetzungen sind inkrementell: nur neue, geänderte oder gelöschte Inhalte werden verarbeitet.
-    3. **Bearbeiten Sie übersetzte Dateien niemals manuell** — Dateien in `messages/zh/`, `messages/ja/`, `docs/zh/`, `docs/ja/` usw. werden alle automatisch generiert und überschrieben.
+    1. **Only edit English source files** — UI strings in `frontend/messages/en/*.json`, documentation in `docs/*.mdx` (root level), and `README.md`.
+    2. **Auto-translate on commit** — A pre-commit hook detects changes to English files and translates them via the project's Fast LLM. Translations are incremental: only new, modified, or deleted content is processed.
+    3. **Never manually edit translated files** — Files in `messages/zh/`, `messages/ja/`, `docs/zh/`, `docs/ja/`, etc. are all auto-generated and will be overwritten.
 
-    Um den Übersetzungs-Hook nach dem Klonen einzurichten:
+    To set up the translation hook after cloning:
     ```bash
     bash scripts/setup-hooks.sh
     ```
 
-    Um eine vollständige Neuübersetzung zu erzwingen:
+    To force a full retranslation:
     ```bash
     uv run scripts/translate.py --all
     ```

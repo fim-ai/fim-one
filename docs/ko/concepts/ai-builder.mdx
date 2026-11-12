@@ -94,15 +94,15 @@ flowchart TD
 
 ---
 
-## 작동 방식
+## How it works
 
-내부적으로 두 빌더는 일반 에이전트와 동일한 인프라를 공유합니다:
+Under the hood, the builders share the same infrastructure as regular agents:
 
-| 빌더 모드 | 메커니즘 |
+| Builder mode | Mechanism |
 |-------------|-----------|
-| **빠른 제안** | 단일 LLM 추론 호출이 전체 구성을 구조화된 JSON으로 생성합니다 |
-| **고급 빌더** | ReAct 에이전트 루프: 추론 → 빌더 도구 호출 → 결과 관찰 → 다음 단계 결정 |
+| **Quick suggestions** | A single LLM inference call generates the full configuration as structured JSON |
+| **Advanced builder** | A ReAct agent loop: Reason → call a builder tool → observe the result → decide next step |
 
-고급 빌더는 제한된 도구 세트만 가지고 있는 완전한 ReAct 에이전트입니다 — 9개의 커넥터 또는 6개의 에이전트 빌더 도구만 있고, 웹이나 계산 도구는 없습니다. 대상 리소스의 현재 상태를 읽고, 변경해야 할 사항을 계획하고, 적절한 도구를 호출한 후, 완료를 선언하기 전에 결과를 검증합니다.
+The advanced builder is a full ReAct agent that happens to have a restricted toolset — the 9 Connector or 6 Agent builder tools (the Connector builder also gets web search and fetch, to read API docs) and no code execution. A third builder with its own tool set configures database connectors: connection test, table listing, schema annotation and sample queries. It reads the current state of the target resource, plans what needs to change, calls the appropriate tools, and verifies the result before declaring it done.
 
-이는 고급 빌더가 모호성을 처리할 수 있다는 의미입니다: OpenAPI 가져오기가 30개의 작업을 생성하지만 5개만 관련이 있는 경우, "주문 관련 엔드포인트만 유지"라고 지시하면 나머지를 삭제합니다.
+This means the advanced builder can handle ambiguity: if the OpenAPI import creates 30 actions but only 5 are relevant, you can tell it "keep only the order-related endpoints" and it will delete the rest.

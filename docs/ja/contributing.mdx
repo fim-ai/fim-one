@@ -90,45 +90,49 @@ mypy strict モードが強制されています。コードベース全体が�
 
 ---
 
-## pre-commitフックのパイプライン
+## Pre-commit hook pipeline
 
-フックはすべてのコミットで自動的に実行されます。各ステップに関連するステージ済みファイルのみを処理します。Pythonファイルのみを変更した場合はi18nステップがスキップされ、その逆も同様です。
+The hook runs automatically on every commit. It only processes staged files relevant to each step -- if you only changed Python files, the i18n step is skipped, and vice versa.
 
-| 順序 | ステップ | トリガー | 処理内容 |
+| Order | Step | Trigger | What it does |
 |---|---|---|---|
-| 0 | 言語ロケール編集ガード | `messages/{locale}/`、`docs/{locale}/`、または`README.{locale}.md`配下のステージ済みファイル | コミットを中止します — 上書きによる回避はできません。代わりに、`scripts/translation-glossary.md`を使用して翻訳を修正してください。 |
-| 1 | OpenAPI仕様の再生成 | `src/fim_one/web/**/*.py`に変更がある場合 | FastAPIのルートから`docs/openapi.json`を再エクスポートします |
-| 2 | i18n翻訳 | `messages/en/*.json`、`docs/*.mdx`、または`README.md`に変更がある場合（ローカルの`LLM_API_KEY`が必要です。設定されていない場合は、マージ後にCIが処理します） | 新規または変更されたキーをすべての対象言語に翻訳します |
-| 3 | mypy型チェック | `src/fim_one/**/*.py`に変更がある場合 | ステージ済みファイルに対して、完全なインポートチェーンを使用してmypyを実行します |
-| 4 | MDX検証 | `.mdx`ファイルがステージされている場合 | Mintlifyに到達する前にJSX/MDX構文を検証します |
-| 5 | Markdownリンクゲート | `.md` / `.mdx`ファイルがステージされている場合 | `scripts/check_md_links.py`は、`docs/`全体を対象に、存在しないページやアセットへのリンク、およびどの見出しにも一致しない`#anchors`を拒否します（名前変更によって、ステージしていないファイル内のリンクも壊れる可能性があります）。CIでも実行されます。 |
+| 0 | Locale-edit guard | Any staged file under `messages/{locale}/`, `docs/{locale}/`, or `README.{locale}.md` | Aborts the commit. Fix translations via `scripts/translation-glossary.md` instead. The only override is `TRANSLATION_REPAIR=1`, for committing output of `scripts/translate.py` when the English change is already committed. |
+| 1 | OpenAPI spec regen | `src/fim_one/web/**/*.py` changed | Re-exports `docs/openapi.json` from FastAPI routes |
+| 2 | Docs nav regen | `docs/nav.template.json`, `docs/docs.base.json`, `scripts/docs-nav-glossary.json`, or `docs/nav-overrides/*.json` changed | Rebuilds `docs/docs.json` with `scripts/build-docs-nav.py` |
+| 3 | i18n translation | `messages/en/*.json`, `docs/*.mdx`, or `README.md` changed (needs local `LLM_API_KEY`, else CI handles it after merge) | Translates new/changed keys into all target locales |
+| 4 | mypy type checking | Any `src/fim_one/**/*.py` changed | Runs mypy with full import chain on staged files |
+| 5 | Behavioral-eval freshness | Staged files on the watch list in `scripts/eval_stamp.py` (system prompt, ReAct loop, built-in tools) | Refuses the commit until `uv run pytest evals/ -q` has been run for the change; `SKIP_EVALS=1` bypasses |
+| 6 | Markdown link gate | Any `.md` / `.mdx` file staged | `scripts/check_md_links.py` rejects links to missing pages or assets and `#anchors` that match no heading, across all of `docs/` (a rename breaks links in files you did not stage). Also runs in CI. |
+| 7 | MDX validation | Any `.mdx` file staged | Validates JSX/MDX syntax before it reaches Mintlify |
 
-いずれかのステップが失敗すると、コミットは中止されます。報告されたエラーを修正して、再試行してください。
+If any step fails, the commit is aborted. Fix the reported errors and retry.
 
 ---
 
 ## i18n
 
-FIM One は6つのロケール（EN、ZH、JA、KO、DE、FR）をサポートしています。翻訳は完全に自動化されています。
+FIM One supports 6 locales (EN, ZH, JA, KO, DE, FR). Translations are fully automated.
 
-**英語のソースファイルのみを編集してください：**
+**Only edit English source files:**
 
-- `frontend/messages/en/{namespace}.json` -- UI文字列
-- `docs/*.mdx`（ロケールサブディレクトリではなくルートレベル）-- ドキュメント
-- `README.md` -- プロジェクトREADME
+- `frontend/messages/en/{namespace}.json` -- UI strings
+- `docs/*.mdx` (root level, not locale subdirs) -- documentation
+- `README.md` -- project readme
 
-その他のロケールファイル（`messages/zh/`、`docs/zh/`、`README.zh.md`など）は**自動生成**され、プリコミットフックは手動編集されたファイルのコミットを無条件に拒否します。誤訳を修正するには、すべての翻訳ルールのシングルソースオブトゥルースである[`scripts/translation-glossary.md`](https://github.com/fim-ai/fim-one/blob/master/scripts/translation-glossary.md)を編集してから、`uv run scripts/translate.py --files <en-sources> --force`で影響を受けるファイルを再生成してください。すべての用語集の修正は5つのロケール全体に永続的に適用されます。
+Other locale files (`messages/zh/`, `docs/zh/`, `README.zh.md`, etc.) are **auto-generated** and the pre-commit hook refuses commits that manually edit them. To fix a mistranslation, edit [`scripts/translation-glossary.md`](https://github.com/fim-ai/fim-one/blob/master/scripts/translation-glossary.md) — the prompt-injected single source of truth for every translation rule — then regenerate affected files with `uv run scripts/translate.py --files <en-sources> --force`. Every glossary fix applies to all five locales permanently.
 
-**ロケールファイルを生成する2つの方法：**
+**Two paths to generating locale files:**
 
-1. **ローカルプリコミットフック** -- `.env`で`LLM_API_KEY`が設定されている場合に実行されます。翻訳はプッシュ前に行われるため、出力をプレビューできます。
-2. **CIフォールバック** -- ローカルフックにキーがなくスキップされた場合、[`.github/workflows/i18n-sync.yml`](https://github.com/fim-ai/fim-one/blob/master/.github/workflows/i18n-sync.yml)はマージ後に`master`で翻訳し、結果を自動コミットします。
+1. **Local pre-commit hook** — runs if `LLM_API_KEY` is set in `.env`. Translation happens before push, so you can preview the output.
+2. **CI fallback** — if the local hook had no key and skipped, [`.github/workflows/i18n-sync.yml`](https://github.com/fim-ai/fim-one/blob/master/.github/workflows/i18n-sync.yml) translates on `master` after merge and auto-commits the result.
 
-APIキーを持たないコントリビューターは自由にEN変更をコミットできます——CIパスはロケールが正しく適用されることを保証します。
+Contributors without an API key can commit EN changes freely — the CI path ensures locales land correctly.
 
-**新しいi18n名前空間を追加する：** `messages/en/{ns}.json`を作成してください。その他のロケールファイルは次のコミット時またはマージ後のCI上で生成されます。
+**Adding a new i18n namespace:** Create `messages/en/{ns}.json` -- other locale files are generated on the next commit or on CI after merge.
 
-**完全な再翻訳を強制する：** `uv run scripts/translate.py --all`（ローカル`LLM_API_KEY`が必要）。
+**Force full retranslation:** `uv run scripts/translate.py --all` (requires local `LLM_API_KEY`).
+
+---
 
 ## データベースマイグレーション
 

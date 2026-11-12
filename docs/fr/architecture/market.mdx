@@ -16,26 +16,28 @@ Le Marché organise les ressources en deux catégories en fonction de ce que la 
 
 ### Solutions
 
-Les Solutions sont des choses qui **fonctionnent pour vous**. Un utilisateur s'abonne à une Solution et obtient une capacité prête à l'emploi.
+Solutions are things that **do work for you**. A user subscribes to a Solution and gets a ready-to-use capability.
 
-| Type de ressource | Ce qu'il fait |
+| Resource Type | What It Does |
 |---|---|
-| **Agent** | Un assistant IA conversationnel avec des outils liés, des connaissances et des instructions |
-| **Compétence** | Une POS globale (Procédure Standard d'Exploitation) qui peut orchestrer plusieurs agents via `call_agent` |
-| **Workflow** | Un flux d'automatisation basé sur DAG avec édition visuelle et exécution déterministe |
+| **Agent** | A conversational AI assistant with bound tools, knowledge, and instructions |
+| **Skill** | A global SOP (Standard Operating Procedure) that can orchestrate multiple agents via `call_agent` |
+| **Workflow** | A DAG-based automation flow with visual editing and deterministic execution |
 
-Les Solutions peuvent dépendre d'autres ressources. Un Agent peut nécessiter un Connecteur spécifique pour ses appels API et une Base de connaissances pour son pipeline de récupération. Le Market gère automatiquement ces dépendances lors de l'abonnement (voir [Résolution des dépendances](#dependency-resolution) ci-dessous).
+Skills and Workflows are optional modules, off by default. While a module is off its resources are absent from the Market and cannot be subscribed to.
 
-### Composants
+Solutions may depend on other resources. An Agent might require a specific Connector for its API calls and a Knowledge Base for its retrieval pipeline. The Market handles these dependencies automatically during subscription (see [Dependency resolution](#dependency-resolution) below).
 
-Les composants sont des **blocs de construction réutilisables** pour les développeurs. Ils fournissent des capacités que les Solutions consomment.
+### Components
 
-| Type de ressource | Ce qu'il fait |
+Components are **reusable building blocks** for developers. They provide capabilities that Solutions consume.
+
+| Resource Type | What It Does |
 |---|---|
-| **Connecteur** | Une définition d'adaptateur d'intégration API ou base de données |
-| **Serveur MCP** | Une configuration de service d'outils utilisant le Model Context Protocol |
+| **Connector** | An API integration adapter definition (database connectors cannot be published) |
+| **MCP Server** | A tool service configuration using the Model Context Protocol |
 
-Les composants sont plus simples à s'abonner — ils n'ont pas de dépendances internes, seulement des exigences d'identifiants.
+Components are simpler to subscribe to — they have no internal dependencies, only credential requirements.
 
 ### Pourquoi les bases de connaissances ne sont pas listées indépendamment
 
@@ -92,29 +94,24 @@ La distinction clé entre une organisation régulière et l'organisation du Marc
 Parce que le Marché est simplement une organisation avec des règles spéciales, toute fonctionnalité construite pour les organisations — flux de travail d'examen, gestion des identifiants, cycle de vie des ressources — fonctionne automatiquement pour le Marché sans implémentation supplémentaire.
 </Tip>
 
-### Comment le filtre de visibilité le gère
+### How the visibility filter handles it
 
-Personne n'est membre de l'organisation Market. Les utilisateurs ne « rejoignent » pas Market — ils s'abonnent à des ressources individuelles. Cela signifie que `MARKET_ORG_ID` n'est jamais présent dans la liste `user_org_ids` d'un utilisateur, et la condition de visibilité d'appartenance à l'organisation est naturellement ignorée pour les ressources Market.
+Nobody holds membership in the Market org. Users do not "join" the Market — they subscribe to individual resources. This means `MARKET_ORG_ID` is never present in a user's `user_org_ids` list, and the org-membership visibility condition is naturally skipped for Market resources.
 
-À la place, les ressources Market auxquelles on s'est abonné passent par le chemin `subscribed_ids` dans `build_visibility_filter()` :
+Instead, subscribed Market resources flow through the `subscribed_ids` path in `build_visibility_filter()`, the same path org-shared resources take:
 
 ```mermaid
 flowchart LR
     subgraph Filter["build_visibility_filter()"]
         C1["user_id == me<br/>(own resources)"]
-        C2["visibility == 'org'<br/>AND org_id IN my_orgs<br/>AND approved"]
-        C3["id IN subscribed_ids"]
+        C2["id IN subscribed_ids<br/>AND visibility == 'org'<br/>AND publish_status is unset or approved"]
     end
 
     C1 -->|OR| Result["Visible"]
     C2 -->|OR| Result
-    C3 -->|OR| Result
-
-    Note1["Market resources<br/>skip C2 (not a member)<br/>match C3 (subscribed)"]
-    Note1 -.-> C3
 ```
 
-Cette clause OR à trois conditions constitue l'ensemble du modèle de visibilité. Les ressources personnelles, les ressources partagées au niveau de l'organisation et les ressources Market auxquelles on s'est abonné sont résolues dans une seule requête, sans logique de branchement pour différentes origines de ressources.
+This two-condition OR clause is the entire visibility model. Org membership alone grants nothing: org-shared and Market resources both reach a user through a subscription, and the share state is re-read on every query, so a subscription stops working as soon as the owner unpublishes the resource or it is awaiting or refused by review.
 
 ### Navigation basée sur la portée
 
@@ -173,23 +170,23 @@ sequenceDiagram
 
 Les composants (connecteurs et serveurs MCP) ont un flux plus simple — aucune analyse de dépendance n'est nécessaire. L'utilisateur s'abonne, configure optionnellement les identifiants, et le composant est prêt à être utilisé.
 
-### Configuration des identifiants
+### Credential configuration
 
-Les identifiants suivent un **modèle hybride** qui équilibre la commodité avec la flexibilité :
+Credentials follow a **hybrid model** that balances convenience with flexibility:
 
-- **Proposés lors de l'abonnement.** Lorsqu'une dépendance de type connexion nécessite des identifiants, l'assistant d'intégration présente le formulaire d'identifiants immédiatement.
-- **Ignorables.** L'utilisateur peut choisir « Ignorer, configurer plus tard ». La ressource est abonnée mais les outils nécessitant ces identifiants retournent un message « veuillez configurer vos identifiants » lors de l'invocation.
-- **Configuration différée.** Les utilisateurs peuvent configurer ou mettre à jour les identifiants à tout moment à partir de leur page de paramètres.
+- **Offered during subscription.** When a connection-type dependency requires credentials, the onboarding wizard presents the credential form immediately.
+- **Skippable.** The user can choose "Skip, configure later." The resource is subscribed, but the tools that need those credentials stay out of the agent's toolset until the user configures them (or the publisher allows fallback).
+- **Deferred configuration.** Users can configure or update credentials at any time from their settings page.
 
-C'est le même mécanisme `allow_fallback` utilisé dans les organisations. Si l'éditeur a activé le secours et défini un identifiant par défaut, les abonnés peuvent utiliser la ressource immédiatement sans fournir leur propre clé. Si le secours est désactivé, chaque abonné doit apporter le sien.
+This is the same `allow_fallback` mechanism used in organizations. If the publisher has enabled fallback and set a default credential, subscribers can use the resource immediately without providing their own key. If fallback is disabled, each subscriber must bring their own.
 
 <Warning>
-Lors de l'utilisation d'une ressource Market avec le secours des identifiants activé, vos requêtes API transitent par les identifiants de l'éditeur. Pour les opérations sensibles, envisagez de fournir vos propres identifiants ou de vérifier la fiabilité de l'éditeur.
+When using a Market resource with credential fallback enabled, your API requests flow through the publisher's credentials. For sensitive operations, consider providing your own credentials or verifying the publisher's trustworthiness.
 </Warning>
 
-### Se désabonner
+### Unsubscribing
 
-Se désabonner supprime l'enregistrement `ResourceSubscription`. La ressource disparaît du filtre de visibilité de l'utilisateur et n'est plus chargée dans les ensembles d'outils. Pour les Solutions avec des dépendances auto-abonnées, les ressources dépendantes (KBs, Skills) sont également nettoyées. Les identifiants configurés par l'utilisateur pour la ressource sont supprimés.
+Unsubscribing removes the `ResourceSubscription` record. The resource disappears from the user's visibility filter and is no longer loaded into tool sets. For Solutions, dependencies that were subscribed automatically (Skills, Connectors, MCP Servers) are removed as well when no other subscribed Solution needs them, along with the credentials saved for those Connectors and MCP Servers. Unsubscribing from a Connector or MCP Server directly removes the user's credential for it.
 
 ## Résolution des dépendances
 
@@ -204,13 +201,12 @@ Les **Bases de connaissances** et les **Compétences** référencées par une So
 - **Modèle d'accès :** référence en lecture seule à la ressource de l'auteur original. L'abonné ne peut pas modifier le contenu.
 - **À la désinscription :** les dépendances auto-abonnées sont nettoyées automatiquement lorsque la Solution parente est désinscrite.
 
-### Dépendances de type connexion
+### Connection-type dependencies
 
-Les **connecteurs** et les **serveurs MCP** référencés par une Solution sont des dépendances de type connexion. Ils nécessitent des identifiants pour fonctionner.
+**Connectors** and **MCP Servers** referenced by a Solution are connection-type dependencies. They require credentials to function.
 
-- **À l'abonnement :** listés comme exigences dans l'assistant d'intégration. L'utilisateur est invité à configurer les identifiants (ou à ignorer).
-- **Correspondance intelligente :** si l'utilisateur dispose déjà d'un connecteur compatible (même type, même URL de base), le système propose de le réutiliser au lieu de créer un nouvel abonnement.
-- **À la désinscription :** l'abonnement est supprimé, mais les identifiants créés par l'utilisateur sont conservés (l'utilisateur peut utiliser le même connecteur ailleurs).
+- **On subscription:** subscribed together with the Solution and listed as requirements in the onboarding wizard. The user is prompted to configure credentials (or skip).
+- **On unsubscription:** a Connector or MCP Server that was subscribed automatically with the Solution is removed with it, credentials included, unless another subscribed Solution still needs it. One the user subscribed to on their own is left in place with its credentials.
 
 ```mermaid
 flowchart TD
@@ -222,11 +218,9 @@ flowchart TD
 
     CT --> AS["Auto-subscribe<br/>(silent, read-only)"]
 
-    CN --> SM{"User already has<br/>compatible resource?"}
-    SM -->|Yes| RE["Offer reuse"]
-    SM -->|No| OB["Onboarding wizard<br/>(credential collection)"]
+    CN --> OB["Onboarding wizard<br/>(credential collection)"]
     OB --> SK{"Skip?"}
-    SK -->|Yes| DEF["Deferred config<br/>(tools show 'please configure')"]
+    SK -->|Yes| DEF["Deferred config<br/>(tools hidden until configured)"]
     SK -->|No| CONF["Credentials saved<br/>(ready to use)"]
 ```
 
@@ -269,9 +263,9 @@ Lorsqu'une ressource approuvée est modifiée par son auteur, `check_edit_revert
 
 ## Notes d'implémentation
 
-### L'organisation fantôme
+### The shadow org
 
-L'organisation Market possède un ID fixe bien connu (`00000000-0000-0000-0000-000000000001`) et un slug (`market`). Elle est créée par `ensure_market_org()` lors de l'initialisation de la plateforme — généralement lors de la première connexion de l'utilisateur administrateur. La fonction est idempotente ; l'appeler plusieurs fois est sans danger.
+The Market organization has a well-known fixed ID (`00000000-0000-0000-0000-000000000001`) and slug (`market`). It is created by `ensure_market_org()` during platform initialization, when the first user (the administrator) registers. The function is idempotent; calling it multiple times is safe.
 
 ### ResourceSubscription
 
@@ -286,14 +280,14 @@ La table `ResourceSubscription` est la structure de données centrale pour l'acc
 
 Une contrainte d'unicité sur `(user_id, resource_type, resource_id)` empêche les abonnements en doublon. La colonne `org_id` suit l'origine de l'abonnement, permettant une désinscription consciente du périmètre.
 
-### Intégration du filtre de visibilité
+### Visibility filter integration
 
-La fonction `resolve_visibility()` effectue deux recherches en un seul appel :
+The `resolve_visibility()` function performs two lookups in a single call:
 
-1. Récupère les appartenances organisationnelles de l'utilisateur (`user_org_ids`)
-2. Récupère les abonnements de l'utilisateur (`subscribed_ids`)
+1. Fetches the user's org memberships (`user_org_ids`)
+2. Fetches the user's subscriptions (`subscribed_ids`)
 
-Ceux-ci sont transmis à `build_visibility_filter()`, qui produit une seule clause SQL WHERE combinant les trois niveaux de visibilité (personnel, partagé au niveau organisationnel, abonné). Cette fonction est utilisée partout où les ressources sont interrogées — listes d'agents, menus déroulants de connecteurs, injection de compétences, mode de découverte automatique — garantissant une visibilité cohérente sur l'ensemble de la plateforme.
+These are passed to `build_visibility_filter()`, which produces a single SQL WHERE clause combining the two visibility conditions (own, or subscribed and still shared). This function is used everywhere resources are queried — agent lists, connector dropdowns, skill injection, auto-discovery mode — ensuring consistent visibility across the entire platform.
 
 ### Chiffrement des identifiants
 

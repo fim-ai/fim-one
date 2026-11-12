@@ -15,20 +15,20 @@ FIM One:  "All-in-one agent platform for Global × China enterprises"
 
 Dify / Manus는 **대체 제품**입니다. 사용자에게 새로운 플랫폼으로 작업을 이동하도록 요청합니다. FIM One은 **국경을 넘는 에이전트 플랫폼**입니다. 사용자가 이미 보유한 시스템을 연결하여 AI를 통해 통신할 수 있도록 합니다.
 
-## 경쟁 매트릭스
+## Competitive Matrix
 
-| 차원 | Dify | Manus | Coze | FIM One |
+| Dimension | Dify | Manus | Coze | FIM One |
 |-----------|------|-------|------|-----------|
-| **접근 방식** | 시각적 DAG 워크플로우 빌더 | 자율 소비자 에이전트 | 시각적 빌더 + 에이전트 공간 | 크로스보더 에이전트 플랫폼 |
-| **배포** | 독립형 플랫폼 | 클라우드 SaaS + API | 클라우드 SaaS + 자체 호스팅(Coze Studio) | 플랫폼 / API / 임베드 |
-| **계획** | 인간 설계 정적 DAG | 멀티에이전트 Chain-of-Thought | 정적 워크플로우 + 동적 에이전트 | LLM DAG 계획 + ReAct 루프 |
-| **레거시 시스템 통합** | API 노드(수동 연결) | 없음 | 플러그인 마켓플레이스 | 커넥터 플랫폼(표준화) |
-| **크로스시스템 오케스트레이션** | 아니오 | 아니오 | 아니오 | 허브 모드(N:N) |
-| **임베드 가능** | iframe + 스크립트 임베드 | API만 | 채팅 SDK + 10개 이상 채널 | API / iframe(Widget 계획 중) |
-| **인간 확인** | 아니오 | 아니오 | 아니오 | 예(실행 전 게이트) |
-| **자체 호스팅** | 예(Docker Compose) | 아니오 | 예(Coze Studio, Apache 2.0) | 예(단일 프로세스) |
-| **라이선스** | Apache 2.0 | 독점 | Apache 2.0(Coze Studio) | Source Available |
-| **인기도** | 121K+ 스타 | Meta 인수($2B+, 중국 규제 검토) | ByteDance 지원, 20K+ 스타(Studio) | 초기 단계 |
+| **Approach** | Visual DAG workflow builder | Autonomous consumer agent | Visual builder + agent space | Cross-Border Agent Platform |
+| **Delivery** | Standalone platform | Cloud SaaS + API | Cloud SaaS + self-hosted (Coze Studio) | Platform / API (embed planned) |
+| **Planning** | Human-designed static DAGs | Multi-agent Chain-of-Thought | Static workflows + dynamic agents | LLM DAG planning + ReAct loops |
+| **Legacy system integration** | API nodes (manual wiring) | None | Plugin marketplace | Connector Platform (standardized) |
+| **Cross-system orchestration** | No | No | No | Yes (one agent across several systems) |
+| **Embeddable** | iframe + script embed | API only | Chat SDK + 10+ channels | API (iframe / widget planned) |
+| **Human confirmation** | No | No | No | Yes (pre-execution gate) |
+| **Self-hosted** | Yes (Docker Compose) | No | Yes (Coze Studio, Apache 2.0) | Yes (Docker Compose) |
+| **License** | Apache 2.0 | Proprietary | Apache 2.0 (Coze Studio) | Source Available |
+| **Traction** | 121K+ stars | Acquired by Meta ($2B+, China regulatory review) | ByteDance backed, 20K+ stars (Studio) | Early stage |
 
 ## 벤치마킹 전략
 
@@ -42,35 +42,35 @@ Dify / Manus는 **대체 제품**입니다. 사용자에게 새로운 플랫폼�
 
 ## FIM One의 고유한 차별화 요소
 
-### 1. 커넥터 아키텍처 (MCP + 거버넌스)
+### 1. Connector Architecture (Adapters + Governance)
 
 ```
 Platform (ReAct / DAG / Portal)
     ↓
 Connector Governance (audit, read_only, auth, confirmation gate)
     ↓
-MCP Protocol (standard transport, process isolation)
+Integration adapters (API connector, database connector, MCP server)
     ↓
-Legacy System (DB / API / message bus)
+Legacy System (DB / API)
 ```
 
-커넥터는 거버넌스 계층이 추가된 **MCP 서버**로 구현됩니다. 에이전트는 레거시 시스템과 통신하고 있다는 것을 알지 못합니다 -- 커넥터는 ToolRegistry에서 일반적인 도구로 표시됩니다. 이 분야의 다른 플랫폼은 엔터프라이즈 거버넌스가 내장된 표준화된 커넥터 아키텍처를 갖추고 있지 않습니다. 전체 설계는 [커넥터 아키텍처](/architecture/connector-architecture)를 참조하세요.
+API and database connectors run in-process as governed tools; external **MCP servers** attach through the MCP client under the same governance. The agent doesn't know it's talking to a legacy system -- connectors surface as ordinary tools in the ToolRegistry. No other platform in this space has a standardized connector architecture with enterprise governance built in. See [Connector Architecture](/architecture/connector-architecture) for the full design.
 
-### 2. 이중 모드 전달
+### 2. Dual-Mode Delivery (embedded mode planned)
 
 ```
 Standalone:  Full web UI, independent AI assistant
-Embedded:    <script src="fim-one.js"> injected into host page
-             OR iframe / standalone URL with auth passthrough
+Embedded:    host page calls the API today; a drop-in script / iframe
+             embed with identity passed from the host is planned
 ```
 
-### 3. 인간 확인 게이트
+### 3. Human Confirmation Gate
 
-레거시 시스템에 대한 쓰기 작업에는 명시적인 사용자 승인이 필요합니다. 사전 실행 훅으로 구현되며 에이전트 루프를 수정하지 않습니다. SSE 이벤트 `confirmation_required`는 사용자가 응답할 때까지 실행을 일시 중지합니다.
+Connector actions marked as requiring confirmation need explicit user approval. Implemented as a pre-execution hook -- does not modify the agent loop. SSE event `awaiting_confirmation` pauses execution until user responds.
 
-### 4. 페이지 컨텍스트 주입
+### 4. Page Context Injection (planned)
 
-임베드될 때, 위젯은 호스트 페이지에서 컨텍스트(현재 계약 ID, 페이지 URL, DOM 선택자)를 읽고 이를 에이전트의 컨텍스트에 주입합니다. 에이전트는 사용자가 *무엇을* 요청했는지뿐만 아니라 *어디에* 있는지를 이해합니다.
+Not shipped; it depends on the embed. When embedded, the widget will read context from the host page (current contract ID, page URL, DOM selectors) and inject it into the agent's context. The agent understands *where* the user is, not just *what* they asked.
 
 ## 카테고리 내구성 분석
 
@@ -113,16 +113,16 @@ Embedded:    <script src="fim-one.js"> injected into host page
 - 강점: ByteDance 리소스, 광범위한 채널 생태계, 오픈소스 모멘텀
 - 우리의 평가: 가장 강력한 임베딩/채널 커버리지; 엔터프라이즈 통합 패턴 주목
 
-## MuleSoft 비유
+## The MuleSoft Analogy
 
-FIM One의 Connector 아키텍처는 개념적으로 **AI 시대의 MuleSoft**입니다:
+FIM One's Connector architecture is conceptually **AI-era MuleSoft**:
 
 | | MuleSoft | FIM One |
 |-|----------|-----------|
-| **What** | 시스템 간 API 통합 | 시스템 통합을 위한 Cross-Border Agent Platform |
-| **How** | Connectors + 선언형 매핑 | MCP Servers + Connector Governance Layer |
-| **Protocol** | Anypoint SDK | MCP (개방형 표준) + governance layer |
-| **Standardization** | Anypoint connectors | Level 1 (Python MCP Server) -> Level 2 (YAML) -> Level 3 (AI-generated) |
-| **Value** | "모든 것을 연결하기" | "글로벌 × 중국 기업을 위한 올인원 agent platform" |
+| **What** | System-to-system API integration | Cross-Border Agent Platform for system integration |
+| **How** | Connectors + declarative mapping | API / database connectors and MCP servers + Connector Governance Layer |
+| **Protocol** | Anypoint SDK | HTTP, SQL drivers, MCP (open standard) + governance layer |
+| **Standardization** | Anypoint connectors | Manual config, OpenAPI import, or AI builder |
+| **Value** | "Connect everything" | "All-in-one agent platform for Global × China enterprises" |
 
-이 비유는 엔터프라이즈 포지셔닝에 강력합니다.
+This analogy is powerful for enterprise positioning.

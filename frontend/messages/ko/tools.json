@@ -192,5 +192,32 @@
   "mcpSelectHint": "서버를 클릭하여 선택하세요",
   "forkMcpServer": "복제",
   "forkSuccess": "\"{name}\"으로 복제되었습니다",
-  "forkFailed": "MCP 서버 복제에 실패했습니다"
+  "forkFailed": "MCP 서버 복제에 실패했습니다",
+  "stdioUnavailableAdminOnly": "STDIO is not offered: a stdio server runs a command inside the application, so only a system administrator can set one up. You can use the ones an administrator shares.",
+  "stdioUnavailableDisabled": "STDIO is not offered: stdio MCP servers are switched off on this instance.",
+  "stdioBlockedBadge": "Not started",
+  "stdioBlockedOwnerNotAdmin": "This stdio server is never started: it runs a command inside the application, and only one owned by an active system administrator may run. Ask an administrator to set it up, or delete it.",
+  "stdioBlockedDisabled": "This stdio server is not started: stdio MCP servers are switched off on this instance.",
+  "addressPrivateWarning": "Other members cannot use this server while \"Allow credential fallback\" is off, because {parts} may contain a credential. Move the credential into a header or an environment variable, or turn on \"Allow credential fallback\". Turning it on also lends members the headers and environment variables saved on this server.",
+  "addressPrivateWarningBound": "People who run your shared agents or workflows cannot use this server while \"Allow credential fallback\" is off, because {parts} may contain a credential. Move the credential into a header or an environment variable, or turn on \"Allow credential fallback\". Turning it on also lends them the headers and environment variables saved on this server.",
+  "addressPartsUnknown": "its address or launch arguments",
+  "addressReasons": {
+    "url_user_info": "the user name or password in its URL",
+    "url_query": "the query string of its URL",
+    "url_fragment": "the fragment of its URL",
+    "url_path_segment": "a path segment of its URL",
+    "url_path_parameter": "a path parameter of its URL",
+    "url_token": "a token-shaped part of its URL",
+    "url_unparseable": "its URL, which could not be read",
+    "arg_name": "a launch argument named like a credential",
+    "arg_token": "a launch argument shaped like a token",
+    "arg_env": "an environment variable set in its launch arguments",
+    "arg_connection_string": "a connection string in its launch arguments"
+  },
+  "addressPrivateOwnerBadge": "Other members cannot use this server",
+  "addressPrivateMemberBadge": "Only its owner can use this server",
+  "addressPrivateMemberReason": "You cannot use this server while its owner keeps \"Allow credential fallback\" off, because its address or launch arguments may contain a credential. Configuring your own keys does not change that. Ask the owner to move the credential into a header or an environment variable, or to turn on \"Allow credential fallback\".",
+  "myKeysHeaders": "Request Headers",
+  "myKeysNoEnvVars": "No environment variables. Click \"Add\" to add one.",
+  "myKeysNoHeaders": "No request headers. Click \"Add\" to add one."
 }

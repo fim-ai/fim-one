@@ -55,5 +55,7 @@
   "credentialSetupRequired": "以下依赖项需要设置凭证：",
   "credentialSetupWarning": "没有凭证，此资源无法正常运行。",
   "configureDep": "配置",
-  "yours": "您的"
+  "yours": "您的",
+  "ownerOnlyDeps": "Only their owner can use the following MCP servers, so this resource runs without them. Their address or launch arguments may contain a credential and the owner has kept credential fallback off; keys of your own do not change that.",
+  "ownerOnlyServer": "Only its owner can use this MCP server at present: its address or launch arguments may contain a credential and the owner has kept credential fallback off. Subscribing and saving keys of your own does not change that."
 }

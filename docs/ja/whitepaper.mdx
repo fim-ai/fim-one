@@ -93,38 +93,38 @@ FIM One は意図的に iPaaS ではなく、その違いは表面的なもの�
 | ガバナンス | 外部アドオン | 組み込みフック |
 | カテゴリ（Gartner 2025） | iPaaS MQ（衰退中） | AI Agent Platform |
 
-## 4. アーキテクチャの原則
+## 4. Architecture Principles
 
 <CardGroup cols={2}>
-  <Card title="プロバイダー非依存" icon="shuffle">
-    OpenAI互換のあらゆるLLM — OpenAI、Anthropic、DeepSeek、Qwen、ローカルOllama、Xinchuang認定モデル。モデルの選択はデプロイメント変数であり、アーキテクチャ上の制約ではありません。
+  <Card title="Provider-Agnostic" icon="shuffle">
+    Any OpenAI-compatible LLM — OpenAI, Anthropic, DeepSeek, Qwen, local Ollama, Xinchuang-certified models. Model choice is a deployment variable, not an architectural commitment.
   </Card>
-  <Card title="プロトコルファースト" icon="network-wired">
-    すべてのコネクターは型付きスキーマを公開します。エージェントはアクション、パラメーター、戻り値の型を認識します — 生のHTTPではなく。OpenAPI、MCP、直接データベース接続はすべてファーストクラスです。
+  <Card title="Protocol-First" icon="network-wired">
+    Every connector publishes a typed schema. The agent sees actions, parameters, and return types — never raw HTTP. OpenAPI, MCP, and direct database connections are first-class.
   </Card>
-  <Card title="3つの実行エンジン" icon="sitemap">
-    **ReAct** は探索的なタスク用、**DAG** は構造化されたパイプライン用、**Workflow**（最大25ノード）は決定論的な人間設計のパイプライン用。1つのエージェントコアがタスクごとにエンジンを選択します。
+  <Card title="Three Execution Engines" icon="sitemap">
+    **ReAct** for exploratory tasks, **DAG** for structured pipelines, **Workflow** (visual editor, 9 node types, an optional module) for deterministic human-designed pipelines. One agent core picks the engine per task.
   </Card>
-  <Card title="スキーマファースト・ツール読み込み" icon="bolt">
-    ツールスキーマは約30トークンで事前シード化され、エージェントはオンデマンドで拡張します。セッションごとのプロンプトオーバーヘッドは約80%削減され、プラットフォームはコンテキストウィンドウを圧迫することなく **10,000以上のAPI** にスケールします。
+  <Card title="Schema-First Tool Loading" icon="bolt">
+    Tool schemas are pre-seeded at ~30 tokens each; the agent expands on demand. Per-session prompt overhead drops ~80%, and the platform scales to **10,000+ APIs** without blowing the context window.
   </Card>
-  <Card title="フック統治" icon="shield-halved">
-    すべてのツール呼び出しは設定可能なフックチェーンを通過します：監査、ポリシー、人間参加型の承認。フックはLLMループの外で実行されます — 決定論的で監査可能です。
+  <Card title="Hook-Governed" icon="shield-halved">
+    Every tool call passes through a configurable hook chain: audit, policy, human-in-the-loop approval. Hooks run outside the LLM loop — deterministic and auditable.
   </Card>
-  <Card title="メモリ対応" icon="brain">
-    短期会話、長期知識ベース、セッション間メモリはファーストクラスのプリミティブであり、後付けではありません。
+  <Card title="Memory-Aware" icon="brain">
+    Short-term conversation, long-term knowledge base, and cross-session memory are first-class primitives, not bolt-ons.
   </Card>
 </CardGroup>
 
-## 5. 3つの配信モード — 1つのエージェントコア
+## 5. Three Delivery Modes — One Agent Core
 
-同じプランナー、メモリ、コネクタライブラリが3つの異なるプロダクト形態を支えます。選択はコード分岐ではなく、デプロイメント上の決定です。
+The same planner, memory, and connector library power three distinct product shapes. The choice is a deployment decision, not a code fork.
 
-**Standalone** — 自己完結型ポータル。購入者は、キュレーションされたナレッジベース、コードサンドボックス、または汎用アシスタント上のチャットインターフェースを求めています。ホストシステムは関与しません。社内ITヘルプデスク、エンジニアリング生産性、カスタマーサポートKBに適しています。
+**Standalone** — a self-contained portal. The buyer wants a chat interface over a curated knowledge base, or a code sandbox, or a general assistant. No host system involved. Fits internal IT help desks, engineering productivity, customer-support KBs.
 
-**Copilot** — iframe、ウィジェット、または直接埋め込みを介して既存のホストシステム内に埋め込まれたエージェント。ホストが認証を処理し、Copilotはユーザーコンテキストを継承します。SAP Fiori内のFinance Copilot、Salesforce内のSales Copilot、社内開発者ポータル内のDevOps Copilotに適しています。
+**Copilot** — the agent embedded inside an existing host system. Today the host UI calls the FIM One API; a drop-in iframe / widget embed, with the user's identity passed from the host, is planned. Fits Finance Copilot inside SAP Fiori, Sales Copilot inside Salesforce, DevOps Copilot inside an internal developer portal.
 
-**Hub** — 中央オーケストレーションサーフェス。すべての接続されたシステムがここで終端します。ユーザーはシステム横断的な質問をし、エージェントはシステム全体で計画と実行を行います。「すべてのAPAC事業体のQ1をクローズアウト」、「更新を逃したすべての顧客を見つけてアウトリーチドラフトを作成」、「昨日の支払いをゲートウェイと台帳間で調整」に適しています。
+**Hub** — the central orchestration surface. Every connected system terminates here. Users ask cross-system questions; the agent plans and executes across systems. Fits "close out Q1 for all APAC entities", "find every customer who missed a renewal and draft outreach", "reconcile yesterday's payments between gateway and ledger".
 
 ```mermaid
 flowchart LR
@@ -153,83 +153,83 @@ flowchart LR
   C --> Reports
 ```
 
-## 6. コネクタの整合モデル
+## 6. Connector Alignment Model
 
-コネクタは、認証戦略によって支えられた型付きアクションインターフェースです。FIM One は、エンタープライズシステムの大半をカバーする3つの認証層を定義しています。
+A connector is a typed action surface backed by an auth strategy. FIM One defines three auth tiers that cover the vast majority of enterprise systems.
 
 <AccordionGroup>
-  <Accordion title="Tier 1 — データベースコネクタ（Full または Basic）">
-    リレーショナルデータベースへの直接接続です。**Full** モードでは、読み取り専用ロールによる制御のもと、エージェントに任意の SQL を公開します。**Basic** モードでは、事前登録されたパラメーター化クエリのみを公開します。PostgreSQL と MySQL に加えて、**Xinchuang 準拠データベース — Dameng (DM8)、KingbaseES、HighGo** をネイティブでサポートします。中央企業・国有企業や規制対象の顧客も、初日からコンプライアンスに準拠した調達が可能です。
+  <Accordion title="Tier 1 — Database Connectors">
+    Direct connection to a relational database. The agent writes SQL against the introspected schema; a connector is read-only by default, stays private to its owner, and columns marked as personal data come back masked. Native support for **Xinchuang-compliant databases — Dameng (DM8), KingbaseES, HighGo** — alongside PostgreSQL and MySQL. Central/state-owned and regulated customers pass compliance procurement day-one.
   </Accordion>
-  <Accordion title="Tier 2 — OpenAPI コネクタ（ユーザーキー）">
-    OpenAPI 仕様を持つあらゆる REST API に対応します。エージェントは仕様を読み取り、エンドポイントを選択し、ログイン中のユーザーのキーを使って呼び出します。現代的な SaaS（Slack、Linear、GitHub）や、十分にドキュメント化された社内 API をカバーします。
+  <Accordion title="Tier 2 — OpenAPI Connectors (User-Key)">
+    Any REST API with an OpenAPI specification. The agent reads the spec, selects the endpoint, and calls it with the logged-in user's key. Covers modern SaaS (Slack, Linear, GitHub) and well-documented internal APIs.
   </Accordion>
-  <Accordion title="Tier 3 — ログインチケット / レガシーコネクタ">
-    OAuth2 ではなくログインチケットサービスを介して認証するシステム（特に中国市場で一般的なシステム）向けです。コネクタがチケットのライフサイクル（取得、更新、無効化）を管理し、上位には通常の型付きインターフェースとして提供します。この層により、他のすべてのベンダーが対応を見送るシステムも利用可能になります。
+  <Accordion title="Tier 3 — Login-Ticket / Legacy Connectors (planned)">
+    For systems — particularly common in the Chinese market — that authenticate via a login-ticket service rather than OAuth2. The connector will manage the ticket lifecycle (acquire, refresh, invalidate) and present a normal typed surface upward. Not shipped yet: today API connectors authenticate with a bearer token, an API key, or basic auth.
   </Accordion>
 </AccordionGroup>
 
-各コネクタは、**チャネル / 統合の二重性** も宣言します。同じ基盤システムを、*チャネル*（通知の送信先、承認インターフェース）と *統合*（データソース、アクションの対象）の両方として利用できます。Feishu は通知チャネルであると同時にグループチャットのデータソースでもあり、DingTalk と WeCom も同じパターンに従います。
+Each connector also declares a **Channel/Integration duality**: the same underlying system can appear both as a *channel* (notification sink, approval surface) and as an *integration* (data source, action target). Feishu is both a notification channel and a group-chat data source; DingTalk and WeCom follow the same pattern.
 
-## 7. 信頼できるエンタープライズAI — 3つの柱
+## 7. Trustworthy Enterprise AI — Three Pillars
 
-エンタープライズAIが本番環境で失敗するのは、モデルが間違っているからではなく、組織がそれが正しいことを証明できないからです。FIM Oneは信頼をアーキテクチャとして扱い、3つの柱で表現しています。
+Enterprise AI fails in production not because the model is wrong but because the organization cannot prove it is right. FIM One treats trust as architecture, expressed in three pillars.
 
 <CardGroup cols={3}>
-  <Card title="すべての結論は引用される" icon="paperclip">
-    RAG検索と引用チェーンにより、智能体は特定のドキュメント内の特定の段落を参照して、すべての主張をサポートできます。結論は追跡可能で監査可能です。ブラックボックス出力はありません。
+  <Card title="Every Conclusion Is Cited" icon="paperclip">
+    RAG retrieval + citation chain lets the agent reference a specific paragraph in a specific document for every claim. Conclusions are traceable and auditable. No black-box output.
   </Card>
-  <Card title="すべての書き込みは確認される" icon="hand">
-    書き込み操作は実行前に一時停止され、人間の承認を待ちます——門户内でインラインで、またはFeishu審批グループ経由で帯域外で。フック チェーンはアーキテクチャ上の制約であり、ポリシーの提案ではありません。バイパスすることはできません。
+  <Card title="Sensitive Actions Are Confirmed" icon="hand">
+    Actions marked as requiring confirmation (or every tool call, when an agent is set to confirm all) pause before execution, waiting for a human approval — inline in the portal or out-of-band via a Feishu approval group. The hook chain is an architectural constraint, not a policy suggestion. It cannot be bypassed.
   </Card>
-  <Card title="すべてのリリースは測定される" icon="chart-bar">
-    データセット駆動の評価により、各リリース前に品質を定量化します。すべての反復は測定可能です。エンタープライズ調達は約束ではなく証拠を得られます。
+  <Card title="Every Release Is Measured" icon="chart-bar">
+    Dataset-driven evaluation quantifies quality before each release. Every iteration is measurable; enterprise procurement gets evidence, not promises.
   </Card>
 </CardGroup>
 
-これをサポートするために、すべての智能体実行は構造化トレースを発行します：計画、工具呼び出し、引数、観察、承認、最終回答。トレースは監査の単位です。認証情報はFernet暗号化（AES-128-CBC + HMAC-SHA256）を使用します。完全な監査ログは保存およびエクスポート可能です。
+Supporting this, every agent run emits a structured trace: plan, tool calls, arguments, observations, approvals, final answer. Traces are the unit of audit. Credentials use Fernet encryption (AES-128-CBC + HMAC-SHA256). Full audit logs are stored and exportable.
 
-オペレーターが工具呼び出しを拒否した場合、智能体は停止します——言い換えて再試行することはありません。拒否はポリシー決定であり、回復するエラーではありません。
+When an operator rejects a tool call, the agent stops — it does not paraphrase and retry. Rejection is a policy decision, not an error to recover from.
 
-## 8. デプロイメントとビジネスモデル
+## 8. Deployment and Business Model
 
-FIM One は FIM One Source Available License（FIM-SAL）の下で公開ソースで提供されます。ソースコード利用可能ですが、OSI 認定のオープンソースではありません。3 つのデプロイメント形態と 3 つのエディションティアがあります。
+FIM One ships with public source under the FIM One Source Available License (FIM-SAL) — source-available, not OSI-approved open source — with three deployment shapes and three edition tiers.
 
 <CardGroup cols={3}>
   <Card title="Community" icon="code">
-    永久無料。セルフホスト。開発者と評価チーム向け。
+    Free forever. Self-hosted. For developers and evaluation teams.
   </Card>
   <Card title="Cloud" icon="cloud">
-    FIM.AI がホスト、cloud.fim.ai 上で提供。ユーザーあたり + コネクタあたりのサブスクリプション。シンガポール法人が海外契約を担当。
+    FIM.AI-hosted on cloud.fim.ai. Per-user + per-connector subscription. Singapore entity handles overseas contracts.
   </Card>
   <Card title="Enterprise" icon="briefcase">
-    プライベートデプロイメント、カスタム価格設定、コンプライアンスツール、専任技術サポート。大規模企業および政府・国有企業向け。
+    Private deployment, custom pricing, compliance tooling, dedicated technical support. For large enterprises and government/state-owned customers.
   </Card>
 </CardGroup>
 
-コードベースは Python で約 170,000 行、1,590 以上のモジュールで構成されており、約 100 のテストファイルと 6 つの UI 言語の組み込みサポートがあります。ソースは FIM-SAL の下で公開されており、企業は自社でセキュリティ監査ができます。実行時コストの大部分は LLM トークンであり、インフラストラクチャではありません。プロバイダ非依存性により、フロンティアが価格を下げても移行することなく、その恩恵を受けられます。
+The backend is ~106,000 lines of Python across 440+ modules, with 230+ test files and built-in support for 6 UI languages. Source is publicly available under FIM-SAL — enterprises can audit security themselves. The dominant runtime cost is LLM tokens, not infrastructure; provider-agnosticism means you benefit as the frontier pushes prices down, without migration.
 
-## 9. デリバリーパス
+## 9. Delivery Path
 
-本番環境へのデプロイメントは、リスクを限定し、価値実現までの時間を短縮する3段階のパスに従います。
+Production deployment follows a three-step path that keeps risk bounded and time-to-value short.
 
-| ステップ | タイムライン | 実施内容 |
+| Step | Timeline | What happens |
 |---|---|---|
-| **1. PoC** | 2週間 | 1～2の代表的なシナリオ（財務監査、契約レビュー、データレポート）を実データで完全に実施。初版は7日以内、検証レポートは14日以内に完成。 |
-| **2. パイロット** | 1～2ヶ月 | お客様のサーバーへのプライベートデプロイメント。最初の3～5コネクタ（ERP / OA / Feishu / DingTalk / データベース）。1つのビジネスラインをカバー。監査と承認のベースラインを確立。 |
-| **3. スケール** | 3～6ヶ月 | より多くのビジネスラインとコネクタへの拡張。業界別スキルパックの蓄積。社内管理者のトレーニング。運用ランブックとSLAの納品。 |
+| **1. PoC** | 2 weeks | 1–2 representative scenarios (finance audit, contract review, data reporting), end-to-end on real data. First version in 7 days, validation report in 14. |
+| **2. Pilot** | 1–2 months | Private deployment to your servers. First 3–5 connectors (ERP / OA / Feishu / DingTalk / database). One business line covered. Audit and approval baselines established. |
+| **3. Scale** | 3–6 months | Expansion to more business lines and connectors. Industry Skill packs accumulated. Internal administrators trained. Operations runbook and SLA delivered. |
 
-8つの業界別プリビルトソリューションテンプレートが、最も一般的なシナリオをカバーしています：財務監査、契約レビュー、データレポート、調達照合、顧客支払い回収、コンプライアンススクリーニング、HR スクリーニング、オペレーション オンコール。
+Eight pre-built Solution templates cover common scenarios: financial audit, contract review, data reporting, IT operations, HR onboarding, sales proposals, content creation, and meeting summaries.
 
 ## 10. Where This Goes
 
-**Near-term — connector depth.** More Tier-3 legacy connectors for the Chinese market, deeper Xinchuang certification, and an AI Builder that turns an OpenAPI spec or a database schema screenshot into a working connector in minutes.
+**Near-term — connector depth.** Tier-3 legacy connectors for the Chinese market, deeper Xinchuang certification, and an AI Builder that turns an OpenAPI spec or a database schema screenshot into a working connector in minutes.
 
 **Near-term — governance depth.** Richer RBAC, four-tier connector permissions, independent IdP, SSO by default, SOC 2 and ISO 27001 posture.
 
 **Mid-term — ecosystem.** Cloud SaaS, a Connector Marketplace, and industry Solution packs — the infrastructure layer that third parties build on top of.
 
-The longer-term bet is that the shape of enterprise AI will look far more like a cross-system 智能体 platform than a CLI. Knowledge workers will not install ten AI assistants; they will ask their company's 智能体 platform, and the platform will know how to reach whatever system holds the answer — global SaaS, the China enterprise stack, or anything in between. FIM One is building that platform.
+The longer-term bet is that the shape of enterprise AI will look far more like a cross-system agent platform than a CLI. Knowledge workers will not install ten AI assistants; they will ask their company's agent platform, and the platform will know how to reach whatever system holds the answer — global SaaS, the China enterprise stack, or anything in between. FIM One is building that platform.
 
 ## 11. 付録 — さらに詳しく
 

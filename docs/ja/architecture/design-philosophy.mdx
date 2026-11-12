@@ -14,13 +14,13 @@ FIM One の DAG 実行エンジンは、意図的な抑制を持って設計さ�
 
 明示的なハンドオフプロトコルを追加すると、ステップ依存関係が既に提供しているものが重複し、追加の表現力は得られない。
 
-## バックフロー — 不要
+## Backflow — Not Needed
 
-**パターン**: ダウンストリームステップが結果をアップストリームステップにフィードバックして再評価する（結果の逆伝播とも呼ばれる）。
+**Pattern**: Downstream steps feeding results back to upstream steps for re-evaluation (also called backpropagation of results).
 
-**除外理由**: PlanAnalyzer の再計画ループがすでにこのユースケースをカバーしています。すべてのステップが完了した後、アナライザーは元の目標が達成されたかどうかを評価します。達成されていない場合（かつ信頼度が停止閾値を下回っている場合）、前のラウンドの結果からのコンテキスト（何がうまくいかなかったか、何を学んだかを含む）を使用して、完全な再計画をトリガーします。
+**Why excluded**: The PlanAnalyzer re-plan loop already covers this use case. After all steps complete, the analyzer evaluates whether the original goal was achieved. If not (and the analyzer does not judge the goal unreachable), it triggers a re-plan of the remaining work with context from the previous round's results — including what went wrong and what was learned.
 
-これはステップごとのバックフローよりも粗粒度ですが、より堅牢なアプローチです。ステップごとのバックフローは、デバッグが難しく、無限ループにつながる可能性のある複雑なフィードバックループを作成します。再計画ループは、より清潔な実行モデルで同じ修正効果を実現します：計画、実行、評価、必要に応じて再計画。
+This is a coarser-grained but more robust approach than per-step backflow. Per-step backflow creates complex feedback loops that are hard to debug and can lead to infinite cycles. The re-plan loop achieves the same corrective effect with a cleaner execution model: plan, execute, evaluate, re-plan if needed.
 
 ## チーム（エージェント間通信）— 不要
 

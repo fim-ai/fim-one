@@ -1,10 +1,10 @@
 ---
-title: "データベース"
+title: "Database"
 icon: "database"
-description: "デプロイメント用に適切なデータベースバックエンドを選択して構成する"
+description: "Choose and configure the right database backend for your deployment"
 ---
 
-FIM One は 2 つのデータベースバックエンドをサポートしています: **SQLite**（デフォルト、ゼロコンフィグ）と **PostgreSQL**（本番環境に推奨）。バックエンドは `DATABASE_URL` 環境変数によって決定されます。
+FIM One supports two database backends: **SQLite** (default, zero-config) and **PostgreSQL** (recommended for production). The backend is determined by the `DATABASE_URL` environment variable.
 
 ```bash
 # SQLite (default — no configuration needed)
@@ -14,7 +14,7 @@ DATABASE_URL=sqlite+aiosqlite:///./data/fim_one.db
 DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/fim_one
 ```
 
-テーブルは最初の起動時に自動的に作成されます。手動マイグレーションステップは不要です。
+`start.sh` and the Docker entrypoint run the Alembic migrations on every start, so tables are created automatically — no manual migration step is required.
 
 ---
 
@@ -37,40 +37,40 @@ DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/fim_one
 
 ---
 
-## 既知の制限: SQLite 同時ストリーミング
+## Known Limitation: SQLite Concurrent Streaming
 
 <Warning>
-**SQLite は同時負荷下でボトルネックになる可能性があります。**
+**SQLite can become a bottleneck under concurrent load.**
 
-FIM One は Server-Sent Events (SSE) を使用して AI レスポンスをストリーミングします。ストリーミング中、各アクティブな SSE 接続はストリームの期間中、接続プールから 1 つのデータベース接続を保持します。SQLite はグローバル書き込みロックを実装しており、一度に 1 つの書き込み操作のみが実行でき、他のすべての書き込みはそれの後ろでキューイングされます。
+FIM One uses Server-Sent Events (SSE) for streaming AI responses. During streaming, each active SSE connection holds a database connection from the pool for the duration of the stream. SQLite enforces a global write lock, meaning only one write operation can proceed at a time — all other writes queue behind it.
 
-接続プールは最大 30 の同時接続をサポートしていますが（`pool_size=20` + `max_overflow=10`）、ボトルネックはプール自体ではなく、ロック自体です。複数のユーザーが同時にチャットしている場合、彼らの書き込み操作（メッセージの保存、トークンカウントの更新）は互いに対してシリアル化されます。
+Even though the connection pool supports up to 15 simultaneous connections (`pool_size=10` + `max_overflow=5`), the bottleneck is the lock itself, not the pool. When multiple users are chatting simultaneously, their write operations (saving messages, updating token counts) serialize against each other.
 
-**観察される可能性のある症状:**
-- 別のユーザーがストリーミング中に会話リストの読み込みが遅い
-- アクティブなチャットセッション中に設定ページが遅い
-- 複数のストリームがアクティブな場合、API レスポンスが遅延する
+**Symptoms you may observe:**
+- Conversation list loads slowly while another user is streaming
+- Settings pages feel sluggish during active chat sessions
+- API responses are delayed when multiple streams are active
 
-**推奨事項:** 2～3 人以上の同時ユーザーがいる場合は、PostgreSQL に切り替えてください。PostgreSQL は MVCC（Multi-Version Concurrency Control）と行レベルロックを使用しているため、同時読み取りと書き込みは互いにブロックすることなく独立して進行します。
+**Recommendation:** If you have more than 2-3 concurrent users, switch to PostgreSQL. PostgreSQL uses MVCC (Multi-Version Concurrency Control) with row-level locking, so concurrent reads and writes proceed independently without blocking each other.
 </Warning>
 
 ---
 
-## コネクションプール設定
+## Connection Pool Configuration
 
-FIM One は各バックエンド用に SQLAlchemy コネクションプール設定を内部で設定します。これらはチューニング済みのデフォルト値であり、環境変数を必要としません。`DATABASE_URL` スキームに基づいて自動的に適用されます。これらを理解することで、実行時の動作を説明するのに役立ちます。
+FIM One configures SQLAlchemy connection pool settings internally for each backend. These are tuned defaults that do not require environment variables (the SQLite pool can be resized with `SQLITE_POOL_SIZE` / `SQLITE_MAX_OVERFLOW`) — they are applied automatically based on the `DATABASE_URL` scheme. Understanding them helps explain runtime behavior.
 
-### SQLite プール設定
+### SQLite Pool Settings
 
-| 設定 | 値 | 説明 |
+| Setting | Value | Description |
 |---|---|---|
-| `pool_size` | `20` | プール内の永続接続の基本数 |
-| `max_overflow` | `10` | 負荷時に作成される追加接続（合計最大30） |
-| WAL ジャーナルモード | 有効 | Write-Ahead Logging により、書き込み中の同時読み取りが可能になり、ロック競合が大幅に削減されます |
-| `busy_timeout` | `30s` | 書き込みロックが保持されている場合、他の書き込みは即座に失敗する代わりに、最大30秒待機してからエラーを発生させます |
-| `synchronous` | `NORMAL` | WAL モードで安全です。デフォルトの `FULL` よりも優れた書き込みスループットを提供します |
+| `pool_size` | `10` | Base number of persistent connections in the pool |
+| `max_overflow` | `5` | Additional connections created under load (up to 15 total) |
+| WAL journal mode | Enabled | Write-Ahead Logging allows concurrent reads while a write is in progress, significantly reducing lock contention |
+| `busy_timeout` | `30s` | When the write lock is held, other writers wait up to 30 seconds before raising an error, instead of failing immediately |
+| `synchronous` | `NORMAL` | Safe with WAL mode; provides better write throughput than the default `FULL` |
 
-WAL モードと30秒の busy_timeout は、新しい接続ごとに SQLite PRAGMA を介して設定されます。この組み合わせにより、短命の読み取り（会話リストの読み込み、設定の取得）が長時間実行される書き込みトランザクションによってブロックされず、同時書き込みが失敗する代わりに適切にキューイングされることが保証されます。
+WAL mode and the 30-second busy timeout are set via SQLite PRAGMAs on every new connection. This combination ensures that short-lived reads (loading a conversation list, fetching settings) are not blocked by long-running write transactions, and that concurrent writes queue gracefully instead of failing.
 
 ### PostgreSQL プール設定
 
@@ -123,16 +123,16 @@ DATABASE_URL=postgresql+asyncpg://postgres:secret@localhost:5432/fim_one
 **既存の SQLite データは自動的にはマイグレーションされません。** `DATABASE_URL` を SQLite から PostgreSQL に切り替えると、新しいデータベースから開始されます。SQLite に既存の会話、エージェント、またはコネクタがあり、それらを保持する必要がある場合は、以下の[データマイグレーション](#data-migration)セクションを参照してください。
 </Note>
 
-### Docker Compose (本番環境に推奨)
+### Docker Compose (Recommended for Production)
 
-Docker Composeでデプロイする場合、**PostgreSQLとRedisは既に含まれており、自動設定されます** — 追加のセットアップは不要です。`docker-compose.yml`は`DATABASE_URL`を内部で設定します — `.env`の値はオーバーライドされます:
+If you deploy with Docker Compose, **PostgreSQL and Redis are already included and auto-configured** — there is nothing extra to set up. The `docker-compose.yml` sets `DATABASE_URL` internally — your `.env` value is overridden:
 
 ```yaml
 environment:
-  DATABASE_URL: postgresql+asyncpg://fim:fim@postgres:5432/fim_one
+  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-fim}:${POSTGRES_PASSWORD:-fim}@postgres:5432/${POSTGRES_DB:-fim_one}
 ```
 
-Docker Composeを使用する場合、追加のデータベースセットアップは不要です。
+No additional database setup is needed when using Docker Compose.
 
 ---
 

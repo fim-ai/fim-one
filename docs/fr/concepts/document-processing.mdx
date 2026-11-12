@@ -12,21 +12,21 @@ Le contenu visuel persiste d'un tour de conversation à l'autre, de sorte que le
 Le mode vision est automatique par défaut. Si le modèle que vous avez configuré a le support de la vision activé, les documents téléchargés utiliseront le pipeline de traitement le plus riche disponible pour ce format.
 </Info>
 
-## Matrice de support des formats
+## Format Support Matrix
 
-Chaque format de document dispose d'un pipeline de traitement dédié. Le comportement change selon que le modèle supporte la vision.
+Each document format has a dedicated processing pipeline. The behavior changes depending on whether the model supports vision.
 
-| Format | Extraction de texte | Mode Vision (`supports_vision=ON`) | Secours (`supports_vision=OFF`) |
+| Format | Text Extraction | Vision Mode (`supports_vision=ON`) | Fallback (`supports_vision=OFF`) |
 |--------|----------------|--------------------------------------|-----------------------------------|
-| **PDF** | pdfplumber (texte page par page) | Traitement intelligent : les pages riches en texte extraient le texte + les images intégrées (efficace en tokens) ; les pages numérisées/image uniquement sont rendues en PNG pleine page via PyMuPDF | Extraction de texte uniquement ; l'agent lit via l'outil `read_uploaded_file` |
-| **DOCX / DOC** | markitdown (conversion Markdown) | Images intégrées extraites avec marqueurs positionnels `[Figure N]` via python-docx | Extraction de texte uniquement ; images perdues |
-| **PPTX / PPT** | markitdown (texte de chaque diapositive) | Images intégrées extraites avec marqueurs `[Figure N]` et séparateurs de diapositives via python-pptx | Extraction de texte uniquement ; visuels de diapositive perdus |
-| **XLSX / XLS** | markitdown (structure de tableau préservée) | Identique au mode texte (les tableaux ne bénéficient pas de la vision) | Identique |
-| **Images** (JPG, PNG, GIF, WebP) | N/A | Envoyées en tant que blocs de contenu vision `image_url` | Annotées comme `[Attached image: filename]` — le modèle est conscient mais ne peut pas voir le contenu |
-| **Fichiers texte** (TXT, MD, PY, JS, HTML, CSV, JSON) | Lecture / analyse directe | N/A (le texte est du texte) | Identique |
+| **PDF** | pdfplumber (page-by-page text) | Smart processing: text-rich pages extract text + embedded images (token-efficient); scanned/image-only pages render as full-page PNG via PyMuPDF | Text extraction only; agent reads via `read_uploaded_file` tool |
+| **DOCX / DOC** | markitdown (Markdown conversion) | Embedded images extracted with `[Figure N]` positional markers via python-docx | Text extraction only; images lost |
+| **PPTX / PPT** | markitdown (text from each slide) | Embedded images extracted with `[Figure N]` markers and slide separators via python-pptx | Text extraction only; slide visuals lost |
+| **XLSX / XLS** | markitdown (table structure preserved) | Same as text mode (tables do not benefit from vision) | Same |
+| **Images** (JPG, PNG, GIF, WebP) | N/A | Sent as `image_url` vision content blocks | Annotated as `[Attached images (text-only model, not displayed): filename (file_id: ...)]` — model is aware but cannot see the content |
+| **Text files** (TXT, MD, PY, JS, HTML, CSV, JSON) | Direct read / parse | N/A (text is text) | Same |
 
 <Tip>
-**Pour une fidélité visuelle maximale**, exportez les fichiers DOCX ou PPTX en PDF avant de les télécharger. Le mode vision PDF rend la mise en page complète de la page — texte, images, graphiques et formatage — tout en une seule image.
+**For maximum visual fidelity**, export DOCX or PPTX files to PDF before uploading. PDF vision mode renders the full page layout — text, images, charts, and formatting — all in one image.
 </Tip>
 
 ## Fonctionnement
@@ -77,20 +77,20 @@ DOCUMENT_PROCESSING_MODE=vision
 DOCUMENT_PROCESSING_MODE=text
 ```
 
-### 3. Paramètre par Requête
+### 3. Per-Request Parameter
 
-Passez le paramètre `doc_mode` dans l'API de chat pour contrôler le traitement pour une seule requête :
+Pass the `doc_mode` parameter in the chat API to control processing for a single request:
 
 ```json
 {
-  "message": "Analyze this financial report",
+  "q": "Analyze this financial report",
   "doc_mode": "vision",
-  "attachments": [...]
+  "image_ids": "<file_id>,<file_id>"
 }
 ```
 
 <Note>
-Le mode `auto` (par défaut) utilise la vision lorsque le modèle a `supports_vision=true` **et** que le document est un type qui bénéficie du traitement par vision. C'est le paramètre recommandé pour la plupart des déploiements.
+The `auto` mode (default) uses vision when the model has `supports_vision=true` **and** the document is a type that benefits from vision processing. This is the recommended setting for most deployments.
 </Note>
 
 ## Variables d'environnement
@@ -177,13 +177,13 @@ Cela aide les utilisateurs à comprendre et à résoudre les problèmes de trait
 
 ## Meilleures pratiques
 
-### Pour les administrateurs
+### For Administrators
 
-- **Activez la vision de manière sélective.** N'activez `supports_vision` que sur les modèles qui supportent véritablement l'entrée d'images. Une mauvaise configuration gaspille des tokens dans le cycle de retry de secours.
-- **Commencez par le mode `auto`.** Le comportement par défaut est correct pour la plupart des déploiements — la vision est utilisée quand elle est bénéfique et disponible.
-- **Surveillez l'utilisation des tokens.** Après avoir activé la vision, observez le tableau de bord de consommation des tokens. Si les coûts augmentent de manière inattendue, ajustez `DOCUMENT_VISION_MAX_PAGES` ou `DOCUMENT_VISION_DPI`.
+- **Enable vision selectively.** Only enable `supports_vision` on models that genuinely support image input. Misconfiguration wastes tokens on the fallback retry cycle.
+- **Start with `auto` mode.** The default behavior is correct for most deployments — vision is used when beneficial and available.
+- **Monitor token usage.** After enabling vision, watch the token consumption dashboard. If costs spike unexpectedly, adjust `DOCUMENT_VISION_MAX_PAGES` or `DOCUMENT_VISION_DPI`.
 
-- **Utilisez l'image sandbox pré-construite.** Le `Dockerfile.sandbox` inclut les packages de data-science courants (pdfplumber, Pillow, pandas, etc.) nécessaires pour l'exécution de code IA sur les documents. Construisez-la via `docker compose` ou manuellement avec `docker build -f Dockerfile.sandbox -t fim-sandbox .` pour assurer que l'exécution de code fonctionne dans les conteneurs `--network=none`.
+- **Use the pre-built sandbox image.** The `Dockerfile.sandbox` includes common data-science packages (pdfplumber, Pillow, pandas, etc.) needed for AI code execution against documents. Build it via `docker compose` or manually with `docker build -f Dockerfile.sandbox -t fim-sandbox:python .` to ensure code execution works in `--network=none` containers.
 
 ### Pour les utilisateurs finaux
 

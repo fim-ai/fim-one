@@ -4,11 +4,11 @@ icon: "building"
 description: "具有基于角色的访问、可选审查和凭证回退的团队级资源共享。"
 ---
 
-## 概述
+## Overview
 
-组织是FIM One的团队协作单位。它们让用户组能够在受信任的范围内共享资源——智能体、连接器、MCP服务器、工作流和技能。知识库是唯一的例外：它们永远不可共享，只能作为共享智能体的内部依赖项到达其他成员（参见[共享和凭证](/architecture/sharing-and-credentials)）。
+Organizations are FIM One's unit for team collaboration. They let groups of users share resources — Agents, API Connectors, and MCP Servers, plus Skills and Workflows when an administrator has enabled those modules — within a trusted scope. Knowledge Bases and database connectors are the exceptions: database connectors cannot be published, and Knowledge Bases are never shareable, and reach other members only as an internal dependency of a shared Agent (see [Sharing and credentials](/architecture/sharing-and-credentials)).
 
-FIM One中的每个资源最初都是**个人的**（仅对其创建者可见）。当你将资源发布到组织时，它会变成**可发现的**，其他组织成员可以通过市场的组织范围发现它。成员浏览组织的共享资源，并订阅他们需要的资源。
+Every resource in FIM One starts as **personal** (visible only to its creator). When you publish a resource to an organization, it becomes **discoverable** by other org members through the Market's organization scope. Members browse the org's shared resources and subscribe to the ones they need.
 
 ```mermaid
 flowchart TD
@@ -27,7 +27,7 @@ flowchart TD
     O -.->|"visible but not subscribed"| M3
 ```
 
-组织和全局市场共享相同的基于订阅的访问模型。关键区别在于信任：组织代表一个团队或公司，其中成员彼此了解和信任，因此审查是可选的，凭证共享也很直接。
+Organizations and the global Market share the same subscription-based access model. The key difference is trust: organizations represent a team or company where members know and trust each other, so review is optional and credential sharing is straightforward.
 
 ## 创建和管理组织
 
@@ -70,28 +70,27 @@ sequenceDiagram
     P-->>M: Agent appears in workspace
 ```
 
-### 审核系统
+### Review System
 
-审核是**可选的**，按资源类型配置。每个组织都有独立的切换标志：
+Review is **optional** and configured per resource type. Each organization has independent toggle flags:
 
 - `review_agents`
 - `review_connectors`
-- `review_kbs`
 - `review_mcp_servers`
 - `review_workflows`
 - `review_skills`
 
-当为某个资源类型禁用审核时，已发布的资源会立即被成员发现——无需管理员操作。启用审核时，资源进入 `pending_review` 状态，需要管理员批准后才能变为可见。
+When review is disabled for a resource type, published resources are immediately discoverable by members — no admin action needed. When review is enabled, resources enter a `pending_review` state and require admin approval before they become visible.
 
 <Tip>
-组织所有者会自动绕过审核。他们发布的资源始终立即可被发现。
+Organization owners bypass review automatically. Their published resources are always immediately discoverable.
 </Tip>
 
-这种灵活性让组织能够匹配其治理需求。小型初创公司可能会禁用所有审核切换以实现无摩擦共享，而注重合规的企业可能会在智能体和连接器上启用审核以保持监督。
+This flexibility lets organizations match their governance needs. A small startup might disable all review toggles for frictionless sharing, while a compliance-focused enterprise enables review on Agents and Connectors to maintain oversight.
 
-## 凭证回退
+## Credential Fallback
 
-连接器和 MCP 服务器通常需要凭证（API 密钥、数据库密码、OAuth 令牌）。FIM One 提供了**回退机制**，使成员无需自己配置每个凭证。
+Connectors and MCP Servers often require credentials (API keys, database passwords, OAuth tokens). FIM One provides a **fallback mechanism** so that members don't have to configure every credential themselves.
 
 ```mermaid
 flowchart TD
@@ -109,15 +108,51 @@ flowchart TD
     C2 -->|No| ERR2["Error: credential required"]
 ```
 
-有两种模式：
+There are two modes:
 
-- **启用回退**（`allow_fallback=true`，默认值）：未提供自己凭证的成员自动使用所有者的默认凭证。这适用于团队共享的 API 密钥或内部服务，其中单个密钥覆盖整个团队。
-- **禁用回退**（`allow_fallback=false`）：每个成员必须配置自己的凭证。这适用于每个用户需要个人 API 密钥的情况（例如，按座位计费的 SaaS 许可证）。
+- **Fallback disabled** (`allow_fallback=false`, the default): Every member must configure their own credentials; until they do, the tool is hidden from their agents. This is appropriate when each user needs a personal API key (for example, per-seat SaaS licenses).
+- **Fallback enabled** (`allow_fallback=true`, set by the owner): Members who don't provide their own credentials automatically use the owner's default credentials. This works well for team-shared API keys or internal services where a single key covers the whole team.
 
-不需要凭证的资源（例如只读公共 API 连接器或无身份验证的智能体）在订阅后立即可用。无需配置。
+Resources that don't require credentials — such as a read-only public API connector or an Agent with no authentication — work immediately after subscription. No configuration needed.
+
+### MCP servers: the address is the owner's
+
+A member's own credential for an MCP server is a set of environment variables (stdio servers) or request headers (SSE and HTTP servers). The server's URL and its launch arguments have no per-member counterpart: whoever connects, connects to what the owner configured. If the owner put a credential there, a member's own credential does not replace it.
+
+So with fallback disabled, an MCP server whose address looks like it carries a credential can be used by its owner only. Other members are refused with `mcp_server_address_private`, whether or not they saved credentials of their own, and the server's card tells them so instead of asking for keys. The owner sees a warning on the card and in the editor once the server is shared, or once one of the owner's shared agents or workflows uses it (the people who run those are refused the server the same way) (the save and publish responses carry `warning: "mcp_server_address_private"` and, in `warning_reasons`, which part of the address counted: the query string, the user-info, a path segment, an argument name and so on, never the value), and has two ways out:
+
+- move the credential into a header or an environment variable, so that each member brings their own; or
+- enable fallback, which lends the server as configured: the address, and with it the headers and environment variables saved on the server. Members without credentials of their own then act under the owner's.
+
+What counts as "carries a credential" is decided by shape:
+
+| Where | Counts | Example |
+| --- | --- | --- |
+| URL | user-info, any query string, a fragment | `https://user:pass@host/mcp`, `https://host/mcp?token=…` |
+| URL | a path segment shaped like a token: a UUID, 16 or more hex digits, 20 or more characters mixing letters and digits, or a known token prefix; a `;name=value` path parameter | `https://mcp.zapier.com/api/mcp/s/<secret>/mcp`, `https://host/<32 hex>/sse`, `https://host/mcp;token=…` |
+| Launch arguments | a flag, assignment or header with `token`, `key`, `secret`, `password`, `passwd`, `pwd`, `auth`, `authorization`, `credential(s)`, `bearer`, `pat`, `dsn`, `connection`, `cookie` or `session` as a whole word of its name, given a value | `--api-key VALUE`, `--token=VALUE`, `API_KEY=VALUE`, `apiKey=VALUE`, `X-Api-Key: VALUE` |
+| Launch arguments | a URL that counts by the URL rows above | `--endpoint=https://host/?key=…`, `mcp-remote https://host/<32 hex>/sse` |
+| Launch arguments | a known token shape | `sk-…`, `ghp_…`, `gho_…`, `github_pat_…`, `xoxb-…`, `xoxp-…`, `AKIA…`, `glpat-…`, `ntn_…`, `hf_…`, `AIza…`, a JWT, `Bearer <token>`; any UUID or value of 32 or more characters mixing letters and digits |
+| Launch arguments | Docker's `-e NAME=VALUE` / `--env NAME=VALUE`, whatever the name | `docker run -e NOTION_API=…` (`-e NAME` alone passes the variable through and does not count) |
+| Launch arguments | a connection string with `Password=` / `Pwd=`, or a DSN starting `user:pass@` | `Server=db;Password=…`, `user:pass@tcp(db:3306)/app` |
+
+Names are read word by word (split at `-`, `_`, `.` and camelCase), so `--keyboard-layout`, `--tokenizer`, `--author` and `--hotkey` do not count; neither do plurals (`--max-tokens 100`), a name that negates (`--no-auth true`), a name that describes where or how (`--key-file /path`, `--auth-type basic`), or a switch for a value (`--auth none`). Any query string counts, `?v=2` included: nothing tells a version from a token. The path rule is a heuristic, which is why the warning says the address *may* contain a credential: an opaque id in the path that is no secret counts, and a short or worded secret segment (`https://host/mcp/hunter2/sse`) does not. The fixed addresses of the well-known remote servers (GitHub, Linear, Notion, Sentry, Atlassian, Context7, Cloudflare, Asana, Hugging Face) are not flagged. The check also does not recognise a short secret passed as a bare positional argument or after a flag whose name says nothing (`-k hunter2`, `--id abc123`); a long opaque one is recognised wherever it stands. Keep credentials in headers and environment variables, where they are encrypted at rest and never shown to other members.
+
+Other members never see a shared server's URL, command or launch arguments, with fallback on or off.
+
+### Agents with a custom model endpoint are the owner's
+
+An agent normally selects a model an administrator configured under Admin → Models. Its inline model settings (`model_config_json`, set through the API) may instead name an endpoint of their own: a `base_url` with the `api_key` that goes with it. Every turn of a conversation with such an agent, the user's messages and files included, is sent to that address. Selecting a model configuration the agent's owner created with a `base_url` of its own (`model_config_id` or `fast_model_config_id`) counts the same. An agent uses only model configurations an administrator created or its owner created; one that names another user's configuration falls back to the default model.
+
+By default such an agent is used by its owner only:
+
+- it cannot be published or resubmitted for review, and a shared agent cannot be given a `base_url` (`agent_model_endpoint_not_shareable`, 400);
+- an agent that was shared before it had to follow this rule stays published, but everyone except its owner is refused with `agent_model_endpoint_private` (403), in chat, when another agent delegates to it and in a workflow Agent step, and it is not offered for delegation. Its owner can remove the `base_url` and select a configured model, which makes it usable by subscribers again.
+
+A platform administrator who accepts that members' conversations go to the endpoints authors choose sets `shared_custom_model_endpoints` to `true` with `PATCH /api/admin/settings`; publishing such agents is then allowed and subscribers use them as before. The setting is off unless it has been set.
 
 <Info>
-凭证回退仅在成员订阅资源后适用。回退机制决定了凭证在运行时如何解析，而不是资源是否可访问。
+Credential fallback only applies after a member subscribes to the resource. The fallback mechanism determines how credentials are resolved at runtime, not whether the resource is accessible.
 </Info>
 
 ## 资源可见性
@@ -141,15 +176,15 @@ A resource is available in your workspace if:
 将资源发布到组织不会自动授予访问权限。成员必须通过市场的组织范围订阅才能将资源添加到其工作区。
 </Warning>
 
-## 基础设施资源（组织范围，无订阅）
+## Infrastructure Resources (org-wide, no subscription)
 
-第二类组织范围的资源**不遵循**上述个人→发布→订阅的生命周期。这些资源**由组织所有者或管理员配置一次**，然后对组织中的每个智能体透明可用：
+A second class of org-scoped resource does **not** follow the personal → publish → subscribe lifecycle above. These are **configured once by an Org Owner or Admin** and then transparently available to every agent in the org:
 
-| 资源 | 用途 | 配置者 | 使用者 |
+| Resource | Purpose | Configured by | Consumed by |
 |---|---|---|---|
-| **通道** | 出站桥接到即时通讯平台（目前支持Feishu；计划支持Slack / WeCom / Teams） | 组织所有者/管理员 | 每个智能体的[钩子系统](/architecture/hook-system)和主动通知工具 |
-| **OAuth提供商** | 社交登录凭证（GitHub、Google、Feishu、Discord） | 系统管理员（环境变量） | 登录页面 |
-| **API密钥** | 无头客户端的程序化访问令牌 | 每个用户，组织范围 | 外部集成 |
+| **Channels** | Outbound bridge to an IM platform (Feishu today; Slack / WeCom / Teams planned) | Org Owner / Admin | Every agent's [Hook System](/architecture/hook-system) and proactive-notification tools |
+| **OAuth Providers** | Social-login credentials (GitHub, Google, Feishu, Discord) | System admin (env vars) | Sign-in page |
+| **API Keys** | Programmatic access tokens for headless clients | Each user, for their own account | External integrations |
 
 ```mermaid
 flowchart LR
@@ -161,25 +196,27 @@ flowchart LR
         A3["Agent C"]
     end
     Admin -->|"configure once"| Ch
-    A1 -. "uses via feishu_gate hook" .-> Ch
+    A1 -. "uses via approval_gate hook" .-> Ch
     A2 -. "uses for notifications" .-> Ch
     A3 -. "uses for approval cards" .-> Ch
 ```
 
-关键区别：**可发布资源**（智能体、连接器、技能等）是需要显式成员订阅的按用户工件；**基础设施资源**（通道、OAuth、API密钥）是所有智能体隐式共享的平台级接线。通道特别是整个组织的即时通讯热线——一个维护良好的Feishu通道支持每个智能体的审批闸门、每个定时报告、每个升级事件。
+The key distinction: **publishable resources** (Agents, Connectors, Skills, …) are per-user artifacts that need explicit member subscription; **infrastructure resources** (Channels, OAuth, API keys) are platform-level wiring that all agents share implicitly. Channels specifically are the IM hotline for the whole org — one well-maintained Feishu channel backs every agent's approval gate, every scheduled report, every escalation event.
 
-参见[通道概览](/configuration/channels/overview)了解通道生命周期和支持的平台。
+See [Channels overview](/configuration/channels/overview) for the channel lifecycle and supported platforms.
 
 ## 实际应用场景
 
-### 团队共享数据库连接器
+### Team Sharing an API Connector
 
-1. Alice 创建了一个连接到团队 PostgreSQL 数据库的连接器
-2. Alice 将其发布到她的团队组织（连接器禁用了审查）
-3. 该连接器在市场的组织范围内可被发现
-4. Bob 浏览组织的共享资源，找到该连接器，并订阅
-5. 该连接器出现在 Bob 的工作区中，使用 Alice 的数据库凭证作为备用
-6. Carol 也订阅了。Dave（外部承包商）订阅并配置了自己的只读凭证
+1. Alice creates a Connector to the team's internal order API and turns on **Allow fallback**
+2. Alice publishes it to her team's org (review is disabled for connectors)
+3. The Connector becomes discoverable in the org scope of the Market
+4. Bob browses the org's shared resources, finds the Connector, and subscribes
+5. The Connector appears in Bob's workspace, using Alice's API credentials as fallback
+6. Carol subscribes too. Dave (an external contractor) subscribes and configures his own read-only credentials instead
+
+Database connectors cannot be published to an organization or the Market; each user who needs one creates their own.
 
 ### 严格审查的组织
 
@@ -189,12 +226,12 @@ flowchart LR
 4. 智能体变为可发现的 — 其他成员现在可以找到并订阅它
 5. 如果发布者稍后编辑已批准的智能体，它会自动恢复到 `pending_review` 状态以重新审查
 
-### 大型组织中的选择性订阅
+### Selective Subscription in a Large Organization
 
-1. 一个组织发布 50+ 个连接器，涵盖内部 API、数据库和第三方服务
-2. 数据团队仅订阅数据库连接器和分析 API
-3. 营销团队仅订阅 CRM 和电子邮件平台连接器
-4. 每个团队成员的工作区保持专注且整洁
+1. An organization publishes 50+ Connectors covering internal APIs and third-party services
+2. The data team subscribes only to the data-warehouse and analytics API Connectors
+3. The marketing team subscribes only to the CRM and email platform Connectors
+4. Each team member's workspace stays focused and uncluttered
 
 ## 另请参阅
 

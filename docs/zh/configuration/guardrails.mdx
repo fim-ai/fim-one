@@ -6,30 +6,34 @@ description: "在不安全的输入或输出到达智能体或用户之前，检
 
 内容护栏是FIM One中第三层、**以内容为中心**的安全层。它们有意与现有的工具权限闸门（`core/hooks/*`）和`core/security/*`中的凭证/SSRF保护正交——护栏检查的是*正在说什么*，而不是*正在执行什么*。
 
-## 三层架构
+## The three layers
 
-| 层级        | 所有者                          | 控制内容                              |
+| Layer        | Owner                          | What it gates                              |
 | ------------ | ------------------------------ | ------------------------------------------ |
-| Permission   | `core/hooks/*`                 | 特定工具调用是否可以执行   |
-| Security     | `core/security/*`              | 凭证、SSRF、MCP身份验证      |
-| **Guardrail** | `core/agent/guardrail.py`     | 用户输入和模型输出的内容     |
+| Permission   | `core/hooks/*`                 | Whether a specific tool call may execute   |
+| Security     | `core/security/*`              | Credentials, SSRF, MCP authentication      |
+| **Guardrail** | `core/agent/guardrail.py`     | Content of user input and model output     |
 
-一个回合独立地通过所有三层：
+A turn passes through all three independently:
 
-* 输入护栏在**任何LLM调用之前**运行，因此触发器会中止回合而不消耗token。
-* 权限闸门在**模型决定调用哪个工具之后**运行。
-* 安全检查在**每个连接器/提供商集成内部**运行。
-* 输出护栏在**智能体生成最终答案之后**且在流式传输给用户之前运行。
+* Input guardrails run **before any LLM call**, so a tripwire aborts the
+  turn without spending tokens.
+* The permission gate runs **after** the model decides which tool to invoke.
+* Security checks run **inside** each connector / provider integration.
+* Output guardrails run **after** the agent has produced its final answer.
+  When the answer is streamed token by token, the check runs once the
+  stream completes, so text may already be on screen when the tripwire
+  fires.
 
-## 默认启用的护栏
+## Built-in guardrails
 
-| 名称           | 侧面    | 行为 |
+| Name           | Side    | Behaviour |
 | -------------- | ------- | --------- |
-| `jailbreak`    | input   | 基于正则表达式的已知提示词覆盖短语检测器（"ignore previous instructions"、DAN、developer-mode等）。默认启用。 |
-| `max_length`   | output  | 当智能体答案超过`FIM_GUARDRAIL_MAX_OUTPUT_CHARS`（默认50 000字符）时触发。默认禁用。 |
+| `jailbreak`    | input   | Regex-based detector for known prompt-override phrases ("ignore previous instructions", DAN, developer-mode, etc.). Enabled by default. |
+| `max_length`   | output  | Tripwires when the agent answer exceeds `FIM_GUARDRAIL_MAX_OUTPUT_CHARS` (default 50 000 chars). Disabled by default. |
 
-当护栏触发时，聊天流会发出结构化的
-`guardrail_tripwired`服务器发送事件：
+When a tripwire fires, the chat stream emits a structured
+`guardrail_tripwired` Server-Sent Event:
 
 ```json
 {
@@ -44,7 +48,7 @@ description: "在不安全的输入或输出到达智能体或用户之前，检
 }
 ```
 
-前端将其呈现为"已阻止"通知，而不是通用错误。
+The frontend renders this as a "blocked" notice instead of a generic error.
 
 ## 配置
 

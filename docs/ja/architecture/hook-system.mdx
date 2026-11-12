@@ -22,13 +22,13 @@ description: "LLMループの下に位置し、エージェント指示によっ
 
 フックは、FIM Oneが「智能体は...することになっている」を「智能体は...をバイパスできない」に変える方法です。
 
-## フックが接続される場所
+## Where hooks plug in
 
-現在、3つのフックポイントが定義されています。各ポイントは、智能体が1つのループ反復中に越える境界をマークします：
+Three hook points are defined today. Each marks a boundary the agent crosses during one loop iteration:
 
 ```mermaid
 flowchart TD
-    S(["Session start"]) --> SS["SessionStart hooks<br/>inject dynamic context"]
+    S(["Session start"]) --> SS["SessionStart hooks<br/>run for side effects"]
     SS --> LLM["LLM inference<br/>(reasoning / tool pick)"]
     LLM --> DECIDE{"Tool call?"}
     DECIDE -->|no| ANSWER(["Final answer"])
@@ -42,13 +42,13 @@ flowchart TD
     OBS --> LLM
 ```
 
-| フックポイント | 発火するタイミング | ブロック可能か | データ変更可能か |
+| Hook point | Fires when | Can it block? | Can it mutate data? |
 |---|---|---|---|
-| `SessionStart` | セッションの最初のLLM呼び出しの前 | いいえ | はい — 初期提示词にコンテキストを注入します |
-| `PreToolUse` | LLMがツールを選択した後、ツール実行前 | **はい** (`allow=False`経由) | はい — 実行前に`tool_args`を書き直すことができます |
-| `PostToolUse` | ツールが戻った後、観測がLLMに渡される前 | いいえ | はい — 観測を書き直すことができます |
+| `SessionStart` | Before the first LLM call of a session | No | No — runs for side effects only |
+| `PreToolUse` | After the LLM picks a tool, before the tool runs | **Yes** (via `allow=False`) | Yes — can rewrite `tool_args` before execution |
+| `PostToolUse` | After the tool returns, before the observation goes to the LLM | No | Yes — can rewrite the observation |
 
-同じポイントの複数のフックは優先度順に実行されます。前の`PreToolUse`フックで書き直された引数は後続のフックに引き継がれるため、ミドルウェアが構成されます。
+Multiple hooks at the same point run in priority order. An earlier `PreToolUse` hook's rewritten args are carried forward to later hooks, so middleware composes.
 
 ## フックと命令のどちらを使うか
 
@@ -65,9 +65,9 @@ flowchart TD
 
 経験則：**間違った動作がインシデントの場合はフックを使用します。間違った動作が軽微な不便の場合は、命令で問題ありません。**
 
-## フックコントラクト
+## The hook contract
 
-フックは `PreToolUseHook`、`PostToolUseHook`、または `SessionStartHook` のサブクラスで、1つの必須メソッドを持ちます：
+A hook is a subclass of `PreToolUseHook` or `PostToolUseHook` (a session-start hook is registered as a plain `Hook` object) with one required method:
 
 ```python
 class ReadOnlyGuard(PreToolUseHook):
@@ -87,27 +87,27 @@ class ReadOnlyGuard(PreToolUseHook):
         return HookResult()               # default: allow=True, no mutation
 ```
 
-渡される `HookContext` は `tool_name`、`tool_args`、`agent_id`、`user_id`、およびエンジンがリクエストごとの事実（org id、conversation id、コネクタアクションの `requires_confirmation` フラグなど）を入力する柔軟な `metadata` 辞書を含みます。
+The `HookContext` passed in carries `tool_name`, `tool_args`, `agent_id`, `user_id`, and a flexible `metadata` dict the engine populates with per-request facts (org id, tool call id, the connector action's `requires_confirmation` flag).
 
-返される `HookResult` は結果を制御します：
+The `HookResult` returned controls the outcome:
 
-- `allow: bool = True` — ツール呼び出しが進行するかどうか（`PostToolUse` / `SessionStart` では無視されます）
-- `error: str | None` — 人間が読める理由で、ブロックされた場合は観測値として LLM に表示されます
-- `modified_args: dict | None` — 設定されている場合、実行前にツール引数を置き換えます
-- `modified_result: Any | None` — 設定されている場合（PostToolUse）、LLM に返される前に観測値を置き換えます
-- `side_effects: list[str]` — フックが実行した内容の監査証跡で、エージェントのトレースにマージされます
+- `allow: bool = True` — whether the tool call proceeds (ignored for `PostToolUse` / `SessionStart`)
+- `error: str | None` — human-readable reason, surfaced to the LLM as the observation when blocked
+- `modified_args: dict | None` — if set, replaces the tool args before execution
+- `modified_result: str | None` — if set (PostToolUse), replaces the observation before it returns to the LLM
+- `side_effects: list[str]` — notes on what the hook did, collected by the registry (not surfaced in the agent's trace today)
 
-## ケーススタディ: `FeishuGateHook`
+## Case study: `ApprovalGateHook`
 
-このシステムの上に構築された最初のフックは `FeishuGateHook` です。これは `PreToolUse` フックで、`requires_confirmation=True` とフラグ付けされたツールを、組織の Feishu グループに投稿されるヒューマン・イン・ザ・ループ承認カードに変換します。
+The first hook shipped on top of this system is `ApprovalGateHook` (`fim_one.core.assembly.confirmation`; registry key `approval_gate`, formerly `feishu_gate` / `FeishuGateHook`) — a `PreToolUse` hook that turns any tool call needing confirmation (the action's `requires_confirmation` flag, or the agent's confirm-all setting) into a human approval. The hook builds a `ConfirmationSpec` and hands it to `ConfirmationService`, which records the request, delivers it as a card in the portal chat or as a Feishu card in the approval channel bound to the agent, according to the agent's confirmation mode (Auto / Inline only / Channel only), and waits for the decision; Auto uses the in-portal card when no channel is bound. In a chat with no agent the tool's own flag alone decides, and the person chatting approves inline. Who may decide is written on the request when it is created and read back by the portal and the channel callback alike.
 
-このフックは完全なライフサイクルを実行します:
+This hook exercises the full lifecycle:
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant ReAct as ReAct loop
-    participant Hook as FeishuGateHook
+    participant Hook as ApprovalGateHook
     participant DB as ConfirmationRequest
     participant Feishu as Feishu group
     participant Op as Operator
@@ -126,14 +126,14 @@ sequenceDiagram
     ReAct->>ReAct: Execute oa__purchase_pay
 ```
 
-このデザインがもたらすもの:
+What this design is buying:
 
-- **ツール呼び出しは本当に一時停止します。** エージェントの SSE ストリームは「`oa__purchase_pay` を呼び出します」と観察の間で一時停止します。ユーザーはエージェントが待機しているのを見ます。これは内部で起きていることと一致します。
-- **承認はプロセス再起動後も保持されます。** 保留中の行はデータベースにあり、メモリにはありません。カードが未処理の状態でバックエンドが再起動した場合、次のポーリングは中断したところから再開します。
-- **決定は監査されます。** `ConfirmationRequest` は `payload`、`responded_at`、`responded_by_open_id`、および最終ステータスを保持します。誰が何をいつ承認したかの監査可能な記録です。
-- **決定ループに LLM はありません。** モデルはツール呼び出しを生成します。人間は判定を生成します。フックは決定論的なブリッジです。
+- **The tool call is genuinely suspended.** The agent's SSE stream pauses between "I will call `oa__purchase_pay`" and the observation. The user sees the agent waiting, which matches what is happening under the hood.
+- **Approval survives a process restart.** The pending row is in the database, not in memory. If the backend restarts while a card is outstanding, the next poll picks up where it left off.
+- **The decision is audited.** `ConfirmationRequest` keeps `payload`, `responded_at`, `responded_by_open_id`, and the final status — an auditable record of who approved what and when.
+- **No LLM in the decision loop.** The model produces the tool call. Humans produce the verdict. The hook is the deterministic bridge.
 
-`FeishuGateHook` は設定済みの [Feishu Channel](/configuration/channels/feishu) に依存します。フックはチャネルの `send_interactive_card()` メソッドを通じてカードを送信し、チャネルが解析したコールバックイベントをリッスンします。この分離は意図的です。フックは「承認ステートマシン」を所有し、チャネルは「IM プラットフォーム機構」を所有します。同じフックは、ロジックを変更することなく、明日 Slack または WeCom をターゲットにすることができます。チャネル実装のみを変更します。
+The channel path depends on a [Feishu Channel](/configuration/channels/feishu) bound as the agent's approval channel. The service asks only whether the channel implements `ApprovalCarrier` (`send_approval`, `parse_decision`, `approval_target`), never which platform it is; the Feishu channel is the first implementation. The separation is deliberate: the service owns the approval state machine, the channel owns the IM platform mechanics. A Slack or WeCom channel that implements the carrier protocol would carry approvals without a change to the gate. A callback can decide only requests its own channel delivered.
 
 ## 候補となるフック（予定なし）
 
@@ -154,26 +154,26 @@ The two abstractions solve orthogonal problems:
 
 | Concept | What it models | Lifetime | Example |
 |---|---|---|---|
-| **Hook** | 智能体の実行内でプラットフォームコードが実行されるポイント | ツール呼び出しごと | `FeishuGateHook`, `AuditLogHook` |
-| **Channel** | 外部メッセージングプラットフォームへのプラグイン可能なアダプター | 組織ごとの長期間 | `FeishuChannel`, planned `SlackChannel` |
+| **Hook** | A point in the agent's execution where platform code runs | Per tool call | `ApprovalGateHook`, `AuditLogHook` |
+| **Channel** | A pluggable adapter to an external messaging platform | Long-lived per org | `FeishuChannel`, planned `SlackChannel` |
 
-Hooks は Channels を消費します — 外部世界と通信する必要があるフック（カードを送信、アラートを投稿、グループにエスカレート）は、組織の Channel を呼び出します。フックが使用していない Channel でも有用です（例：智能体がツール経由で主動的に通知を送信できます）が、承認ゲートパターンは両方が揃っていることが必要です。
+Hooks consume Channels — a hook that needs to talk to the outside world (send a card, post an alert, escalate to a group) calls into the org's Channel. A channel without any hook using it is still useful (e.g. agents can proactively send notifications via a tool), but the approval-gate pattern specifically requires both halves to be in place.
 
-別の言い方をすると：**Channels は「人間と通信する場所」のプラミング、Hooks は「人間と通信する必要がある時」のポリシーです**。本番環境の人間参加型ワークフローには両方が必要です。
+Put differently: **Channels are the "where do I talk to humans" plumbing, Hooks are the "when do I have to talk to humans" policy**. Production human-in-the-loop workflows need both.
 
-## 現状（v0.8.4）
+## Current state (v0.9.4)
 
-リリース済みの内容と今後の予定：
+Snapshot of what shipped and what is still ahead:
 
-- ✅ `HookRegistry`、`HookContext`、`HookResult` のプリミティブを ReAct と DAG の両方に組み込み済み
-- ✅ `PreToolUseHook` / `PostToolUseHook` / `SessionStartHook` の抽象基底クラス
-- ✅ `FeishuGateHook` — `ConfirmationRequest` テーブル、ポーリングループ、タイムアウト／期限切れ処理、コールバック駆動の状態更新を含めて実装完了
-- ✅ `card.action.trigger` をデコードし、保留中の行を更新する Feishu チャネルコールバックエンドポイント
-- ✅ エージェントレベルのフック宣言：`agent.model_config_json.hooks.class_hooks` により、すべての ReAct/DAG セッションでインスタンス化された `HookRegistry` を解決
-- ✅ **すべての実行経路でフックが実行されます**：メインチャット経路（Portal、API、DAG）、委譲されたサブエージェント（`CallAgentTool`）、Workflow の `AGENT` ノード。Eval Center では意図的にフックを**バイパス**します（自動評価が人間の承認待ちでブロックされないようにするため）。
+- ✅ `HookRegistry`, `HookContext`, `HookResult` primitives wired into both ReAct and DAG
+- ✅ `PreToolUseHook` / `PostToolUseHook` abstract bases
+- ✅ `ApprovalGateHook` and `ConfirmationService` — complete, including the `ConfirmationRequest` table, polling loop, timeout/expire, and callback-driven state flips; workflow approval steps and confirmations of connector actions in a workflow use the same service, and instead of polling they suspend the run and are told of the decision through `ConfirmationService.on_decided`
+- ✅ Feishu channel callback endpoint that decodes `card.action.trigger` and updates the pending row
+- ✅ Agent-level hook declarations: `agent.model_config_json.hooks.class_hooks` resolves to an instantiated `HookRegistry` on every ReAct/DAG session
+- ✅ **Hooks fire on every execution surface**: the main chat path (Portal, API, DAG), delegated sub-agents (`CallAgentTool`), and Workflow `AGENT` nodes. Eval Center runs intentionally **bypass** hooks (automated evaluation must not block on human approval).
 
-  委譲先のエージェントは呼び出し元のレジストリを引き継がず、自身の `model_config_json` から**独自の**レジストリを構築します。確認ゲートはすべてのエージェントに自動でアタッチされるため、再構築では継承時より多くのフックが含まれます。委譲先には確認ゲートに加えて、委譲先自身が宣言したフックが適用され、確認ゲートは呼び出し元ではなく委譲先の `require_confirmation_for_all` を参照します。どちらの経路も**フェイルクローズ**で動作します。フックを構築できないエージェントは実行されません。
-- ❌ `AuditLogHook`、`ReadOnlyGuard`、`ResultTruncateHook`、`ConnectorRateLimitHook`（計画なし）
-- ❌ ユーザー定義の YAML フック宣言（計画なし）
+  A delegated agent does not inherit its caller's registry — it builds **its own** from its own `model_config_json`. Because the confirmation gate is auto-attached to every agent, rebuilding is a superset of inheriting: the delegate gets the gate *plus* whatever it declares for itself, and the gate resolves the delegate's `require_confirmation_for_all` rather than its caller's. Both surfaces fail **closed**: an agent whose hooks cannot be built is not run.
+- ❌ `AuditLogHook`, `ReadOnlyGuard`, `ResultTruncateHook`, `ConnectorRateLimitHook` (not planned)
+- ❌ User-defined YAML hook declarations (not planned)
 
-フックシステムは、本番環境の堅牢化を支える**重要な基盤**です。最初の利用者である `FeishuGateHook` 自体も独立した本番機能であるため、フックの全カタログが揃うのを待たず、2026-04-24 のロードショーに向けて骨格を早期にリリースしました。
+The Hook System is a **load-bearing foundation** for production hardening. Its first user (`ApprovalGateHook`) is also a production feature in its own right, which is why the skeleton shipped early for the 2026-04-24 roadshow rather than waiting for the full hook catalog.

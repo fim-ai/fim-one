@@ -1,32 +1,32 @@
 ---
-title: "Evaluierungszentrum"
+title: "Evaluation Center"
 icon: "flask"
-description: "Bewerten Sie Ihre Agenten quantitativ mit Testdatensätzen und automatisierter LLM-Bewertung."
+description: "Quantitatively benchmark your agents with test datasets and automated LLM grading."
 ---
 
-Das Evaluierungszentrum ermöglicht es Ihnen, die Qualität von Agenten **vor** der Bereitstellung in der Produktion zu überprüfen. Erstellen Sie einen Datensatz mit Testfällen, führen Sie diese gegen jeden veröffentlichten Agenten aus, und erhalten Sie einen quantitativen Bericht mit Bestanden/Nicht-Bestanden-Verdikten pro Fall, Latenz und Token-Nutzung.
+The Evaluation Center lets you verify agent quality **before** deploying to production. Create a dataset of test cases, run them against any agent you own, and get a quantitative report with per-case pass/fail verdicts, latency, and token usage.
 
 <Info>
-Entwickelt für die Überprüfung durch Unternehmenseinkauf — jedes Ergebnis ist nachverfolgbar, reproduzierbar und dauerhaft gespeichert.
+Designed for enterprise procurement review — every result is auditable, reproducible, and stored persistently.
 </Info>
 
-## Funktionsweise
+## How It Works
 
-Jede Evaluierungslauf führt eine **dreistufige Pipeline** für jeden Testfall aus:
+Each evaluation run executes a **three-stage pipeline** for every test case:
 
 <Steps>
-  <Step title="Agent-Ausführung">
-    Ein echter ReActAgent führt die Testfall-Eingabeaufforderung aus. Gleiche Engine wie Chat: gleiches Modell, gleiche Tools, gleiche Anweisungen. Kein Mocking, keine Abkürzungen.
+  <Step title="Agent Execution">
+    A real ReActAgent runs the test case prompt. Same engine as chat, with the agent's instructions and the built-in tools. No mocking, no shortcuts.
 
-    Erzeugt: **Antwort**, **Latenz**, **Token-Nutzung**.
+    Produces: **answer**, **latency**, **token usage**.
   </Step>
-  <Step title="LLM-Bewertung">
-    Ein separates "Bewerter"-LLM (schnelles Modell) bewertet die Antwort gegen das erwartete Verhalten und Assertions.
+  <Step title="LLM Grading">
+    A separate "grader" LLM (fast model) judges the answer against the expected behavior and assertions.
 
-    Eingabe: Eingabeaufforderung + erwartetes Verhalten + Assertions + Antwort. Ausgabe: `{ verdict: "pass"|"fail", reasoning: "..." }`.
+    Input: prompt + expected behavior + assertions + answer. Output: `{ verdict: "pass"|"fail", reasoning: "..." }`.
   </Step>
-  <Step title="Persistierung & Aggregation">
-    Jedes Fallergebnis wird in der Datenbank gespeichert. Nach Abschluss aller Fälle: **Erfolgsquote**, **durchschnittliche Latenz**, **Gesamttokens** werden berechnet und an den Lauf angehängt.
+  <Step title="Persist & Aggregate">
+    Each case result is saved to the database. After all cases finish: **pass rate**, **avg latency**, **total tokens** are computed and attached to the run.
   </Step>
 </Steps>
 
@@ -93,37 +93,37 @@ Während ein Durchlauf läuft (`pending` oder `running` Status), wird die Seite 
 
 ## Was wird getestet
 
-### Enthalten
-- **Integrierte Werkzeuge**: calculator, web_search, web_fetch, python_exec, file_ops, etc.
-- **Agent-Anweisungen**: Das Feld `extra_instructions` des Agenten wird weitergeleitet
-- **Konfiguriertes Modell des Agenten**: Wenn der Agent eine benutzerdefinierte Modellkonfiguration hat, wird dieses Modell verwendet
+### Included
+- **Builtin tools**: calculator, web_search, web_fetch, python_exec, file_ops, etc.
+- **Agent instructions**: The agent's `instructions` are passed through
+- **Agent's configured model**: If the agent has an inline model config, that model is used; otherwise the system default model
 
-### Nicht enthalten (absichtlich)
-- **Konnektoren**: Externe HTTP-Konnektoren erfordern Live-Services von Drittanbietern — werden in der Evaluierung übersprungen, um instabile Tests zu vermeiden
-- **MCP-Server**: Aus demselben Grund — externe Prozessabhängigkeiten
-- **Gesprächsverlauf**: Jeder Fall läuft isoliert ohne vorherigen Kontext
-- **Wissensdatenbanken**: KB-Abruefwerkzeuge werden im Evaluierungsmodus nicht geladen
+### Not Included (by design)
+- **Connectors**: External HTTP connectors require live third-party services — skipped in eval to avoid flaky tests
+- **MCP servers**: Same reason — external process dependencies
+- **Conversation history**: Each case runs in isolation with no prior context
+- **Knowledge bases**: The agent's knowledge bases are not attached in eval mode
 
 <Info>
-Dies bedeutet, dass Evaluierungsergebnisse die **Reasoning- und Werkzeugnutzungsfähigkeit** des Agenten widerspiegeln, nicht seine Integration mit externen Services. Testen Sie Konnektoren separat über die Connector-Test-Funktion.
+This means eval results reflect the agent's **reasoning and tool-use ability**, not its integration with external services. Test connectors separately via the Connector Test feature.
 </Info>
 
-## Der Grader
+## The Grader
 
-Der Grader ist ein LLM (das „schnelle" Modell des Systems), das vier Informationen erhält und ein strukturiertes JSON-Urteil zurückgibt:
+The grader is an LLM (the system's "fast" model) that receives four pieces of information and returns a structured JSON verdict:
 
-**Systemaufforderung:**
+**System prompt:**
 > You are an impartial AI evaluator. Your job is to judge whether an AI agent's answer meets the expected behavior for a given prompt.
 >
 > Be strict but fair. A "pass" requires the answer to genuinely address the prompt according to the expected behavior. A "fail" means the answer is wrong, incomplete, off-topic, or misses key requirements.
 
-**Benutzernachricht enthält:**
-1. Die ursprüngliche Aufforderung
-2. Das erwartete Verhalten
-3. Die Liste der Assertions (oder „None specified")
-4. Die tatsächliche Antwort des Agenten
+**User message includes:**
+1. The original prompt
+2. The expected behavior
+3. The list of assertions (or "None specified")
+4. The agent's actual answer
 
-**Ausgabeschema:**
+**Output schema:**
 ```json
 {
   "verdict": "pass" | "fail",
@@ -131,7 +131,7 @@ Der Grader ist ein LLM (das „schnelle" Modell des Systems), das vier Informati
 }
 ```
 
-Der Grader verwendet `structured_llm_call` mit Function Calling, um das Schema durchzusetzen. Wenn der Grader selbst fehlschlägt (Netzwerkfehler, fehlerhafte Antwort), wird der Fall als `error` gekennzeichnet.
+The grader uses `structured_llm_call` with function calling to enforce the schema. If the grader produces no verdict (network error, malformed response), the case is recorded as `fail` with the reasoning "Grader failed to produce a verdict." `error` means the agent run itself raised.
 
 ## Best Practices
 

@@ -94,15 +94,15 @@ flowchart TD
 
 ---
 
-## 工作原理
+## How it works
 
-在底层，两个构建器都与常规智能体共享相同的基础设施：
+Under the hood, the builders share the same infrastructure as regular agents:
 
-| 构建器模式 | 机制 |
+| Builder mode | Mechanism |
 |-------------|-----------|
-| **快速建议** | 单次 LLM 推理调用生成完整配置作为结构化 JSON |
-| **高级构建器** | ReAct 智能体循环：推理 → 调用构建器工具 → 观察结果 → 决定下一步 |
+| **Quick suggestions** | A single LLM inference call generates the full configuration as structured JSON |
+| **Advanced builder** | A ReAct agent loop: Reason → call a builder tool → observe the result → decide next step |
 
-高级构建器是一个完整的 ReAct 智能体，恰好具有受限的工具集 — 仅限 9 个连接器或 6 个智能体构建器工具，没有网络或计算工具。它读取目标资源的当前状态，规划需要更改的内容，调用适当的工具，并在声明完成前验证结果。
+The advanced builder is a full ReAct agent that happens to have a restricted toolset — the 9 Connector or 6 Agent builder tools (the Connector builder also gets web search and fetch, to read API docs) and no code execution. A third builder with its own tool set configures database connectors: connection test, table listing, schema annotation and sample queries. It reads the current state of the target resource, plans what needs to change, calls the appropriate tools, and verifies the result before declaring it done.
 
-这意味着高级构建器可以处理歧义：如果 OpenAPI 导入创建了 30 个操作但只有 5 个相关，你可以告诉它"仅保留订单相关的端点"，它将删除其余的。
+This means the advanced builder can handle ambiguity: if the OpenAPI import creates 30 actions but only 5 are relevant, you can tell it "keep only the order-related endpoints" and it will delete the rest.

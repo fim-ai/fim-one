@@ -1,32 +1,32 @@
 ---
-title: "评估中心"
+title: "Evaluation Center"
 icon: "flask"
-description: "使用测试数据集和自动化 LLM 评分对你的智能体进行定量基准测试。"
+description: "Quantitatively benchmark your agents with test datasets and automated LLM grading."
 ---
 
-评估中心让你能够在部署到生产环境**之前**验证智能体质量。创建测试用例数据集，针对任何已发布的智能体运行测试，并获得包含每个用例通过/失败判定、延迟和令牌使用情况的定量报告。
+The Evaluation Center lets you verify agent quality **before** deploying to production. Create a dataset of test cases, run them against any agent you own, and get a quantitative report with per-case pass/fail verdicts, latency, and token usage.
 
 <Info>
-为企业采购审查而设计 — 每个结果都是可审计的、可重现的，并持久存储。
+Designed for enterprise procurement review — every result is auditable, reproducible, and stored persistently.
 </Info>
 
-## 工作原理
+## How It Works
 
-每次评估运行都会为每个测试用例执行一个**三阶段管道**：
+Each evaluation run executes a **three-stage pipeline** for every test case:
 
 <Steps>
-  <Step title="智能体执行">
-    真实的 ReActAgent 运行测试用例提示。使用与聊天相同的引擎：相同的模型、相同的工具、相同的指令。无模拟、无捷径。
+  <Step title="Agent Execution">
+    A real ReActAgent runs the test case prompt. Same engine as chat, with the agent's instructions and the built-in tools. No mocking, no shortcuts.
 
-    产出：**答案**、**延迟**、**令牌使用量**。
+    Produces: **answer**, **latency**, **token usage**.
   </Step>
-  <Step title="LLM 评分">
-    一个单独的"评分器" LLM（快速模型）根据预期行为和断言来判断答案。
+  <Step title="LLM Grading">
+    A separate "grader" LLM (fast model) judges the answer against the expected behavior and assertions.
 
-    输入：提示 + 预期行为 + 断言 + 答案。输出：`{ verdict: "pass"|"fail", reasoning: "..." }`。
+    Input: prompt + expected behavior + assertions + answer. Output: `{ verdict: "pass"|"fail", reasoning: "..." }`.
   </Step>
-  <Step title="持久化与聚合">
-    每个用例的结果被保存到数据库。所有用例完成后：计算**通过率**、**平均延迟**、**总令牌数**并附加到运行中。
+  <Step title="Persist & Aggregate">
+    Each case result is saved to the database. After all cases finish: **pass rate**, **avg latency**, **total tokens** are computed and attached to the run.
   </Step>
 </Steps>
 
@@ -93,37 +93,37 @@ description: "使用测试数据集和自动化 LLM 评分对你的智能体进�
 
 ## 测试内容
 
-### 包含内容
-- **内置工具**：计算器、网络搜索、网页获取、Python 执行、文件操作等
-- **智能体指令**：智能体的 `extra_instructions` 字段会被传递
-- **智能体配置的模型**：如果智能体有自定义模型配置，将使用该模型
+### Included
+- **Builtin tools**: calculator, web_search, web_fetch, python_exec, file_ops, etc.
+- **Agent instructions**: The agent's `instructions` are passed through
+- **Agent's configured model**: If the agent has an inline model config, that model is used; otherwise the system default model
 
-### 不包括的内容（设计考虑）
-- **连接器**：外部 HTTP 连接器需要实时第三方服务 — 为避免测试不稳定而在评估中跳过
-- **MCP 服务器**：原因相同 — 外部进程依赖
-- **对话历史**：每个案例独立运行，没有先前上下文
-- **知识库**：知识库检索工具在评估模式下不加载
+### Not Included (by design)
+- **Connectors**: External HTTP connectors require live third-party services — skipped in eval to avoid flaky tests
+- **MCP servers**: Same reason — external process dependencies
+- **Conversation history**: Each case runs in isolation with no prior context
+- **Knowledge bases**: The agent's knowledge bases are not attached in eval mode
 
 <Info>
-这意味着评估结果反映的是智能体的**推理和工具使用能力**，而不是它与外部服务的集成。通过连接器测试功能单独测试连接器。
+This means eval results reflect the agent's **reasoning and tool-use ability**, not its integration with external services. Test connectors separately via the Connector Test feature.
 </Info>
 
-## 评分器
+## The Grader
 
-评分器是一个 LLM（系统的"快速"模型），它接收四条信息并返回结构化的 JSON 判决：
+The grader is an LLM (the system's "fast" model) that receives four pieces of information and returns a structured JSON verdict:
 
-**系统提示：**
+**System prompt:**
 > You are an impartial AI evaluator. Your job is to judge whether an AI agent's answer meets the expected behavior for a given prompt.
 >
 > Be strict but fair. A "pass" requires the answer to genuinely address the prompt according to the expected behavior. A "fail" means the answer is wrong, incomplete, off-topic, or misses key requirements.
 
-**用户消息包括：**
-1. 原始提示
-2. 预期行为
-3. 断言列表（或"未指定"）
-4. 智能体的实际答案
+**User message includes:**
+1. The original prompt
+2. The expected behavior
+3. The list of assertions (or "None specified")
+4. The agent's actual answer
 
-**输出架构：**
+**Output schema:**
 ```json
 {
   "verdict": "pass" | "fail",
@@ -131,7 +131,7 @@ description: "使用测试数据集和自动化 LLM 评分对你的智能体进�
 }
 ```
 
-评分器使用 `structured_llm_call` 和函数调用来强制执行架构。如果评分器本身失败（网络错误、格式错误的响应），该案例被标记为 `error`。
+The grader uses `structured_llm_call` with function calling to enforce the schema. If the grader produces no verdict (network error, malformed response), the case is recorded as `fail` with the reasoning "Grader failed to produce a verdict." `error` means the agent run itself raised.
 
 ## 最佳实践
 

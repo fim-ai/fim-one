@@ -27,15 +27,15 @@ https://github.com/user-attachments/assets/8a0e1136-ffbc-4950-86bd-b2f8884214af
 
 。
 
-## Aperçu
+## Overview
 
-Les grandes entreprises gèrent un ensemble disparate de systèmes qui ne communiquent pas entre eux — ERP, CRM, OA, HR, finance, bases de données, plateformes de messagerie instantanée dans différentes régions. FIM One est la **plateforme d'agents tout-en-un** qui intègre chaque système que vous utilisez déjà dans un cœur d'agent unique — SaaS mondial d'un côté, l'ensemble complet de la pile China (Feishu, WeCom, DingTalk, DM, Kingbase, etc.) de l'autre. Un seul cerveau. Chaque système. SaaS mondial × Pile China.
+Global enterprises run a sprawl of systems that don't talk to each other — ERP, CRM, OA, HR, finance, databases, IM platforms across regions. FIM One is the **all-in-one agent platform** that wires every system you already run into one agent core — global SaaS on one side, the full China stack (Feishu, WeCom, DingTalk, DM, Kingbase, etc.) on the other. One brain. Every system. Global SaaS × China Stack.
 
-| Mode           | Description                                              | Accès                   |
+| Mode           | What it is                                              | Access                  |
 | -------------- | ------------------------------------------------------- | ----------------------- |
-| **Standalone** | Assistant IA polyvalent — recherche, code, base de connaissances | Portail                  |
-| **Copilot**    | IA intégrée dans l'interface utilisateur d'un système hôte | iframe / widget / embed |
-| **Hub**        | Orchestration IA centralisée sur tous les systèmes connectés   | Portail / API            |
+| **Standalone** | General-purpose AI assistant — search, code, KB         | Portal                  |
+| **Copilot**    | AI embedded in a host system's UI                       | API (embed planned)     |
+| **Hub**        | Central AI orchestration across all connected systems   | Portal / API            |
 
 ```mermaid
 graph LR
@@ -126,56 +126,56 @@ cd frontend && pnpm install && cd ..
 - **Connecteurs de bases de données** — PostgreSQL, MySQL et les bases de données d’entreprise courantes en Chine (DM, KingbaseES, HighGo), auxquelles la plupart des plateformes internationales ne peuvent pas accéder. Introspection du schéma et annotation optimisée par l’IA.
 - **Trois façons de créer** — Importer une spécification OpenAPI, utiliser un générateur par chat avec l’IA ou connecter directement des serveurs MCP.
 
-#### Planification et exécution
-- **Planification DAG dynamique** — L'LLM décompose les objectifs en graphes de dépendances à l'exécution. Aucun workflow codé en dur.
-- **Exécution concurrente** — Les étapes indépendantes s'exécutent en parallèle via asyncio ; replanification automatique jusqu'à 3 tours.
-- **Agent ReAct** — Boucle structurée de raisonnement et d'action avec récupération automatique des erreurs.
-- **Harnais d'agent** — Environnement d'exécution de qualité production : ContextGuard pour la gestion des budgets de tokens sur 5 couches, méta-outils à divulgation progressive pour maintenir la surface des outils traitable, et boucles d'auto-réflexion pour contrer la dérive des objectifs.
-- **Système de hooks** — Application déterministe qui s'exécute en dehors de la boucle LLM. Premier livré : `FeishuGateHook` place les appels d'outils sensibles derrière une carte d'approbation humaine affichée dans un groupe Feishu. Extensible à la journalisation d'audit, aux gardes en mode lecture seule et aux limites de débit (v0.9).
-- **Garde-fous de contenu** — Sécurité sur trois couches : hooks de permission d'outils (actions), vérifications de credentials / SSRF / authentification MCP (protocoles), et garde-fous de contenu (texte d'entrée/sortie). Le détecteur de phrases de jailbreak par défaut interrompt le tour avant l'invocation de l'LLM, économisant des tokens et affichant un avis de blocage clair dans le chat. Garde-fous de sortie optionnels via `FIM_GUARDRAILS_OUTPUT`.
-- **Routage automatique** — Classe les requêtes et les achemine vers le mode optimal (ReAct ou DAG). Configurable via `AUTO_ROUTING`.
-- **Réflexion étendue** — Chaîne de pensée pour OpenAI o-series, Gemini 2.5+, Claude.
-- **Observabilité du cache de prompts** — Les comptages de tokens `read/create` du cache de prompts Anthropic sont capturés par tour, affichés dans la charge utile `done` du chat et enregistrés pour que les opérateurs puissent vérifier les accès au cache et détecter les relais qui n'honorent pas la réduction.
+#### Planning & Execution
+- **Dynamic DAG planning** — LLM decomposes goals into dependency graphs at runtime. No hard-coded workflows.
+- **Concurrent execution** — Independent steps run in parallel via asyncio; auto re-plan up to 3 rounds in total (the first plan plus 2 re-plans).
+- **ReAct agent** — Structured reasoning-and-acting loop with automatic error recovery.
+- **Agent harness** — Production-grade execution environment: ContextGuard for 5-layer token-budget management, progressive-disclosure meta-tools to keep the tool surface tractable, and self-reflection loops to counter goal drift.
+- **Hook System** — Deterministic enforcement that runs outside the LLM loop. First shipped: `ApprovalGateHook` gates sensitive tool calls behind a human approval card in the chat or in a Feishu group. Extensible to audit logging, read-only-mode guards, and rate limits (v0.9).
+- **Content guardrails** — Three-layer safety: tool-permission hooks (actions), credential / SSRF / MCP-auth checks (protocols), and content guardrails (input/output text). Default jailbreak-phrase detector aborts the turn before the LLM is invoked, saving tokens and surfacing a clear blocked notice in chat. Output guardrails optional via `FIM_GUARDRAILS_OUTPUT`.
+- **Auto-routing** — Auto mode classifies each query and routes it to ReAct or DAG. Selectable per agent and per message; the default is ReAct.
+- **Extended thinking** — Chain-of-thought for OpenAI o-series, Gemini 2.5+, Claude.
+- **Prompt-cache observability** — Anthropic prompt-cache `read/create` token counts captured per turn, surfaced in the chat `done` payload and logged so operators can verify cache hits and detect relay stations that don't honor the discount.
 
-#### Flux de travail et outils
-- **Éditeur de flux visuel** — 12 types de nœuds, canevas glisser-déposer (React Flow v12), import/export en JSON.
-- **Gestion intelligente des fichiers** — Les fichiers téléchargés sont automatiquement intégrés au contexte (petits) ou lisibles à la demande via l'outil `read_uploaded_file`. Traitement intelligent des documents : les fichiers PDF, DOCX et PPTX bénéficient d'un traitement compatible avec la vision avec extraction d'images intégrées lorsque le modèle supporte la vision. Le mode PDF intelligent extrait le texte des pages riches en texte et affiche les pages numérisées sous forme d'images.
-- **Conversion universelle de documents** — L'outil intégré `convert_to_markdown` convertit PDF / Word / Excel / PowerPoint / HTML / images / audio / Outlook `.msg` / EPUB / transcriptions YouTube en Markdown propre via Microsoft MarkItDown. Les LLM compatibles avec la vision effectuent la reconnaissance optique de caractères sur les images intégrées et les pages numérisées — fonctionne avec Claude, Gemini, Bedrock et tout fournisseur compatible LiteLLM, sans code d'adaptateur par fournisseur.
-- **Outils enfichables** — Exécution Python, Node.js, shell avec bac à sable Docker optionnel (`CODE_EXEC_BACKEND=docker`).
-- **Édition de correctifs V4A** — Au-delà de `find_replace`, les agents peuvent appliquer des correctifs de lignes avec correspondance floue des espaces via `file_ops.apply_patch` — robuste pour les modifications multi-lignes où une correspondance de sous-chaîne exacte serait fragile.
-- **Pipeline RAG complet** — Intégration Jina + LanceDB + récupération hybride + réclassement + citations intégrées `[N]`. L'ingestion compatible avec la vision achemine les PDF numérisés et les images intégrées Office via le LLM de vision par défaut de l'espace de travail pour la reconnaissance optique de caractères.
-- **Artefacts d'outils** — Sorties enrichies (aperçus HTML, fichiers) rendus dans le chat.
+#### Workflow & Tools
+- **Visual workflow editor** — 9 node types, drag-and-drop canvas (React Flow v12), import/export as JSON. Optional module, off by default; an admin enables it under Admin → Settings → Modules.
+- **Smart file handling** — Uploaded files auto-inlined into context (small) or readable on-demand via `read_uploaded_file` tool. Intelligent document processing: PDFs, DOCX, and PPTX files get vision-aware processing with embedded image extraction when the model supports vision. Smart PDF mode extracts text from text-rich pages and renders scanned pages as images.
+- **Universal document conversion** — Built-in `convert_to_markdown` tool turns PDF / Word / Excel / PowerPoint / HTML / images / audio / Outlook `.msg` / EPUB / YouTube transcripts into clean Markdown via Microsoft MarkItDown. Vision-capable LLMs OCR embedded images and scanned pages — works with Claude, Gemini, Bedrock, and any LiteLLM-supported provider, no per-provider adapter code.
+- **Pluggable tools** — Python, Node.js, shell exec with optional Docker sandbox (`CODE_EXEC_BACKEND=docker`).
+- **V4A patch editing** — Beyond `find_replace`, agents can apply line-hunk patches with fuzzy whitespace matching via `file_ops.apply_patch` — robust to multi-line edits where exact-substring match would be brittle.
+- **Full RAG pipeline** — Jina embedding + LanceDB + hybrid retrieval + reranker + inline `[N]` citations. Vision-aware ingestion routes scanned PDFs and Office embedded images through the workspace's default vision LLM for OCR.
+- **Tool artifacts** — Rich outputs (HTML previews, files) rendered in-chat.
 
-#### Canaux de messagerie (v0.8)
-- **Pont IM étendu à l'organisation** — Abstraction `BaseChannel` pour la messagerie sortante sur Slack, Microsoft Teams, Discord, Feishu (Lark), WeCom et DingTalk. La première implémentation livrée est Feishu ; Slack / Teams / WeCom / Email sont les prochains sur la feuille de route v0.9.
-- **Identifiants chiffrés avec Fernet** — Les secrets d'application et les clés de chiffrement sont chiffrés au repos ; chaque signature de rappel entrant est vérifiée.
-- **Cartes d'approbation interactives** — `GateHook` natif du canal (Feishu aujourd'hui, Slack/Teams ensuite) affiche une carte Approuver / Rejeter à votre groupe quand un appel d'outil sensible se déclenche ; l'outil se bloque jusqu'à ce qu'un membre du groupe appuie sur un verdict. Approbation humaine dans la boucle sans moteur de flux de travail personnalisé.
-- **Routage d'approbation configurable par agent** — Trois modes (Auto / Inline uniquement / Canal uniquement) avec un sélecteur de portée approbateur (initiateur / propriétaire de l'agent / tout membre de l'organisation). Un chemin d'audit horodate `approver_user_id` et `decided_at` que le verdict provienne du chat ou du canal. Le mode Auto revient à inline si aucun canal n'est lié, donc les agents obtiennent toujours une véritable expérience d'approbation.
-- **Notifications de fin de tâche** — Les agents ReAct ou DAG de longue durée peuvent envoyer une carte récapitulative au canal de l'organisation quand le travail se termine. Configurable par agent dans Paramètres → Agent → Notifications.
-- **Interface de navigation et sélection** — Pas besoin de copier les ID de canal bruts depuis la console du fournisseur ; le portail appelle l'API de la plateforme IM et affiche un sélecteur de groupe.
+#### Messaging Channels (v0.8)
+- **Org-scoped IM bridge** — `BaseChannel` abstraction for outbound messaging across Slack, Microsoft Teams, Discord, Feishu (Lark), WeCom, and DingTalk. First shipping implementation is Feishu; Slack / Teams / WeCom / Email are planned.
+- **Fernet-encrypted credentials** — App secrets and encrypt keys encrypted at rest; every inbound callback signature-verified.
+- **Interactive approval cards** — Channel-native `GateHook` (Feishu today, Slack/Teams next) posts an Approve / Reject card to your group when a sensitive tool call fires; the tool blocks until a group member taps a verdict. Human-in-the-loop approval without a custom workflow engine.
+- **Configurable approval routing per agent** — Three modes (Auto / Inline only / Channel only) with an approver-scope selector (initiator / agent owner / any org member). One audit path stamps `approver_user_id` and `decided_at` whether the verdict came from chat or from the channel. Auto mode falls back to inline if no channel is linked, so agents always get a real approval UX.
+- **Task-completion notifications** — Long-running ReAct or DAG agents can push a summary card to the org's channel when work finishes. Configurable per-agent in Settings → Agent → Notifications.
+- **Browse-and-pick UI** — No copying raw channel IDs from the vendor console; the portal calls the IM platform's API and shows a group picker.
 
-#### Plateforme
-- **Multi-tenant** — Authentification JWT, isolation des organisations, panneau d'administration avec analytique d'utilisation et métriques des connecteurs. Support multi-worker via `WORKERS=N` avec un courtier d'interruption Redis pour le relais inter-worker.
-- **Marketplace** — Publier et s'abonner à des agents, connecteurs, bases de connaissances, compétences, workflows.
-- **Compétences globales (SOP)** — Procédures d'exploitation réutilisables chargées pour chaque utilisateur ; le mode progressif réduit les tokens d'environ 80 %.
-- **Facturation Stripe et quotas par utilisateur** — Mise à niveau optionnelle du plan Pro via Stripe Checkout + Customer Portal. Chaîne de quotas (remplacement par utilisateur → niveau de plan → défaut système) avec `0` pour illimité. Le drapeau de fonctionnalité administrateur contrôle l'ensemble du pipeline ; les déploiements privés sans Stripe restent propres.
-- **Centre d'évaluation** — Gestion des ensembles de test, exécutions d'évaluation parallèles avec jugements notés par LLM, visionneuse de résultats par cas (réussite/échec/latence/tokens) avec interrogation automatique.
-- **Récupération de conversation** — Les lignes `tool_result` synthétiques persistent après les tours interrompus ; les clients se reconnectent automatiquement aux flux SSE abandonnés via `/chat/resume` avec backoff exponentiel et un indicateur « Reconnexion en cours… ».
-- **6 langues** — EN, ZH, JA, KO, DE, FR. Les traductions sont [entièrement automatisées](https://docs.fim.ai/quickstart#internationalization) — un glossaire unique pilote chaque appel de traduction LLM (JSON, MDX, README), le hook de pré-commit refuse les modifications manuelles des fichiers de locale générés.
-- **Assistant de configuration au premier lancement**, thème sombre/clair, palette de commandes, SSE en streaming, visualisation DAG.
+#### Platform
+- **Multi-tenant** — JWT auth, org isolation, admin panel with usage analytics and connector metrics. Multi-worker support via `WORKERS=N` with a Redis interrupt broker for cross-worker relay.
+- **Marketplace** — Publish and subscribe to agents, API connectors and MCP servers, plus skills and workflows when those modules are enabled. Knowledge bases and database connectors stay private to their owner.
+- **Global skills (SOPs)** — Reusable operating procedures loaded for every user; progressive mode cuts tokens ~80%. Optional module, off by default.
+- **Stripe billing & per-user quotas** — Optional Pro-plan upgrade via Stripe Checkout + Customer Portal. Quota chain (per-user override → plan tier → system default) with `0` for unlimited. Admin feature flag gates the entire pipeline; private deployments without Stripe stay clean.
+- **Evaluation Center** — Test-dataset management, parallel eval runs with LLM-graded judgments, per-case pass/fail/latency/token results viewer with auto-polling.
+- **Conversation recovery** — Synthetic `tool_result` rows persist after interrupted turns; clients auto-reconnect dropped SSE streams via `/chat/resume` with exponential backoff and a "Reconnecting…" indicator.
+- **6 languages** — EN, ZH, JA, KO, DE, FR. Translations are [fully automated](https://docs.fim.ai/contributing#i18n) — single glossary drives every LLM translation call (JSON, MDX, README), pre-commit hook refuses manual edits to generated locale files.
+- **First-run setup wizard**, dark/light theme, command palette, streaming SSE, DAG visualization.
 
-> Approfondissement : [Architecture](https://docs.fim.ai/architecture/system-overview) · [Système de hooks](https://docs.fim.ai/architecture/hook-system) · [Canaux](https://docs.fim.ai/configuration/channels/overview) · [Modes d'exécution](https://docs.fim.ai/concepts/execution-modes) · [Pourquoi FIM One](https://docs.fim.ai/why) · [Paysage concurrentiel](https://docs.fim.ai/strategy/competitive-landscape)
+> Deep dive: [Architecture](https://docs.fim.ai/architecture/system-overview) · [Hook System](https://docs.fim.ai/architecture/hook-system) · [Channels](https://docs.fim.ai/configuration/channels/overview) · [Execution Modes](https://docs.fim.ai/concepts/execution-modes) · [Why FIM One](https://docs.fim.ai/why) · [Competitive Landscape](https://docs.fim.ai/strategy/competitive-landscape)
 
 ## Architecture
 
 ```mermaid
 graph TB
     subgraph app["Application Layer"]
-        a["Portal · API · iframe · Feishu · Slack · WeCom · DingTalk · Teams · Email · Contract Systems · Custom Webhooks"]
+        a["Portal · API · Feishu · Slack · WeCom · Email · Custom Webhooks"]
     end
     subgraph mid["FIM One"]
         direction LR
-        m1["Connectors<br/>+ MCP Hub"] ~~~ m2["Orch Engine<br/>ReAct / DAG"] ~~~ m3["RAG /<br/>Knowledge"] ~~~ m5["Hook System<br/>+ Channels"] ~~~ m4["Auth /<br/>Admin"]
+        m1["Integrations<br/>API / DB / MCP"] ~~~ m2["Orch Engine<br/>ReAct / DAG"] ~~~ m3["RAG /<br/>Knowledge"] ~~~ m5["Hook System<br/>+ Channels"] ~~~ m4["Auth /<br/>Admin"]
     end
     subgraph biz["Business Systems"]
         b["ERP · CRM · OA · Finance · Databases · Contract Mgmt · Custom APIs"]
@@ -183,7 +183,7 @@ graph TB
     app --> mid --> biz
 ```
 
-Chaque connecteur et canal est un pont standardisé — l'agent ne sait pas et ne se soucie pas de savoir s'il communique avec SAP, un système de contrat personnalisé ou un groupe Feishu. Le système Hook exécute le code de la plateforme en dehors de la boucle LLM pour les approbations, les audits et les limites de débit ; les canaux transmettent les notifications sortantes et les cartes d'approbation aux plateformes de messagerie instantanée externes. Consultez [Architecture des connecteurs](https://docs.fim.ai/architecture/connector-architecture), [Système Hook](https://docs.fim.ai/architecture/hook-system) et [Canaux](https://docs.fim.ai/configuration/channels/overview) pour plus de détails.
+Each connector and channel is a standardized bridge — the agent doesn't know or care whether it's talking to SAP, a custom contract system, or a Feishu group. The Hook System runs platform code outside the LLM loop for approvals, audit, and rate limits; Channels carry outbound notifications and approval cards to external IM platforms. See [Connector Architecture](https://docs.fim.ai/architecture/connector-architecture), [Hook System](https://docs.fim.ai/architecture/hook-system), and [Channels](https://docs.fim.ai/configuration/channels/overview) for details.
 
 ## Configuration
 
@@ -207,16 +207,16 @@ JINA_API_KEY=jina_...                       # unlocks web tools + RAG
 
 > Référence complète : [Variables d'environnement](https://docs.fim.ai/configuration/environment-variables)
 
-## Stack Technologique
+## Tech Stack
 
-| Couche      | Technologie                                                         |
+| Layer       | Technology                                                          |
 | ----------- | ------------------------------------------------------------------- |
 | Backend     | Python 3.11+, FastAPI, SQLAlchemy, Alembic, asyncio                 |
-| Frontend    | Next.js 14, React 18, Tailwind CSS, shadcn/ui, React Flow v12      |
-| IA / RAG    | LLMs compatibles OpenAI, Jina AI (embed + search), LanceDB          |
-| Base de données | SQLite (dev) / PostgreSQL (prod)                                    |
-| Messagerie  | Abstraction `BaseChannel` (Slack, Teams, Discord, Feishu/Lark, WeCom, DingTalk), identifiants chiffrés Fernet, vérification de signature HMAC |
-| Infrastructure | Docker, uv, pnpm, streaming SSE                                    |
+| Frontend    | Next.js 15, React 18, Tailwind CSS, shadcn/ui, React Flow v12      |
+| AI / RAG    | OpenAI-compatible LLMs, Jina AI (embed + search), LanceDB          |
+| Database    | SQLite (dev) / PostgreSQL (prod)                                    |
+| Messaging   | `BaseChannel` abstraction (Feishu/Lark shipped), Fernet-encrypted credentials, HMAC signature verification |
+| Infra       | Docker, uv, pnpm, SSE streaming                                    |
 
 ## Développement
 
@@ -237,28 +237,28 @@ Consultez la [Feuille de route](https://docs.fim.ai/roadmap) complète pour l'hi
 
 Questions fréquemment posées sur le déploiement, les fournisseurs de LLM, la configuration système, et bien d'autres — consultez la [FAQ](https://docs.fim.ai/faq).
 
-## Contribution
+## Contributing
 
-Nous accueillons les contributions de toutes sortes — code, documentation, traductions, rapports de bugs et idées.
+We welcome contributions of all kinds — code, docs, translations, bug reports, and ideas.
 
-> **Programme Pioneer** : Les 100 premiers contributeurs dont une PR est fusionnée sont reconnus comme **Contributeurs Fondateurs** avec des crédits permanents, un badge et un support prioritaire des problèmes. [En savoir plus &rarr;](CONTRIBUTING.md#-pioneer-program)
+> **Pioneer Program**: The first 100 contributors who get a PR merged are recognized as **Founding Contributors** with permanent credits, a badge, and priority issue support. [Learn more &rarr;](CONTRIBUTING.md#-pioneer-program)
 
-**Liens rapides :**
+**Quick links:**
 
-- [**Guide de Contribution**](CONTRIBUTING.md) — configuration, conventions, processus de PR
-- [**Conventions de Développement**](https://docs.fim.ai/contributing) — sécurité des types, tests et normes de qualité du code
-- [**Bons Premiers Problèmes**](https://github.com/fim-ai/fim-one/labels/good%20first%20issue) — sélectionnés pour les nouveaux venus
-- [**Problèmes Ouverts**](https://github.com/fim-ai/fim-one/issues) — bugs et demandes de fonctionnalités
+- [**Contributing Guide**](CONTRIBUTING.md) — setup, conventions, PR process
+- [**Development Conventions**](https://docs.fim.ai/contributing) — type safety, testing, and code quality standards
+- [**Good First Issues**](https://github.com/fim-ai/fim-one/labels/good%20first%20issue) — curated for newcomers
+- [**Open Issues**](https://github.com/fim-ai/fim-one/issues) — bugs & feature requests
 
-**Sécurité :** Pour signaler une vulnérabilité, veuillez ouvrir un [problème GitHub](https://github.com/fim-ai/fim-one/issues) avec l'étiquette `[SECURITY]`. Pour les divulgations sensibles, contactez-nous via Discord DM.
+**Security:** Do not open a public issue for a sensitive vulnerability. Report it privately through [GitHub Security Advisories](https://github.com/fim-ai/fim-one/security/advisories/new) or email security@fim.ai. See [SECURITY.md](SECURITY.md).
 
 ## Activité
 
 ![Alt](https://repobeats.axiom.co/api/embed/49402c7d85e343e9cb5909da7b48db1930c76554.svg "Repobeats analytics image")
 
-## Contributeurs
+## Contributors
 
-Merci à toutes ces merveilleuses personnes ([légende des emojis](https://allcontributors.org/docs/en/emoji-key)) :
+Thanks to these wonderful people ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
 
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
 <!-- prettier-ignore-start -->
@@ -273,6 +273,7 @@ Merci à toutes ces merveilleuses personnes ([légende des emojis](https://allco
       <td align="center" valign="top" width="12.5%"><a href="https://github.com/Joshua-Medvinsky"><img src="https://avatars.githubusercontent.com/u/76570188?v=4?s=80" width="80px;" alt="Joshua Medvinsky"/><br /><sub><b>Joshua Medvinsky</b></sub></a><br /><a href="#security-Joshua-Medvinsky" title="Security">🛡️</a></td>
       <td align="center" valign="top" width="12.5%"><a href="https://github.com/Aryan-theccool"><img src="https://avatars.githubusercontent.com/u/146411259?v=4?s=80" width="80px;" alt="Aryan singh Bhadoria"/><br /><sub><b>Aryan singh Bhadoria</b></sub></a><br /><a href="https://github.com/fim-ai/fim-one/issues?q=author%3AAryan-theccool" title="Bug reports">🐛</a> <a href="https://github.com/fim-ai/fim-one/commits?author=Aryan-theccool" title="Documentation">📖</a> <a href="https://github.com/fim-ai/fim-one/commits?author=Aryan-theccool" title="Tests">⚠️</a> <a href="https://github.com/fim-ai/fim-one/commits?author=Aryan-theccool" title="Code">💻</a></td>
       <td align="center" valign="top" width="12.5%"><a href="https://portfolio-alexgonzalez33.vercel.app/"><img src="https://avatars.githubusercontent.com/u/82875882?v=4?s=80" width="80px;" alt="alexcastgonz"/><br /><sub><b>alexcastgonz</b></sub></a><br /><a href="https://github.com/fim-ai/fim-one/issues?q=author%3Apcbeingused333" title="Bug reports">🐛</a> <a href="https://github.com/fim-ai/fim-one/commits?author=pcbeingused333" title="Documentation">📖</a> <a href="https://github.com/fim-ai/fim-one/commits?author=pcbeingused333" title="Tests">⚠️</a> <a href="https://github.com/fim-ai/fim-one/commits?author=pcbeingused333" title="Code">💻</a></td>
+      <td align="center" valign="top" width="12.5%"><a href="https://github.com/ryangoho"><img src="https://avatars.githubusercontent.com/u/320067612?v=4?s=80" width="80px;" alt="Ryan Goh"/><br /><sub><b>Ryan Goh</b></sub></a><br /><a href="https://github.com/fim-ai/fim-one/issues?q=author%3Aryangoho" title="Bug reports">🐛</a> <a href="https://github.com/fim-ai/fim-one/commits?author=ryangoho" title="Documentation">📖</a> <a href="https://github.com/fim-ai/fim-one/commits?author=ryangoho" title="Tests">⚠️</a> <a href="https://github.com/fim-ai/fim-one/commits?author=ryangoho" title="Code">💻</a></td>
     </tr>
   </tbody>
 </table>
@@ -282,7 +283,7 @@ Merci à toutes ces merveilleuses personnes ([légende des emojis](https://allco
 
 <!-- ALL-CONTRIBUTORS-LIST:END -->
 
-Ce projet suit la spécification [all-contributors](https://allcontributors.org/). Les contributions de toute nature sont les bienvenues !
+This project follows the [all-contributors](https://allcontributors.org/) specification. Contributions of any kind welcome!
 
 ## À propos de FIM
 

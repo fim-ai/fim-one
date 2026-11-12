@@ -36,56 +36,56 @@ Group: "Production"
 
 ---
 
-## 제공자 추가
+## Adding a Provider
 
 <Steps>
-  <Step title="Models 페이지 열기">
-    **Admin**(사이드바)으로 이동하여 **Models** 탭을 선택합니다.
+  <Step title="Open the Models page">
+    Open **Admin Panel** from the user menu and select the **Models** tab.
   </Step>
-  <Step title="Add Provider 클릭">
-    Providers 섹션의 우측 상단에 있는 **Add Provider** 버튼을 클릭합니다.
+  <Step title="Click Add Provider">
+    Click the **Add Provider** button in the top-right area of the Providers section.
   </Step>
-  <Step title="사전 설정 선택 또는 사용자 정의 엔드포인트 사용">
-    대화 상자에 일반적인 제공자에 대한 사전 설정 버튼이 표시됩니다: **OpenAI**, **Anthropic (Claude)**, **Google Gemini**, **DeepSeek**, **Mistral AI**, **OpenAI Compatible**(사용자 정의 엔드포인트). 사전 설정을 클릭하면 제공자 이름과 기본 URL이 자동으로 채워집니다.
+  <Step title="Select a preset or use a custom endpoint">
+    The dialog offers presets for 16 providers — **OpenAI**, **Anthropic (Claude)**, **Google Gemini**, **DeepSeek**, **Mistral AI**, **xAI (Grok)**, **OpenRouter**, **Ollama**, and the China and Global endpoints of **Qwen**, **GLM**, **Moonshot** and **MiniMax** — plus **OpenAI Compatible** (custom endpoint). Clicking a preset auto-fills the provider name and base URL.
 
-    제공자가 목록에 없는 경우(예: 타사 릴레이, Ollama 또는 기타 OpenAI 호환 엔드포인트) **OpenAI Compatible**을 선택합니다.
+    Choose **OpenAI Compatible** if your provider is not listed (e.g., a third-party relay or any other OpenAI-compatible endpoint).
   </Step>
-  <Step title="자격증명 입력">
-    필수 필드를 작성합니다:
-    - **Provider Name** -- 친화적인 레이블(예: "My OpenAI Account"). 이는 참고용입니다.
-    - **Base URL** -- API 엔드포인트입니다. 사전 설정은 이를 자동으로 채웁니다. 사용자 정의 엔드포인트의 경우 전체 URL을 입력합니다(예: Ollama의 경우 `http://localhost:11434/v1`).
-    - **API Key** -- 제공자의 API 키입니다. 로컬 모델(Ollama)의 경우 비어있지 않은 문자열을 입력합니다(예: `ollama`).
+  <Step title="Enter credentials">
+    Fill in the required fields:
+    - **Provider Name** -- A friendly label (e.g., "My OpenAI Account"). This is for your reference only.
+    - **Base URL** -- The API endpoint. Presets fill this automatically. For custom endpoints, enter the full URL (e.g., `http://localhost:11434/v1` for Ollama).
+    - **API Key** -- Your provider's API key. With the Ollama preset the API key can be left empty.
   </Step>
-  <Step title="저장">
-    **Create**을 클릭합니다. 제공자가 목록에 나타나고 그 아래에 모델을 추가할 준비가 됩니다.
+  <Step title="Save">
+    Click **Create**. The provider appears in the list, ready for you to add models under it.
   </Step>
 </Steps>
 
 <Tip>
-동일한 서비스에 대해 여러 제공자를 만들 수 있습니다. 예를 들어, 별도의 청구 계정을 위해 서로 다른 API 키를 가진 두 개의 "OpenAI" 제공자, 또는 서로 다른 기본 URL을 가진 "Anthropic (Direct)"과 "Anthropic (via Bedrock)"을 만들 수 있습니다.
+You can create multiple providers for the same service. For example, two "OpenAI" providers with different API keys for separate billing accounts, or an "Anthropic (Direct)" and "Anthropic (via Bedrock)" with different base URLs.
 </Tip>
 
 ---
 
-## 모델 추가
+## Adding a Model
 
 <Steps>
-  <Step title="제공자 확장">
-    모델 페이지에서 기존 제공자 옆의 chevron을 클릭하여 확장하고 해당 모델을 확인합니다.
+  <Step title="Expand a provider">
+    On the Models page, click the chevron next to an existing provider to expand it and see its models.
   </Step>
-  <Step title="모델 추가 클릭">
-    확장된 제공자 아래에 나타나는 **모델 추가** 버튼을 클릭합니다.
+  <Step title="Click Add Model">
+    Click the **Add Model** button that appears under the expanded provider.
   </Step>
-  <Step title="모델 세부 정보 입력">
-    두 개의 필수 필드를 작성합니다:
-    - **표시 이름** -- UI에 표시되는 사람이 읽을 수 있는 이름(예: "GPT-4o", "Claude Sonnet"). 원하는 대로 지정할 수 있습니다.
-    - **모델 이름(API)** -- API로 전송되는 정확한 모델 식별자(예: `gpt-4o`, `claude-sonnet-4-6`, `deepseek-chat`). 제공자가 예상하는 것과 일치해야 합니다.
+  <Step title="Enter model details">
+    Fill in the two required fields:
+    - **Display Name** -- A human-readable name shown in the UI (e.g., "GPT-4o", "Claude Sonnet"). Can be anything you like.
+    - **Model ID** -- The exact model identifier sent to the API (e.g., `gpt-4o`, `claude-sonnet-4-6`, `deepseek-chat`). This must match what your provider expects.
   </Step>
-  <Step title="고급 설정 구성(선택 사항)">
-    **고급** 토글을 클릭하여 추가 설정을 표시합니다: 최대 출력 토큰, 컨텍스트 크기, 온도, 기본 함수 호출 및 JSON 모드. 각각에 대한 자세한 내용은 아래의 [고급 설정](#advanced-settings) 섹션을 참조하세요.
+  <Step title="Configure advanced settings (optional)">
+    Click the **Advanced** toggle to reveal additional settings: Max Output Tokens, Context Size, Temperature, Native Function Calling, JSON Mode, and Vision Support (whether the model accepts images; see [Document Processing](/concepts/document-processing)). See the [Advanced Settings](#advanced-settings) section below for details on each.
   </Step>
-  <Step title="저장">
-    **생성**을 클릭합니다. 모델이 제공자 아래에 나타나며 이제 모델 그룹에 할당할 수 있습니다.
+  <Step title="Save">
+    Click **Create**. The model appears under its provider and is now available for assignment to model groups.
   </Step>
 </Steps>
 
@@ -132,12 +132,12 @@ FIM One이 구조화된 출력을 위해 `response_format=json_object`를 사용
 
 ### Temperature
 
-**기본값:** 0.7 (설정하지 않으면 전역 설정에서 상속됨)
+**Default:** 0.7 (inherited from the global setting if left unset)
 
-모델 출력의 무작위성을 제어합니다. 범위: 0 (결정적)부터 2 (매우 창의적)까지.
+Controls the randomness of model output. Range: 0 (deterministic) to 2 (highly creative).
 
 <Note>
-Anthropic 모델에 대해 추론/확장 사고가 활성화되면 시스템에서 자동으로 온도가 1.0으로 강제됩니다. 수동으로 설정할 필요가 없습니다.
+When reasoning/extended thinking is enabled for Anthropic models, the system handles temperature: Claude 4.5 and older are sent 1.0, and Claude 4.6 and newer have the parameter removed. You do not need to set this manually.
 </Note>
 
 ### 최대 출력 토큰
@@ -270,15 +270,15 @@ Anthropic 모델에 대해 추론/확장 사고가 활성화되면 시스템에�
 
 모델 그룹을 사용하면 모델을 특정 역할에 할당하고 한 번의 클릭으로 구성을 전환할 수 있습니다.
 
-### 역할
+### Roles
 
-FIM One은 세 가지 모델 역할을 사용합니다. 각 역할은 실행 파이프라인에서 다른 목적을 수행합니다:
+FIM One uses three model roles. Each role serves a different purpose in the execution pipeline:
 
-| 역할 | 사용 대상 | 권장사항 |
+| Role | Used for | Recommendation |
 |---|---|---|
-| **General** | 계획, 분석, ReAct 에이전트, DAG 단계 실행 (기본값) | 가장 성능이 우수한 모델 (예: `gpt-4o`, `claude-sonnet-4-6`) |
-| **Fast** | `model_hint="fast"` DAG 단계, 컨텍스트 압축, 히스토리 요약 | 속도와 비용에 최적화됨 (예: `gpt-5-nano`, `deepseek-chat`). 할당되지 않으면 General로 폴백됨. |
-| **Reasoning** | `model_hint="reasoning"` DAG 단계, 도메인 에스컬레이션 ReAct (법률/의료/금융) | 강력한 추론 모델 (예: `o3`, `deepseek-reasoner`). 할당되지 않으면 General로 폴백됨. |
+| **General** | Planning, analysis, ReAct agent, DAG step execution (default) | Your most capable model (e.g., `gpt-4o`, `claude-sonnet-4-6`) |
+| **Fast** | `model_hint="fast"` DAG steps, context compaction, history summary | Optimized for speed and cost (e.g., `gpt-5-nano`, `deepseek-chat`). Falls back to General if not assigned. |
+| **Reasoning** | `model_hint="reasoning"` DAG steps, domain-escalated ReAct (legal, medical, financial, tax, compliance, patent by default) | A strong reasoning model (e.g., `o3`, `deepseek-reasoner`). Falls back to General if not assigned. |
 
 ### 모델 그룹 생성
 
@@ -300,37 +300,39 @@ FIM One은 세 가지 모델 역할을 사용합니다. 각 역할은 실행 파
   </Step>
 </Steps>
 
-### 그룹 활성화
+### Activating a Group
 
-모델 그룹을 활성화하려면 모델 페이지의 드롭다운 또는 활성화 컨트롤을 사용합니다. 한 번에 하나의 그룹만 활성화할 수 있습니다. 그룹을 활성화하면 해당 그룹의 모델 할당이 모든 새로운 대화에 즉시 적용됩니다.
+To activate a model group, use the dropdown or activation control on the Models page. Only one group can be active at a time. Activating a group applies its model assignments to the next message in every conversation.
 
-현재 그룹을 비활성화하려면(ENV 구성 모델로 폴백) 비활성화 옵션을 선택합니다.
+To deactivate the current group (falling back to ENV-configured models), select the deactivate option.
 
 <Warning>
-활성 모델 그룹을 전환하면 시스템 전체의 **모든 새로운 대화**에 영향을 미칩니다. 진행 중인 기존 대화는 시작할 때 활성화되었던 모델을 계속 사용합니다.
+Switching the active model group takes effect system-wide on the next message in every conversation, new or existing. A response that is already streaming finishes on the previous model.
 </Warning>
 
 ---
 
-## 도메인 인식 모델 에스컬레이션
+## Domain-Aware Model Escalation
 
-자동 라우터가 전문 도메인(**법률**, **의료**, 또는 **금융**)을 감지하면, 시스템은 자동으로 일반 역할 할당을 넘어 모델 선택을 에스컬레이션합니다:
+When the domain classifier detects a specialist domain — by default **legal**, **medical**, **financial**, **tax**, **compliance**, or **patent** (`ESCALATION_DOMAINS`) — the system automatically escalates model selection beyond the normal role assignments:
 
-- **ReAct 모드:** 일반 모델은 **추론 모델**(`registry.get_by_role("reasoning")`)로 대체됩니다. 이는 모델 그룹의 추론 슬롯이 DAG `model_hint="reasoning"` 단계에만 사용되는 것이 아니라, 도메인별 ReAct 작업의 에스컬레이션 대상으로도 사용된다는 의미입니다.
-- **DAG 모드:** 도메인 컨텍스트가 플래너 프롬프트에 주입되어, 전문가 정확도가 필요한 단계에 `model_hint="reasoning"`을 할당하도록 안내합니다.
+- **ReAct mode:** The general model is replaced by the **reasoning model** (`registry.get_by_role("reasoning")`). This means the Reasoning slot in your Model Group is not only used for DAG `model_hint="reasoning"` steps — it also serves as the escalation target for domain-specific ReAct tasks.
+- **DAG mode:** Domain context is injected into the planner prompt, guiding it to assign `model_hint="reasoning"` to steps requiring specialist accuracy.
 
-이 에스컬레이션은 자동이며, 활성 모델 그룹에 추론 모델이 할당되어 있거나 `REASONING_LLM_MODEL` 환경 변수를 통해 설정된 것 이상의 구성이 필요하지 않습니다.
+This escalation is automatic and requires no configuration beyond having a Reasoning model assigned in your active Model Group (or via the `REASONING_LLM_MODEL` env var).
 
-**관련 환경 변수:**
+**Related environment variables:**
 
-| 변수 | 기본값 | 설명 |
+| Variable | Default | Description |
 |---|---|---|
-| `DAG_CITATION_VERIFICATION` | `true` | 법률/의료/금융 콘텐츠에 대한 단계 후 인용 검증 활성화. 정규식을 통해 인용을 추출하고 LLM 판단을 통해 정확성을 검증합니다. |
-| `DAG_STRUCTURED_CONTEXT_MULTIPLIER` | `3.0` | DAG 종속성 컨텍스트에서 구조화된 콘텐츠(인용, 표, 코드 블록)에 대한 절단 예산 배수. 값이 높을수록 단계 간에 더 많은 구조화된 데이터를 보존합니다. |
+| `DAG_CITATION_VERIFICATION` | `true` | Enable post-step citation verification for specialist-domain content. Extracts citations via regex and verifies accuracy via LLM judgment. |
+| `DAG_STRUCTURED_CONTEXT_MULTIPLIER` | `3.0` | Truncation budget multiplier for structured content (citations, tables, code blocks) in DAG dependency context. Higher values preserve more structured data between steps. |
 
 <Tip>
-워크로드에 법률, 의료 또는 금융 쿼리가 포함된 경우, 추론 모델이 강력한 추론 능력을 가지고 있는지 확인하세요(예: `o3`, `claude-opus-4-6`, `deepseek-reasoner`). 자동 에스컬레이션은 이 슬롯이 도메인 중요 정확도 요구사항을 처리할 수 있는 모델로 채워져 있다는 것에 의존합니다.
+If your workload involves legal, medical, or financial queries, ensure your Reasoning model is a strong reasoner (e.g., `o3`, `claude-opus-4-6`, `deepseek-reasoner`). The automatic escalation relies on this slot being populated with a model that can handle domain-critical accuracy requirements.
 </Tip>
+
+---
 
 ## ENV 폴백
 
@@ -346,14 +348,14 @@ FIM One은 세 가지 모델 역할을 사용합니다. 각 역할은 실행 파
 
 전체 ENV 참조는 [환경 변수](/configuration/environment-variables#llm-required)를 참조하세요.
 
-## 내보내기 및 가져오기
+## Export and Import
 
-모델 페이지에서는 전체 제공자 및 모델 구성(제공자, 모델, 그룹)을 JSON 파일로 내보낼 수 있으며, 다른 인스턴스에서 이를 가져올 수 있습니다. 이는 다음과 같은 경우에 유용합니다:
+The Models page supports exporting your entire provider and model configuration (providers, models, and groups) as a JSON file, and importing it on another instance. This is useful for:
 
-- 개발, 스테이징, 프로덕션 환경 간 구성 마이그레이션
-- 검증된 모델 설정을 팀 멤버와 공유
-- 변경 전 구성 백업
+- Migrating configuration between development, staging, and production environments
+- Sharing a known-good model setup with team members
+- Backing up your configuration before making changes
 
 <Warning>
-내보낸 구성에는 API 키가 **포함되지 않습니다**. 가져온 후 각 제공자를 편집하여 적절한 API 키를 입력해야 합니다.
+Exported configuration does **not** include API keys. The import dialog asks for a key for each new provider; providers that already exist keep theirs.
 </Warning>

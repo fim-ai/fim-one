@@ -1,18 +1,20 @@
 ---
-title: "Marktplatz"
+title: "Market"
 icon: "store"
-description: "Entdecken, abonnieren und veröffentlichen Sie Lösungen und Komponenten in Ihrer Organisation und der globalen Gemeinschaft."
+description: "Discover, subscribe to, and publish Solutions and Components across your organization and the global community."
 ---
 
-Der Marktplatz ist FIM One's integrierter Ressourcen-Marktplatz. Er organisiert gemeinsam genutzte Ressourcen in zwei Ebenen:
+The Market is FIM One's built-in resource marketplace. It organizes shared resources into two tiers:
 
-- **Lösungen** -- hochwertige Ressourcen, die End-to-End-Funktionalitäten bereitstellen: Agenten, Skills und Workflows.
-- **Komponenten** -- Bausteine, auf die Lösungen angewiesen sind: Konnektoren und MCP Server.
+- **Solutions** -- high-level resources that deliver end-to-end capabilities: Agents, Skills, and Workflows.
+- **Components** -- building blocks that Solutions depend on: Connectors and MCP Servers.
 
-Sie durchsuchen nach Bereich (Ihre Organisation oder der globale Marktplatz), finden das, was Sie benötigen, abonnieren es und beginnen, es zu nutzen – alles ohne FIM One zu verlassen.
+Skills and Workflows are optional modules, off by default. They appear in the Market only after an administrator enables them under Admin → Settings → Modules.
+
+You browse by scope (your Organization or the Global Market), find what you need, subscribe, and start using it -- all without leaving FIM One.
 
 <Info>
-Der Marktplatz verwendet ein **Pull-Modell**: Ressourcen werden durch Durchsuchen entdeckt und explizit abonniert. Es gibt keinen automatischen Beitritt oder Push-Mechanismus – Sie wählen aus, was Sie installieren möchten, und können jederzeit nach Bereich filtern.
+The Market uses a **pull model**: resources are discovered by browsing and explicitly subscribed to. There is no auto-join or push mechanism -- you choose what to install, and you can filter by scope at any time.
 </Info>
 
 ## Was kann ich hier finden?
@@ -27,27 +29,27 @@ Lösungen sind vollständige, einsatzbereite Funktionen, die Sie abonnieren und 
 | **Skill** | Lösung | Ein globales SOP, das in System-Prompts eingefügt wird und Agenten orchestrieren kann |
 | **Workflow** | Lösung | Ein DAG-Automatisierungsfluss für geplante oder ausgelöste Ausführung |
 
-### Komponenten
+### Components
 
-Komponenten sind die Integrationen und Tool-Services, aus denen Lösungen aufgebaut werden.
+Components are the integrations and tool services that Solutions are built from.
 
-| Ressource | Kategorie | Was Sie erhalten |
+| Resource | Category | What you get |
 |---|---|---|
-| **Connector** | Komponente | API-/Datenbankintegration verfügbar als Agent-Tools |
-| **MCP Server** | Komponente | Third-Party-Tool-Service in Sessions geladen |
+| **Connector** | Component | API integration available as agent tools (database connectors cannot be published) |
+| **MCP Server** | Component | Third-party tool service loaded into sessions |
 
 <Tip>
-Knowledge Bases erscheinen nie im Market und werden nie abonniert. Ein Agent, der eine KB verwendet, delegiert den Inhalt seines Besitzers zur Laufzeit, daher ist das Abonnieren des Agenten alles, was Sie benötigen.
+Knowledge Bases never appear in the Market and are never subscribed. An Agent that uses a KB delegates its owner's content at run time, so subscribing to the Agent is all you need.
 </Tip>
 
-## Umfang
+## Scope
 
-Der Marktplatz hat einen Umfang-Selector oben auf der Seite. Die Benutzeroberfläche und der Abonnement-Workflow sind in beiden Umfängen identisch – nur die Sichtbarkeit der Ressourcen ändert sich.
+The Market has a scope selector at the top of the page. The UI and subscription flow are identical in both scopes -- only the visibility of resources changes.
 
-- **Organization** – Ressourcen, die innerhalb Ihres Teams oder Unternehmens freigegeben sind. Das Veröffentlichen hier erfordert keine Überprüfung.
-- **Global Market** – Ressourcen aus der gesamten FIM One-Community. Das Veröffentlichen hier erfordert die Genehmigung durch einen Administrator.
+- **Organization** -- resources shared within your team or company. Publishing here does not require review unless the organization has turned review on for that resource type.
+- **Global Market** -- resources from the entire FIM One community. Publishing here requires admin approval.
 
-Wechseln Sie jederzeit zwischen den Umfängen, um zu erkunden, was verfügbar ist.
+Switch between scopes at any time to explore what is available.
 
 ## Wie abonniere ich?
 
@@ -65,9 +67,9 @@ Wenn eine Lösung von Komponenten abhängt (z. B. ein Agent, der bestimmte Conne
 
 Abonnements sind sofort wirksam – keine Genehmigung des Herausgebers erforderlich. Sie können das Abonnement jederzeit kündigen, um die Ressource aus Ihrem Arbeitsbereich zu entfernen.
 
-## Wie veröffentliche ich?
+## How Do I Publish?
 
-Jeder Ressourceneigentümer kann veröffentlichen, um seine Ressource auffindbar zu machen. Die Veröffentlichung kann entweder auf Ihre Organisation oder den Global Market ausgerichtet sein.
+Any resource owner can publish to make their resource discoverable. Publishing can target either your Organization or the Global Market.
 
 ```mermaid
 flowchart LR
@@ -77,25 +79,25 @@ flowchart LR
     R -->|"Approved"| V["Visible in Market"]
 ```
 
-| Ziel | Wer kann es sehen | Überprüfung erforderlich? |
+| Target | Who can see it | Review required? |
 |---|---|---|
-| **Organisation** | Alle Mitglieder Ihrer Organisation | Nein (Vertrauen auf Organisationsebene) |
-| **Global Market** | Alle authentifizierten Benutzer | Ja -- Genehmigung durch Admin erforderlich |
+| **Organization** | All members of your org | No by default; an org can require review per resource type |
+| **Global Market** | All authenticated users | Yes -- admin approval required |
 
-Die Veröffentlichung auf dem Global Market durchläuft immer eine Überprüfung. Admins können die Ressource genehmigen, ablehnen (mit einer Notiz) oder ausstehend lassen. Abgelehnte Ressourcen können überarbeitet und erneut eingereicht werden.
+Publishing to the Global Market always goes through a review gate. Admins can approve, reject (with a note), or leave the resource pending. Rejected resources can be revised and resubmitted.
 
-## Was ist mit Anmeldedaten?
+## What About Credentials?
 
-Wenn Sie eine Ressource abonnieren, die Anmeldedaten erfordert (API-Schlüssel, OAuth-Token, Datenbankpasswörter), sammelt der Onboarding-Assistent diese während des Abonnements. Anmeldedaten werden sicher gespeichert und auf Ihr Konto beschränkt – niemand sonst kann sie sehen.
+When you subscribe to a resource that requires credentials (API keys, OAuth tokens), the onboarding wizard collects them during subscription. Credentials are stored securely and scoped to your account -- no one else can see them.
 
-Sie können Anmeldedaten jederzeit auf der Einstellungsseite der Ressource aktualisieren oder rotieren.
+You can update or rotate credentials at any time from the resource's settings page.
 
-## Wie es sich integriert
+## How It Integrates
 
-Unter der Haube ist der Market als eine **Shadow-Organisation** implementiert – ein unsichtbares Systemorg, das keine Mitglieder enthält. Ressourcen, die auf dem Global Market veröffentlicht werden, sind auf `visibility: "org"` innerhalb dieser Shadow-Organisation gesetzt, was es dem bestehenden Sichtbarkeitssystem ermöglicht, sie natürlich einzubeziehen.
+Under the hood, the Market is implemented as a **shadow organization** -- an invisible system org that holds no members. Resources published to the Global Market are set to `visibility: "org"` within this shadow org, which allows the existing visibility system to include them naturally.
 
-Das bedeutet, dass der Market **keinen speziellen Code** in der Tool-Assembly-Pipeline benötigt. Der gleiche dreistufige Sichtbarkeitsfilter (eigene -> org-gemeinsam -> abonniert), der persönliche und Org-Ressourcen lädt, lädt auch Market-Ressourcen. Wenn Sie abonnieren, wird ein Abonnement-Datensatz erstellt, und die Ressource erscheint automatisch in Ihrem Sichtbarkeitsfilter.
+This means the Market requires **zero special-case code** in the tool assembly pipeline. The same visibility filter (own, or subscribed and still shared) that loads personal and org resources also loads Market resources. When you subscribe, a subscription record is created, and the resource appears in your visibility filter automatically.
 
-Für Lösungen, die Abhängigkeiten bündeln (z. B. ein Agent mit gebundenen Konnektoren und Knowledge Bases), löst der Abonnementprozess diese Abhängigkeiten auf und stellt sie bereit, damit alles sofort funktioniert.
+For Solutions that bundle dependencies (e.g., an Agent with bound Connectors and Knowledge Bases), the subscription process resolves and provisions those dependencies so everything works out of the box.
 
-Technische Details zur Funktionsweise des Sichtbarkeitsfilters über alle Ressourcentypen hinweg finden Sie unter [Agent & Resource Discovery – Visibility Model](/architecture/agent-discovery#visibility-model).
+For technical details on how the visibility filter works across all resource types, see [Agent & Resource Discovery -- Visibility Model](/architecture/agent-discovery#visibility-model).

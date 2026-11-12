@@ -5,32 +5,32 @@ description: "FIM One 如何路由 LLM 调用、tool_choice 架构以及提供�
 mode: "wide"
 ---
 
-## 提供商检测
+## Provider detection
 
-FIM One 使用 LiteLLM 作为通用适配器。`core/model/openai_compatible.py` 中的 `_resolve_litellm_model()` 函数将用户的 `LLM_BASE_URL` + `LLM_MODEL` 映射到带有提供商前缀的 LiteLLM 模型标识符。该前缀决定了 LiteLLM 如何路由请求 — 原生 API 协议（Anthropic Messages API、Gemini 等）或通用 OpenAI 兼容的 `/v1/chat/completions`。
+FIM One uses LiteLLM as a universal adapter. The `_resolve_litellm_model()` function in `core/model/openai_compatible.py` maps the user's `LLM_BASE_URL` + `LLM_MODEL` to a LiteLLM model identifier with a provider prefix. The prefix determines how LiteLLM routes the request — native API protocol (Anthropic Messages API, Gemini, etc.) or generic OpenAI-compatible `/v1/chat/completions`.
 
-解析顺序：
+Resolution order:
 
-1. **显式提供商**（来自数据库 `ModelConfig.provider` 字段）— 最高优先级。如果提供商与 URL 中的已知域匹配，则不返回 `api_base`（LiteLLM 原生路由）。否则，`api_base` 设置为中继 URL。
-2. **域名匹配** `KNOWN_DOMAINS` — 通过主机名识别官方 API 端点。
-3. **URL 路径提示** `PATH_PROVIDER_HINTS` — 常见于 UniAPI 等中继平台，其中路径中的 `/claude` 或 `/anthropic` 表示上游协议。
-4. **回退** — `openai/` 前缀（通用 OpenAI 兼容）。
+1. **Explicit provider** (from the `provider` field of a legacy `ModelConfig` row or an agent's inline model config; models added under Admin → Models have no provider field, so for them resolution starts at step 2) — highest priority. If the provider matches a known domain in the URL, no `api_base` is returned (LiteLLM routes natively). Otherwise, `api_base` is set to the relay URL.
+2. **Domain match** against `KNOWN_DOMAINS` — official API endpoints are recognized by hostname.
+3. **URL path hint** against `PATH_PROVIDER_HINTS` — common on relay platforms like UniAPI where `/claude` or `/anthropic` in the path indicates the upstream protocol.
+4. **Fallback** — `openai/` prefix (generic OpenAI-compatible).
 
-| 域名 / 路径 | 提供商前缀 | 协议 |
+| Domain / Path | Provider prefix | Protocol |
 |---|---|---|
 | `api.openai.com` | `openai/` | OpenAI Chat Completions |
 | `anthropic.com` | `anthropic/` | Anthropic Messages API |
 | `generativelanguage.googleapis.com` | `gemini/` | Google Gemini |
-| `api.deepseek.com` | `deepseek/` | DeepSeek（OpenAI 兼容） |
+| `api.deepseek.com` | `deepseek/` | DeepSeek (OpenAI-compatible) |
 | `api.mistral.ai` | `mistral/` | Mistral |
-| 路径包含 `/claude` 或 `/anthropic` | `anthropic/` | Anthropic Messages API（通过中继） |
-| 路径包含 `/gemini` | `gemini/` | Google Gemini（通过中继） |
-| 其他任何情况 | `openai/` | 通用 OpenAI 兼容 |
+| Path contains `/claude` or `/anthropic` | `anthropic/` | Anthropic Messages API (via relay) |
+| Path contains `/gemini` | `gemini/` | Google Gemini (via relay) |
+| Anything else | `openai/` | Generic OpenAI-compatible |
 
-当提供商前缀是原生协议（anthropic、gemini 等）且 URL 不是官方端点时，LiteLLM 使用原生协议但将请求发送到中继的 `api_base`。这意味着提供商特定的行为 — 包括下面描述的 Bedrock 预填充问题 — 无论请求是发送到官方 API 还是通过中继，都会适用。
+When the provider prefix is a native protocol (anthropic, gemini, etc.) and the URL is not the official endpoint, LiteLLM uses the native protocol but sends requests to the relay's `api_base`. This means provider-specific behaviors — including the Bedrock prefill issue described below — apply regardless of whether the request goes to the official API or through a relay.
 
 <Warning>
-如果你的中继 URL 路径中包含 `/claude`，FIM One 会自动通过 Anthropic 的原生协议路由。这通常是正确的（更好的流式传输、思考支持），但意味着提供商特定的行为会适用 — 包括下面描述的 Bedrock 预填充问题。
+If your relay URL contains `/claude` in the path, FIM One automatically routes via Anthropic's native protocol. This is usually correct (better streaming, thinking support), but means provider-specific behaviors apply — including the Bedrock prefill issue described below.
 </Warning>
 
 ## tool_choice — 四种模式
@@ -338,31 +338,31 @@ FIM One 发出四个 `tool_choice` 状态中的三个：来自 ReAct 循环的 `
 
 `unsupported` 和 `informational_only` 在线路上产生相同的字节：两者都从传出历史中剥离 `reasoning_content` 和 `signature`。它们的意图不同，因此明确进行推理但落在 `unsupported` 中的模型是片段表中的间隙，而不是实时错误。
 
-### 中继/代理陷阱
+### Relay/proxy gotchas
 
-第三方网关的故障方式与直接提供商不同，其中大多数故障是无声的。下表将症状与其机制配对，以及FIM One已经采取的措施。
+Third-party gateways fail in ways a direct provider does not, and most of those failures are silent. Each row below pairs the symptom with its mechanism and with what FIM One already does about it.
 
 <Note>
-**支持边界。** FIM One保证本页面记录的行为适用于一方端点：OpenAI自己的API、Anthropic、Google以及任何直接提供其自有模型的供应商。第三方中继以尽力而为的方式支持，不受该保证覆盖，因为中继对请求所做的操作超出我们的控制范围，通常也超出其自身文档的范围。中继可以丢弃参数、重写历史、移除缓存断点或回答其仅部分实现的协议，在大多数情况下它返回`200`而不是错误。
+**Support boundary.** FIM One guarantees the behaviour documented on this page for first-party endpoints: OpenAI's own API, Anthropic, Google, and any vendor serving its own models directly. Third-party relays are supported on a best-effort basis and are not covered by that guarantee, because what a relay does to a request is outside our control and frequently outside its own documentation. A relay can drop a parameter, rewrite history, strip a cache breakpoint, or answer a protocol it only partially implements, and in most of those cases it returns a `200` rather than an error.
 
-这是关于我们承诺的陈述，而不是对运行内容的限制。FIM One不维护批准主机的允许列表，这里没有任何内容受域名限制。能力由端点实际执行的操作决定：缺失的路由返回`404`并被记住，被忽略的`include`产生空推理项且重放变为无操作，被拒绝的请求为该调用回退。探测端点比从其主机名推断其能力更准确，这是保持与Azure OpenAI、企业网关和正确实现协议的自托管代理兼容的唯一方法。
+This is a statement about what we promise, not a restriction on what runs. FIM One does not maintain an allowlist of approved hosts, and nothing here is gated on a domain. Capability is decided by what an endpoint actually does: a missing route answers `404` and is remembered, an ignored `include` yields empty reasoning items and the replay becomes a no-op, and a rejected request falls back for that call. Probing the endpoint is more accurate than inferring its capabilities from its hostname, and it is the only approach that keeps working for Azure OpenAI, enterprise gateways, and self-hosted proxies that implement the protocol correctly.
 
-如果中继的行为方式回退无法捕获，使用`FIM_GPT5_RESPONSES_MODE`（`bridge`或`off`）或按模型的`tool_choice_enabled`和`json_mode_enabled`开关固定协议，并针对一方端点重现后再将其作为FIM One错误提交。
+If a relay misbehaves in a way the fallbacks do not catch, pin the protocol yourself with `FIM_GPT5_RESPONSES_MODE` (`bridge` or `off`) or the per-model `tool_choice_enabled` and `json_mode_enabled` toggles, and reproduce against the first-party endpoint before filing it as a FIM One bug.
 </Note>
 
-| 症状 | 机制 | FIM One的做法 |
+| Symptom | Mechanism | What FIM One does |
 |---|---|---|
-| 思考已配置但从不出现 | 中继路径没有`/claude`提示，所以模型解析为`openai/`。Chat Completions架构没有思考概念，所以参数在请求离开进程前被丢弃 | 在构造时记录警告，命名模型和解析的前缀，并告诉你设置`provider`或使用Anthropic基础URL（`OpenAICompatibleLLM.__init__`） |
-| 参数似乎被接受但无效 | `litellm.drop_params=True`无声地按参数移除解析的提供商未声明的任何内容 | 有意为之。它使一个请求构建器在每个提供商上工作。代价是"无错误"不是参数到达的证据 |
-| 非OpenAI模型上首个令牌需要数分钟，或智能体返回文本且不进行工具调用 | 中继为非OpenAI的模型宣传`/v1/responses`，接受请求，然后缓冲整个答案后重放。在Uniapi与Claude上观察到，大约四分钟到首个令牌，在第二次重现中调用正常返回但智能体随后进行了零次工具调用。没有错误，所以错误触发的回退从不触发 | 网桥受益于GPT-5.x，唯一从Responses获得能力的系列。其他一切直接进入聊天完成且从不探测（`_dispatch_acompletion`，提交`137ede4c`） |
-| `ValidationException: This model does not support assistant message prefill` | 在`anthropic/`路由的Bedrock中继上的json_mode。LiteLLM通过将开括号预填充为助手消息来模拟`response_format`，较新的Bedrock版本拒绝以助手轮次结尾的对话 | 为该模型设置`json_mode_enabled=false`，或通过不注入预填充的OpenAI兼容网关路由 |
-| 对Zhipu端点的每次调用都返回`404` | 客户端将OpenAI风格的`/v1`附加到已以`/v4`结尾的基础URL | 完全按照提供商文档配置基础URL。FIM One原样传递`api_base` |
-| 安静期后出现`APIConnectionError: Connection error` | 中介在不发送FIN或RST的情况下回收了空闲池连接，httpx在下一次写入时返回了半死套接字 | 保活过期默认为5秒，所以跨轮空闲连接被丢弃而不是重用。设置`LLM_HTTP_MAX_KEEPALIVE=0`完全禁用重用（`_get_shared_http_client`） |
-| `Cannot send a request, as the client has been closed` | LiteLLM在其空闲TTL上驱逐了缓存的SDK客户端，该客户端持有的OpenAI SDK关闭了共享httpx会话 | 池在每次尝试前被重新验证，关闭时重建，LiteLLM的陈旧客户端缓存随之刷新（`_get_shared_http_client`、`_flush_litellm_client_cache`） |
-| 计费输入令牌与报告的缓存读取不匹配 | 中继在转发前移除`cache_control`，所以你支付全价而响应仍报告缓存计数器 | `TurnProfiler`按轮记录`read_tokens`和`create_tokens`，这也充当中继诚实探针。将其与发票比较 |
-| `Function tools with reasoning_effort are not supported ... Please use /v1/responses instead` | 中继根据`reasoning_effort`字段的存在而不是其值来保护聊天完成，所以FIM One发送的显式`none`来禁用推理也触发了保护。在Uniapi与`gpt-5.6-luna`上观察到 | 无，当Responses路径工作时也不需要：该模型仅在Responses请求已失败后才到达聊天完成。将其理解为中继想要Responses的信号，而不是设置`FIM_GPT5_RESPONSES_MODE=off`的理由 |
-| GPT-5.x在支持Responses的端点上停留在聊天完成 | `404`被缓存为该端点和模型的负面判决 | 仅`404`被缓存，因为缺失的路由是结构性的。`400`为该单次调用回退且故意不缓存，所以单个陈旧推理项无法永久将端点列入黑名单（`_remember_native_failure`）。缓存是按进程的，所以重启会重新探测 |
-| 思考块被拒绝或前缀缓存从不命中 | 中继重写或重新排序历史，所以重放的`signature`不再匹配 | 重放由`reasoning_replay_policy`集中决定，仅Anthropic系列id重放。如果中继后的Claude模型携带无法识别的id，将其片段添加到策略表 |
+| Thinking is configured but never appears | The relay path has no `/claude` hint, so the model resolves as `openai/`. The Chat Completions schema has no thinking concept, so the parameter is dropped before the request leaves the process | Logs a warning at construction naming the model and the resolved prefix, and telling you to use an Anthropic base URL (a `/claude` or `/anthropic` path) (`OpenAICompatibleLLM.__init__`) |
+| A parameter appears to be accepted and has no effect | `litellm.drop_params=True` removes anything the resolved provider does not declare, silently and per-parameter | Deliberate. It keeps one request builder working across every provider. The cost is that "no error" is not evidence the parameter arrived |
+| First token takes minutes on a non-OpenAI model, or the agent returns text and makes no tool calls | The relay advertises `/v1/responses` for a model that is not OpenAI's, accepts the request, then buffers the whole answer before replaying it. Observed on Uniapi with Claude at roughly four minutes to first token, and in a second reproduction the call returned normally but the agent then made zero tool calls. Nothing errors, so an error-triggered fallback never fires | The bridge is benefit-gated to GPT-5.x, the one family that gains capability from Responses. Everything else goes straight to chat completions and never probes (`_dispatch_acompletion`, commit `137ede4c`) |
+| `ValidationException: This model does not support assistant message prefill` | json_mode on an `anthropic/`-routed Bedrock relay. LiteLLM simulates `response_format` by prefilling an opening brace as an assistant message, and newer Bedrock versions reject a conversation ending in an assistant turn | Set `json_mode_enabled=false` for that model, or route through an OpenAI-compatible gateway where no prefill is injected |
+| `404` on every call to a Zhipu endpoint | The client appends an OpenAI-style `/v1` to a base URL that already ends in `/v4` | Configure the base URL exactly as the provider documents it. FIM One passes `api_base` through unchanged |
+| `APIConnectionError: Connection error` after a quiet period | An intermediary reaped an idle pooled connection without sending FIN or RST, and httpx handed back the half-dead socket on the next write | Keep-alive expiry defaults to 5 seconds so cross-turn idle connections are discarded rather than reused. Set `LLM_HTTP_MAX_KEEPALIVE=0` to disable reuse entirely (`_get_shared_http_client`) |
+| `Cannot send a request, as the client has been closed` | LiteLLM evicted a cached SDK client on its idle TTL, and the OpenAI SDK closed the shared httpx session that client was holding | The pool is re-validated before every attempt and rebuilt when closed, and LiteLLM's stale client cache is flushed alongside it (`_get_shared_http_client`, `_flush_litellm_client_cache`) |
+| Billed input tokens do not match the reported cache reads | The relay strips `cache_control` before forwarding, so you pay full price while the response still reports cache counters | `TurnProfiler` logs `read_tokens` and `create_tokens` per turn, which doubles as a relay honesty probe. Compare it against the invoice |
+| `Function tools with reasoning_effort are not supported ... Please use /v1/responses instead` | The relay guards chat completions on the presence of the `reasoning_effort` field, not on its value, so the explicit `none` FIM One sends to disable reasoning trips the guard too. Observed on Uniapi with `gpt-5.6-luna` | Nothing, and nothing is needed while the Responses path is working: that model only reaches chat completions after a Responses request has already failed. Read it as a sign the relay wants Responses, not as a reason to set `FIM_GPT5_RESPONSES_MODE=off` |
+| GPT-5.x stays on chat completions on an endpoint that does support Responses | A `404` was cached as a negative verdict for that endpoint and model | Only a `404` is cached, because a missing route is structural. A `400` falls back for that one call and is deliberately not cached, so a single stale reasoning item cannot blacklist the endpoint permanently (`_remember_native_failure`). The cache is per process, so a restart re-probes either way |
+| Thinking blocks are rejected or the prefix cache never hits | The relay rewrites or reorders history, so the replayed `signature` no longer matches | Replay is decided centrally by `reasoning_replay_policy`, and only Anthropic-family ids replay at all. If a Claude model behind a relay carries an unrecognisable id, add its fragment to the policy table |
 
 ## 推荐的按模型配置
 
@@ -382,19 +382,19 @@ LLM_TOOL_CHOICE_ENABLED=false
 LLM_JSON_MODE_ENABLED=false
 ```
 
-## 推理工作量和思维配置
+## Reasoning effort and thinking configuration
 
-FIM One 公开两个环境变量来控制扩展思维/推理：
+FIM One exposes two env vars for controlling extended thinking / reasoning (the reasoning tier has its own pair, `REASONING_LLM_EFFORT` and `REASONING_LLM_BUDGET`, falling back to these). They apply to the ENV-configured General model and to the Reasoning slot; the Fast model never gets reasoning, and General and Fast models from an active Model Group run without it:
 
-| 变量 | 值 | 效果 |
+| Variable | Values | Effect |
 |---|---|---|
-| `LLM_REASONING_EFFORT` | `low`、`medium`、`high` | 启用思维。超出此集合的任何值都被读作未设置（`deps.py::_reasoning_effort`）。该级别的转换方式以及提供商本身接受的值是按提供商的：请参阅[提供商能力矩阵](#provider-capability-matrix)中的表 C。 |
-| `LLM_REASONING_BUDGET_TOKENS` | 整数（例如 `10000`） | 仅限 Anthropic 旧版路径：在仍采用 `enabled` 形式的模型上设置显式 `thinking.budget_tokens` 上限，绕过 LiteLLM 的自动映射。自适应思维模型忽略它，转而使用 `output_config.effort`。 |
+| `LLM_REASONING_EFFORT` | `low`, `medium`, `high` | Turns thinking on. Anything outside this set is read as unset (`deps.py::_reasoning_effort`). How the level is translated, and which values the provider itself accepts, is per-provider: see Table C in the [Provider Capability Matrix](#provider-capability-matrix). |
+| `LLM_REASONING_BUDGET_TOKENS` | integer (e.g. `10000`) | Anthropic legacy path only: sets an explicit `thinking.budget_tokens` cap on models that still take the `enabled` form, bypassing LiteLLM's auto-mapping. Adaptive-thinking models ignore it in favour of `output_config.effort`. |
 
-启用思维后，以下两种行为会自动执行，都不需要用户配置：
+Two behaviours follow automatically once thinking is on, and neither needs user configuration:
 
-1. **温度由系统处理。** 在启用思维的 `anthropic/` 路由上，`_build_request_kwargs` 将 `temperature` 固定为 1.0，这是 Bedrock 的要求。完全拒绝采样参数的模型（Opus 4.7 和 4.8、Fable 5、Mythos 5）会从请求中完全移除 `temperature`，无论是否启用思维。不要手动设置 `LLM_TEMPERATURE=1`。
-2. **GPT-5.x 在可能的情况下将工具和推理结合在一起。** FIM One 首先探测 GPT-5.x 的 Responses 桥接，因为这是两者结合的唯一表面。没有可用 `/v1/responses` 路由的端点会回退到聊天完成，判断结果按端点缓存，在该路径上携带 `tools` 的请求会发送显式 `reasoning_effort` 为 `none`。省略该字段不等同，因为服务器默认值不是 `none`。
+1. **Temperature is handled for you.** On an `anthropic/` route with thinking active, `_build_request_kwargs` sends `temperature` 1.0 for Claude 4.5 and older, which is what Bedrock demands, and removes `temperature` for adaptive-thinking models (4.6 and newer). Models that reject sampling parameters outright (Opus 4.7 and 4.8, Fable 5, Mythos 5) have `temperature` removed from the request entirely, thinking or not. Do not set `LLM_TEMPERATURE=1` by hand for this.
+2. **GPT-5.x keeps tools and reasoning together where it can.** FIM One talks `/v1/responses` directly for GPT-5.x, because that is the only surface where the two combine. An endpoint with no `/v1/responses` route (404) falls back to chat completions and the verdict is cached per endpoint and model; a 400 falls back for that call only. On that path a request carrying `tools` sends an explicit `reasoning_effort` of `none`. Omitting the field is not equivalent, since the server default is not `none`.
 
 ## 结构化输出的防御性解析
 
@@ -455,9 +455,9 @@ ReAct 的系统提示词（JSON 模式、原生函数调用模式、综合）分
 
 对于支持自动前缀缓存的所有提供商，`PromptRegistry` 都能「免费」带来收益——通过确保静态部分在每次调用之间保持字节内容一致（当前日期时间位于动态后缀中，而非前缀中），所有支持自动缓存的提供商都能匹配哈希并命中缓存。因此，即使不考虑 Anthropic 专属的 `cache_control`，Registry 也能带来基础性的无模型收益。
 
-### 可观测性
+### Observability
 
-每个 `chat/*` 响应的 `done_payload` 现在包括：
+Every `chat/*` response's `done_payload` now includes:
 
 ```json
 "cache": {
@@ -466,9 +466,9 @@ ReAct 的系统提示词（JSON 模式、原生函数调用模式、综合）分
 }
 ```
 
-`TurnProfiler` 每轮发出一条结构化日志行：`turn_cache summary | model=claude-sonnet-4-6 | read_tokens=1067 | create_tokens=0 | saved_input_tokens=961 (~90%)`。这也充当**中继诚实探针** — 如果你通过 API 中继路由，比较实际计费的输入 token 与 `read_tokens` 来检测中继是否剥离 `cache_control` 或保留 0.10× 折扣。
+`TurnProfiler` emits a structured log line per turn: `turn_cache conv=<id> turn=<n> model=claude-sonnet-4-6 read_tokens=1067 create_tokens=0 saved_input_tokens=961 (~90%)`. This also functions as a **relay honesty probe** — if you route through an API relay, compare actual billed input vs `read_tokens` to detect whether the relay strips `cache_control` or keeps the 0.10× discount.
 
-LLM 层不返回美元估计 — 定价和中继加价在上层应用，因此 LLM 层仅返回客观的 token 计数。
+No dollar estimate is returned at the LLM layer — pricing and relay markup are applied above, so the LLM layer only returns objective token counts.
 
 ### 多轮缓存 ROI
 
@@ -486,16 +486,16 @@ LLM 层不返回美元估计 — 定价和中继加价在上层应用，因此 L
 
 扩展思考/推理块在不同提供商之间的行为不同。统一的序列化策略会破坏协议契约和自动前缀缓存。`fim_one.core.prompt.reasoning.reasoning_replay_policy(model_id)` 返回四个值之一，并在 `OpenAICompatibleLLM._build_request_kwargs()` 中控制 `ChatMessage.to_openai_dict(replay_policy=...)` 的行为。
 
-### 四项策略
+### Four policies
 
-- **`anthropic_thinking`** — Claude 系列（包括 `anthropic/`、`bedrock/anthropic`、`vertex_ai/claude`）。思维块必须附带 `signature` 重放；如果缺少或修改了签名，Anthropic 会拒绝后续轮次。
-- **`informational_only`** — 发出 CoT 但不期望重放的模型：DeepSeek 推理模式（V3.2 上的 `deepseek-reasoner`，以及片段表仍匹配的较早版本 `deepseek-r1` 和 R1-Distill ID）、Qwen QwQ、Gemini flash-thinking、OpenAI o1 / o3 / o4。它们的文档明确说明"不要在消息历史中发送 `reasoning_content`"。即使发送：
-  - 违反提供商合约（未来版本可能开始拒绝）
-  - **无声地使其自动前缀缓存失效** — 消息字节在每个轮次变化，破坏哈希值
-- **`openai_responses`** — GPT-5.x，在 `gpt-5` 片段上匹配。其推理状态不是文本，而是携带加密负载的不透明项序列，只有 `/v1/responses` 有插槽容纳它们。在该协议上，这些项逐字重放，这是保持模型在工具轮次间思维链活跃的方式。可读摘要仍从传出请求中删除，因此在 chat-completions 回退上，其行为完全像 `informational_only`。在信息片段之前检查，其通用 `reasoning` 条目否则会吞没代理标记的 GPT-5 ID。
-- **`unsupported`** — 包罗万象：无推理能力的模型（GPT-4o、Gemini 1.5、Mistral、Llama），以及 ID 不匹配任何片段的推理模型（GLM、MiniMax、Kimi、Doubao）。无论哪种方式都不应重放任何字段，因此此策略在线路上放置与 `informational_only` 相同的字节。这也是未知模型 ID 的安全默认值。
+- **`anthropic_thinking`** — Claude family (including `anthropic/`, `bedrock/anthropic`, `vertex_ai/claude`). Thinking blocks MUST be replayed with `signature` attached; Anthropic rejects subsequent turns if the signature is missing or altered.
+- **`informational_only`** — models that emit CoT but do NOT expect replay: DeepSeek reasoning mode (`deepseek-reasoner` on V3.2, and the older `deepseek-r1` and R1-Distill ids the fragment table still matches), Qwen QwQ, Gemini flash-thinking, OpenAI o1 / o3 / o4. Their documentation explicitly says "do not send `reasoning_content` back in message history". Sending it anyway:
+  - Violates the provider contract (may start rejecting in future versions)
+  - **Silently invalidates their automatic prefix cache** — message bytes mutate on every turn, breaking the hash
+- **`openai_responses`** — GPT-5.x and later, matched on the `gpt-5` and `gpt-6` fragments. Its reasoning state is not text but a sequence of opaque items carrying encrypted payloads, and only `/v1/responses` has a slot for them. On that protocol the items are replayed verbatim, which is what keeps the model's chain of thought alive across tool rounds. The readable summary is still dropped from outgoing requests, so on the chat-completions fallback this behaves exactly like `informational_only`. Checked before the informational fragments, whose generic `reasoning` entry would otherwise swallow proxy-tagged GPT-5 ids.
+- **`unsupported`** — the catch-all: models with no reasoning capability (GPT-4o, Gemini 1.5, Mistral, Llama), and reasoning models whose id matches no fragment (GLM, MiniMax, Kimi, Doubao). No field should be replayed either way, so this policy puts the same bytes on the wire as `informational_only`. It is also the safe default for unknown model ids.
 
-可读的 `reasoning_content` 和不透明的 `reasoning_items` 是 `ChatMessage` 上的独立字段。`to_openai_dict()` 根本不序列化这些项，因此它们在结构上无法泄漏到 chat-completions 请求，无论策略如何。
+The readable `reasoning_content` and the opaque `reasoning_items` are independent fields on `ChatMessage`. `to_openai_dict()` never serialises the items at all, so they are structurally incapable of leaking onto a chat-completions request, whatever the policy says.
 
 ### 执行
 
@@ -508,19 +508,19 @@ LLM 层不返回美元估计 — 定价和中继加价在上层应用，因此 L
 - **如果您在同一对话中在 Claude 和 DeepSeek 智能体之间切换**，历史记录会完整保存思考块；在下一轮中，传出消息形状会根据当前模型进行调整。
 - **如果您使用代理 / 自定义 `BaseLLM` 子类**，请确保其模型 id 是可识别的（包含其中一个片段），否则默认的 `unsupported` 策略将适用 — 这是安全的，但意味着异常代理后的 Claude 可能会丢失思考重放。将模型 id 片段添加到 `_CACHE_CAPABLE_MODEL_FRAGMENTS`（在 `core/prompt/caching.py` 中）和/或推理策略查找。
 
-## 故障排除
+## Troubleshooting
 
 **"This model does not support assistant message prefill"**
-Bedrock + json_mode。两个解决方案：（1）设置 `LLM_JSON_MODE_ENABLED=false` 或在管理员模型设置中禁用 JSON Mode；或（2）如果你的 Bedrock 提供商提供 OpenAI 兼容的 `/v1/chat/completions` 端点，切换到该端点——FIM One 将其解析为 `openai/`，预填充注入永远不会发生。
+Bedrock + json_mode. Two fixes: (1) set `LLM_JSON_MODE_ENABLED=false` or disable JSON Mode in the admin model settings; or (2) if your Bedrock provider offers an OpenAI-compatible `/v1/chat/completions` endpoint, switch to that — FIM One resolves it as `openai/` and the prefill injection never occurs.
 
 **"Thinking may not be enabled when tool_choice forces tool use"** / **"tool_choice 'specified' is incompatible with thinking enabled"**
-对于 Anthropic 模型，`structured_llm_call` 会自动为 native_fc 调用禁用推理。在无法通过 API 关闭推理的情况下，例如 `kimi-k2.5` 和 `kimi-k2-thinking` 或 `deepseek-reasoner`，在模型的高级设置中禁用"Native Function Calling"，或全局设置 `LLM_TOOL_CHOICE_ENABLED=false`。降级链将跳过 native_fc，改为通过 json_mode 或 plain_text 提取结构化输出。在假设推理模型存在此问题之前，请查看[提供商能力矩阵](#provider-capability-matrix)的表 B；MiniMax 没有此问题。
+For Anthropic models, `structured_llm_call` disables thinking for native_fc calls automatically. Where thinking cannot be turned off through the API, such as `kimi-k2.5` and `kimi-k2-thinking` or `deepseek-reasoner`, disable "Native Function Calling" in the model's Advanced settings, or set `LLM_TOOL_CHOICE_ENABLED=false` globally. The degradation chain will skip native_fc and extract structured output via json_mode or plain_text instead. Check Table B of the [Provider Capability Matrix](#provider-capability-matrix) before assuming a thinking model has this problem; MiniMax does not.
 
 **"DAG pipeline failed: LLM 'steps' is not an array"**
-LLM 返回的 `steps` 字段是字符串或单个对象，而不是数组。这通常意味着结构化输出降级到了 json_mode（缺乏模式强制）。检查日志中的 `structured_llm_call: level=xxx`——如果显示 `json_mode` 而不是 `native_fc`，则 native_fc 以静默方式失败。如果使用自定义 `BaseLLM` 子类，请验证它接受 `reasoning_effort` 关键字参数。
+The LLM returned the `steps` field as a string or single object instead of an array. This typically means structured output fell through to json_mode (which lacks schema enforcement). Check the log for `structured_llm_call: level=xxx` — if it shows `json_mode` instead of `native_fc`, native_fc is failing silently. If using a custom `BaseLLM` subclass, verify it accepts the `reasoning_effort` kwarg.
 
-**ReAct 意外降级到 JSON mode**
-检查模型的 `abilities["tool_call"]` 是否为 `True`。对于 `OpenAICompatibleLLM`，这总是 `True`，但自定义 `BaseLLM` 子类可能会覆盖它。通过管理员 API 中的模型详情端点进行验证。
+**ReAct falls back to JSON mode unexpectedly**
+Check that the model's `abilities["tool_call"]` is `True`. This is always `True` for `OpenAICompatibleLLM`, but a custom `BaseLLM` subclass might override it.
 
-**structured_llm_call 耗尽所有级别并抛出 StructuredOutputError**
-模型在任何级别都无法生成可解析的 JSON。这在现代模型中很少见。检查：（1）模式是否为有效的 JSON Schema，（2）模型是否有足够的 `max_tokens` 来生成完整响应，（3）系统提示是否与模式指令相矛盾。DAG 规划器和分析器都提供 `default_value` 回退，因此此错误仅从显式省略默认值的调用站点传播。
+**structured_llm_call exhausts all levels and raises StructuredOutputError**
+The model failed to produce parseable JSON at any level. This is rare with modern models. Check: (1) the schema is valid JSON Schema, (2) the model has enough `max_tokens` to produce the full response, (3) the system prompt is not contradicting the schema instructions. The DAG planner and analyzer both provide `default_value` fallbacks, so this error only propagates from call sites that explicitly omit defaults.

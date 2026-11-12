@@ -1,12 +1,12 @@
 ---
-title: "Canal Feishu (Lark)"
+title: "Feishu (Lark) Channel"
 icon: "comment-dots"
-description: "Connectez FIM One à une application Feishu pour les messages sortants, les réponses entrantes et les cartes d'approbation interactives."
+description: "Wire FIM One to a Feishu app for outbound messages and interactive approval cards."
 ---
 
-Un canal Feishu offre aux agents d'une organisation une ligne directe unique vers un groupe Feishu : notifications sortantes, réponses entrantes et cartes Approuver / Rejeter interactives (via le hook `feishu_gate`).
+A Feishu Channel gives agents in one org a single hotline into a Feishu group: outbound notifications and interactive Approve / Reject cards (via the `approval_gate` hook).
 
-Ce guide vous guide à travers la configuration de bout en bout. Il suppose que FIM One est accessible à une origine HTTPS stable — appelez-la `API_BASE_URL` (par exemple `https://one.yourdomain.com`).
+This guide walks through the end-to-end setup. It assumes FIM One is reachable at a stable HTTPS origin — call this `API_BASE_URL` (e.g. `https://one.yourdomain.com`).
 
 ## 1. Créer une application Feishu
 
@@ -30,38 +30,37 @@ Sous **Permissions & Scopes**, activez les scopes suivants et soumettez la versi
 | `im:chat:readonly` | Accès en lecture minimal pour la découverte de groupes |
 | `im:resource` | (Optionnel) Télécharger des images / fichiers affichés sur les cartes |
 
-## 3. Activer les abonnements aux événements (laisser l'URL de requête vide pour l'instant)
+## 3. Enable event subscriptions (leave the Request URL blank for now)
 
-Ouvrez **Event Subscriptions**, mais **ne remplissez pas encore l'URL de requête** — vous l'obtiendrez de FIM One à l'étape 5.
+Open **Event Subscriptions**, but **don't fill in the Request URL yet** — you get it from FIM One in step 5.
 
-Abonnez-vous aux événements suivants :
+Subscribe the following events:
 
-- `im.message.receive_v1` — messages entrants des utilisateurs
-- `card.action.trigger` — clics sur les boutons Approuver / Rejeter
+- `card.action.trigger` — Approve / Reject button clicks
 
-Sur la même page, définissez éventuellement un **Verification Token** et une **Encrypt Key**. FIM One supporte les deux modes et utilisera celui qui est fourni.
+Under the same page, set an **Encrypt Key** (required: FIM One rejects a Feishu channel without one, and uses it to verify and decrypt callbacks) and optionally a **Verification Token**.
 
-## 4. Ajouter le canal dans FIM One
+## 4. Add the Channel in FIM One
 
-1. Connectez-vous en tant que **propriétaire d'organisation** ou **administrateur**.
-2. Allez à **Paramètres de l'organisation → Canaux → Nouveau canal**.
-3. Choisissez **Feishu** comme type, puis remplissez :
+1. Sign in as an **Org Owner** or **Admin**.
+2. Go to **Organization Settings → Channels → New Channel**.
+3. Pick **Feishu** as the type, then fill in:
 
-   | Champ | Source |
+   | Field | Source |
    |---|---|
-   | **Nom** | Tout libellé interne (par ex. `Feishu équipe Ops`) |
-   | **App ID** | De l'étape 1 (`cli_xxxxxxxxxxxxxxxx`) |
-   | **App Secret** | De l'étape 1 |
-   | **Verification Token** | (Optionnel) De l'étape 3 |
-   | **Encrypt Key** | (Optionnel) De l'étape 3 |
+   | **Name** | Any internal label (e.g. `Ops team Feishu`) |
+   | **App ID** | From step 1 (`cli_xxxxxxxxxxxxxxxx`) |
+   | **App Secret** | From step 1 |
+   | **Verification Token** | (Optional) From step 3 |
+   | **Encrypt Key** | Required. From step 3 |
 
-4. Cliquez sur **Parcourir les conversations** — FIM One appelle Feishu avec vos identifiants et liste tous les groupes dont le bot est actuellement membre.
+4. Click **Browse chats** — FIM One calls Feishu with your credentials and lists every group the bot is currently a member of.
 
 <Tip>
-Si la liste est vide, le bot n'a pas encore été ajouté à un groupe. Ouvrez Feishu, ajoutez le bot au groupe cible, puis rouvrez le sélecteur.
+If the list is empty, the bot hasn't been added to any group yet. Open Feishu, add the bot to the target group, then reopen the picker.
 </Tip>
 
-5. Choisissez la conversation de groupe que vous souhaitez router, cliquez sur **Enregistrer**.
+5. Pick the group chat you want to route to, click **Save**.
 
 ## 5. Enregistrer l'URL de rappel auprès de Feishu
 
@@ -83,15 +82,15 @@ Si ce n'est pas le cas :
 - **Silent failure** — confirmez que le bot est réellement dans le groupe (sélecteur de l'étape 4) et que `is_active` est true sur la ligne du canal.
 - **Verification fails on step 5** — confirmez que `API_BASE_URL` est HTTPS et publiquement accessible ; Feishu refuse les URL de requête non-HTTPS.
 
-## 7. Connecter un agent (optionnel — approbations)
+## 7. Wire up an agent (optional — approvals)
 
-Pour soumettre les appels d'outils à l'approbation du groupe :
+To gate tool calls behind group approval:
 
-1. Sur l'action outil / connecteur, activez **Requires confirmation**.
-2. Sur l'agent, ajoutez `feishu_gate` sous **Hooks → Class hooks**.
-3. Assurez-vous que l'organisation de l'agent dispose d'exactement un canal Feishu **actif** — le hook y achemine automatiquement.
+1. On the tool / connector action, flip **Requires confirmation** on.
+2. In the agent editor's **Approval** section, pick this channel as the **Approval channel** and set the mode to **Auto** or **Channel only**. The gate is attached to every agent automatically; no hook configuration is needed.
+3. Set the **Approver scope** (initiator, agent owner, or any org member). Approvers must have linked their Feishu account to their FIM One user, otherwise their click is ignored.
 
-Lorsque l'agent tente d'exécuter un outil soumis à approbation, une carte interactive est publiée dans le groupe avec les options **Approve** / **Reject**. L'outil attend (le flux SSE se met en pause) jusqu'à ce qu'un membre appuie sur l'une d'elles ; le verdict est transmis en continu et l'agent se termine ou s'interrompt en conséquence.
+When the agent tries to run a gated tool, an interactive card posts to the group with **Approve** / **Reject**. The tool waits (SSE stream pauses) until a permitted approver taps one; the verdict streams back and the agent either completes or aborts.
 
 ## Dépannage
 
@@ -138,6 +137,6 @@ Si cliquer sur **Approve** ou **Reject** sur une carte produit `出错了，请�
 
 Le webhook retourne maintenant une carte de remplacement à la première décision — les boutons sont supprimés et l'en-tête de la carte devient vert (approuvé) ou rouge (rejeté). Si vous voyez toujours des boutons cliquables après le premier clic, votre client Feishu affiche peut-être une copie en cache ; rouvrez le chat et la carte décidée s'affichera correctement.
 
-### Une org, deux canaux Feishu
+### One org, two Feishu channels
 
-`feishu_gate` sélectionne le premier canal **actif** qu'il trouve. Si vous avez besoin de plusieurs points de terminaison Feishu dans la même org (par exemple, des groupes de staging vs. production), désactivez tous sauf un, ou écrivez un hook personnalisé qui sélectionne par tag d'agent.
+An approval goes to the channel chosen as the agent's **Approval channel**, and to no other. Several Feishu channels in one org (staging and production groups, say) coexist; bind each agent to the one it should use. A click counts only on the channel that delivered the card.

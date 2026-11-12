@@ -16,42 +16,42 @@ AI 智能体的格局分为两个阵营，两者都选择了简单的路径。�
 
 今天，LLM 任务分解精度对于非平凡目标来说约为 70-80%。当达到 90% 以上时，动态规划的"最佳点"会大幅扩展——昨天过于复杂的问题明天就会变得易于处理。FIM One 的 DAG 框架旨在捕获这种扩展的价值，而无需重写底层逻辑。
 
-## ReAct 和 DAG 规划会过时吗？
+## Will ReAct and DAG planning become obsolete?
 
-ReAct 不会消失——它会沉入模型中。考虑这个类比：你不需要手写 TCP 握手，但 TCP 并没有消失；它被吸收到操作系统中了。当模型足够强大时，思考-行动-观察循环变成模型内部的隐式行为，而不是显式框架代码。这已经在发生了：Claude Code 本质上是一个 ReAct 智能体，其中循环由模型本身驱动，而不是由外部框架驱动。
+ReAct will not disappear -- it will sink into the model. Consider the analogy: you do not hand-write TCP handshakes, but TCP did not go away; it got absorbed into the operating system. When models are strong enough, the think-act-observe loop becomes implicit behavior inside the model, not explicit framework code. This is already happening: Claude Code is essentially a ReAct agent where the loop is driven by the model itself, not by an external harness.
 
-DAG 规划的持久价值不是"帮助能力不足的模型分解任务"——而是**并发调度**。即使模型能力无限强大，物理学也会施加延迟约束：10 个 LLM 调用的串行链比 3 个并行波次慢 10 倍。DAG 是一个工程问题（如何快速可靠地运行事物），而不是智能问题（如何决定运行什么）。重试逻辑、成本控制、超时管理、可观测性——这些在模型变得更聪明时不会消失。
+DAG planning's lasting value is not "helping dumb models decompose tasks" -- it is **concurrent scheduling**. Even with infinitely capable models, physics imposes latency: a serial chain of 10 LLM calls takes 10x longer than 3 parallel waves. DAG is an engineering problem (how to run things fast and reliably), not an intelligence problem (how to decide what to run). Retry logic, cost control, timeout management, observability -- these do not go away when models get smarter.
 
-最终状态：**模型掌控"做什么"（规划智能内化到模型中），框架掌控"怎么做"（并发、重试、监控、成本治理）**。框架的持久价值不是智能——而是治理。
+The endgame: **models own the "what" (planning intelligence internalizes into the model), frameworks own the "how" (concurrency, retry, monitoring, cost governance)**. A framework's lasting value is not intelligence -- it is governance.
 
-这是 FIM One 其余部分的下游基础句。一旦模型掌控"做什么"，持久价值就转向治理"怎么做"——而任何企业中最高价值的"怎么做"是*触达*那些拒绝相互通信的系统。连接器中枢离这里只有一步推理距离，历史证明了这一点：该项目始于 DAG 编排框架（`fim-agent`），在一周内演变成连接器平台——不是通过重写，而是因为这个赌注已经需要它了。
+This is the sentence the rest of FIM One is downstream of. Once the model owns the "what," durable value moves to governing the "how" -- and the highest-value "how" in any enterprise is *reach* into the systems that refuse to talk to each other. The integration layer is one inferential step from here, and the history shows it: the project began as a DAG orchestration framework (`fim-agent`) and became a connector platform within a single week -- not through a rewrite, but because this bet already required it.
 
-## 为什么不镜像Dify的工作流编辑器
+## Why not mirror Dify's workflow editor
 
-一个自然的问题：如果DAG涵盖了灵活的情况，我们是否也应该为确定性情况构建一个静态工作流编辑器？
+A natural question: if DAG covers the flexible case, shouldn't we also build a static workflow editor for the deterministic case?
 
-不应该。理由如下：
+Not as the core. FIM One does ship a visual Workflow editor (9 node types, cron and API triggers), but as an optional module that is off by default. The reasoning for keeping it secondary:
 
-1. **工作流已经存在于其他地方。** 政府和企业客户的固定流程存在于他们的OA、ERP和遗留系统中。他们不想在另一个平台上重新构建这些流程——他们希望AI能够连接到这些流程已经运行的系统。连接器平台（v0.6）直接解决了这个问题。
+1. **The workflows already exist elsewhere.** Government and enterprise clients' fixed processes live in their OA, ERP, and legacy systems. They don't want to rebuild those flows in yet another platform -- they want AI that can connect to the systems where those flows already run. The Connector Platform (v0.6) solves this directly.
 
-2. **现有功能可以组合成固定管道。** 定时任务（v1.0）触发带有固定提示词的DAG智能体；DAG动态规划步骤；连接器（v0.6）连接到目标系统。这种组合等同于静态管道——但更灵活，因为LLM可以根据遇到的数据调整其计划。不需要单独的管道DSL。
+2. **Existing capabilities compose into fixed pipelines.** Scheduled Jobs (v1.0) trigger a DAG agent with a fixed prompt; the DAG dynamically plans the steps; Connectors (v0.6) connect to the target systems. The combination is equivalent to a static pipeline -- but more flexible, because the LLM can adjust its plan based on the data it encounters. No separate pipeline DSL needed.
 
-3. **投资不匹配。** 生产级质量的可视化工作流编辑器（画布、节点类型、变量传递、调试/重放）需要数月的专项工作。其结果将是Dify的12万星社区已经维护的低保真副本。这些工作最好用于连接器架构——这是竞争对手没有提供的能力。
+3. **Investment mismatch.** A production-quality visual workflow editor (canvas, node types, variable passing, debug/replay) is months of dedicated effort. The result would be a low-fidelity copy of what Dify's 120K-star community already maintains. That effort is better spent on the Connector architecture -- a capability no competitor offers.
 
-战略赌注：**不要在工作流可视化上竞争；要在成为系统与AI相遇的智能体平台上竞争**。让Dify拥有"可视化构建AI工作流"。FIM One拥有"全球×中国企业的一体化智能体平台"。
+The strategic bet: **don't compete on workflow visualization; compete on being the agent platform where systems meet AI**. Let Dify own "build AI workflows visually." FIM One owns "the all-in-one agent platform for Global × China enterprises."
 
-## FIM One 的定位
+## Where FIM One stands
 
-FIM One 不是"AGI 任务调度器"，也不是静态工作流引擎。它处于中间地带：具有约束的规划能力、可观测的并发。
+FIM One is not an "AGI task scheduler" and not primarily a static workflow engine. It occupies the middle ground: planning capability with constraints, concurrency with observability.
 
-- 与 **Dify** 相比：更灵活 -- 运行时 DAG 生成 vs. 设计时流程图。您无需提前预测每个执行路径。不在可视化工作流编辑上竞争；在遗留系统集成上竞争。
-- 与 **AutoGPT** 相比：更受控 -- 有界迭代、重新规划限制、路线图上的人工介入。在护栏内的自主性。
+- Compared to **Dify**: more flexible -- runtime DAG generation vs. design-time flowcharts. You do not need to anticipate every execution path in advance. Does not compete on visual workflow editing; competes on legacy system integration.
+- Compared to **AutoGPT**: more controlled -- bounded iterations, re-planning limits, with human confirmation gates. Autonomy within guardrails.
 
-策略很直接：现在构建编排框架，让不断改进的模型随着时间推移为其填充能力。
+The strategy is straightforward: build the orchestration framework now, and let improving models fill it with capability over time.
 
-## FIM One 所处的位置：规划 × 执行光谱
+## Where FIM One Sits: Planning x Execution Spectrum
 
-AI 执行领域可以通过两个轴进行划分——计划如何创建（静态与动态）以及计划如何执行（刚性与自适应）：
+The AI execution landscape can be mapped on two axes -- how plans are created (static vs dynamic) and how they are executed (rigid vs adaptive):
 
 ```mermaid
 quadrantChart
@@ -75,30 +75,30 @@ quadrantChart
     classDef highlight color: #0066FF, radius: 12, stroke-color: #0052CC, stroke-width: 2px
 ```
 
-**为什么 Dify/n8n 属于静态规划 + 静态执行**：DAG 在设计时由人工在可视化画布上绘制。每个节点执行固定操作（使用固定提示词调用LLM、发送 HTTP 请求、运行代码块）。运行时不会重新规划——如果某个步骤失败，工作流会失败，或者沿着预先配置的错误分支继续执行。从结构上看，这与 BPM 相同，只是图中使用了 AI 节点。
+**Why Dify/n8n are Static Planning + Static Execution**: The DAG is drawn by a human on a visual canvas at design time. Each node executes a fixed operation (an LLM call with a fixed prompt, an HTTP request, a code block). There is no runtime replanning -- if a step fails, the workflow fails or follows a pre-wired error branch. This is structurally the same as BPM, just with AI nodes in the graph.
 
-**FIM One 的位置：动态规划 + 动态执行**
+**FIM One's position: Dynamic Planning + Dynamic Execution**
 
-- **DAG 拓扑由LLM在运行时生成**（动态规划）——无需人工设计图
-- **每个 DAG 节点运行完整的 ReAct 循环**（动态执行）——节点会进行推理、使用工具并自适应调整
-- **重新规划机制**（执行 → 分析 → 如果未满足要求则重新规划）
-- 但受到限制：最多 3 轮重新规划、Token 预算以及人工确认闸门
+- **DAG topology is generated by LLM at runtime** (dynamic planning) -- no human designs the graph
+- **Each DAG node runs a full ReAct loop** (dynamic execution) -- nodes reason, use tools, and adapt
+- **Re-planning mechanism** (execute → analyze → re-plan if unsatisfied)
+- But bounded: max 3 rounds in total (the first plan plus 2 re-plans), token budgets, human confirmation gates
 
-这使 FIM One 与 AutoGPT 处于同一象限，但同时具备防止失控行为的工程约束。它比 BPM/Dify 更灵活，比 AutoGPT 更可控。
+This places FIM One in the same quadrant as AutoGPT, but with engineering constraints that prevent runaway behavior. More flexible than BPM/Dify, more controlled than AutoGPT.
 
-## 概念术语表
+## Concept Glossary
 
-对于不熟悉本文档中使用的术语的读者：
+For readers unfamiliar with the terminology used in this document:
 
-| 术语 | 单行解释 | 与 FIM One 的关系 |
+| Term | One-line explanation | Relation to FIM One |
 |------|---------------------|----------------------|
-| **BPM**（业务流程管理） | 流程在设计时完全固定，严格执行。Camunda、Activiti。 | FIM One **不是** BPM。没有固定的流程引擎。 |
-| **FSM**（有限状态机） | 系统在任何时刻恰好处于一个状态；事件触发转换。支持循环（拒绝 → 重新提交）。 | 目标系统（ERP、合同系统）内部使用 FSM。FIM One **不需要**自己的 FSM -- 它调用目标系统的 API。 |
-| **ACM**（自适应案例管理） | 骨架静态，分支动态。主流程预定义，每个节点在运行时自适应。 | FIM One 的 DAG + ReAct 自然落入这个象限。 |
-| **HTN**（分层任务网络） | 递归任务分解：高级 → 子任务 → 原子操作。 | DAG 重新规划涵盖大多数场景；暂不需要完整的 HTN。 |
-| **iPaaS**（集成平台即服务） | 云集成平台，连接多个 SaaS/本地系统。MuleSoft、Zapier。 | FIM One 的 Hub Mode 类似**AI 原生 iPaaS** -- 自然语言驱动跨系统集成。 |
-| **MDM**（主数据管理） | 跨系统去重和统一实体记录为"黄金记录"。Reltio、Informatica、Tamr。 | FIM One **连接到** MDM 系统；它不复制实体解析。 |
-| **Context Layer / System of Context**（上下文层 / 上下文系统） | 统一的实体 + 关系图，为 AI 智能体提供可信的业务上下文。术语由 Reltio（2026）推广。 | FIM One 将此委托给上游 MDM/数据平台。Skills 为常见情况提供轻量级聚合。 |
+| **BPM** (Business Process Management) | Processes fully fixed at design time, executed rigidly. Camunda, Activiti. | FIM One is **not** BPM. Fixed processes are covered by the optional Workflow module, not the core. |
+| **FSM** (Finite State Machine) | System is in exactly one state at any time; events trigger transitions. Supports loops (reject → resubmit). | Target systems (ERP, contract systems) use FSM internally. FIM One **doesn't need** its own FSM -- it calls the target system's API. |
+| **ACM** (Adaptive Case Management) | Skeleton static, branches dynamic. Main flow pre-defined, each node adapts at runtime. | FIM One's DAG + ReAct naturally falls in this quadrant. |
+| **HTN** (Hierarchical Task Network) | Recursive task decomposition: high-level → subtasks → atomic operations. | DAG re-planning covers most scenarios; full HTN not needed yet. |
+| **iPaaS** (Integration Platform as a Service) | Cloud integration platform connecting multiple SaaS/on-prem systems. MuleSoft, Zapier. | FIM One's integration layer is like **AI-native iPaaS** -- natural language drives cross-system integration. |
+| **MDM** (Master Data Management) | Deduplicates and unifies entity records across systems into a "golden record." Reltio, Informatica, Tamr. | FIM One **connects to** MDM systems; it does not replicate entity resolution. |
+| **Context Layer / System of Context** | Unified entity + relationship graph that gives AI agents trusted business context. Term popularized by Reltio (2026). | FIM One delegates this to upstream MDM/data platforms. Skills provide lightweight aggregation for common cases. |
 
 ## 架构边界：FIM One 不复制工作流逻辑
 
@@ -242,21 +242,21 @@ FIM One 与上下文层的关系就像 SQLAlchemy 与数据库的关系：它不
 
 ## FIM One 在 AI 堆栈中的位置
 
-### 分层模型
+### The Layered Model
 
-一个有用的心智模型（致谢 [Phil Schmid](https://www.philschmid.de/)）将 AI 系统映射到类似于计算硬件的四层堆栈：
+A useful mental model (credit [Phil Schmid](https://www.philschmid.de/)) maps AI systems to a four-layer stack analogous to computing hardware:
 
-| 层级 | 类比 | FIM One 组件 |
+| Layer | Analogy | FIM One Component |
 |-------|---------|-------------------|
-| **模型** | CPU | ModelRegistry -- 任何 OpenAI 兼容的 LLM |
-| **上下文** | RAM | ContextGuard + 内存（窗口 / 摘要 / 数据库） |
-| **框架** | 操作系统 | ReAct 智能体 + DAG 规划器 + 钩子 + ToolRegistry |
-| **应用** | 应用程序 | Portal、Copilot、Hub API |
+| **Model** | CPU | ModelRegistry -- any OpenAI-compatible LLM |
+| **Context** | RAM | ContextGuard + Memory (Window / Summary / DB) |
+| **Harness** | Operating System | ReAct Agent + DAG Planner + Hooks + ToolRegistry |
+| **Application** | App | Portal, API |
 
-FIM One 在**框架层**运作 -- 它不与模型竞争；它通过提供正确的工具、约束和反馈循环来提高模型的生产力。模型提供智能；框架提供治理、并发性和可靠性。
+FIM One operates at the **harness layer** -- it does not compete with models; it makes them productive by providing the right tools, constraints, and feedback loops. The model supplies intelligence; the harness supplies governance, concurrency, and reliability.
 
-### AI 工程的三个时代
+### Three Eras of AI Engineering
 
-这门学科经历了几个不同的发展阶段：**提示词工程** 专注于编写更好的指令，以引导固定模型产生正确行为。**上下文工程** 将重点转向组装合适的信息——检索文档、注入工具结果、管理记忆——让模型获得充分的信息，从而进行良好推理。**Harness 工程** 更进一步：围绕模型设计完整的执行环境，包括确定性护栏、工具编排、反馈循环和成本控制。
+The discipline has evolved through distinct phases: **Prompt Engineering** focused on crafting better instructions to elicit correct behavior from a fixed model. **Context Engineering** shifted attention to assembling the right information -- retrieving documents, injecting tool results, managing memory -- so the model has what it needs to reason well. **Harness Engineering** goes further: designing the full execution environment around the model, including deterministic guardrails, tool orchestration, feedback loops, and cost controls.
 
-FIM One 的架构体现了 Harness 工程的原则。[钩子系统](/architecture/hook-system)会在明确定义的生命周期节点，在 LLM 循环之外运行平台代码——目前，`FeishuGateHook` 会拦截敏感工具调用，并通过 IM 通道发起审批；如果未来有需要，同一套抽象也可以用于审计日志、只读模式强制执行、速率限制和结果截断。ContextGuard 会管理哪些内容以及何时进入上下文窗口。动态工具选择（渐进式披露元工具）可随着连接器数量增长，保持工具范围易于管理。ReAct 循环中的自我反思机制，以及 DAG 规划器的重新规划循环，会提供结构化反馈，在无需更强大模型的情况下提升执行质量。
+FIM One's architecture embodies harness engineering principles. The [Hook System](/architecture/hook-system) runs platform code outside the LLM loop at well-defined lifecycle points — today `ApprovalGateHook` intercepts sensitive tool calls and routes approval to an in-portal card or an IM channel, and the same abstraction can carry audit logging, read-only-mode enforcement, rate limits, and result truncation if those are ever needed. ContextGuard manages what enters the context window and when. Dynamic tool selection (progressive-disclosure meta-tools) keeps the tool surface tractable as connector count grows. The ReAct loop's self-reflection mechanism and the DAG planner's re-plan cycle provide structured feedback that improves execution quality without requiring a more capable model.

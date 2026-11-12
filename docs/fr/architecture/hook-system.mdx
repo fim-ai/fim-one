@@ -22,13 +22,13 @@ Voici la distinction architecturale critique :
 
 Les hooks sont comment FIM One transforme « l'agent est supposé... » en « l'agent ne peut pas contourner... ».
 
-## Où les hooks se connectent
+## Where hooks plug in
 
-Trois points de hook sont définis aujourd'hui. Chacun marque une limite que l'agent franchit lors d'une itération de boucle :
+Three hook points are defined today. Each marks a boundary the agent crosses during one loop iteration:
 
 ```mermaid
 flowchart TD
-    S(["Session start"]) --> SS["SessionStart hooks<br/>inject dynamic context"]
+    S(["Session start"]) --> SS["SessionStart hooks<br/>run for side effects"]
     SS --> LLM["LLM inference<br/>(reasoning / tool pick)"]
     LLM --> DECIDE{"Tool call?"}
     DECIDE -->|no| ANSWER(["Final answer"])
@@ -42,13 +42,13 @@ flowchart TD
     OBS --> LLM
 ```
 
-| Point de hook | S'active quand | Peut-il bloquer ? | Peut-il muter les données ? |
+| Hook point | Fires when | Can it block? | Can it mutate data? |
 |---|---|---|---|
-| `SessionStart` | Avant le premier appel LLM d'une session | Non | Oui — injecte du contexte dans la prompt initiale |
-| `PreToolUse` | Après que le LLM choisisse un outil, avant que l'outil s'exécute | **Oui** (via `allow=False`) | Oui — peut réécrire `tool_args` avant l'exécution |
-| `PostToolUse` | Après que l'outil retourne, avant que l'observation ne soit envoyée au LLM | Non | Oui — peut réécrire l'observation |
+| `SessionStart` | Before the first LLM call of a session | No | No — runs for side effects only |
+| `PreToolUse` | After the LLM picks a tool, before the tool runs | **Yes** (via `allow=False`) | Yes — can rewrite `tool_args` before execution |
+| `PostToolUse` | After the tool returns, before the observation goes to the LLM | No | Yes — can rewrite the observation |
 
-Plusieurs hooks au même point s'exécutent dans l'ordre de priorité. Les args réécrits d'un hook `PreToolUse` antérieur sont transmis aux hooks ultérieurs, de sorte que les middleware se composent.
+Multiple hooks at the same point run in priority order. An earlier `PreToolUse` hook's rewritten args are carried forward to later hooks, so middleware composes.
 
 ## Quand utiliser un hook plutôt qu'une instruction
 
@@ -65,9 +65,9 @@ Décider s'il faut résoudre une exigence avec une instruction de prompt ou un h
 
 Règle empirique : **si le mauvais comportement est un incident, utilisez un hook. Si le mauvais comportement est une légère gêne, une instruction suffit.**
 
-## Le contrat du hook
+## The hook contract
 
-Un hook est une sous-classe de `PreToolUseHook`, `PostToolUseHook`, ou `SessionStartHook` avec une méthode requise :
+A hook is a subclass of `PreToolUseHook` or `PostToolUseHook` (a session-start hook is registered as a plain `Hook` object) with one required method:
 
 ```python
 class ReadOnlyGuard(PreToolUseHook):
@@ -87,27 +87,27 @@ class ReadOnlyGuard(PreToolUseHook):
         return HookResult()               # default: allow=True, no mutation
 ```
 
-Le `HookContext` transmis contient `tool_name`, `tool_args`, `agent_id`, `user_id`, et un dictionnaire `metadata` flexible que le moteur remplit avec des faits par requête (identifiant org, identifiant conversation, le drapeau `requires_confirmation` de l'action du connecteur, …).
+The `HookContext` passed in carries `tool_name`, `tool_args`, `agent_id`, `user_id`, and a flexible `metadata` dict the engine populates with per-request facts (org id, tool call id, the connector action's `requires_confirmation` flag).
 
-Le `HookResult` retourné contrôle le résultat :
+The `HookResult` returned controls the outcome:
 
-- `allow: bool = True` — si l'appel d'outil procède (ignoré pour `PostToolUse` / `SessionStart`)
-- `error: str | None` — raison lisible par l'homme, présentée au LLM comme l'observation en cas de blocage
-- `modified_args: dict | None` — si défini, remplace les arguments de l'outil avant l'exécution
-- `modified_result: Any | None` — si défini (PostToolUse), remplace l'observation avant qu'elle ne revienne au LLM
-- `side_effects: list[str]` — piste d'audit de ce que le hook a fait, fusionnée dans la trace de l'agent
+- `allow: bool = True` — whether the tool call proceeds (ignored for `PostToolUse` / `SessionStart`)
+- `error: str | None` — human-readable reason, surfaced to the LLM as the observation when blocked
+- `modified_args: dict | None` — if set, replaces the tool args before execution
+- `modified_result: str | None` — if set (PostToolUse), replaces the observation before it returns to the LLM
+- `side_effects: list[str]` — notes on what the hook did, collected by the registry (not surfaced in the agent's trace today)
 
-## Étude de cas : `FeishuGateHook`
+## Case study: `ApprovalGateHook`
 
-Le premier hook déployé sur ce système est `FeishuGateHook` — un hook `PreToolUse` qui transforme tout outil marqué `requires_confirmation=True` en une carte d'approbation interactive affichée dans le groupe Feishu de l'organisation.
+The first hook shipped on top of this system is `ApprovalGateHook` (`fim_one.core.assembly.confirmation`; registry key `approval_gate`, formerly `feishu_gate` / `FeishuGateHook`) — a `PreToolUse` hook that turns any tool call needing confirmation (the action's `requires_confirmation` flag, or the agent's confirm-all setting) into a human approval. The hook builds a `ConfirmationSpec` and hands it to `ConfirmationService`, which records the request, delivers it as a card in the portal chat or as a Feishu card in the approval channel bound to the agent, according to the agent's confirmation mode (Auto / Inline only / Channel only), and waits for the decision; Auto uses the in-portal card when no channel is bound. In a chat with no agent the tool's own flag alone decides, and the person chatting approves inline. Who may decide is written on the request when it is created and read back by the portal and the channel callback alike.
 
-Ce hook exerce le cycle de vie complet :
+This hook exercises the full lifecycle:
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant ReAct as ReAct loop
-    participant Hook as FeishuGateHook
+    participant Hook as ApprovalGateHook
     participant DB as ConfirmationRequest
     participant Feishu as Feishu group
     participant Op as Operator
@@ -126,14 +126,14 @@ sequenceDiagram
     ReAct->>ReAct: Execute oa__purchase_pay
 ```
 
-Ce design apporte :
+What this design is buying:
 
-- **L'appel d'outil est véritablement suspendu.** Le flux SSE de l'agent s'interrompt entre « Je vais appeler `oa__purchase_pay` » et l'observation. L'utilisateur voit l'agent en attente, ce qui correspond à ce qui se passe en arrière-plan.
-- **L'approbation survit à un redémarrage du processus.** La ligne en attente est dans la base de données, pas en mémoire. Si le backend redémarre pendant qu'une carte est en attente, le prochain sondage reprend là où il s'était arrêté.
-- **La décision est auditée.** `ConfirmationRequest` conserve `payload`, `responded_at`, `responded_by_open_id` et le statut final — un enregistrement auditable de qui a approuvé quoi et quand.
-- **Pas de LLM dans la boucle de décision.** Le modèle produit l'appel d'outil. Les humains produisent le verdict. Le hook est le pont déterministe.
+- **The tool call is genuinely suspended.** The agent's SSE stream pauses between "I will call `oa__purchase_pay`" and the observation. The user sees the agent waiting, which matches what is happening under the hood.
+- **Approval survives a process restart.** The pending row is in the database, not in memory. If the backend restarts while a card is outstanding, the next poll picks up where it left off.
+- **The decision is audited.** `ConfirmationRequest` keeps `payload`, `responded_at`, `responded_by_open_id`, and the final status — an auditable record of who approved what and when.
+- **No LLM in the decision loop.** The model produces the tool call. Humans produce the verdict. The hook is the deterministic bridge.
 
-`FeishuGateHook` dépend d'un [Canal Feishu](/configuration/channels/feishu) configuré — le hook envoie la carte via la méthode `send_interactive_card()` du canal et écoute les événements de rappel que le canal a analysés. La séparation est intentionnelle : le hook gère la « machine d'état d'approbation », le canal gère la « mécanique de la plateforme IM ». Le même hook pourrait cibler Slack ou WeCom demain sans changer sa logique — seule l'implémentation du canal changerait.
+The channel path depends on a [Feishu Channel](/configuration/channels/feishu) bound as the agent's approval channel. The service asks only whether the channel implements `ApprovalCarrier` (`send_approval`, `parse_decision`, `approval_target`), never which platform it is; the Feishu channel is the first implementation. The separation is deliberate: the service owns the approval state machine, the channel owns the IM platform mechanics. A Slack or WeCom channel that implements the carrier protocol would carry approvals without a change to the gate. A callback can decide only requests its own channel delivered.
 
 ## Hooks candidats (non prévus)
 
@@ -150,30 +150,30 @@ Une couche de hooks définis par l’utilisateur est mise de côté selon les m�
 
 ## Hooks vs. Channels
 
-Les deux abstractions résolvent des problèmes orthogonaux :
+The two abstractions solve orthogonal problems:
 
-| Concept | Ce qu'il modélise | Durée de vie | Exemple |
+| Concept | What it models | Lifetime | Example |
 |---|---|---|---|
-| **Hook** | Un point dans l'exécution de l'agent où le code de la plateforme s'exécute | Par appel d'outil | `FeishuGateHook`, `AuditLogHook` |
-| **Channel** | Un adaptateur enfichable vers une plateforme de messagerie externe | Long terme par organisation | `FeishuChannel`, `SlackChannel` prévu |
+| **Hook** | A point in the agent's execution where platform code runs | Per tool call | `ApprovalGateHook`, `AuditLogHook` |
+| **Channel** | A pluggable adapter to an external messaging platform | Long-lived per org | `FeishuChannel`, planned `SlackChannel` |
 
-Les Hooks consomment les Channels — un hook qui doit communiquer avec le monde extérieur (envoyer une carte, publier une alerte, escalader vers un groupe) appelle le Channel de l'organisation. Un channel sans aucun hook l'utilisant est toujours utile (par exemple, les agents peuvent envoyer proactivement des notifications via un outil), mais le modèle d'approbation spécifiquement nécessite que les deux parties soient en place.
+Hooks consume Channels — a hook that needs to talk to the outside world (send a card, post an alert, escalate to a group) calls into the org's Channel. A channel without any hook using it is still useful (e.g. agents can proactively send notifications via a tool), but the approval-gate pattern specifically requires both halves to be in place.
 
-Autrement dit : **Les Channels sont la « plomberie » pour « où parler aux humains », les Hooks sont la « politique » pour « quand dois-je parler aux humains »**. Les workflows de production avec humain dans la boucle nécessitent les deux.
+Put differently: **Channels are the "where do I talk to humans" plumbing, Hooks are the "when do I have to talk to humans" policy**. Production human-in-the-loop workflows need both.
 
-## État actuel (v0.8.4)
+## Current state (v0.9.4)
 
-Aperçu de ce qui a été livré et de ce qui reste à faire :
+Snapshot of what shipped and what is still ahead:
 
-- ✅ Primitives `HookRegistry`, `HookContext`, `HookResult` intégrées à ReAct et DAG
-- ✅ Classes de base abstraites `PreToolUseHook` / `PostToolUseHook` / `SessionStartHook`
-- ✅ `FeishuGateHook` — complet, avec la table `ConfirmationRequest`, la boucle d’interrogation, la gestion des délais d’expiration et des expirations, ainsi que les changements d’état déclenchés par les callbacks
-- ✅ Point de terminaison de callback du canal Feishu qui décode `card.action.trigger` et met à jour l’enregistrement en attente
-- ✅ Déclarations de hooks au niveau de l’agent : `agent.model_config_json.hooks.class_hooks` instancie un `HookRegistry` pour chaque session ReAct/DAG
-- ✅ **Les hooks s’exécutent sur toutes les surfaces d’exécution** : le parcours principal de conversation (Portail, API, DAG), les sous-agents délégués (`CallAgentTool`) et les nœuds `AGENT` de Workflow. Eval Center contourne intentionnellement les hooks (l’évaluation automatisée ne doit pas être bloquée par une approbation humaine).
+- ✅ `HookRegistry`, `HookContext`, `HookResult` primitives wired into both ReAct and DAG
+- ✅ `PreToolUseHook` / `PostToolUseHook` abstract bases
+- ✅ `ApprovalGateHook` and `ConfirmationService` — complete, including the `ConfirmationRequest` table, polling loop, timeout/expire, and callback-driven state flips; workflow approval steps and confirmations of connector actions in a workflow use the same service, and instead of polling they suspend the run and are told of the decision through `ConfirmationService.on_decided`
+- ✅ Feishu channel callback endpoint that decodes `card.action.trigger` and updates the pending row
+- ✅ Agent-level hook declarations: `agent.model_config_json.hooks.class_hooks` resolves to an instantiated `HookRegistry` on every ReAct/DAG session
+- ✅ **Hooks fire on every execution surface**: the main chat path (Portal, API, DAG), delegated sub-agents (`CallAgentTool`), and Workflow `AGENT` nodes. Eval Center runs intentionally **bypass** hooks (automated evaluation must not block on human approval).
 
-  Un agent délégué n’hérite pas du registre de son appelant : il crée **son propre** registre à partir de son propre `model_config_json`. Comme la confirmation gate est automatiquement associée à chaque agent, la recréer est plus complet que d’en hériter : le délégué reçoit la gate *ainsi que* les hooks qu’il déclare lui-même, et la gate utilise la valeur `require_confirmation_for_all` du délégué plutôt que celle de son appelant. Les deux parcours échouent **de manière sécurisée** : un agent dont les hooks ne peuvent pas être créés n’est pas exécuté.
-- ❌ `AuditLogHook`, `ReadOnlyGuard`, `ResultTruncateHook`, `ConnectorRateLimitHook` (non prévus)
-- ❌ Déclarations de hooks YAML définies par l’utilisateur (non prévues)
+  A delegated agent does not inherit its caller's registry — it builds **its own** from its own `model_config_json`. Because the confirmation gate is auto-attached to every agent, rebuilding is a superset of inheriting: the delegate gets the gate *plus* whatever it declares for itself, and the gate resolves the delegate's `require_confirmation_for_all` rather than its caller's. Both surfaces fail **closed**: an agent whose hooks cannot be built is not run.
+- ❌ `AuditLogHook`, `ReadOnlyGuard`, `ResultTruncateHook`, `ConnectorRateLimitHook` (not planned)
+- ❌ User-defined YAML hook declarations (not planned)
 
-Le système de hooks constitue un **socle essentiel** au renforcement de la sécurité en production. Son premier utilisateur (`FeishuGateHook`) est également une fonctionnalité de production à part entière, ce qui explique pourquoi le squelette a été livré en avance pour la tournée de présentation du 2026-04-24, au lieu d’attendre que le catalogue complet de hooks soit prêt.
+The Hook System is a **load-bearing foundation** for production hardening. Its first user (`ApprovalGateHook`) is also a production feature in its own right, which is why the skeleton shipped early for the 2026-04-24 roadshow rather than waiting for the full hook catalog.

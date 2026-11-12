@@ -94,15 +94,15 @@ Der Builder liest die aktuellen Einstellungen, schreibt einen Systemprompt, hän
 
 ---
 
-## Funktionsweise
+## How it works
 
-Unter der Haube nutzen beide Builder die gleiche Infrastruktur wie reguläre Agenten:
+Under the hood, the builders share the same infrastructure as regular agents:
 
-| Builder-Modus | Mechanismus |
+| Builder mode | Mechanism |
 |-------------|-----------|
-| **Schnelle Vorschläge** | Ein einzelner LLM-Inferenzaufruf generiert die vollständige Konfiguration als strukturiertes JSON |
-| **Erweiterter Builder** | Eine ReAct-Agentenschleife: Reasoning → Builder-Tool aufrufen → Ergebnis beobachten → nächsten Schritt entscheiden |
+| **Quick suggestions** | A single LLM inference call generates the full configuration as structured JSON |
+| **Advanced builder** | A ReAct agent loop: Reason → call a builder tool → observe the result → decide next step |
 
-Der erweiterte Builder ist ein vollständiger ReAct-Agent, der über einen eingeschränkten Toolset verfügt – nur die 9 Connector- oder 6 Agent-Builder-Tools, keine Web- oder Berechnungstools. Er liest den aktuellen Zustand der Zielressource, plant welche Änderungen erforderlich sind, ruft die entsprechenden Tools auf und überprüft das Ergebnis, bevor er es als abgeschlossen erklärt.
+The advanced builder is a full ReAct agent that happens to have a restricted toolset — the 9 Connector or 6 Agent builder tools (the Connector builder also gets web search and fetch, to read API docs) and no code execution. A third builder with its own tool set configures database connectors: connection test, table listing, schema annotation and sample queries. It reads the current state of the target resource, plans what needs to change, calls the appropriate tools, and verifies the result before declaring it done.
 
-Das bedeutet, der erweiterte Builder kann mit Mehrdeutigkeit umgehen: Wenn der OpenAPI-Import 30 Aktionen erstellt, aber nur 5 relevant sind, können Sie ihm sagen „behalte nur die bestellungsbezogenen Endpunkte" und er wird den Rest löschen.
+This means the advanced builder can handle ambiguity: if the OpenAPI import creates 30 actions but only 5 are relevant, you can tell it "keep only the order-related endpoints" and it will delete the rest.

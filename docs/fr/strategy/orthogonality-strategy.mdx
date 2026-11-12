@@ -21,17 +21,17 @@ Nous classons chaque fonctionnalité selon sa relation avec la progression des L
 
 # Analyse
 
-### Pourquoi la plateforme de connecteurs est complètement orthogonale
+### Why Connector Platform is fully orthogonal
 
-Les modèles ne feront jamais nativement :
-- Stocker et chiffrer les identifiants API (AES-GCM)
-- Gérer les flux OAuth (page d'autorisation → rappel → jeton d'actualisation)
-- Se connecter à la base de données ERP Kingdee/金蝶 d'un client
-- Envoyer des notifications à Lark/飞书 ou WeCom/企微
-- Appliquer le RBAC pour contrôler qui peut utiliser quel connecteur
-- Enregistrer chaque appel d'outil à des fins d'audit de conformité
+Models will never natively:
+- Store and encrypt API credentials (Fernet)
+- Manage OAuth flows (authorization page → callback → refresh token)
+- Connect to a client's Kingdee/金蝶 ERP database
+- Push notifications to Lark/飞书 or WeCom/企微
+- Enforce RBAC on who can use which connector
+- Log every tool call for compliance auditing
 
-Ce sont des problèmes d'ingénierie, pas des problèmes d'intelligence. Un modèle 10 fois plus intelligent ne peut toujours pas faire ces choses sans infrastructure.
+These are engineering problems, not intelligence problems. A model 10x smarter still can't do these things without infrastructure.
 
 ### Pourquoi le Générateur de Connecteur IA est « en croissance » et non « en cours d'absorption »
 
@@ -70,27 +70,27 @@ Construire une couche d'orchestration concurrente signifierait faire la course c
 
 ### Orthogonal (v0.6+)
 
-| Fonctionnalité | Version | Pourquoi orthogonal |
+| Feature | Version | Why orthogonal |
 |---------|---------|---------------|
-| Entité connecteur + CRUD | v0.6.1 | Intégration d'entreprise, ingénierie pure |
-| Identifiants par utilisateur (AES-GCM) | v0.6.2 | Infrastructure de sécurité |
-| Porte de confirmation | v0.6.2 | Mécanisme de sécurité pour les opérations d'écriture |
-| Export/Import/Fork de connecteur | v0.7 | Mécanisme de distribution |
-| OAuth 2.0 | v0.7 | Implémentation de protocole |
-| Export de serveur MCP | v0.7 | Interopérabilité (dépend de l'adoption de MCP) |
-| Connecteur de base de données | v0.8 | Accès direct à la base de données, pools de connexion |
-| Notification Push | v0.8 | Canaux de notification |
-| RBAC | v0.8 | Contrôle d'accès, gouvernance |
-| Journal d'audit des opérations | v0.8 | Conformité |
-| Renforcement du bac à sable | v0.9 | Isolation de sécurité |
-| Observabilité (OTel, disjoncteur) | v0.9 | Opérations de production |
-| Analytique des connecteurs | v0.9 | Suivi d'utilisation |
-| Docker Compose | v0.9 | Déploiement |
-| Tableau de bord administrateur | v1.0 | Interface de gestion |
-| Tâches planifiées / Webhooks | v1.0 | Déclencheurs d'automatisation |
-| Exécution par lot | v1.0 | Traitement à l'échelle de l'entreprise |
-| Widget intégrable / iframe | v1.0 | Mode de livraison |
-| Sécurité d'entreprise | v1.0 | Conformité (chiffrement, liste blanche IP) |
+| Connector entity + CRUD | v0.6.1 | Enterprise integration, pure engineering |
+| Per-user credentials (Fernet) | v0.6.2 | Security infrastructure |
+| Confirmation Gate | v0.6.2 | Safety mechanism for write operations |
+| Connector Export/Import/Fork | v0.7 | Distribution mechanism |
+| OAuth 2.0 | v0.7 | Protocol implementation |
+| MCP Server Export | not implemented | Interoperability (depends on MCP adoption) |
+| Database Connector | v0.8 | Direct DB access, connection pools |
+| Message Push | v0.8 | Notification channels |
+| RBAC | v0.8 | Access control, governance |
+| Operation Audit Log | v0.8 | Compliance |
+| Sandbox Hardening | v0.9 | Security isolation |
+| Observability (circuit breaker shipped; OTel not implemented) | v0.9 | Production operations |
+| Connector Analytics | v0.9 | Usage tracking |
+| Docker Compose | v0.9 | Deployment |
+| Admin Dashboard | v1.0 | Management UI |
+| Scheduled Jobs / Webhooks | v1.0 | Automation triggers |
+| Batch Execution | v1.0 | Enterprise-scale processing |
+| Embeddable Widget / iframe | v1.0 | Delivery mode |
+| Enterprise Security | v1.0 | Compliance (encryption, IP whitelisting) |
 
 ### Tailwind
 

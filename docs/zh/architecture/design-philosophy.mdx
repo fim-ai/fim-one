@@ -14,13 +14,13 @@ FIM One 的 DAG 执行引擎设计时采用了刻意的克制。评估了多智�
 
 添加显式交接协议会重复步骤依赖已经提供的功能，没有增加额外的表达能力。
 
-## 回流 — 不需要
+## Backflow — Not Needed
 
-**模式**：下游步骤将结果反馈给上游步骤进行重新评估（也称为结果的反向传播）。
+**Pattern**: Downstream steps feeding results back to upstream steps for re-evaluation (also called backpropagation of results).
 
-**排除原因**：PlanAnalyzer 重新规划循环已经涵盖了这个用例。在所有步骤完成后，分析器评估原始目标是否已实现。如果未实现（且置信度低于停止阈值），它会使用前一轮结果的上下文触发完整的重新规划 — 包括哪些地方出错以及学到了什么。
+**Why excluded**: The PlanAnalyzer re-plan loop already covers this use case. After all steps complete, the analyzer evaluates whether the original goal was achieved. If not (and the analyzer does not judge the goal unreachable), it triggers a re-plan of the remaining work with context from the previous round's results — including what went wrong and what was learned.
 
-这是一种粒度更粗但更稳健的方法，相比逐步回流。逐步回流会创建复杂的反馈循环，难以调试，可能导致无限循环。重新规划循环通过更清晰的执行模型实现相同的纠正效果：规划、执行、评估、必要时重新规划。
+This is a coarser-grained but more robust approach than per-step backflow. Per-step backflow creates complex feedback loops that are hard to debug and can lead to infinite cycles. The re-plan loop achieves the same corrective effect with a cleaner execution model: plan, execute, evaluate, re-plan if needed.
 
 ## 团队（智能体间通信）— 不需要
 

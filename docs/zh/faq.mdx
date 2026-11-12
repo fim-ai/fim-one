@@ -78,125 +78,124 @@ description: "关于 FIM One 的常见问题 — 设置、功能、许可等。"
   </Accordion>
 </AccordionGroup>
 
-## 部署
+## Deployment
 
 <AccordionGroup>
-  <Accordion title="系统要求是什么？">
-    **最低要求：**
+  <Accordion title="What are the system requirements?">
+    **Minimum requirements:**
 
-    | 资源 | 要求 |
+    | Resource | Requirement |
     |----------|-------------|
     | **Python** | 3.11+ |
-    | **RAM** | 至少2 GB |
-    | **磁盘** | 1 GB可用空间（另需为上传的文档和向量存储预留空间） |
-    | **Node.js** | 18+（用于本地开发） |
+    | **RAM** | 2 GB minimum |
+    | **Disk** | 1 GB free (plus space for uploaded documents and vector store) |
+    | **Node.js** | 18+ (for local development) |
 
-    **生产环境推荐配置：**
+    **Recommended for production:**
 
-    | 资源 | 建议 |
+    | Resource | Recommendation |
     |----------|----------------|
-    | **RAM** | 4 GB以上（尤其是在本地运行嵌入模型时） |
-    | **CPU** | 2个以上核心 |
-    | **数据库** | 多工作进程部署使用 PostgreSQL |
+    | **RAM** | 4 GB+ (especially if running embedding models locally) |
+    | **CPU** | 2+ cores |
+    | **Database** | PostgreSQL for multi-worker deployments |
 
-    **Docker替代方案：** Docker 20+和 Docker Compose v2。不需要本地安装 Python或 Node.js——所有内容都会在容器内构建。
+    **Docker alternative:** Docker 20+ and Docker Compose v2. No local Python or Node.js required — everything is built inside the container.
   </Accordion>
 
-  <Accordion title="FIM One支持 ARM／Apple芯片吗？">
-    支持。Docker和本地开发都支持 ARM架构，包括搭载 Apple芯片（M1/M2/M3/M4）的 Mac。Docker镜像会针对 `linux/arm64` 原生构建，所有 Python和 Node.js依赖项都有兼容 ARM的 wheel或备用方案。
+  <Accordion title="Does FIM One work on ARM / Apple Silicon?">
+    Yes. Both Docker and local development work on ARM architectures, including Apple Silicon (M1/M2/M3/M4) Macs. The Docker image builds natively for `linux/arm64`, and all Python and Node.js dependencies have ARM-compatible wheels or fallbacks.
   </Accordion>
 
-  <Accordion title="支持哪些数据库？">
-    FIM One以两种不同方式使用数据库：
+  <Accordion title="What databases are supported?">
+    FIM One uses databases in two distinct ways:
 
-    **1. 内部数据库（FIM One自身的数据）：**
-    - **SQLite**——零配置默认选项，非常适合开发和单工作进程部署。
-    - **PostgreSQL**——生产环境推荐选项，多工作进程设置（`WORKERS > 1`）必需。
+    **1. Internal database (FIM One's own data):**
+    - **SQLite** — zero-config default, great for development and single-worker deployments.
+    - **PostgreSQL** — recommended for production, required for multi-worker setups (`WORKERS > 1`).
 
-    **2. 连接器目标（要连接的系统）：**
+    **2. Connector targets (systems you connect to):**
 
-    FIM One可以通过数据库连接器连接外部数据库，将其作为数据源：
+    FIM One can connect to external databases as data sources via Database Connectors:
 
-    | 数据库 | 状态 |
+    | Database | Status |
     |----------|--------|
-    | PostgreSQL | 支持 |
-    | MySQL | 支持 |
-    | DM（达梦） | 支持 |
-    | KingbaseES | 支持 |
-    | Highgo | 支持 |
+    | PostgreSQL | Supported |
+    | MySQL | Supported |
+    | DM (Dameng) | Supported |
+    | KingbaseES | Supported |
+    | Highgo | Supported |
 
-    每个数据库连接器会自动生成三个工具：`list_tables`、`describe_table`和 `query`。默认包含架构内省、AI驱动的注释以及只读查询执行功能。
+    Database connectors are exposed to the agent through one `database` tool with `list_tables`, `discover`, and `query` operations (`DATABASE_TOOL_MODE=legacy` restores three tools per connector). Schema introspection and AI-powered annotation are included, and queries are read-only by default. A database connector is private to its owner and cannot be shared.
   </Accordion>
 
-  <Accordion title="多个用户可以共享同一个实例吗？">
-    可以。FIM One从底层设计之初就支持多租户部署：
+  <Accordion title="Can multiple users share the same instance?">
+    Yes. FIM One is built for multi-tenant deployments from the ground up:
 
-    - **JWT身份验证**——基于令牌的身份验证，并为每个用户隔离会话。
-    - **组织隔离**——资源（智能体、连接器、MCP服务器）按组织进行限定。知识库对其所有者保持私有，绝不会直接共享。
-    - **基于角色的访问控制**——提供管理员和用户角色，并设置适当的权限边界。
-    - **资源所有权**——对话和配置按用户隔离。
+    - **JWT authentication** — token-based auth with per-user session isolation.
+    - **Organization isolation** — resources (agents, connectors, MCP servers) are scoped to organizations. Knowledge bases stay private to their owner and are never shared directly.
+    - **Role-based access** — admin and user roles with appropriate permission boundaries.
+    - **Resource ownership** — conversations and configurations are isolated per user.
 
-    对于多用户生产部署，请使用 PostgreSQL作为内部数据库，并将 `WORKERS` 设置为与预期并发量相匹配的值。
+    For multi-user production deployments, use PostgreSQL as the internal database and set `WORKERS` to match your expected concurrency.
   </Accordion>
 </AccordionGroup>
 
-## 功能
+## Features
 
 <AccordionGroup>
-  <Accordion title="ReAct 和 DAG 模式有什么区别？">
-    FIM One 提供两个执行引擎，各自适合不同的任务类型：
+  <Accordion title="What is the difference between ReAct and DAG mode?">
+    FIM One offers two execution engines, each suited to different task types:
 
-    | | ReAct（标准） | DAG（规划器） |
+    | | ReAct (Standard) | DAG (Planner) |
     |---|---|---|
-    | **工作原理** | 单一推理循环：推理、行动、观察、重复 | LLM 将目标分解为依赖图；独立步骤并行运行 |
-    | **最适合** | 聚焦查询、单系统查询、对话任务 | 多步骤任务、跨系统编排、并行数据收集 |
-    | **并发性** | 顺序执行（一次一个工具） | 并发执行（独立步骤通过 asyncio 同时运行） |
-    | **重新规划** | 不适用 | 如果目标未达成，最多 3 轮自动重新规划 |
+    | **How it works** | Single reasoning loop: Reason, Act, Observe, repeat | LLM decomposes the goal into a dependency graph; independent steps run in parallel |
+    | **Best for** | Focused queries, single-system lookups, conversational tasks | Multi-step tasks, cross-system orchestration, parallel data gathering |
+    | **Concurrency** | Sequential (one tool at a time) | Concurrent (independent steps run simultaneously via asyncio) |
+    | **Re-planning** | N/A | Up to 3 rounds in total (the first plan plus 2 automatic re-plans) if goals are not met |
 
-    **自动模式**（默认模式）使用快速 LLM 分类器分析每个传入查询，并自动将其路由到最优引擎。您也可以通过聊天 UI 中的三向切换开关手动选择模式（自动/标准/规划器）。
+    Chat and new agents start in **Standard** (ReAct) mode. **Auto mode** uses a fast LLM classifier to analyze each incoming query and routes it to the optimal engine automatically. Select the mode via the three-way toggle in the chat UI (Auto / Standard / Planner).
 
-    如需深入了解，请参阅[执行模式](/concepts/execution-modes)。
+    For a deep dive, see [Execution Modes](/concepts/execution-modes).
   </Accordion>
 
-  <Accordion title="如何添加新的连接器？">
-    FIM One 提供三种创建连接器的方式——无需 Python 代码：
+  <Accordion title="How do I add a new connector?">
+    FIM One provides three ways to create connectors — no Python code required:
 
-    **1. 导入 OpenAPI 规范** — 上传 YAML、JSON 或指向 OpenAPI 规范的 URL。FIM One 解析规范并自动生成包含所有操作的连接器。
+    **1. Import an OpenAPI spec** — Upload a YAML, JSON, or URL pointing to an OpenAPI specification. FIM One parses the spec and generates connectors with all actions automatically.
 
-    **2. AI 聊天构建器** — 用自然语言描述您想要连接的 API。AI 在对话中生成并迭代连接器配置，使用 10 个专门的构建器工具进行设置、操作、测试和智能体接线。
+    **2. AI chat builder** — Describe the API you want to connect in natural language. The AI generates and iterates on the connector configuration in conversation, using 10 specialized builder tools for settings, actions, testing, and agent wiring.
 
-    **3. MCP 协议** — 直接连接任何 MCP（模型上下文协议）服务器。第三方 MCP 生态系统开箱即用。
+    **3. MCP protocol** — Connect any MCP (Model Context Protocol) server directly. The third-party MCP ecosystem works out of the box.
 
-    对于数据库连接器，配置连接详情（主机、端口、凭证），FIM One 会自动生成模式内省和查询工具。
+    For database connectors, configure the connection details (host, port, credentials) and FIM One auto-generates schema introspection and query tools.
 
-    请参阅 [AI 构建器](/concepts/ai-builder)文档和[扩展指南](/extension-guide)获取分步说明。
+    See the [AI Builder](/concepts/ai-builder) documentation and the [Extension Guide](/extension-guide) for step-by-step instructions.
   </Accordion>
 
-  <Accordion title="我可以将 FIM One 嵌入到现有系统中吗？">
-    可以。FIM One 的**副驾驶模式**专门为嵌入主机系统而设计。您可以通过以下方式集成：
+  <Accordion title="Can I embed FIM One into my existing system?">
+    Yes, through the API. FIM One's **Copilot mode** means putting the agent inside a host system's UI:
 
-    - **iframe** — 将 FIM One 聊天界面直接嵌入任何网页。
-    - **小部件** — 轻量级聊天小部件，覆盖在现有 UI 上。
-    - **API** — 直接使用 FastAPI 后端进行完全自定义集成。
+    - **API** — Call the FastAPI backend (`POST /api/react`, `/api/dag`, `/api/auto`, streamed over SSE) from your own page or widget. This is what works today.
+    - **iframe / Widget** — A drop-in embed snippet is planned and not shipped yet.
 
-    在副驾驶模式下，AI 在用户熟悉的界面中与用户协作——查询数据、生成报告和编排操作，无需强制用户切换应用程序。
+    In Copilot mode, the AI works alongside users in their familiar interface — querying data, generating reports, and orchestrating actions without forcing users to switch applications.
 
-    请参阅[执行模式](/concepts/execution-modes)了解独立、副驾驶和中心交付模式的配置详情。
+    See [Execution Modes](/concepts/execution-modes) for the Standalone, Copilot, and Hub delivery modes, and the [API Overview](/api/overview) for the streaming endpoints.
   </Accordion>
 
-  <Accordion title="翻译系统如何工作？">
-    FIM One 支持 6 种语言（英语、中文、日语、韩语、德语、法语），采用完全自动化的翻译管道：
+  <Accordion title="How does the translation system work?">
+    FIM One supports 6 languages (English, Chinese, Japanese, Korean, German, French) with a fully automated translation pipeline:
 
-    1. **仅编辑英文源文件** — `frontend/messages/en/*.json` 中的 UI 字符串、`docs/*.mdx`（根级别）中的文档和 `README.md`。
-    2. **提交时自动翻译** — 预提交钩子检测对英文文件的更改，并通过项目的快速 LLM 进行翻译。翻译是增量的：仅处理新增、修改或删除的内容。
-    3. **切勿手动编辑翻译文件** — `messages/zh/`、`messages/ja/`、`docs/zh/`、`docs/ja/` 等中的文件都是自动生成的，将被覆盖。
+    1. **Only edit English source files** — UI strings in `frontend/messages/en/*.json`, documentation in `docs/*.mdx` (root level), and `README.md`.
+    2. **Auto-translate on commit** — A pre-commit hook detects changes to English files and translates them via the project's Fast LLM. Translations are incremental: only new, modified, or deleted content is processed.
+    3. **Never manually edit translated files** — Files in `messages/zh/`, `messages/ja/`, `docs/zh/`, `docs/ja/`, etc. are all auto-generated and will be overwritten.
 
-    克隆后设置翻译钩子：
+    To set up the translation hook after cloning:
     ```bash
     bash scripts/setup-hooks.sh
     ```
 
-    强制完全重新翻译：
+    To force a full retranslation:
     ```bash
     uv run scripts/translate.py --all
     ```

@@ -14,28 +14,30 @@ Market は FIM One のリソースマーケットプレイスです。ユーザ�
 
 マーケットプレイスは、リソースがどのように実装されているかではなく、リソースが何をするかに基づいて、リソースを2つのカテゴリに整理しています。
 
-### ソリューション
+### Solutions
 
-ソリューションは**あなたのために機能するもの**です。ユーザーはソリューションを購読し、すぐに使用できる機能を取得します。
+Solutions are things that **do work for you**. A user subscribes to a Solution and gets a ready-to-use capability.
 
-| リソースタイプ | 機能 |
+| Resource Type | What It Does |
 |---|---|
-| **エージェント** | バインドされたツール、ナレッジ、および指示を備えた会話型AI アシスタント |
-| **スキル** | `call_agent` を介して複数のエージェントをオーケストレーションできるグローバル SOP (標準操作手順) |
-| **ワークフロー** | ビジュアル編集と決定論的実行を備えた DAG ベースの自動化フロー |
+| **Agent** | A conversational AI assistant with bound tools, knowledge, and instructions |
+| **Skill** | A global SOP (Standard Operating Procedure) that can orchestrate multiple agents via `call_agent` |
+| **Workflow** | A DAG-based automation flow with visual editing and deterministic execution |
 
-ソリューションは他のリソースに依存する場合があります。エージェントは API 呼び出し用の特定のコネクタと取得パイプライン用のナレッジベースが必要な場合があります。マーケットプレイスは購読時にこれらの依存関係を自動的に処理します ([依存関係の解決](#dependency-resolution)を参照)。
+Skills and Workflows are optional modules, off by default. While a module is off its resources are absent from the Market and cannot be subscribed to.
 
-### コンポーネント
+Solutions may depend on other resources. An Agent might require a specific Connector for its API calls and a Knowledge Base for its retrieval pipeline. The Market handles these dependencies automatically during subscription (see [Dependency resolution](#dependency-resolution) below).
 
-コンポーネントは開発者向けの**再利用可能なビルディングブロック**です。ソリューションが消費する機能を提供します。
+### Components
 
-| リソースタイプ | 機能 |
+Components are **reusable building blocks** for developers. They provide capabilities that Solutions consume.
+
+| Resource Type | What It Does |
 |---|---|
-| **コネクタ** | API またはデータベース統合アダプタ定義 |
-| **MCP サーバー** | Model Context Protocol を使用したツールサービス設定 |
+| **Connector** | An API integration adapter definition (database connectors cannot be published) |
+| **MCP Server** | A tool service configuration using the Model Context Protocol |
 
-コンポーネントはサブスクライブが簡単です。内部依存関係がなく、認証情報の要件のみがあります。
+Components are simpler to subscribe to — they have no internal dependencies, only credential requirements.
 
 ### Knowledge Basesが独立してリストされない理由
 
@@ -92,29 +94,24 @@ flowchart TD
 マーケットプレイスは特別なルールを持つ単なる組織であるため、組織向けに構築されたすべての機能 — レビューワークフロー、認証情報管理、リソースライフサイクル — は、追加の実装なしで自動的にマーケットプレイスで機能します。
 </Tip>
 
-### 可視性フィルターの処理方法
+### How the visibility filter handles it
 
-Market orgにはメンバーシップを持つユーザーがいません。ユーザーは Market に「参加」するのではなく、個別のリソースをサブスクライブします。つまり、`MARKET_ORG_ID` はユーザーの `user_org_ids` リストに存在することはなく、org メンバーシップの可視性条件は Market リソースに対して自然にスキップされます。
+Nobody holds membership in the Market org. Users do not "join" the Market — they subscribe to individual resources. This means `MARKET_ORG_ID` is never present in a user's `user_org_ids` list, and the org-membership visibility condition is naturally skipped for Market resources.
 
-代わりに、サブスクライブされた Market リソースは `build_visibility_filter()` の `subscribed_ids` パスを通ります：
+Instead, subscribed Market resources flow through the `subscribed_ids` path in `build_visibility_filter()`, the same path org-shared resources take:
 
 ```mermaid
 flowchart LR
     subgraph Filter["build_visibility_filter()"]
         C1["user_id == me<br/>(own resources)"]
-        C2["visibility == 'org'<br/>AND org_id IN my_orgs<br/>AND approved"]
-        C3["id IN subscribed_ids"]
+        C2["id IN subscribed_ids<br/>AND visibility == 'org'<br/>AND publish_status is unset or approved"]
     end
 
     C1 -->|OR| Result["Visible"]
     C2 -->|OR| Result
-    C3 -->|OR| Result
-
-    Note1["Market resources<br/>skip C2 (not a member)<br/>match C3 (subscribed)"]
-    Note1 -.-> C3
 ```
 
-この 3 つの条件の OR 句が可視性モデル全体です。個人用リソース、org 共有リソース、Market サブスクライブリソースは 1 つのクエリで解決され、リソースの出所に応じた分岐ロジックはありません。
+This two-condition OR clause is the entire visibility model. Org membership alone grants nothing: org-shared and Market resources both reach a user through a subscription, and the share state is re-read on every query, so a subscription stops working as soon as the owner unpublishes the resource or it is awaiting or refused by review.
 
 ### スコープベースのブラウジング
 
@@ -173,23 +170,23 @@ sequenceDiagram
 
 コンポーネント（コネクタと MCP サーバー）はより単純なフローを持っています — 依存関係分析は不要です。ユーザーがサブスクライブし、必要に応じて認証情報を設定すると、コンポーネントは使用可能になります。
 
-### 認証情報の設定
+### Credential configuration
 
-認証情報は**ハイブリッドモデル**に従い、利便性と柔軟性のバランスを取ります：
+Credentials follow a **hybrid model** that balances convenience with flexibility:
 
-- **サブスクリプション時に提供。** 接続タイプの依存関係が認証情報を必要とする場合、オンボーディングウィザードは認証情報フォームをすぐに表示します。
-- **スキップ可能。** ユーザーは「スキップして後で設定」を選択できます。リソースはサブスクライブされますが、これらの認証情報が必要なツールは呼び出し時に「認証情報を設定してください」というメッセージを返します。
-- **遅延設定。** ユーザーは設定ページからいつでも認証情報を設定または更新できます。
+- **Offered during subscription.** When a connection-type dependency requires credentials, the onboarding wizard presents the credential form immediately.
+- **Skippable.** The user can choose "Skip, configure later." The resource is subscribed, but the tools that need those credentials stay out of the agent's toolset until the user configures them (or the publisher allows fallback).
+- **Deferred configuration.** Users can configure or update credentials at any time from their settings page.
 
-これは組織で使用されるのと同じ`allow_fallback`メカニズムです。パブリッシャーがフォールバックを有効にしてデフォルト認証情報を設定している場合、サブスクライバーは独自のキーを提供することなくリソースをすぐに使用できます。フォールバックが無効な場合、各サブスクライバーは独自のものを用意する必要があります。
+This is the same `allow_fallback` mechanism used in organizations. If the publisher has enabled fallback and set a default credential, subscribers can use the resource immediately without providing their own key. If fallback is disabled, each subscriber must bring their own.
 
 <Warning>
-認証情報フォールバックが有効になっているMarketリソースを使用する場合、APIリクエストはパブリッシャーの認証情報を通じて流れます。機密性の高い操作の場合は、独自の認証情報を提供するか、パブリッシャーの信頼性を確認することを検討してください。
+When using a Market resource with credential fallback enabled, your API requests flow through the publisher's credentials. For sensitive operations, consider providing your own credentials or verifying the publisher's trustworthiness.
 </Warning>
 
-### 購読解除
+### Unsubscribing
 
-購読解除により、`ResourceSubscription` レコードが削除されます。リソースはユーザーの可視性フィルターから消え、ツールセットに読み込まれなくなります。自動購読依存関係を持つソリューションの場合、依存リソース（KB、スキル）もクリーンアップされます。リソースのユーザー設定認証情報が削除されます。
+Unsubscribing removes the `ResourceSubscription` record. The resource disappears from the user's visibility filter and is no longer loaded into tool sets. For Solutions, dependencies that were subscribed automatically (Skills, Connectors, MCP Servers) are removed as well when no other subscribed Solution needs them, along with the credentials saved for those Connectors and MCP Servers. Unsubscribing from a Connector or MCP Server directly removes the user's credential for it.
 
 ## 依存関係の解決
 
@@ -204,13 +201,12 @@ sequenceDiagram
 - **アクセスモデル:** 元の作成者のリソースへの読み取り専用参照。サブスクライバーはコンテンツを変更できません。
 - **サブスクリプション解除時:** 親ソリューションがサブスクリプション解除されると、自動サブスクライブされた依存関係は自動的にクリーンアップされます。
 
-### 接続タイプの依存関係
+### Connection-type dependencies
 
-**コネクタ**と**MCPサーバー**がソリューションによって参照される場合、それらは接続タイプの依存関係です。機能するには認証情報が必要です。
+**Connectors** and **MCP Servers** referenced by a Solution are connection-type dependencies. They require credentials to function.
 
-- **サブスクリプション時:** オンボーディングウィザードで要件として表示されます。ユーザーは認証情報を設定するか、スキップするかを求められます。
-- **スマートマッチング:** ユーザーが互換性のあるコネクタ（同じタイプ、同じベースURL）を既に持っている場合、システムは新しいサブスクリプションを作成する代わりに、それを再利用することを提案します。
-- **サブスクリプション解除時:** サブスクリプションは削除されますが、ユーザーが作成した認証情報は保持されます（ユーザーは同じコネクタを他の場所で使用できます）。
+- **On subscription:** subscribed together with the Solution and listed as requirements in the onboarding wizard. The user is prompted to configure credentials (or skip).
+- **On unsubscription:** a Connector or MCP Server that was subscribed automatically with the Solution is removed with it, credentials included, unless another subscribed Solution still needs it. One the user subscribed to on their own is left in place with its credentials.
 
 ```mermaid
 flowchart TD
@@ -222,11 +218,9 @@ flowchart TD
 
     CT --> AS["Auto-subscribe<br/>(silent, read-only)"]
 
-    CN --> SM{"User already has<br/>compatible resource?"}
-    SM -->|Yes| RE["Offer reuse"]
-    SM -->|No| OB["Onboarding wizard<br/>(credential collection)"]
+    CN --> OB["Onboarding wizard<br/>(credential collection)"]
     OB --> SK{"Skip?"}
-    SK -->|Yes| DEF["Deferred config<br/>(tools show 'please configure')"]
+    SK -->|Yes| DEF["Deferred config<br/>(tools hidden until configured)"]
     SK -->|No| CONF["Credentials saved<br/>(ready to use)"]
 ```
 
@@ -269,9 +263,9 @@ Market組織は6つのレビューフラグすべてが`true`に設定された�
 
 ## 実装に関する注記
 
-### シャドウ組織
+### The shadow org
 
-Market組織は、よく知られた固定ID（`00000000-0000-0000-0000-000000000001`）とスラッグ（`market`）を持っています。プラットフォーム初期化中に`ensure_market_org()`によって作成されます — 通常は最初の管理者ユーザーのログイン時です。この関数はべき等です。複数回呼び出しても安全です。
+The Market organization has a well-known fixed ID (`00000000-0000-0000-0000-000000000001`) and slug (`market`). It is created by `ensure_market_org()` during platform initialization, when the first user (the administrator) registers. The function is idempotent; calling it multiple times is safe.
 
 ### ResourceSubscription
 
@@ -286,14 +280,14 @@ Market組織は、よく知られた固定ID（`00000000-0000-0000-0000-00000000
 
 `(user_id, resource_type, resource_id)`に対するユニーク制約により、重複したサブスクリプションを防ぎます。`org_id`カラムはサブスクリプションの出所を追跡し、スコープ対応のアンサブスクリプションを可能にします。
 
-### 可視性フィルター統合
+### Visibility filter integration
 
-`resolve_visibility()` 関数は単一の呼び出しで 2 つのルックアップを実行します:
+The `resolve_visibility()` function performs two lookups in a single call:
 
-1. ユーザーの組織メンバーシップを取得 (`user_org_ids`)
-2. ユーザーのサブスクリプションを取得 (`subscribed_ids`)
+1. Fetches the user's org memberships (`user_org_ids`)
+2. Fetches the user's subscriptions (`subscribed_ids`)
 
-これらは `build_visibility_filter()` に渡され、3 つすべての可視性レベル (自分のもの、組織共有、サブスクリプション) を組み合わせた単一の SQL WHERE 句を生成します。この関数はリソースがクエリされるあらゆる場所で使用されます — エージェントリスト、コネクターのドロップダウン、スキルインジェクション、自動検出モード — プラットフォーム全体で一貫した可視性を確保します。
+These are passed to `build_visibility_filter()`, which produces a single SQL WHERE clause combining the two visibility conditions (own, or subscribed and still shared). This function is used everywhere resources are queried — agent lists, connector dropdowns, skill injection, auto-discovery mode — ensuring consistent visibility across the entire platform.
 
 ### 認証情報の暗号化
 

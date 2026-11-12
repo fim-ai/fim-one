@@ -21,17 +21,17 @@ description: "架构决策记录 — 根据功能与LLM进展的关系对其进�
 
 ## 分析
 
-### 为什么连接器平台完全正交
+### Why Connector Platform is fully orthogonal
 
-模型永远不会原生地：
-- 存储和加密 API 凭证 (AES-GCM)
-- 管理 OAuth 流程（授权页面 → 回调 → 刷新令牌）
-- 连接到客户端的金蝶 ERP 数据库
-- 向飞书或企微推送通知
-- 对谁可以使用哪个连接器强制执行 RBAC
-- 记录每个工具调用以进行合规审计
+Models will never natively:
+- Store and encrypt API credentials (Fernet)
+- Manage OAuth flows (authorization page → callback → refresh token)
+- Connect to a client's Kingdee/金蝶 ERP database
+- Push notifications to Lark/飞书 or WeCom/企微
+- Enforce RBAC on who can use which connector
+- Log every tool call for compliance auditing
 
-这些是工程问题，而不是智能问题。即使一个智能程度高 10 倍的模型，如果没有基础设施，也无法做到这些事情。
+These are engineering problems, not intelligence problems. A model 10x smarter still can't do these things without infrastructure.
 
 ### 为什么 AI 连接器构建器是"顺风而行"而非"被吸收"
 
@@ -68,29 +68,29 @@ LLM 提供商正在原生构建编排功能：
 
 ## 功能级分类
 
-### 正交性 (v0.6+)
+### Orthogonal (v0.6+)
 
-| 功能 | 版本 | 正交性原因 |
+| Feature | Version | Why orthogonal |
 |---------|---------|---------------|
-| 连接器实体 + CRUD | v0.6.1 | 企业集成，纯工程实现 |
-| 用户级凭证 (AES-GCM) | v0.6.2 | 安全基础设施 |
-| 确认门控 | v0.6.2 | 写操作的安全机制 |
-| 连接器导出/导入/分叉 | v0.7 | 分发机制 |
-| OAuth 2.0 | v0.7 | 协议实现 |
-| MCP Server 导出 | v0.7 | 互操作性（取决于 MCP 采用） |
-| 数据库连接器 | v0.8 | 直接数据库访问、连接池 |
-| 消息推送 | v0.8 | 通知渠道 |
-| RBAC | v0.8 | 访问控制、治理 |
-| 操作审计日志 | v0.8 | 合规性 |
-| 沙箱加固 | v0.9 | 安全隔离 |
-| 可观测性 (OTel、熔断器) | v0.9 | 生产运维 |
-| 连接器分析 | v0.9 | 使用情况追踪 |
-| Docker Compose | v0.9 | 部署 |
-| 管理员仪表板 | v1.0 | 管理 UI |
-| 定时任务 / Webhooks | v1.0 | 自动化触发器 |
-| 批量执行 | v1.0 | 企业级处理 |
-| 可嵌入小部件 / iframe | v1.0 | 交付模式 |
-| 企业安全 | v1.0 | 合规性（加密、IP 白名单） |
+| Connector entity + CRUD | v0.6.1 | Enterprise integration, pure engineering |
+| Per-user credentials (Fernet) | v0.6.2 | Security infrastructure |
+| Confirmation Gate | v0.6.2 | Safety mechanism for write operations |
+| Connector Export/Import/Fork | v0.7 | Distribution mechanism |
+| OAuth 2.0 | v0.7 | Protocol implementation |
+| MCP Server Export | not implemented | Interoperability (depends on MCP adoption) |
+| Database Connector | v0.8 | Direct DB access, connection pools |
+| Message Push | v0.8 | Notification channels |
+| RBAC | v0.8 | Access control, governance |
+| Operation Audit Log | v0.8 | Compliance |
+| Sandbox Hardening | v0.9 | Security isolation |
+| Observability (circuit breaker shipped; OTel not implemented) | v0.9 | Production operations |
+| Connector Analytics | v0.9 | Usage tracking |
+| Docker Compose | v0.9 | Deployment |
+| Admin Dashboard | v1.0 | Management UI |
+| Scheduled Jobs / Webhooks | v1.0 | Automation triggers |
+| Batch Execution | v1.0 | Enterprise-scale processing |
+| Embeddable Widget / iframe | v1.0 | Delivery mode |
+| Enterprise Security | v1.0 | Compliance (encryption, IP whitelisting) |
 
 ### Tailwind
 

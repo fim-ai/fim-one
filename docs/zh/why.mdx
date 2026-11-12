@@ -21,38 +21,38 @@ Legacy systems                     — "nobody dares touch it"
 
 **现在每个系统供应商都提供自己的AI。** Feishu有其AI。Salesforce有Einstein。SAP有Joule。但每一个都只在**自己的围墙内**聪慧。Feishu AI无法检查你的ERP余额。Salesforce Einstein无法触发你的OA审批。它们在设计上就被限制在特定领域——因为连接竞争对手的系统违背了它们的商业利益。
 
-## FIM One 的作用
+## What FIM One Does
 
-FIM One 是连接所有这些系统的**外部、第三方横向平台**。
+FIM One is the **external, third-party, horizontal platform** that connects all of them.
 
-可以把它想象成《阿凡达》中的 Eywa——潘多拉星球地下的神经网络，将每棵树、每个生物和每段记忆连接成一个有生命的整体。每个生物都保持独立，但它们可以通过 Eywa彼此感知、共享信息，并在需要时协同行动。没有任何生物会被修改；Eywa只是让连接成为可能。
+Think of Eywa from *Avatar* — the neural network beneath Pandora that connects every tree, every creature, every memory into one living system. Each organism stays independent, but through Eywa they sense each other, share information, and act together when needed. No organism is modified; Eywa simply makes the connection possible.
 
-FIM One 就是企业的 Eywa。您的 ERP、CRM、OA 和数据库保持原样——FIM One 在它们之间编织智能网络，让它们终于可以通过 AI 彼此对话。
+FIM One is your enterprise's Eywa. Your ERP, CRM, OA, and databases remain exactly as they are — FIM One weaves the intelligent network between them, so they can finally talk to each other through AI.
 
 <Tip>
-**客户无需更改任何代码。** FIM One 主动接入现有系统——读取数据库、调用 API、推送通知——只使用您提供的凭据和网络访问权限。
+**The client changes zero code.** FIM One bridges into existing systems proactively — reading databases, calling APIs, pushing notifications — using only the credentials and network access you provide.
 </Tip>
 
-您需要提供：
-- 数据库凭据（建议使用只读账户）
-- API 端点和身份验证密钥
-- 网络白名单访问权限
+What you provide:
+- Database credentials (read-only accounts recommended)
+- API endpoints and authentication keys
+- Network whitelist access
 
-FIM One 提供：
-- 能够理解并协调**所有**系统的 AI
-- 每项操作均经过审计，每次写入均须经过人工确认
-- 您的数据保留在自己的系统中——FIM One 提供智能层，而不是数据湖
+What FIM One delivers:
+- AI that understands and orchestrates across **all** your systems
+- Every connector call audited, sensitive actions gated by human confirmation
+- Your data stays in your systems — FIM One provides the intelligence layer, not a data lake
 
-## 两种模式，一个平台
+## Two Modes, One Platform
 
-| 模式 | 定义 | 从这里开始 |
+| Mode | What it is | Start here |
 |------|-----------|------------|
-| **Copilot** | 嵌入单个系统的AI——在用户现有UI中与用户并行工作 | 快速证明价值：在ERP中嵌入"财务Copilot" |
-| **Hub** | 连接所有系统的中央AI门户——跨系统编排 | 扩展价值：在一个地方连接ERP + CRM + OA + Lark |
+| **Copilot** | AI embedded inside one system — works alongside users in their existing UI (through the API today; a drop-in embed is planned) | Prove value fast: embed a "Finance Copilot" in your ERP |
+| **Hub** | Central AI portal connecting all systems — cross-system orchestration | Scale value: connect ERP + CRM + OA + Lark in one place |
 
-**先着陆后扩展**：从一个系统中的Copilot开始。用户无需学习新工具即可看到即时价值。当ROI得到证明后，将其扩展到跨系统智能体平台——一个中央门户，您已运行的每个系统都通过一个智能体核心与AI相连。Copilot继续运行；平台增加跨系统智能。
+**Land and Expand**: Start with a Copilot in one system. Users see immediate value without learning a new tool. When the ROI is proven, scale it to the cross-system agent platform — a central portal where every system you already run meets AI through one agent core. The Copilot keeps running; the platform adds cross-system intelligence.
 
-> Copilot在单个系统内证明价值。智能体平台在所有系统中释放价值。
+> Copilot proves value inside one system. The agent platform unlocks value across all systems.
 
 ## 为什么不直接...
 
@@ -78,9 +78,9 @@ FIM One 不会复制工作流逻辑。从连接器的角度来看，每个复杂
 
 飞书 AI 在飞书内部工作。Salesforce Einstein 在 Salesforce 内部工作。两者都无法跨越边界。**没有供应商会构建真正的跨系统集成** — 这与他们的锁定激励相悖。FIM One 是唯一没有这种利益冲突的参与者。
 
-## FIM One 如何连接
+## How FIM One Connects
 
-FIM One 使用三层架构，将传输与治理分离：
+FIM One uses a three-layer architecture that separates transport from governance:
 
 ```
 FIM One Platform (AI orchestration, multi-tenant, UI)
@@ -92,17 +92,17 @@ Connector (API / Database / MCP protocol)
 Your Systems (ERP, CRM, OA, databases, custom APIs)
 ```
 
-**治理层**使其达到企业级就绪状态：
+The **Governance Layer** is what makes this enterprise-ready:
 
-| 功能 | 作用 |
+| Capability | What it does |
 |-----------|-------------|
-| **审计日志** | 记录每次工具调用 — 谁、做什么、何时、结果 |
-| **人工确认** | 写操作在执行前需要显式用户批准 |
-| **断路器** | 如果系统宕机，FIM One 立即停止重试，而不是继续消耗 token |
-| **凭证加密** | 静态 AES-GCM 加密，按用户隔离凭证 |
-| **只读强制** | 默认只读；写操作显式受限 |
+| **Audit logging** | Every tool call recorded — who, what, when, result |
+| **Human confirmation** | Actions marked as requiring confirmation (or every tool call, when the agent is set to confirm all) wait for explicit approval before execution |
+| **Circuit breaker** | If a system goes down, FIM One stops retrying immediately instead of burning tokens |
+| **Credential encryption** | Fernet encryption at rest, per-user credential isolation |
+| **Read-only enforcement** | Database connectors default to read-only; the owner must switch writes on |
 
-智能体不知道也不关心它是在与 SAP、PostgreSQL 数据库还是自定义 REST API 通信。连接器是标准化的桥接 — 添加新系统只需连接器配置，无需代码更改。
+The agent doesn't know or care whether it's talking to SAP, a PostgreSQL database, or a custom REST API. Connectors are standardized bridges — adding a new system requires only connector configuration, not code changes.
 
 ## 构建连接器的三种方式
 

@@ -12,7 +12,11 @@
     "feishu": "Feishu",
     "wecom": "WeCom",
     "slack": "Slack",
-    "teams": "Microsoft Teams"
+    "teams": "Microsoft Teams",
+    "lark_webhook": "Lark / Feishu webhook",
+    "slack_webhook": "Slack webhook",
+    "wecom_webhook": "WeCom webhook",
+    "email": "Email"
   },
   "columns": {
     "name": "名前",
@@ -68,7 +72,20 @@
     "encrypt_key_edit_placeholder": "設定済み - 保持するには空白のままにしてください",
     "pickChat": "グループリストから選択",
     "verification_token_hint": "Feishu Open Platform -> Events & Callbacks -> Encryption Strategy タブ -> Verification Token フィールドで見つけることができます。目のアイコンをクリックして表示します。",
-    "encrypt_key_required": "暗号化キーが必須です。Feishu Open Platform → Events & Callbacks → Encryption Strategy で暗号化を有効にし、キーをここに貼り付けてください。"
+    "encrypt_key_required": "暗号化キーが必須です。Feishu Open Platform → Events & Callbacks → Encryption Strategy で暗号化を有効にし、キーをここに貼り付けてください。",
+    "typeHint": "Only a Feishu app can carry approval requests. Webhook and email channels send notifications.",
+    "sectionWebhook": "Webhook",
+    "sectionWebhookDescription": "Add a custom bot (incoming webhook) to the group on the platform and paste the URL it gives you. Anyone holding this URL can post to that group.",
+    "webhook_url": "Webhook URL",
+    "webhook_url_edit_placeholder": "Configured - leave blank to keep",
+    "webhook_url_required": "Webhook URL is required.",
+    "webhook_url_invalid": "Enter the https webhook URL issued by this platform.",
+    "sectionEmail": "Recipients",
+    "sectionEmailDescription": "Messages are sent from this instance's SMTP account. The operator's recipient allowlist applies.",
+    "email_to": "Recipient addresses",
+    "email_to_placeholder": "ops@example.com, oncall@example.com",
+    "email_to_hint": "Separate several addresses with commas.",
+    "email_to_required": "Enter at least one recipient email address."
   },
   "discard": {
     "title": "保存されていない変更を破棄しますか？",
@@ -99,7 +116,12 @@
     "playgroundHint": "機密ツール呼び出しをシミュレートし、実際の承認カードをFeishuグループにプッシュし、リアルタイムで決定を確認します。",
     "testSend": "テストメッセージを送信",
     "testing": "送信中...",
-    "testSendHint": "設定されたチャットにプレーン通知を送信します — 承認フローを含めずに認証情報を検証するのに役立ちます。"
+    "testSendHint": "設定されたチャットにプレーン通知を送信します — 承認フローを含めずに認証情報を検証するのに役立ちます。",
+    "typeLabel": "Type",
+    "webhookUrlLabel": "Webhook URL",
+    "webhookConfigured": "Configured (hidden)",
+    "recipientsLabel": "Recipients",
+    "testSendHintOutbound": "Send a short notice to this channel's target to check that it can deliver."
   },
   "actions": {
     "viewDetails": "詳細を表示",
@@ -186,5 +208,6 @@
       "close": "閉じる",
       "closeStopsPolling": "閉じる"
     }
-  }
+  },
+  "webhookTarget": "Webhook"
 }

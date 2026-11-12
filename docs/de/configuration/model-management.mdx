@@ -36,54 +36,56 @@ Group: "Production"
 
 ---
 
-## Anbieter hinzufügen
+## Adding a Provider
 
 <Steps>
-  <Step title='Öffnen Sie die Seite "Modelle"'>
-    Navigieren Sie zu **Admin** (Seitenleiste) und wählen Sie die Registerkarte **Modelle** aus.
+  <Step title="Open the Models page">
+    Open **Admin Panel** from the user menu and select the **Models** tab.
   </Step>
-  <Step title='Klicken Sie auf "Anbieter hinzufügen"'>
-    Klicken Sie auf die Schaltfläche **Anbieter hinzufügen** im oberen rechten Bereich des Abschnitts „Anbieter".
+  <Step title="Click Add Provider">
+    Click the **Add Provider** button in the top-right area of the Providers section.
   </Step>
-  <Step title="Wählen Sie eine Voreinstellung oder verwenden Sie einen benutzerdefinierten Endpunkt">
-    Das Dialogfeld zeigt Voreinstellungsschaltflächen für gängige Anbieter: **OpenAI**, **Anthropic (Claude)**, **Google Gemini**, **DeepSeek**, **Mistral AI** und **OpenAI Compatible** (benutzerdefinierter Endpunkt). Durch Klicken auf eine Voreinstellung werden der Anbieter-Name und die Basis-URL automatisch ausgefüllt.
+  <Step title="Select a preset or use a custom endpoint">
+    The dialog offers presets for 16 providers — **OpenAI**, **Anthropic (Claude)**, **Google Gemini**, **DeepSeek**, **Mistral AI**, **xAI (Grok)**, **OpenRouter**, **Ollama**, and the China and Global endpoints of **Qwen**, **GLM**, **Moonshot** and **MiniMax** — plus **OpenAI Compatible** (custom endpoint). Clicking a preset auto-fills the provider name and base URL.
 
-    Wählen Sie **OpenAI Compatible**, wenn Ihr Anbieter nicht aufgelistet ist (z. B. ein Drittanbieter-Relay, Ollama oder ein anderer OpenAI-kompatibler Endpunkt).
+    Choose **OpenAI Compatible** if your provider is not listed (e.g., a third-party relay or any other OpenAI-compatible endpoint).
   </Step>
-  <Step title="Geben Sie Anmeldedaten ein">
-    Füllen Sie die erforderlichen Felder aus:
-    - **Anbieter-Name** – Eine benutzerfreundliche Bezeichnung (z. B. „Mein OpenAI-Konto"). Dies dient nur als Referenz für Sie.
-    - **Basis-URL** – Der API-Endpunkt. Voreinstellungen füllen dies automatisch aus. Geben Sie für benutzerdefinierte Endpunkte die vollständige URL ein (z. B. `http://localhost:11434/v1` für Ollama).
-    - **API-Schlüssel** – Der API-Schlüssel Ihres Anbieters. Geben Sie für lokale Modelle (Ollama) eine beliebige nicht-leere Zeichenkette ein (z. B. `ollama`).
+  <Step title="Enter credentials">
+    Fill in the required fields:
+    - **Provider Name** -- A friendly label (e.g., "My OpenAI Account"). This is for your reference only.
+    - **Base URL** -- The API endpoint. Presets fill this automatically. For custom endpoints, enter the full URL (e.g., `http://localhost:11434/v1` for Ollama).
+    - **API Key** -- Your provider's API key. With the Ollama preset the API key can be left empty.
   </Step>
-  <Step title="Speichern">
-    Klicken Sie auf **Erstellen**. Der Anbieter wird in der Liste angezeigt und ist bereit, damit Sie Modelle unter ihm hinzufügen können.
+  <Step title="Save">
+    Click **Create**. The provider appears in the list, ready for you to add models under it.
   </Step>
 </Steps>
 
 <Tip>
-Sie können mehrere Anbieter für denselben Dienst erstellen. Beispielsweise zwei „OpenAI"-Anbieter mit unterschiedlichen API-Schlüsseln für separate Abrechnungskonten oder ein „Anthropic (Direkt)" und „Anthropic (über Bedrock)" mit unterschiedlichen Basis-URLs.
+You can create multiple providers for the same service. For example, two "OpenAI" providers with different API keys for separate billing accounts, or an "Anthropic (Direct)" and "Anthropic (via Bedrock)" with different base URLs.
 </Tip>
 
-## Ein Modell hinzufügen
+---
+
+## Adding a Model
 
 <Steps>
-  <Step title="Einen Anbieter erweitern">
-    Klicken Sie auf der Seite „Modelle" auf das Chevron neben einem vorhandenen Anbieter, um ihn zu erweitern und seine Modelle anzuzeigen.
+  <Step title="Expand a provider">
+    On the Models page, click the chevron next to an existing provider to expand it and see its models.
   </Step>
-  <Step title='Klicken Sie auf "Modell hinzufügen"'>
-    Klicken Sie auf die Schaltfläche **Modell hinzufügen**, die unter dem erweiterten Anbieter angezeigt wird.
+  <Step title="Click Add Model">
+    Click the **Add Model** button that appears under the expanded provider.
   </Step>
-  <Step title="Modelldetails eingeben">
-    Füllen Sie die zwei erforderlichen Felder aus:
-    - **Anzeigename** -- Ein benutzerfreundlicher Name, der in der Benutzeroberfläche angezeigt wird (z. B. „GPT-4o", „Claude Sonnet"). Kann beliebig sein.
-    - **Modellname (API)** -- Der genaue Modellbezeichner, der an die API gesendet wird (z. B. `gpt-4o`, `claude-sonnet-4-6`, `deepseek-chat`). Dies muss dem entsprechen, was Ihr Anbieter erwartet.
+  <Step title="Enter model details">
+    Fill in the two required fields:
+    - **Display Name** -- A human-readable name shown in the UI (e.g., "GPT-4o", "Claude Sonnet"). Can be anything you like.
+    - **Model ID** -- The exact model identifier sent to the API (e.g., `gpt-4o`, `claude-sonnet-4-6`, `deepseek-chat`). This must match what your provider expects.
   </Step>
-  <Step title="Erweiterte Einstellungen konfigurieren (optional)">
-    Klicken Sie auf den Schalter **Erweitert**, um zusätzliche Einstellungen anzuzeigen: Max. Ausgabe-Token, Kontextgröße, Temperatur, Native Funktionsaufrufe und JSON-Modus. Weitere Informationen zu den einzelnen Einstellungen finden Sie im Abschnitt [Erweiterte Einstellungen](#advanced-settings) unten.
+  <Step title="Configure advanced settings (optional)">
+    Click the **Advanced** toggle to reveal additional settings: Max Output Tokens, Context Size, Temperature, Native Function Calling, JSON Mode, and Vision Support (whether the model accepts images; see [Document Processing](/concepts/document-processing)). See the [Advanced Settings](#advanced-settings) section below for details on each.
   </Step>
-  <Step title="Speichern">
-    Klicken Sie auf **Erstellen**. Das Modell wird unter seinem Anbieter angezeigt und ist nun verfügbar, um es Modellgruppen zuzuweisen.
+  <Step title="Save">
+    Click **Create**. The model appears under its provider and is now available for assignment to model groups.
   </Step>
 </Steps>
 
@@ -128,14 +130,14 @@ Steuert, ob FIM One `response_format=json_object` für strukturierte Ausgaben ve
 
 Technische Details finden Sie unter [LLM Provider Compatibility -- json_mode_enabled](/architecture/llm-provider-guide#the-fix-json_mode_enabled).
 
-### Temperatur
+### Temperature
 
-**Standard:** 0.7 (geerbt von der globalen Einstellung, wenn nicht festgelegt)
+**Default:** 0.7 (inherited from the global setting if left unset)
 
-Steuert die Zufälligkeit der Modellausgabe. Bereich: 0 (deterministisch) bis 2 (hochkreativ).
+Controls the randomness of model output. Range: 0 (deterministic) to 2 (highly creative).
 
 <Note>
-Wenn Reasoning/Extended Thinking für Anthropic-Modelle aktiviert ist, wird die Temperatur vom System automatisch auf 1.0 erzwungen. Sie müssen dies nicht manuell festlegen.
+When reasoning/extended thinking is enabled for Anthropic models, the system handles temperature: Claude 4.5 and older are sent 1.0, and Claude 4.6 and newer have the parameter removed. You do not need to set this manually.
 </Note>
 
 ### Max Output Tokens
@@ -266,15 +268,15 @@ Modellkapazitäten ändern sich häufig, wenn Anbieter ihre APIs aktualisieren. 
 
 Mit Modellgruppen können Sie Modelle bestimmten Rollen zuweisen und mit einem einzigen Klick zwischen Konfigurationen wechseln.
 
-### Rollen
+### Roles
 
-FIM One verwendet drei Modellrollen. Jede Rolle erfüllt einen anderen Zweck in der Ausführungs-Pipeline:
+FIM One uses three model roles. Each role serves a different purpose in the execution pipeline:
 
-| Rolle | Verwendet für | Empfehlung |
+| Role | Used for | Recommendation |
 |---|---|---|
-| **General** | Planung, Analyse, ReAct-Agent, DAG-Schrittausführung (Standard) | Ihr leistungsstärkstes Modell (z. B. `gpt-4o`, `claude-sonnet-4-6`) |
-| **Fast** | `model_hint="fast"` DAG-Schritte, Kontext-Komprimierung, Verlaufszusammenfassung | Optimiert für Geschwindigkeit und Kosten (z. B. `gpt-5-nano`, `deepseek-chat`). Fällt auf General zurück, falls nicht zugewiesen. |
-| **Reasoning** | `model_hint="reasoning"` DAG-Schritte, domänen-eskalierte ReAct (Recht/Medizin/Finanzen) | Ein starkes Reasoning-Modell (z. B. `o3`, `deepseek-reasoner`). Fällt auf General zurück, falls nicht zugewiesen. |
+| **General** | Planning, analysis, ReAct agent, DAG step execution (default) | Your most capable model (e.g., `gpt-4o`, `claude-sonnet-4-6`) |
+| **Fast** | `model_hint="fast"` DAG steps, context compaction, history summary | Optimized for speed and cost (e.g., `gpt-5-nano`, `deepseek-chat`). Falls back to General if not assigned. |
+| **Reasoning** | `model_hint="reasoning"` DAG steps, domain-escalated ReAct (legal, medical, financial, tax, compliance, patent by default) | A strong reasoning model (e.g., `o3`, `deepseek-reasoner`). Falls back to General if not assigned. |
 
 ### Erstellen einer Modellgruppe
 
@@ -296,35 +298,39 @@ FIM One verwendet drei Modellrollen. Jede Rolle erfüllt einen anderen Zweck in 
   </Step>
 </Steps>
 
-### Eine Gruppe aktivieren
+### Activating a Group
 
-Um eine Modellgruppe zu aktivieren, verwenden Sie das Dropdown-Menü oder die Aktivierungskontrolle auf der Seite „Modelle". Es kann jeweils nur eine Gruppe aktiv sein. Das Aktivieren einer Gruppe wendet ihre Modellzuweisungen sofort auf alle neuen Gespräche an.
+To activate a model group, use the dropdown or activation control on the Models page. Only one group can be active at a time. Activating a group applies its model assignments to the next message in every conversation.
 
-Um die aktuelle Gruppe zu deaktivieren (Rückgriff auf ENV-konfigurierte Modelle), wählen Sie die Deaktivierungsoption.
+To deactivate the current group (falling back to ENV-configured models), select the deactivate option.
 
 <Warning>
-Das Wechseln der aktiven Modellgruppe wirkt sich auf **alle neuen Gespräche** systemweit aus. Laufende Gespräche verwenden weiterhin das Modell, das aktiv war, als sie gestartet wurden.
+Switching the active model group takes effect system-wide on the next message in every conversation, new or existing. A response that is already streaming finishes on the previous model.
 </Warning>
 
-## Domänenspezifische Modellstufenerhöhung
+---
 
-Wenn der Auto-Router eine spezialisierte Domäne erkennt — **legal**, **medizinisch** oder **finanziell** — eskaliert das System automatisch die Modellauswahl über die normalen Rollenzuweisungen hinaus:
+## Domain-Aware Model Escalation
 
-- **ReAct-Modus:** Das allgemeine Modell wird durch das **Reasoning-Modell** (`registry.get_by_role("reasoning")`) ersetzt. Das bedeutet, dass der Reasoning-Slot in Ihrer Modellgruppe nicht nur für DAG `model_hint="reasoning"` Schritte verwendet wird — er dient auch als Eskalationsziel für domänenspezifische ReAct-Aufgaben.
-- **DAG-Modus:** Domänenkontext wird in den Planner-Prompt eingefügt und leitet ihn an, `model_hint="reasoning"` Schritte zuzuweisen, die spezialisierte Genauigkeit erfordern.
+When the domain classifier detects a specialist domain — by default **legal**, **medical**, **financial**, **tax**, **compliance**, or **patent** (`ESCALATION_DOMAINS`) — the system automatically escalates model selection beyond the normal role assignments:
 
-Diese Eskalation ist automatisch und erfordert keine Konfiguration über das Vorhandensein eines zugewiesenen Reasoning-Modells in Ihrer aktiven Modellgruppe (oder über die `REASONING_LLM_MODEL` Umgebungsvariable) hinaus.
+- **ReAct mode:** The general model is replaced by the **reasoning model** (`registry.get_by_role("reasoning")`). This means the Reasoning slot in your Model Group is not only used for DAG `model_hint="reasoning"` steps — it also serves as the escalation target for domain-specific ReAct tasks.
+- **DAG mode:** Domain context is injected into the planner prompt, guiding it to assign `model_hint="reasoning"` to steps requiring specialist accuracy.
 
-**Zugehörige Umgebungsvariablen:**
+This escalation is automatic and requires no configuration beyond having a Reasoning model assigned in your active Model Group (or via the `REASONING_LLM_MODEL` env var).
 
-| Variable | Standard | Beschreibung |
+**Related environment variables:**
+
+| Variable | Default | Description |
 |---|---|---|
-| `DAG_CITATION_VERIFICATION` | `true` | Aktivieren Sie die Zitierverifizierung nach Schritten für rechtliche/medizinische/finanzielle Inhalte. Extrahiert Zitate über Regex und verifiziert die Genauigkeit durch LLM-Bewertung. |
-| `DAG_STRUCTURED_CONTEXT_MULTIPLIER` | `3.0` | Kürzungsbudget-Multiplikator für strukturierte Inhalte (Zitate, Tabellen, Code-Blöcke) im DAG-Abhängigkeitskontext. Höhere Werte bewahren mehr strukturierte Daten zwischen Schritten. |
+| `DAG_CITATION_VERIFICATION` | `true` | Enable post-step citation verification for specialist-domain content. Extracts citations via regex and verifies accuracy via LLM judgment. |
+| `DAG_STRUCTURED_CONTEXT_MULTIPLIER` | `3.0` | Truncation budget multiplier for structured content (citations, tables, code blocks) in DAG dependency context. Higher values preserve more structured data between steps. |
 
 <Tip>
-Wenn Ihre Workload rechtliche, medizinische oder finanzielle Anfragen umfasst, stellen Sie sicher, dass Ihr Reasoning-Modell ein starker Reasoner ist (z. B. `o3`, `claude-opus-4-6`, `deepseek-reasoner`). Die automatische Eskalation hängt davon ab, dass dieser Slot mit einem Modell gefüllt ist, das domänenkritische Genauigkeitsanforderungen erfüllen kann.
+If your workload involves legal, medical, or financial queries, ensure your Reasoning model is a strong reasoner (e.g., `o3`, `claude-opus-4-6`, `deepseek-reasoner`). The automatic escalation relies on this slot being populated with a model that can handle domain-critical accuracy requirements.
 </Tip>
+
+---
 
 ## ENV-Fallback
 
@@ -340,14 +346,14 @@ Vom Administrator konfigurierte Modelle haben immer Vorrang vor ENV-Variablen. D
 
 Die vollständige ENV-Referenz finden Sie unter [Umgebungsvariablen](/configuration/environment-variables#llm-required).
 
-## Export und Import
+## Export and Import
 
-Die Seite „Models" unterstützt den Export Ihrer gesamten Anbieter- und Modellkonfiguration (Anbieter, Modelle und Gruppen) als JSON-Datei und deren Import auf einer anderen Instanz. Dies ist nützlich für:
+The Models page supports exporting your entire provider and model configuration (providers, models, and groups) as a JSON file, and importing it on another instance. This is useful for:
 
-- Migration der Konfiguration zwischen Entwicklungs-, Staging- und Produktionsumgebungen
-- Austausch einer bekanntermaßen funktionierenden Modellkonfiguration mit Teammitgliedern
-- Sicherung Ihrer Konfiguration vor Änderungen
+- Migrating configuration between development, staging, and production environments
+- Sharing a known-good model setup with team members
+- Backing up your configuration before making changes
 
 <Warning>
-Die exportierte Konfiguration enthält **keine** API-Schlüssel. Nach dem Import müssen Sie jeden Anbieter bearbeiten, um den entsprechenden API-Schlüssel einzugeben.
+Exported configuration does **not** include API keys. The import dialog asks for a key for each new provider; providers that already exist keep theirs.
 </Warning>

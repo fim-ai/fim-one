@@ -14,13 +14,13 @@ FIM One의 DAG 실행 엔진은 의도적인 절제로 설계되었습니다. �
 
 명시적 핸드오프 프로토콜을 추가하면 스텝 의존성이 이미 제공하는 기능이 중복되며, 추가적인 표현력도 없습니다.
 
-## 역흐름 — 필요 없음
+## Backflow — Not Needed
 
-**패턴**: 다운스트림 단계에서 결과를 업스트림 단계로 다시 피드백하여 재평가하는 것 (역전파라고도 함).
+**Pattern**: Downstream steps feeding results back to upstream steps for re-evaluation (also called backpropagation of results).
 
-**제외 이유**: PlanAnalyzer 재계획 루프가 이미 이 사용 사례를 다룹니다. 모든 단계가 완료된 후, 분석기는 원래 목표가 달성되었는지 평가합니다. 달성되지 않았다면 (그리고 신뢰도가 중지 임계값 아래라면), 이전 라운드의 결과에서 얻은 컨텍스트를 포함하여 전체 재계획을 트리거합니다 — 무엇이 잘못되었는지와 무엇을 배웠는지 포함.
+**Why excluded**: The PlanAnalyzer re-plan loop already covers this use case. After all steps complete, the analyzer evaluates whether the original goal was achieved. If not (and the analyzer does not judge the goal unreachable), it triggers a re-plan of the remaining work with context from the previous round's results — including what went wrong and what was learned.
 
-이는 단계별 역흐름보다 더 거친 입도이지만 더 견고한 접근 방식입니다. 단계별 역흐름은 디버깅하기 어렵고 무한 사이클로 이어질 수 있는 복잡한 피드백 루프를 만듭니다. 재계획 루프는 더 깔끔한 실행 모델로 동일한 수정 효과를 달성합니다: 계획, 실행, 평가, 필요하면 재계획.
+This is a coarser-grained but more robust approach than per-step backflow. Per-step backflow creates complex feedback loops that are hard to debug and can lead to infinite cycles. The re-plan loop achieves the same corrective effect with a cleaner execution model: plan, execute, evaluate, re-plan if needed.
 
 ## Teams (에이전트 간 통신) — 불필요
 

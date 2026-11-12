@@ -9,25 +9,25 @@ mode: "wide"
 
 Les discussions sectorielles encadrent souvent un passage du **loop engineering** (un seul agent pensant et agissant de manière répétée) au **graph engineering** (faire de la topologie multi-nœuds un objet d'ingénierie explicite). L'étiquette est nouvelle ; la pratique ne l'est pas. Les systèmes de style LangGraph et les organisations multi-agents utilisent les graphes depuis des années. Ce qui importe pour FIM One, c'est le **type** de graphe dont les gens parlent, et comment cela s'inscrit dans nos trois couches d'exécution.
 
-### Ce que l'ingénierie de graphe signifie généralement
+### What graph engineering usually means
 
-| Couche (cadre courant) | Préoccupation |
+| Layer (common framing) | Concern |
 |---|---|
-| **Harness** | Outils, sandbox, auth, logging, quotas autour du modèle |
-| **Loop** | Cycle think → act → observe d'un agent |
-| **Graph** | Comment les **nœuds** se connectent : branches, jointures, cycles, points de contrôle humains, état partagé |
+| **Harness** | Tools, sandbox, auth, logging, quotas around the model |
+| **Loop** | One agent's think → act → observe cycle |
+| **Graph** | How **nodes** connect: branches, joins, cycles, human checkpoints, shared state |
 
-Consensus sur ce cadre : **le graphe ne remplace pas la boucle**. Les designs de graphe **conçoivent les relations entre processus** ; chaque nœud agentique peut toujours exécuter une boucle complète.
+Consensus across that framing: **graph does not replace loop**. Graph designs **relationships between processes**; each agentic node may still run a full loop.
 
-« Graph » est surchargé en pratique. Trois usages se mélangent :
+"Graph" is overloaded in practice. Three usages get mixed:
 
-| Usage | Exemple | Rôle |
+| Usage | Example | Role |
 |---|---|---|
-| **Graphe de flux de contrôle** | LangGraph `StateGraph` : arêtes conditionnelles, tentatives, interrupt/resume | Machine d'état pour déterminer qui s'exécute ensuite |
-| **Graphe de dépendances de tâches** | Claude Code Tasks `blockedBy` ; FIM One `depends_on` | Planifier et paralléliser le travail |
-| **Graphe de connaissances** | Entités et relations typées | Récupération / mémoire (pas orchestration) |
+| **Control-flow graph** | LangGraph `StateGraph`: conditional edges, retries, interrupt/resume | State machine for who runs next |
+| **Task dependency graph** | Claude Code Tasks `blockedBy`; FIM One `dependencies` | Schedule and parallelize work |
+| **Knowledge graph** | Entities and typed relations | Retrieval / memory (not orchestration) |
 
-Cette page traite des deux premiers (orchestration).
+This page is about the first two (orchestration).
 
 ### Pas « Dify Workflow avec un nouveau nom »
 
@@ -59,17 +59,17 @@ flowchart LR
   end
 ```
 
-### Comment la carte industrielle s'inscrit dans FIM One
+### How the industry map sits on FIM One
 
-FIM One couvre déjà l'ensemble du spectre de contrôle ; le mode « Planner » du chat n'en est qu'une tranche.
+FIM One already spans the control spectrum; chat "Planner mode" is only one slice.
 
-| Idée industrielle | Élément FIM One le plus proche | Adéquation |
+| Industry idea | Closest FIM One piece | Fit |
 |---|---|---|
-| Workflow visuel classique | **Workflow Engine** (blueprint au moment de la conception) | Forte |
-| Graphe de flux de contrôle + HITL + état durable | Étapes humaines du workflow + confirmation gates ; partiellement sur DAG chat | Moyenne |
-| Graphe de dépendances de tâches + planification parallèle | **DAGPlanner** (`depends_on`, fan-out topologique) | Forte sur la planification ; plus faible sur HITL en milieu de graphe |
-| Boucle agent unique + mémoire de checklist | **ReAct** (`update_plan`, tools, `ask_user_question`) | Forte |
-| Plan dessiné par LLM à l'exécution à chaque tour | **DAGPlanner** (pas Dify ; pas DSL design-time LangGraph) | Produit distinct |
+| Classic visual Workflow | **Workflow Engine** (design-time blueprint) | Strong |
+| Control-flow graph + HITL + durable state | Workflow human steps + confirmation gates; partial on chat DAG | Medium |
+| Task dependency graph + parallel schedule | **DAGPlanner** (`dependencies`, topological fan-out) | Strong on scheduling; weaker on mid-graph HITL |
+| Single agent loop + checklist memory | **ReAct** (`update_plan`, tools, `ask_user_question`) | Strong |
+| Runtime LLM-drawn plan every turn | **DAGPlanner** (not Dify; not LangGraph design-time DSL) | Distinct product |
 
 ```mermaid
 flowchart TB
@@ -91,19 +91,19 @@ flowchart TB
   D -->|"each step is already a ReAct agent"| R
 ```
 
-### Ingénierie de graphe vs DAG FIM One (Planner de chat)
+### Graph engineering vs FIM One DAG (chat Planner)
 
-Même famille (topologie multi-étapes explicite). Espèces différentes.
+Same family (explicit multi-step topology). Different species.
 
-| Dimension | Ingénierie de graphe (typique) | DAG FIM One (chat) |
+| Dimension | Graph engineering (typical) | FIM One DAG (chat) |
 |---|---|---|
-| **Qui dessine le graphe** | Développeur / implémenteur (topologie stable) | **LLM à l'exécution** (nouveau graphe par objectif) |
-| **Signification des arêtes** | Souvent **flux de contrôle** (où ensuite, y compris cycles) | Principalement **dépendance / données** (`depends_on`, exécution acyclique) |
-| **Correction** | Retry au niveau des arêtes, nœud humain, reprise du même graphe | **PlanAnalyzer → replan** (souvent un graphe **nouveau**) |
-| **Profondeur du nœud** | Le nœud peut être une boucle d'agent complète | **Déjà ReAct complet par étape** : `DAGExecutor` exécute `agent.run()` avec une boucle d'outils multi-itération (limite par défaut de `DAG_STEP_MAX_ITERATIONS`, généralement 15). Le modèle par défaut est le registre **général** (pas infrastructure rapide) ; `model_hint` peut escalader vers le raisonnement ou rétrograder vers rapide. Le cache d'outils, la vérification des étapes/citations et la preuve de source sont fournis avec chaque étape. Les agents d'étape définissent `enable_plan_tool=False` (pas de tableau `update_plan` à l'intérieur d'une étape) car l'unité de travail est déjà une sous-tâche ciblée. |
-| **État partagé** | État typé de première classe + récit de point de contrôle | Résultats d'étape + mémoire/compact ; les points de contrôle d'étape existent |
-| **Questions en cours d'exécution** | Interruption comme fonctionnalité produit | Les portes de confirmation existent ; **`ask_user_question` est ReAct uniquement** (boucle externe de chat), pas une arête d'attente DAG de première classe |
-| **Entrée produit** | Framework ou organigramme backend | Mode visible par l'utilisateur à côté de ReAct |
+| **Who draws the graph** | Developer / implementer (stable topology) | **LLM at runtime** (new graph per goal) |
+| **Edge meaning** | Often **control flow** (where next, including cycles) | Mostly **dependency / data** (`dependencies`, acyclic run) |
+| **Correction** | Edge-level retry, human node, resume same graph | **PlanAnalyzer → replan** (often a **new** graph) |
+| **Node depth** | Node may be a full agent loop | **Already full ReAct per step**: `DAGExecutor` runs `agent.run()` with a multi-iteration tool loop (default cap from `DAG_STEP_MAX_ITERATIONS`, commonly 15). Default model is registry **general** (not infrastructure fast); `model_hint` can escalate to reasoning or demote to fast. Tool cache, step/citation verification, and source evidence ship with each step. Step agents set `enable_plan_tool=False` (no `update_plan` board inside a step) because the unit of work is already a focused sub-task. |
+| **Shared state** | First-class typed state + checkpoint narrative | Step results + memory/compact; step checkpoints exist |
+| **Mid-run questions** | Interrupt as a product feature | Confirmation gates exist; **`ask_user_question` is ReAct-only** (chat outer loop), not a first-class DAG wait edge |
+| **Product entry** | Framework or backend org chart | User-visible mode next to ReAct |
 
 ```mermaid
 flowchart TB
@@ -116,35 +116,35 @@ flowchart TB
   end
   subgraph fimdag["FIM One DAG chat path"]
     G[User goal] --> P[LLM Planner]
-    P --> J[JSON depends_on DAG]
+    P --> J[JSON dependencies DAG]
     J --> E[Topological executor]
     E --> Z[PlanAnalyzer]
     Z -->|not achieved / recoverable| P
   end
 ```
 
-**Implication :** la chaleur industrielle autour de l'ingénierie de graphe **valide le maintien d'un moteur de graphe/planification**. Elle ne **nécessite pas** un défaut de chat qui force les utilisateurs à choisir « Planner » à chaque tour. La plupart des tâches veulent toujours une boucle forte ; les graphes se justifient sur les branches parallèles, les chemins de conformité fixes et l'orchestration multi-rôles.
+**Implication:** industry heat around graph engineering **validates keeping a graph/scheduling engine**. It does **not** require a chat default that forces users to pick "Planner" for every turn. Most tasks still want a strong loop; graphs earn their keep on parallel branches, fixed compliance paths, and multi-role orchestration.
 
-### Ce que FIM One peut apprendre (renforcer ReAct, DAG, Workflow)
+### What FIM One can learn (empower ReAct, DAG, Workflow)
 
-Des enseignements concrets, pas des slogans. Ordonnés par impact.
+Concrete takeaways, not slogans. Ordered by leverage.
 
-| # | Idée d'ingénierie de graphe | Appliquer à | Direction |
+| # | Graph engineering idea | Apply to | Direction |
 |---|---|---|---|
-| 1 | **Graphe plutôt que boucle, pas à la place** | Produit + Routage automatique | L'UX par défaut reste **ReAct** (boucle + `update_plan` + `ask_user_question`). Utiliser DAG/Workflow quand la topologie justifie le coût. |
-| 2 | **Nœuds profonds hétérogènes** | DAG | **Déjà l'état actuel.** Chaque étape est un agent ReAct complet (`agent.run`, outils multi-itération, modèle général ou meilleur par défaut), pas un appel LLM unique. Les commandes restantes sont optionnelles (p. ex. tableau de plan sur les étapes longues), pas une lacune structurelle. |
-| 3 | **Interruption / reprise comme arêtes** | DAG + ReAct | La clarification en cours d'exécution appartient à la **boucle externe** ou comme état d'attente de première classe. Éviter les fausses étapes DAG qui « posent une question à l'utilisateur » en texte puis replanifient comme « objectif non atteint ». |
-| 4 | **Cycles contrôlés vs replanification du graphe entier** | DAG | Préférer la nouvelle tentative locale / report partiel (déjà partiellement vrai pour les étapes terminées) à la vidange de tout le texte d'étape comme réponse finale échouée. |
-| 5 | **État partagé typé le long des arêtes** | DAG + Workflow | Des contrats plus forts pour l'E/S d'étape (schéma, livrables) réduisent la fausse confiance de l'Analyseur et la dérive réponse/source. |
-| 6 | **Topologie comme actif versionné** | Workflow | Conserver les graphes créés par l'humain pour l'audit ; ne pas s'attendre à ce que les DAG LLM d'exécution remplacent les plans de conformité. |
-| 7 | **Honnêteté : « la plupart des tâches n'ont jamais besoin d'un graphe »** | Auto + docs | Router clarifier-et-choisir, Q&A court et travail exploratoire vers ReAct ; réserver DAG pour le travail parallèle décomposable. |
+| 1 | **Graph over loop, not instead of** | Product + Auto routing | Default UX stays **ReAct** (loop + `update_plan` + `ask_user_question`). Use DAG/Workflow when topology earns cost. |
+| 2 | **Heterogeneous deep nodes** | DAG | **Already the status quo.** Each step is a full ReAct agent (`agent.run`, multi-iteration tools, general-or-better model by default), not a one-shot LLM call. The one exception is a step the planner tags `llm_direct` (pure transformation of upstream outputs), which runs as a single tool-less call. Remaining knobs are optional (e.g. plan board on long steps), not a structural gap. |
+| 3 | **Interrupt / resume as edges** | DAG + ReAct | Mid-run clarification belongs in the **outer** loop or as a first-class wait state. Avoid fake DAG steps that "ask the user" in text and then replan as "goal not achieved". |
+| 4 | **Controlled cycles vs whole-graph replan** | DAG | Prefer step-local retry / partial carryover (already partly true for completed steps) over dumping all step text as a failed final answer. |
+| 5 | **Typed shared state along edges** | DAG + Workflow | Stronger contracts for step I/O (schema, deliverables) reduce Analyzer false confidence and answer/source drift. |
+| 6 | **Topology as a versioned asset** | Workflow | Keep human-authored graphs for audit; do not expect runtime LLM DAGs to replace compliance blueprints. |
+| 7 | **Honest "most tasks never need a graph"** | Auto + docs | Route clarify-and-choose, short Q&A, and exploratory work to ReAct; reserve DAG for decomposable parallel work. |
 
-**Anti-motifs à éviter lors de « l'utilisation de graphe » :**
+**Anti-patterns to avoid when "doing graph":**
 
-- Utiliser un **graphe de dépendances** pour simuler une **machine d'état humaine** (« attendre les réponses » multi-étapes sans primitive d'attente).
-- Assimiler **`update_plan`** ReAct (mémoire de liste de contrôle) à l'ingénierie de graphe (topologie de planification).
-- Livrer la chaleur du graphe comme une deuxième personnalité de chat au lieu de comme **composition de moteur** (boucle à l'extérieur, planification à l'intérieur si nécessaire).
-- Décrire les étapes DAG de FIM One comme « appels LLM peu profonds » : cela sous-estime le moteur et induit les décisions produit en erreur.
+- Using a **dependency graph** to simulate a **human state machine** (multi-step "wait for answers" with no wait primitive).
+- Equating ReAct **`update_plan`** (checklist memory) with graph engineering (scheduling topology).
+- Shipping graph heat as a second chat personality instead of as **engine composition** (loop outside, schedule inside when needed).
+- Describing FIM One DAG steps as "shallow LLM calls": that understates the engine and misleads product decisions.
 
 ## Cinq types de « planification » dans le paysage des outils IA
 
@@ -210,10 +210,10 @@ Both are genuine Agents — the core loop is identical: **Perceive → Reason �
 | Dimension | Claude Code Teams | FIM One DAG |
 |---|---|---|
 | **Parallel model** | Leader spawns SubAgents, assigns tasks via messages | Topological sort auto-parallelizes independent steps |
-| **Task graph** | TaskList with `blockedBy` / `blocks` edges (dynamic DAG) | Static JSON DAG with `depends_on` edges |
+| **Task graph** | TaskList with `blockedBy` / `blocks` edges (dynamic DAG) | Static JSON DAG with `dependencies` edges |
 | **Coordination** | Explicit message passing (SendMessage / Broadcast) | Implicit dependency edges — no messages, just data flow |
 | **Agent lifecycle** | Dynamic pool — agents spawned on demand, shut down when done | Per-step **ReAct agents** (fresh agent per step via `_resolve_agent`); each step runs a full multi-iteration tool loop |
-| **Feedback & correction** | Each SubAgent retries autonomously; Leader re-assigns on failure | PlanAnalyzer evaluates outcomes → Re-Planning loop (up to 3 rounds); completed steps can carry into the next plan |
+| **Feedback & correction** | Each SubAgent retries autonomously; Leader re-assigns on failure | PlanAnalyzer evaluates outcomes → Re-Planning loop (up to 3 rounds in total: the first plan plus 2 re-plans); completed steps can carry into the next plan |
 | **Human involvement** | Plan mode approval, then autonomous execution | Fully automatic — PlanAnalyzer decides pass/replan (chat-level ASK is ReAct-only) |
 | **Context management** | Each SubAgent gets isolated context window (no cross-contamination) | Shared DbMemory + LLM Compact across the turn; each step agent still sees its task + dependency results, not a full peer transcript |
 | **Token economics** | `N agents × per-agent tokens` — time↓ tokens↑ (multiplicative cost) | Parallel branches cost more than serial ReAct, but shared memory and step caps usually stay below multi-agent team spend |
@@ -247,7 +247,7 @@ All structured LLM call sites in the DAG pipeline (Planner, Analyzer, Tool Selec
 
 | Level | Condition | How it works |
 |---|---|---|
-| **Native FC** | `llm.abilities["tool_call"]` | Forces a virtual tool call; extracts from `tool_calls[0].arguments` |
+| **Native FC** | `llm.abilities["tool_call"]` (and `tool_choice` not disabled) | Forces a virtual tool call; extracts from `tool_calls[0].arguments` |
 | **JSON Mode** | `llm.abilities["json_mode"]` | Sets `response_format={"type":"json_object"}`; parses with `extract_json()` |
 | **Plain text** | always available | Parses free-form content with `extract_json()`, then optional `regex_fallback()` |
 

@@ -21,17 +21,17 @@ description: "아키텍처 결정 기록 — LLM 진행 상황과의 관계에 �
 
 # 분석
 
-### 커넥터 플랫폼이 완전히 직교하는 이유
+### Why Connector Platform is fully orthogonal
 
-모델은 절대 기본적으로 다음을 수행할 수 없습니다:
-- API 자격증명 저장 및 암호화 (AES-GCM)
-- OAuth 흐름 관리 (인증 페이지 → 콜백 → 새로고침 토큰)
-- 클라이언트의 Kingdee/金蝶 ERP 데이터베이스에 연결
-- Lark/飞书 또는 WeCom/企微에 알림 푸시
-- 어떤 커넥터를 사용할 수 있는지에 대한 RBAC 적용
-- 규정 준수 감사를 위해 모든 도구 호출 기록
+Models will never natively:
+- Store and encrypt API credentials (Fernet)
+- Manage OAuth flows (authorization page → callback → refresh token)
+- Connect to a client's Kingdee/金蝶 ERP database
+- Push notifications to Lark/飞书 or WeCom/企微
+- Enforce RBAC on who can use which connector
+- Log every tool call for compliance auditing
 
-이는 지능 문제가 아니라 엔지니어링 문제입니다. 10배 더 똑똑한 모델도 인프라 없이는 이러한 작업을 수행할 수 없습니다.
+These are engineering problems, not intelligence problems. A model 10x smarter still can't do these things without infrastructure.
 
 ### AI 커넥터 빌더가 "주도적"인 이유, "흡수되지" 않는 이유
 
@@ -68,29 +68,29 @@ LLM 제공자들이 오케스트레이션을 기본적으로 구축하고 있습
 
 ## 기능 수준 분류
 
-### 직교성 (v0.6+)
+### Orthogonal (v0.6+)
 
-| 기능 | 버전 | 직교성 이유 |
+| Feature | Version | Why orthogonal |
 |---------|---------|---------------|
-| Connector 엔티티 + CRUD | v0.6.1 | 엔터프라이즈 통합, 순수 엔지니어링 |
-| 사용자별 자격증명 (AES-GCM) | v0.6.2 | 보안 인프라 |
-| 확인 게이트 | v0.6.2 | 쓰기 작업을 위한 안전 메커니즘 |
-| Connector 내보내기/가져오기/포크 | v0.7 | 배포 메커니즘 |
-| OAuth 2.0 | v0.7 | 프로토콜 구현 |
-| MCP Server 내보내기 | v0.7 | 상호운용성 (MCP 채택에 따라 결정) |
-| 데이터베이스 Connector | v0.8 | 직접 DB 접근, 연결 풀 |
-| 메시지 푸시 | v0.8 | 알림 채널 |
-| RBAC | v0.8 | 접근 제어, 거버넌스 |
-| 작업 감사 로그 | v0.8 | 규정 준수 |
-| 샌드박스 강화 | v0.9 | 보안 격리 |
-| 관찰성 (OTel, 서킷 브레이커) | v0.9 | 프로덕션 운영 |
-| Connector 분석 | v0.9 | 사용 추적 |
-| Docker Compose | v0.9 | 배포 |
-| 관리자 대시보드 | v1.0 | 관리 UI |
-| 예약된 작업 / Webhooks | v1.0 | 자동화 트리거 |
-| 배치 실행 | v1.0 | 엔터프라이즈 규모 처리 |
-| 임베드 가능한 위젯 / iframe | v1.0 | 전달 모드 |
-| 엔터프라이즈 보안 | v1.0 | 규정 준수 (암호화, IP 화이트리스팅) |
+| Connector entity + CRUD | v0.6.1 | Enterprise integration, pure engineering |
+| Per-user credentials (Fernet) | v0.6.2 | Security infrastructure |
+| Confirmation Gate | v0.6.2 | Safety mechanism for write operations |
+| Connector Export/Import/Fork | v0.7 | Distribution mechanism |
+| OAuth 2.0 | v0.7 | Protocol implementation |
+| MCP Server Export | not implemented | Interoperability (depends on MCP adoption) |
+| Database Connector | v0.8 | Direct DB access, connection pools |
+| Message Push | v0.8 | Notification channels |
+| RBAC | v0.8 | Access control, governance |
+| Operation Audit Log | v0.8 | Compliance |
+| Sandbox Hardening | v0.9 | Security isolation |
+| Observability (circuit breaker shipped; OTel not implemented) | v0.9 | Production operations |
+| Connector Analytics | v0.9 | Usage tracking |
+| Docker Compose | v0.9 | Deployment |
+| Admin Dashboard | v1.0 | Management UI |
+| Scheduled Jobs / Webhooks | v1.0 | Automation triggers |
+| Batch Execution | v1.0 | Enterprise-scale processing |
+| Embeddable Widget / iframe | v1.0 | Delivery mode |
+| Enterprise Security | v1.0 | Compliance (encryption, IP whitelisting) |
 
 ### Tailwind
 

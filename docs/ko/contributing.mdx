@@ -90,45 +90,49 @@ mypy strict 모드가 적용됩니다. 전체 코드베이스는 오류 없이 �
 
 ---
 
-## Pre-commit 훅 파이프라인
+## Pre-commit hook pipeline
 
-훅은 모든 커밋에서 자동으로 실행됩니다. 각 단계와 관련된 스테이징된 파일만 처리하므로, Python 파일만 변경한 경우 i18n 단계가 건너뛰어지고 그 반대의 경우도 마찬가지입니다.
+The hook runs automatically on every commit. It only processes staged files relevant to each step -- if you only changed Python files, the i18n step is skipped, and vice versa.
 
-| 순서 | 단계 | 트리거 | 수행 작업 |
+| Order | Step | Trigger | What it does |
 |---|---|---|---|
-| 0 | 로캘 편집 검사 | `messages/{locale}/`, `docs/{locale}/` 또는 `README.{locale}.md` 아래의 스테이징된 파일 | 커밋을 중단합니다 — 재정의할 수 없습니다. 대신 `scripts/translation-glossary.md`를 통해 번역을 수정하세요. |
-| 1 | OpenAPI 사양 재생성 | `src/fim_one/web/**/*.py`가 변경됨 | FastAPI 라우트에서 `docs/openapi.json`을 다시 내보냅니다. |
-| 2 | i18n 번역 | `messages/en/*.json`, `docs/*.mdx` 또는 `README.md`가 변경됨 (로컬 `LLM_API_KEY`가 필요하며, 없으면 병합 후 CI에서 처리) | 새 키와 변경된 키를 모든 대상 로캘로 번역합니다. |
-| 3 | mypy 타입 검사 | `src/fim_one/**/*.py`가 변경됨 | 스테이징된 파일에 대해 전체 import 체인을 사용하여 mypy를 실행합니다. |
-| 4 | MDX 검증 | `.mdx` 파일이 스테이징됨 | Mintlify에 전달되기 전에 JSX/MDX 구문을 검증합니다. |
-| 5 | Markdown 링크 검사 | `.md` 또는 `.mdx` 파일이 스테이징됨 | `scripts/check_md_links.py`가 `docs/` 전체에서 존재하지 않는 페이지나 자산으로 연결되는 링크와 어떤 제목과도 일치하지 않는 `#anchors`를 거부합니다 (이름을 변경하면 스테이징하지 않은 파일의 링크도 손상됩니다). CI에서도 실행됩니다. |
+| 0 | Locale-edit guard | Any staged file under `messages/{locale}/`, `docs/{locale}/`, or `README.{locale}.md` | Aborts the commit. Fix translations via `scripts/translation-glossary.md` instead. The only override is `TRANSLATION_REPAIR=1`, for committing output of `scripts/translate.py` when the English change is already committed. |
+| 1 | OpenAPI spec regen | `src/fim_one/web/**/*.py` changed | Re-exports `docs/openapi.json` from FastAPI routes |
+| 2 | Docs nav regen | `docs/nav.template.json`, `docs/docs.base.json`, `scripts/docs-nav-glossary.json`, or `docs/nav-overrides/*.json` changed | Rebuilds `docs/docs.json` with `scripts/build-docs-nav.py` |
+| 3 | i18n translation | `messages/en/*.json`, `docs/*.mdx`, or `README.md` changed (needs local `LLM_API_KEY`, else CI handles it after merge) | Translates new/changed keys into all target locales |
+| 4 | mypy type checking | Any `src/fim_one/**/*.py` changed | Runs mypy with full import chain on staged files |
+| 5 | Behavioral-eval freshness | Staged files on the watch list in `scripts/eval_stamp.py` (system prompt, ReAct loop, built-in tools) | Refuses the commit until `uv run pytest evals/ -q` has been run for the change; `SKIP_EVALS=1` bypasses |
+| 6 | Markdown link gate | Any `.md` / `.mdx` file staged | `scripts/check_md_links.py` rejects links to missing pages or assets and `#anchors` that match no heading, across all of `docs/` (a rename breaks links in files you did not stage). Also runs in CI. |
+| 7 | MDX validation | Any `.mdx` file staged | Validates JSX/MDX syntax before it reaches Mintlify |
 
-어느 단계에서든 실패하면 커밋이 중단됩니다. 보고된 오류를 수정한 후 다시 시도하세요.
+If any step fails, the commit is aborted. Fix the reported errors and retry.
 
 ---
 
 ## i18n
 
-FIM One는 6개 언어(EN, ZH, JA, KO, DE, FR)를 지원합니다. 번역은 완전히 자동화되어 있습니다.
+FIM One supports 6 locales (EN, ZH, JA, KO, DE, FR). Translations are fully automated.
 
-**영어 소스 파일만 편집하세요:**
+**Only edit English source files:**
 
-- `frontend/messages/en/{namespace}.json` -- UI 문자열
-- `docs/*.mdx` (로케일 하위 디렉토리 아님) -- 문서
-- `README.md` -- 프로젝트 readme
+- `frontend/messages/en/{namespace}.json` -- UI strings
+- `docs/*.mdx` (root level, not locale subdirs) -- documentation
+- `README.md` -- project readme
 
-다른 로케일 파일(`messages/zh/`, `docs/zh/`, `README.zh.md` 등)은 **자동 생성**되며, pre-commit 훅은 이들을 수동으로 편집하는 커밋을 무조건 거부합니다. 번역 오류를 수정하려면 [`scripts/translation-glossary.md`](https://github.com/fim-ai/fim-one/blob/master/scripts/translation-glossary.md)를 편집하세요. 이것은 모든 번역 규칙이 주입되는 단일 정보 소스입니다. 그 다음 `uv run scripts/translate.py --files <en-sources> --force`로 영향받는 파일을 재생성하세요. 모든 용어집 수정은 5개 로케일 전체에 영구적으로 적용됩니다.
+Other locale files (`messages/zh/`, `docs/zh/`, `README.zh.md`, etc.) are **auto-generated** and the pre-commit hook refuses commits that manually edit them. To fix a mistranslation, edit [`scripts/translation-glossary.md`](https://github.com/fim-ai/fim-one/blob/master/scripts/translation-glossary.md) — the prompt-injected single source of truth for every translation rule — then regenerate affected files with `uv run scripts/translate.py --files <en-sources> --force`. Every glossary fix applies to all five locales permanently.
 
-**로케일 파일 생성 경로 2가지:**
+**Two paths to generating locale files:**
 
-1. **로컬 pre-commit 훅** — `.env`에 `LLM_API_KEY`가 설정되어 있으면 실행됩니다. 번역은 푸시 전에 발생하므로 출력을 미리 볼 수 있습니다.
-2. **CI 폴백** — 로컬 훅에 키가 없어 건너뛴 경우, [`.github/workflows/i18n-sync.yml`](https://github.com/fim-ai/fim-one/blob/master/.github/workflows/i18n-sync.yml)이 병합 후 `master`에서 번역하고 결과를 자동 커밋합니다.
+1. **Local pre-commit hook** — runs if `LLM_API_KEY` is set in `.env`. Translation happens before push, so you can preview the output.
+2. **CI fallback** — if the local hook had no key and skipped, [`.github/workflows/i18n-sync.yml`](https://github.com/fim-ai/fim-one/blob/master/.github/workflows/i18n-sync.yml) translates on `master` after merge and auto-commits the result.
 
-API 키가 없는 기여자는 EN 변경사항을 자유롭게 커밋할 수 있습니다. CI 경로가 로케일이 올바르게 적용되도록 보장합니다.
+Contributors without an API key can commit EN changes freely — the CI path ensures locales land correctly.
 
-**새로운 i18n 네임스페이스 추가:** `messages/en/{ns}.json` 생성 -- 다른 로케일 파일은 다음 커밋이나 병합 후 CI에서 생성됩니다.
+**Adding a new i18n namespace:** Create `messages/en/{ns}.json` -- other locale files are generated on the next commit or on CI after merge.
 
-**전체 재번역 강제 실행:** `uv run scripts/translate.py --all` (로컬 `LLM_API_KEY` 필요).
+**Force full retranslation:** `uv run scripts/translate.py --all` (requires local `LLM_API_KEY`).
+
+---
 
 ## 데이터베이스 마이그레이션
 

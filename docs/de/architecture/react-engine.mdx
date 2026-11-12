@@ -6,19 +6,19 @@ description: "Wie die ReAct-Engine von FIM One funktioniert — Dual-Mode-Ausfü
 
 Für die Funktionsweise dieser Schleife neben DAG-Planung, Workflow-Blueprints und industriellem **Graph Engineering** siehe [Planning Landscape](/architecture/planning-landscape).
 
-## Die Architektur
+## The architecture
 
-Die ReAct-Engine implementiert ein zweiphasiges Ausführungsmodell. Die erste Phase ist eine iterative Werkzeugschleife: Der Agent fordert das LLM wiederholt zu einer Aktion auf, führt jedes angeforderte Werkzeug aus, fügt die Beobachtung hinzu und fährt fort, bis das LLM „fertig“ signalisiert. Die zweite Phase ist die Antwortsynthese: ein separater Streaming-LLM-Aufruf, der den vollständigen Ausführungs-Trace liest und die Antwort für den Benutzer erzeugt.
+The ReAct engine implements a two-phase execution model. The first phase is an iterative tool-use loop: the agent repeatedly asks the LLM for an action, executes any requested tool, appends the observation, and continues until the LLM signals "done." The second phase is answer delivery: `stream_answer()` streams the user-facing response. When the loop ended on the `finish` signal (the chat path, `REACT_FINISH_SIGNAL` default on) it continues the same message history as one more streamed turn; when the loop already wrote a final answer, that text is replayed as is; only when neither applies does it fall back to a separate synthesis call over the execution trace.
 
-Diese Aufteilung ist beabsichtigt. Werkzeugiterationen sind auf Geschwindigkeit optimiert – jeder LLM-Aufruf innerhalb der Schleife verwendet das nicht-streamende `chat()`, da der Benutzer weder partielle JSON-Aktionen noch Zwischen-Tokens der Schlussfolgerung sehen muss. Die Antwortgenerierung ist auf eine gute UX optimiert – sie verwendet `stream_chat()`, sodass der Benutzer die Tokens in Echtzeit erscheinen sieht. Das Ergebnis vereint die Vorteile beider Ansätze: schnelle Werkzeugausführung und eine reaktionsschnelle Antwortübermittlung.
+This split is deliberate. Tool iterations are optimized for speed — in JSON mode every LLM call in the loop uses non-streaming `chat()`, because the user does not need to see partial JSON actions; in native function-calling mode the loop uses `stream_chat()` so reasoning tokens reach the client as `thinking` deltas. Answer generation is optimized for UX — it uses streaming `stream_chat()` so the user sees tokens appearing in real time. The result is the best of both worlds: fast tool execution with responsive answer delivery.
 
 ```mermaid
 flowchart TD
-    A["User query"] --> B["Tool loop<br/>(non-streaming chat() x N)"]
+    A["User query"] --> B["Tool loop<br/>(LLM call x N)"]
     B -->|"tool_call"| E["Execute tool"]
     E --> F{"Cycle<br/>detected?"}
     F -->|"No"| B
-    F -->|"Yes"| G["Inject warning:<br/>try different approach"]
+    F -->|"Yes"| G["Warn, then refuse<br/>repeated calls"]
     G --> B
     B -->|"done signal"| H{"tools ≥<br/>threshold?"}
     H -->|"Yes (once)"| I["Completion checklist:<br/>verify answer"]
@@ -27,42 +27,42 @@ flowchart TD
     C --> D["SSE token stream → frontend"]
 ```
 
-Die Werkzeugschleife erzeugt ein `AgentResult`, das den vollständigen Konversationsverlauf enthält – System-Prompt, Benutzeranfrage, jede Assistentennachricht und jedes Werkzeugergebnis. Die Methode `stream_answer()` verdichtet diesen Trace zu einer prägnanten, kohärenten Antwort. Werkzeugergebnisse werden im Synthesekontext jeweils auf 2.000 Zeichen gekürzt, sodass der Prompt auch nach komplexen Workflows mit mehreren Werkzeugen kompakt bleibt.
+The tool loop produces an `AgentResult` containing the full conversation history — system prompt, user query, every assistant message, every tool result. The `stream_answer()` method distills this trace into a concise, coherent answer. In the synthesis fallback, tool results are truncated to 8,000 characters each (`REACT_TOOL_OBS_TRUNCATION`), keeping the prompt lean even after complex multi-tool workflows.
 
-**Modellbindung.** Das LLM wird in `ReActAgent.__init__()` injiziert und als `self._llm` gespeichert. Jeder Aufruf innerhalb einer einzelnen `run()`-Ausführung – alle Iterationen der Werkzeugschleife sowie die abschließende Antwortsynthese – verwendet dieselbe Instanz. Das Modell ändert sich zwischen den Iterationen nicht. Um ein anderes Modell zu verwenden, muss ein neuer `ReActAgent` erstellt werden. Im DAG-Modus nutzt `DAGExecutor._resolve_agent()` dieses Muster: Direkt bevor die ReAct-Schleife des jeweiligen Schritts beginnt, erstellt die Methode einen neuen Agenten pro Schritt und wählt das Modell anhand von `step.model_hint` aus der `ModelRegistry` aus. Weitere Informationen finden Sie unter [DAG Engine – Überschreibung pro Schritt](/architecture/dag-engine#multi-llm-architecture).
+**Model binding.** Two LLMs are injected into `ReActAgent.__init__()`: `llm` (stored as `self._llm`) and an optional `fast_llm`. Tool-decision iterations and tool selection run on the fast model when one is given (`self._tool_llm = fast_llm or llm`); `stream_answer()` uses the primary `llm`. Neither changes between iterations. To use a different model, a new `ReActAgent` must be constructed. In DAG mode, `DAGExecutor._resolve_agent()` exploits this pattern: it creates a fresh agent per step (selecting the model from `ModelRegistry` based on `step.model_hint`) immediately before that step's ReAct loop begins. See [DAG Engine — Per-step override](/architecture/dag-engine#multi-llm-architecture) for details.
 
-## Dual-Mode-Ausführung
+## Dual-mode execution
 
-Die ReAct-Engine unterstützt zwei unterschiedliche Modi für die Interaktion mit dem LLM während der Tool-Schleife.
+The ReAct engine supports two distinct modes of interacting with the LLM during the tool loop.
 
-**JSON Mode** (`_run_json`) bettet Tool-Beschreibungen direkt in den System-Prompt ein und weist das LLM an, mit einem JSON-Objekt zu antworten — entweder eine `tool_call`-Aktion mit einem Tool-Namen und Argumenten oder ein `final_answer`-Signal. Der Agent analysiert das JSON aus dem Antwortinhalt, führt das Tool aus und fügt die Beobachtung als Benutzernachricht an.
+**JSON Mode** (`_run_json`) embeds tool descriptions directly in the system prompt and instructs the LLM to respond with a JSON object — either a `tool_call` action with a tool name and arguments, or a `final_answer` signal. The agent parses the JSON from the response content, executes the tool, and appends the observation as a user message.
 
-**Native Function Calling** (`_run_native`) nutzt die integrierte Tool-Calling-API des LLM-Anbieters. Tool-Beschreibungen werden über den `tools`-Parameter übergeben, und das LLM gibt strukturierte `tool_calls` in der API-Antwort zurück, anstatt JSON in seinem Inhalt auszugeben. Dies ist der bevorzugte Modus für Modelle, die ihn unterstützen.
+**Native Function Calling** (`_run_native`) uses the LLM provider's built-in tool-calling API. Tool descriptions are passed via the `tools` parameter, and the LLM returns structured `tool_calls` in the API response rather than emitting JSON in its content. This is the preferred mode for models that support it.
 
-Die Modusauswahl erfolgt automatisch. Die Eigenschaft `_native_mode_active` gibt `True` nur zurück, wenn beide Bedingungen erfüllt sind: Der Agent wurde mit `use_native_tools=True` (Standard) erstellt und das LLM gibt `abilities["tool_call"] = True` an. Wenn eine der Bedingungen nicht erfüllt ist, fällt die Engine auf JSON Mode zurück.
+Mode selection is automatic. The property `_native_mode_active` returns `True` only when both conditions hold: the agent was created with `use_native_tools=True` (the default) and the LLM advertises `abilities["tool_call"] = True`. If either condition fails, the engine falls back to JSON mode.
 
-| Aspekt | JSON Mode | Native Function Calling |
+| Aspect | JSON Mode | Native Function Calling |
 |--------|-----------|------------------------|
-| LLM-Ausgabe | JSON-Objekt im Nachrichteninhalt | `tool_calls` in API-Antwort |
-| System-Prompt | Bettet vollständige Tool-Beschreibungen in Text ein | Tools über `tools`-Parameter übergeben |
-| Parallele Tool-Aufrufe | Ein Tool pro Iteration | Mehrere über `asyncio.gather` |
-| Parse-Fehlerbehandlung | Wiederholung mit Reformatierungs-Prompt | N/A (strukturiert durch API) |
-| Loop-LLM-Aufrufe | Nicht-Streaming `chat()` | Nicht-Streaming `chat()` |
-| Optimal für | Modelle ohne Tool-Call-Unterstützung | GPT-4, Claude und ähnliche |
+| LLM output | JSON object in message content | `tool_calls` in API response |
+| System prompt | Embeds full tool descriptions in text | Tools passed via `tools` parameter |
+| Parallel tool calls | One tool per iteration | Multiple via `asyncio.gather` |
+| Parse failure handling | Retry with reformat prompt | N/A (structured by API) |
+| Loop LLM calls | Non-streaming `chat()` | Streaming `stream_chat()` |
+| Best for | Models without tool-call support | GPT-4, Claude, and similar |
 
-Beide Modi teilen sich die gleiche Antwort-Synthesephase — `stream_answer()` funktioniert identisch, unabhängig davon, wie die Tool-Schleife ausgeführt wurde.
+Both modes share the same answer synthesis phase — `stream_answer()` works identically regardless of how the tool loop ran.
 
-## structured_llm_call — einheitliche Ausgabeextraktion
+## structured_llm_call — unified output extraction
 
-Jede Aufrufstelle, die benötigt, dass das LLM Daten zurückgibt, die einem JSON-Schema entsprechen, verwendet `structured_llm_call()`. Dies ist der einzelne Einstiegspunkt für strukturierte Ausgaben im gesamten Framework — der DAG-Planer, der Plan-Analyzer, die Werkzeugauswahl und jede zukünftige Komponente, die geparste JSON von einem LLM benötigt.
+Any call site that needs the LLM to return data conforming to a JSON schema uses `structured_llm_call()`. This is the single entry point for structured output across the entire framework — the DAG planner, plan analyzer, tool selection, and any future component that needs parsed JSON from an LLM.
 
-Die Funktion implementiert eine 3-stufige Degradationskette, die jede Stufe nacheinander versucht, basierend auf den beworbenen Fähigkeiten des LLM:
+The function implements a 3-level degradation chain, attempting each level in order based on the LLM's advertised capabilities:
 
-**Stufe 1: Native Function Calling.** Verwendet die `tool_call` / `tool_choice` API des LLM, um eine strukturierte Antwort zu erzwingen. Verfügbar, wenn `abilities["tool_call"] = True`. Wenn das LLM `tool_calls` zurückgibt, werden die Argumente direkt extrahiert. Wenn das Parsing fehlschlägt, wird zur nächsten Stufe übergegangen.
+**Level 1: Native Function Calling.** Uses the LLM's `tool_call` / `tool_choice` API to force a structured response. Available when `abilities["tool_call"]` is true and `tool_choice` is not disabled. If the LLM returns `tool_calls`, the arguments are extracted directly. If parsing fails, falls through to the next level.
 
-**Stufe 2: JSON Mode.** Setzt `response_format={"type": "json_object"}`, um das Ausgabeformat des LLM einzuschränken. Verfügbar, wenn `abilities["json_mode"] = True`. Wenn die Antwort nicht geparst werden kann, wird einmal mit einer Reformatierungseingabeaufforderung erneut versucht („Your previous response could not be parsed as valid JSON..."), dann wird zur nächsten Stufe übergegangen.
+**Level 2: JSON Mode.** Sets `response_format={"type": "json_object"}` to constrain the LLM's output format. Available when `abilities["json_mode"] = True`. If the response cannot be parsed, retries once with a reformat prompt ("Your previous response could not be parsed as valid JSON..."), then falls through.
 
-**Stufe 3: Klartext.** Ruft das LLM ohne Formateinschränkungen auf und extrahiert JSON aus Freitext mit `extract_json()`. Wenn die Extraktion fehlschlägt, wird eine optionale `regex_fallback` Funktion versucht. Wird einmal mit der Reformatierungseingabeaufforderung erneut versucht, bevor aufgegeben wird.
+**Level 3: Plain Text.** Calls the LLM with no format constraints and extracts JSON from free-form text using `extract_json()`. If extraction fails, an optional `regex_fallback` function is tried. Retries once with the reformat prompt before giving up.
 
 ```mermaid
 flowchart TD
@@ -85,31 +85,31 @@ flowchart TD
     DEFAULT -->|No| ERR["Raise StructuredOutputError"]
 ```
 
-Die Degradationskette bedeutet, dass jedes Modell — von GPT-4 mit vollständiger Tool-Call-Unterstützung bis zu einem lokalen LLM, das nur Klartext produzieren kann — an strukturierten Ausgabeszenarien teilnehmen kann. Der schlimmste Fall sind 5 LLM-Aufrufe (1 native + 1 JSON + 1 JSON-Wiederholung + 1 Klartext + 1 Klartext-Wiederholung), aber in der Praxis werden die meisten Aufrufe auf Stufe 1 in einem einzigen Versuch gelöst.
+The degradation chain means every model — from GPT-4 with full tool-call support to a local LLM that can only produce plain text — can participate in structured output scenarios. The worst case is 5 LLM calls (1 native + 1 JSON + 1 JSON retry + 1 plain + 1 plain retry), but in practice most calls resolve at Level 1 in a single attempt.
 
-| Modellkapazität | Pfad | Max. LLM-Aufrufe |
-|-----------------|------|------------------|
+| Model capability | Path taken | Max LLM calls |
+|-----------------|------------|---------------|
 | tool_call + json_mode | L1 → L2 → L3 | 5 |
-| nur json_mode | L2 → L3 | 4 |
-| nur Klartext | L3 | 2 |
+| json_mode only | L2 → L3 | 4 |
+| Plain text only | L3 | 2 |
 
-Das Ergebnis ist ein `StructuredCallResult`, das den geparsten Wert, das rohe Dict, welche Stufe erfolgreich war, und die kumulative Token-Nutzung enthält. Aufrufstellen verwenden `parse_fn`, um das rohe Dict in ein Domänenobjekt (z. B. einen DAG-Plan) umzuwandeln, und `default_value`, um einen Fallback bereitzustellen, wenn totales Versagen akzeptabel ist.
+The result is a `StructuredCallResult` containing the parsed value, the raw dict, which level succeeded, and cumulative token usage. Call sites use `parse_fn` to transform the raw dict into a domain object (e.g., a DAG plan) and `default_value` to provide a fallback when total failure is acceptable.
 
-`structured_llm_call` wird verwendet von: dem DAG-Planer (Plan-Schema), dem Plan-Analyzer (Analyse-Schema), der Werkzeugauswahl (Werkzeuglisten-Schema) und jeder Komponente, die zuverlässige strukturierte Ausgaben benötigt. Es wird auch in [Planning Landscape](/architecture/planning-landscape) diskutiert.
+`structured_llm_call` is used by: the DAG planner (plan schema), the plan analyzer (analysis schema), tool selection (tool list schema), and any component that needs reliable structured output. It is also discussed in [Planning Landscape](/architecture/planning-landscape).
 
-## Werkzeugauswahl
+## Tool selection
 
-Wenn ein Agent Zugriff auf viele Werkzeuge hat — häufig im Hub-Modus, wo mehrere Konnektoren jeweils mehrere Aktionen bereitstellen — ist das Einfügen des vollständigen Schemas jedes Werkzeugs in den Gesprächskontext verschwenderisch. Ein Konnektoren-Hub mit 20 Werkzeugen verbraucht etwa 5K Token nur für Werkzeugbeschreibungen und verdrängt damit Platz für Gesprächsverlauf und Werkzeugergebnisse.
+When an agent has access to many tools — common when an agent is bound to several connectors that each expose several actions — injecting every tool's full schema into the conversation context is wasteful. An agent with 20 tools consumes roughly 5K tokens in tool descriptions alone, crowding out space for conversation history and tool results.
 
-Die Engine adressiert dies mit einer leichtgewichtigen Auswahlphase. Wenn die Gesamtzahl der registrierten Werkzeuge `TOOL_SELECTION_THRESHOLD` (12) überschreitet, führt der Agent einen vorbereitenden LLM-Aufruf durch, bevor die Hauptschleife beginnt. Dieser Aufruf erhält einen kompakten Katalog — etwa 80 Zeichen pro Werkzeug, enthaltend nur den Namen und eine einzeilige Beschreibung, keine Parameterschemas — und wählt die relevantesten Werkzeuge für die aktuelle Anfrage aus, bis zu `_TOOL_SELECTION_MAX` (6).
+The engine addresses this with a lightweight selection phase. When the total number of registered tools exceeds `TOOL_SELECTION_THRESHOLD` (12), the agent selects a subset before entering the main loop. It first tries a keyword match between the query and the tool names and descriptions; when no tool clearly dominates, it runs a selection call on the fast LLM. This call receives a compact catalog — approximately 80 characters per tool, containing only the name and a one-line description, no parameter schemas — and picks the most relevant tools for the current query, up to `_TOOL_SELECTION_MAX` (6). Pinned tools (`read_skill`, `update_plan`, and in chat `web_search` and `ask_user_question`) and the `request_tools` meta-tool are added on top.
 
-Die Auswahl verwendet `structured_llm_call` mit einem einfachen Schema (`{"tools": ["tool_name_1", "tool_name_2"]}`), sodass sie von der gleichen 3-stufigen Degradation profitiert. Die ausgewählten Werkzeugnamen werden verwendet, um eine gefilterte `ToolRegistry` zu erstellen, die die Hauptschleife sowohl für die Konstruktion des Systemprompts als auch für die Werkzeugausführung verwendet.
+The selection uses `structured_llm_call` with a simple schema (`{"tools": ["tool_name_1", "tool_name_2"]}`), so it benefits from the same 3-level degradation. The selected tool names are used to build a filtered `ToolRegistry` that the main loop uses for both system prompt construction and tool execution.
 
-Auswahlfehlschlag ist absichtlich nicht fatal. Wenn der LLM nicht analysierbare Ausgabe zurückgibt, wenn alle ausgewählten Namen ungültig sind, oder wenn eine Ausnahme auftritt, fällt der Agent auf den vollständigen Werkzeugsatz zurück. Dies stellt sicher, dass eine fehlerhafte Auswahl den Agent nie am Funktionieren hindert — er verwendet einfach mehr Kontext als optimal.
+Selection failure is deliberately non-fatal. If the LLM returns unparseable output, if all selected names are invalid, or if any exception occurs, the agent falls back to the full tool set. This ensures that a flawed selection never prevents the agent from functioning — it just uses more context than optimal.
 
-## Die Iterationsschleife
+## The iteration loop
 
-Die Kernschleife treibt sowohl den JSON-Modus als auch den nativen Modus an, mit geringen Unterschieden in der Nachrichtenbehandlung. Jede Iteration folgt dem gleichen übergeordneten Muster: Überprüfung des Kontext-Budgets, Aufruf des LLM, Verarbeitung der Antwort und entweder Ausführung eines Tools oder Abbruch.
+The core loop drives both JSON mode and native mode, with minor differences in message handling. Each iteration follows the same high-level pattern: check the context budget, call the LLM, process the response, and either execute a tool or break.
 
 ```mermaid
 sequenceDiagram
@@ -119,13 +119,13 @@ sequenceDiagram
     participant Hooks as HookRegistry
     participant Tool as Tool Registry
 
-    loop Each iteration (max 50)
+    loop Each iteration (max 20 by default)
         Agent->>CG: check_and_compact(messages)
         CG-->>Agent: messages (within budget)
-        Agent->>LLM: chat(messages) [non-streaming]
+        Agent->>LLM: chat(messages) or stream_chat(messages)
         LLM-->>Agent: response
         alt tool_call action
-            Agent->>Hooks: run_pre_tool_use_hooks(ctx)
+            Agent->>Hooks: run_pre_tool(ctx)
             alt hook blocks
                 Hooks-->>Agent: allow=False, error="..."
                 Agent->>Agent: append block message, continue
@@ -133,11 +133,11 @@ sequenceDiagram
                 Hooks-->>Agent: allow=True, modified_args?
                 Agent->>Tool: execute(tool_name, args)
                 Tool-->>Agent: observation
-                Agent->>Hooks: run_post_tool_use_hooks(ctx, result)
+                Agent->>Hooks: run_post_tool(ctx)
                 Hooks-->>Agent: modified_result?
-                Agent->>Agent: cycle check (hash args)
+                Agent->>Agent: cycle check (hash args, before the call runs)
                 opt identical call ≥ threshold
-                    Agent->>Agent: inject "try different approach" warning
+                    Agent->>Agent: warn at 2 identical calls, refuse from 3
                 end
                 Agent->>Agent: append observation, continue
             end
@@ -153,29 +153,29 @@ sequenceDiagram
     LLM-->>Agent: token stream → SSE to client
 ```
 
-**JSON-Modus-Schleife.** Die Antwort des LLM wird über `_parse_action()` analysiert, die `extract_json()` verwendet, um ein JSON-Objekt im Inhalt zu finden. Wenn die Analyse fehlschlägt, hängt der Agent die rohe Antwort und eine Umformatierungsanfrage an und setzt fort – dies wird auf `max_iterations` angerechnet und verhindert unendliche Wiederholungsschleifen. Bei Erfolg ist die Aktion entweder ein `tool_call` (das Tool ausführen, die Beobachtung als Benutzernachricht anhängen) oder eine `final_answer` (abbrechen und zur Synthese übergehen).
+**JSON mode loop.** The LLM's response is parsed via `_parse_action()`, which uses `extract_json()` to find a JSON object in the content. If parsing fails, the agent appends the raw response and a reformat request, then continues — this counts against `max_iterations`, preventing infinite retry loops. On success, the action is either a `tool_call` (execute the tool, append the observation as a user message) or a `final_answer` (break and proceed to synthesis).
 
-**Nativer Modus-Schleife.** Die Antwort des LLM kann einen oder mehrere `tool_calls` enthalten. Alle Tool-Aufrufe in einer einzelnen Antwort werden parallel über `asyncio.gather` ausgeführt, und alle Tool-Ergebnisnachrichten werden angehängt, bevor andere Nachrichten hinzugefügt werden. Diese Reihenfolgebeschränkung ist kritisch – die OpenAI API (und kompatible Provider) erfordert, dass `tool`-Nachrichten unmittelbar der `assistant`-Nachricht folgen, die die `tool_calls` erzeugt hat. Das Einfügen einer anderen Nachricht (wie z. B. einer Benutzerunterbrechung) zwischen ihnen würde das Protokoll unterbrechen. Wenn keine `tool_calls` vorhanden sind, wird die Antwort als endgültige Antwort behandelt.
+**Native mode loop.** The LLM's response may contain one or more `tool_calls`. All tool calls in a single response are executed in parallel via `asyncio.gather`, and all tool result messages are appended before any other message. This ordering constraint is critical — the OpenAI API (and compatible providers) requires that `tool` messages immediately follow the `assistant` message that produced the `tool_calls`. Inserting any other message (such as a user interrupt) between them would break the protocol. When no `tool_calls` are present, the response is treated as the final answer.
 
-**Max Iterationen.** Das Standardlimit beträgt 50 Iterationen. Wenn die Schleife dieses Limit erschöpft, ohne eine `final_answer` zu erzeugen, synthetisiert der Agent eine Fallback-Antwort aus den gesammelten Schritt-Ergebnissen – eine Zusammenfassung, welche Tools aufgerufen wurden und ob sie erfolgreich waren oder fehlschlugen. Dies ist ein Sicherheitsnetz, keine normale Ausstiegsmöglichkeit.
+**Max iterations.** The web app defaults to 20 iterations (`REACT_MAX_ITERATIONS`; the `ReActAgent` library default is 50), and DAG steps to 15 (`DAG_STEP_MAX_ITERATIONS`). If the loop exhausts this limit without producing a `final_answer`, the agent synthesizes a fallback response from the accumulated step results — a summary of which tools were called and whether they succeeded or failed. This is a safety net, not a normal exit path.
 
-[Kontext-Management](/architecture/context-management) erklärt, wie ContextGuard das Token-Budget bei jeder Iteration durchsetzt, einschließlich des Hinweissystems, das dem Komprimierungs-LLM mitteilt, dass es kürzliche Reasoning-Ketten bewahren soll.
+[Context Management](/architecture/context-management) explains how ContextGuard enforces the token budget on every iteration, including the hint system that tells the compaction LLM to preserve recent reasoning chains.
 
-## Tool-Ausführungs-Hooks
+## Tool execution hooks
 
-Jeder Tool-Aufruf in der Iterationsschleife wird von zwei Hook-Punkten umschlossen:
+Every tool call in the iteration loop is wrapped by two hook points:
 
-- **`PreToolUse`** — wird ausgelöst, nachdem das LLM ein Tool auswählt, bevor das Tool ausgeführt wird. Ein Hook kann:
-  - **Den Aufruf blockieren**, indem `allow=False` zurückgegeben wird (das LLM sieht eine Beobachtung, die erklärt, warum, z. B. „warte auf menschliche Genehmigung" oder „Organisation ist im Nur-Lese-Modus")
-  - **Die Tool-Argumente vor der Ausführung umschreiben**
-  - **Nebenwirkungen auslösen** (eine Feishu-Karte posten, eine Audit-Zeile erstellen, eine Metrik ausgeben)
-- **`PostToolUse`** — wird ausgelöst, nachdem das Tool zurückgegeben wird, bevor die Beobachtung das LLM erreicht. Ein Hook kann:
-  - **Die Beobachtung umschreiben** (z. B. ein 200-KB-SQL-Ergebnis auf eine 4-KB-Zusammenfassung kürzen)
-  - **Nebenwirkungen auslösen** (in `ConnectorCallLog` schreiben, Nutzungszähler aktualisieren)
+- **`PreToolUse`** — fires after the LLM picks a tool, before the tool runs. A hook can:
+  - **Block** the call by returning `allow=False` (the LLM sees an observation explaining why, e.g. "waiting for human approval" or "org is in read-only mode")
+  - **Rewrite** the tool arguments before execution
+  - **Trigger side effects** (post a Feishu card, create an audit row, emit a metric)
+- **`PostToolUse`** — fires after the tool returns, before the observation reaches the LLM. A hook can:
+  - **Rewrite** the observation (e.g. truncate a 200 KB SQL result to a 4 KB summary)
+  - **Trigger side effects** (write to `ConnectorCallLog`, update usage counters)
 
-Hooks werden **außerhalb der LLM-Schleife** ausgeführt — nichts, was das LLM sagt oder tut, kann sie überspringen. Dies ist die deterministische Durchsetzungsebene für Richtlinien, die nicht einer Prompt-Anweisung vertraut werden können: Genehmigung durch Menschen in der Schleife (`FeishuGateHook`), Audit-Protokollierung, Ratenbegrenzung und Nur-Lese-Modus-Schutzvorrichtungen. Siehe [Hook-System](/architecture/hook-system) für das vollständige Design.
+Hooks run **outside the LLM loop** — nothing the LLM says or does can skip them. This is the deterministic enforcement layer for policies that cannot be trusted to a prompt instruction: today human-in-the-loop approval (`ApprovalGateHook`); the same layer can carry audit logging, rate limiting, and read-only-mode guards. See [Hook System](/architecture/hook-system) for the full design.
 
-Die gleichen Hook-Punkte existieren in der [DAG-Engine](/architecture/dag-engine) — jeder DAG-Schritt führt seine eigene ReAct-Schleife aus, sodass Hooks einheitlich gelten, unabhängig davon, welche Ausführungs-Engine den Tool-Aufruf steuert.
+The same hook points exist in the [DAG engine](/architecture/dag-engine) — each DAG step runs its own ReAct loop, so hooks apply uniformly regardless of which execution engine is driving the tool call.
 
 ## Mid-loop Selbstreflexion
 
@@ -192,61 +192,61 @@ Der Zähler verfolgt **nur tatsächliche Tool-Aufrufe** — JSON-Parse-Wiederhol
 
 Dies kostet ~100 Token pro Injektion (kein zusätzlicher LLM-Aufruf) und hat keine Auswirkung auf kurze Läufe (`< 6` Tool-Aufrufe). Es ergänzt ContextGuard (das Token-Budgets verwaltet) und schrittweise Verifizierung (die einzelne Ergebnisse validiert), indem es einen anderen Fehlermodus adressiert: dass der Agent über viele Iterationen hinweg sein Ziel aus den Augen verliert.
 
-## Zyklenerkennung
+## Cycle detection
 
-Selbstreflexion fragt das LLM, ob es sich im Kreis dreht — aber das LLM antwortet oft mit „nein" und schleift weiter. Zyklenerkennung ist eine deterministische Alternative, die nicht umgangen werden kann.
+Self-reflection asks the LLM whether it is going in circles — but the LLM often answers "no" and keeps looping. Cycle detection is a deterministic alternative that cannot be bypassed.
 
-Nach jeder Werkzeugausführung erstellt der Agent einen Hash des Paares `(tool_name, arguments)`. Wenn derselbe Hash `_CYCLE_DETECTION_THRESHOLD` Mal erscheint (Standard: **3**, konfigurierbar über `REACT_CYCLE_DETECTION_THRESHOLD`), wird eine Warnmeldung in das Gespräch eingefügt:
+Before each tool call runs, the agent hashes the `(tool_name, arguments)` pair. On the 2nd identical call (`REACT_CYCLE_DETECTION_THRESHOLD`, default **2**) the call still runs and a warning message is injected into the conversation. From the 3rd (`REACT_CYCLE_BLOCK_THRESHOLD`, default **3**) the call is refused and the refusal is returned as the tool result. Three consecutive rounds in which every call was refused (`REACT_STALL_ROUNDS`) end the run with a summary of the steps taken. A second counter tracks calls per URL host and path, ignoring the query string, and warns at 8 and refuses at 15 (`REACT_ENDPOINT_WARN_THRESHOLD` / `REACT_ENDPOINT_BLOCK_THRESHOLD`). The warning reads:
 
 > You have called `{tool}` with identical arguments N times and received the same result. Please try a different approach or tool.
 
-Die Warnung ist eine reguläre Benutzermeldung im internen Verlauf des Agenten — sie wird dem Endbenutzer nicht als separates UI-Ereignis angezeigt. Der Agent sieht die Warnung bei seinem nächsten LLM-Aufruf und wird gezwungen, die Strategie zu ändern. Der Tracker wird bei jedem `run()`-Aufruf zurückgesetzt.
+The warning is a regular user message in the agent's internal history — it is not surfaced to the end user as a separate UI event. The agent sees the warning on its next LLM call and is forced to change strategy. The tracker resets at the start of each `run()` call.
 
-Da DAG-Schritte über ReActAgent ausgeführt werden, schützt die Zyklenerkennung auch einzelne DAG-Schritte vor Werkzeugaufrufen-Schleifen.
+Because DAG steps execute via ReActAgent, cycle detection also protects individual DAG steps from tool-call loops.
 
-## Abschluss-Checkliste
+## Completion checklist
 
-Wenn der Agent mindestens `_COMPLETION_CHECK_MIN_TOOLS` Tools verwendet hat (Standard: **3**, konfigurierbar über `REACT_COMPLETION_CHECK_MIN_TOOLS`) und sich entscheidet, eine endgültige Antwort zu geben, wird vor der Annahme der Antwort eine einmalige Verifizierungsaufforderung eingefügt:
+When the agent has used at least `_COMPLETION_CHECK_MIN_TOOLS` tools (default: **3**, configurable via `REACT_COMPLETION_CHECK_MIN_TOOLS`) and decides to produce a final answer, a one-time verification prompt is injected before the answer is accepted:
 
-1. Beantwortet die Antwort die ursprüngliche Frage vollständig?
-2. Wurden Schlüsselfakten aus Tool-Ergebnissen überprüft?
-3. Gibt es Widersprüche in den gesammelten Informationen?
+1. Does the answer fully address the original question?
+2. Were key facts verified from tool results?
+3. Are there contradictions in the gathered information?
 
-Die Checkliste ist ein interner Austausch. Der Turn, der sie beantwortet, ist Verifizierung, nicht die Antwort — die wörtliche Annahme würde „Lassen Sie mich überprüfen: 1. ... ✓" in den Chat durchsickern lassen. Dieser Turn wird daher intern verbraucht und der Agent wird erneut aufgefordert, die benutzerfreundliche Antwort zu geben, die `stream_answer()` streamt. Wenn der Agent stattdessen entscheidet, dass etwas fehlt, setzt er die Tool-Call-Schleife fort und seine spätere Antwort wird unverändert übernommen.
+The checklist is an internal exchange. The turn that answers it is verification, not the answer — accepting it verbatim is what leaks "Let me verify: 1. ... ✓" into the chat. So that turn is consumed internally and the agent is asked once more for the user-facing answer, which is what `stream_answer()` streams. If the agent instead decides something is missing, it resumes the tool-call loop and its later answer is taken as-is.
 
-Die Checkliste wird höchstens einmal pro Durchlauf ausgelöst, wird nicht für einfache Konversationsantworten ausgelöst (keine Tools verwendet) und wird übersprungen, wenn das verbleibende Iterations-Budget nicht sowohl den Verifizierungs-Turn als auch den Antwort-Turn abdecken kann.
+The checklist fires at most once per run, does not trigger for simple conversational responses (no tools used), and is skipped when the remaining iteration budget cannot cover both the verification turn and the answer turn, or when the inline final answer is longer than `REACT_COMPLETION_CHECK_SKIP_CHARS` (default 800). An open `update_plan` item forces the check regardless of tool count.
 
-Der Schwellenwert verhindert unnötige Latenz bei einfachen Aufgaben — ein einzelner Tool-Aufruf (z. B. eine schnelle Berechnung) rechtfertigt keine Verifizierung, während eine Multi-Tool-Untersuchung von einer abschließenden Plausibilitätsprüfung profitiert. Setzen Sie `REACT_COMPLETION_CHECK_MIN_TOOLS=1` für ständig aktivierte Verifizierung.
+The threshold prevents unnecessary latency on simple tasks — a single tool call (e.g., running a quick calculation) does not warrant verification, while a multi-tool investigation benefits from a final sanity check. Set `REACT_COMPLETION_CHECK_MIN_TOOLS=1` and raise `REACT_COMPLETION_CHECK_SKIP_CHARS` for always-on verification.
 
-Die Funktion ist standardmäßig aktiviert (`completion_check=True` auf `ReActAgent`) und kann pro Agent-Instanz deaktiviert werden. DAG-Schritte erben den Standard — jeder Schritt erhält seine eigene einmalige Checkliste.
+The feature is enabled by default (`completion_check=True` on `ReActAgent`) and can be disabled per agent instance. DAG steps inherit the default — each step gets its own one-shot checklist.
 
-## Antwortsynthese (stream_answer)
+## Answer synthesis (stream_answer)
 
-Die Trennung zwischen der Werkzeugschleife und der Antwortsynthese ist eine grundlegende architektonische Entscheidung. Werkzeugiterationen erzeugen Rohdaten — JSON-Aktionen, Werkzeugbeobachtungen, Fehlermeldungen. Der Benutzer benötigt eine kohärente, gut formatierte Antwort, keine Ausgabe der internen Verfolgung des Agenten.
+The separation between the tool loop and answer synthesis is a core architectural decision. Tool iterations produce raw data — JSON actions, tool observations, error messages. The user needs a coherent, well-formatted answer, not a dump of the agent's internal trace.
 
-`stream_answer()` erstellt einen Syntheseprompt aus zwei Komponenten. Der Systemprompt weist das LLM an, als Synthesizer zu fungieren: Ergebnisse direkt präsentieren, Markdown-Formatierung verwenden, Meta-Kommentare vermeiden („basierend auf der Werkzeugausgabe...") und die Sprache der ursprünglichen Anfrage beachten. Die Benutzernachricht enthält die ursprüngliche Frage und eine formatierte Ausführungsverfolgung — jeden Werkzeugaufruf und sein Ergebnis, wobei Werkzeugergebnisse auf 2.000 Zeichen gekürzt werden.
+On the synthesis fallback path, `stream_answer()` builds a synthesis prompt from two components. The system prompt instructs the LLM to act as a synthesizer: present results directly, use markdown formatting, avoid meta-commentary ("based on the tool output..."), and match the language of the original query. The user message contains the original question and a formatted execution trace — each tool call and its result, with tool results truncated to 8,000 characters.
 
-Der Syntheseaufruf verwendet `stream_chat()` und liefert Token schrittweise. Die Web-Schicht umhüllt diese Token in SSE-`answer`-Events mit `delta`-Status, damit das Frontend sie bei Ankunft rendern kann.
+The synthesis call uses `stream_chat()`, yielding tokens incrementally. The web layer wraps these tokens in SSE `answer` events with `delta` status so the frontend can render them as they arrive.
 
-Wenn `stream_answer()` fehlschlägt — Netzwerkfehler, LLM-Timeout, eine beliebige Ausnahme — fällt die Web-Schicht auf `result.answer` zurück, den kurzen Text aus der letzten Iteration der Werkzeugschleife. Dies ist eine beeinträchtigte Erfahrung (kein Streaming, möglicherweise weniger polierte Prosa), aber es stellt sicher, dass der Benutzer immer eine Antwort erhält.
+If `stream_answer()` fails — network error, LLM timeout, any exception — the web layer falls back to `result.answer`, the brief text from the tool loop's final iteration. This is a degraded experience (no streaming, potentially less polished prose), but it ensures the user always gets a response.
 
-## Unterbrechungsbehandlung
+## Interruption handling
 
-Benutzer können Folgefragen senden, während der Agent noch verarbeitet wird. Diese werden über eine `interrupt_queue` — eine `InterruptQueue`, die pro Konversation registriert ist — bereitgestellt und sammeln Nachrichten zwischen Iterationen an.
+Users can send follow-up messages while the agent is still processing. These are delivered via an `interrupt_queue` — an `InterruptQueue` registered per conversation that accumulates messages between iterations.
 
-Der Zeitpunkt der Warteschlangen-Entleerung unterscheidet sich zwischen Modi aufgrund der Einschränkung der Tool-Call-Reihenfolge:
+The drain timing differs between modes because of the tool-call ordering constraint:
 
-- **JSON-Modus**: Die Warteschlange wird unmittelbar nach jeder Assistenten-Nachricht geleert, bevor überprüft wird, ob die Aktion eine `final_answer` ist. Dies ist sicher, da der JSON-Modus einfache Benutzer-/Assistenten-Nachrichten ohne strukturelle Paarungsanforderungen verwendet.
+- **JSON mode**: the queue is drained immediately after each assistant message, before checking whether the action is a `final_answer`. This is safe because JSON mode uses plain user/assistant messages with no structural pairing requirements.
 
-- **Native FC-Modus**: Die Warteschlange wird nur geleert, nachdem Tool-Ergebnis-Nachrichten hinzugefügt wurden. Die `tool`-Nachrichten müssen unmittelbar der `assistant`-Nachricht folgen, die `tool_calls` enthält — das Einfügen einer Benutzernachricht dazwischen würde gegen das API-Protokoll verstoßen und Fehler verursachen.
+- **Native FC mode**: the queue is drained only after tool result messages have been appended. The `tool` messages must immediately follow the `assistant` message containing `tool_calls` — inserting a user message between them would violate the API protocol and cause errors.
 
-Eingefügte Nachrichten werden als `pinned=True` gekennzeichnet, um sicherzustellen, dass sie alle nachfolgenden Komprimierungen durch ContextGuard überstehen. Siehe [Pinned Messages](/architecture/context-management#pinned-messages) für weitere Informationen darüber, wie der Pinning-Mechanismus verhindert, dass kritische Nachrichten durch Komprimierung verworfen werden.
+Injected messages are marked as `pinned=True`, ensuring they survive any subsequent compaction by ContextGuard. See [Pinned Messages](/architecture/context-management#pinned-messages) for how the pinning mechanism prevents compaction from discarding critical messages.
 
-Wenn eine `final_answer` ausstehend ist, aber eingefügte Nachrichten angekommen sind, unterdrückt der Agent die finale Antwort und setzt die Schleife fort, um auf die Folgefrage des Benutzers eingehen zu können. Mehrere Einfügungen aus derselben Entleerung werden zu einer einzigen `[USER INTERRUPT]`-Nachricht kombiniert — dies verhindert, dass das LLM eine fragmentierte Abfolge von kurzen Nachrichten sieht, und fördert, dass es alle Folgefragen ganzheitlich adressiert.
+When a `final_answer` is pending but injected messages have arrived, the agent suppresses the final answer and continues looping so it can address the user's follow-up. Each injected message is appended as its own pinned `[USER INTERRUPT]` user message, capped at 25,000 characters (`REACT_MAX_INJECT_CHARS`); only the last one carries the instruction to acknowledge and adjust.
 
-## Fehlerbehandlung und Fallbacks
+## Error handling and fallbacks
 
-Die Engine ist so konzipiert, dass sie bei LLM- oder Werkzeugfehlern nie abstürzt. Jeder Fehlerpfad führt entweder zu einer stillen Wiederherstellung oder zeigt dem Benutzer eine aussagekräftige Nachricht.
+The engine is designed to never crash on LLM or tool failures. Every error path either recovers silently or surfaces a useful message to the user.
 
 ```mermaid
 flowchart TD
@@ -259,17 +259,17 @@ flowchart TD
     L["stream_answer() failure"] --> M["Fall back to result.answer"]
 ```
 
-**JSON-Parse-Fehler.** Wenn das LLM im JSON-Modus Inhalte zurückgibt, die kein JSON sind, umhüllt `_parse_action()` diese als `final_answer` mit der Begründung `"(could not parse LLM output as JSON)"`. Die Schleife erkennt diesen Sentinel, hängt den Rohinhalt und eine Neuformatierungsanweisung an und setzt fort. Wenn der Wiederholungsversuch auch fehlschlägt, wird der Rohinhalt zur Antwort — nicht perfekt, aber kein Absturz.
+**JSON parse failure.** When the LLM returns non-JSON content in JSON mode, `_parse_action()` wraps it as a `final_answer` with the reasoning `"(could not parse LLM output as JSON)"`. The loop detects this sentinel, appends the raw content and a reformat instruction, and continues. If the retry also fails, the raw content becomes the answer — imperfect, but not a crash.
 
-**Werkzeugfehler.** Sowohl „Werkzeug nicht gefunden" als auch „Werkzeugausführungsausnahme" erzeugen Fehlerbeobachtungen, die zum Gespräch hinzugefügt werden. Das LLM sieht den Fehler in der nächsten Iteration und kann entscheiden, ob es mit anderen Argumenten erneut versuchen oder fortfahren soll. Dies macht den Agenten selbstheilend für vorübergehende Werkzeugfehler.
+**Tool errors.** Both "tool not found" and "tool execution exception" produce error observations that are appended to the conversation. The LLM sees the error on the next iteration and can decide whether to retry with different arguments or move on. This makes the agent self-healing for transient tool failures.
 
-**Erweitertes Denken.** Modelle wie DeepSeek R1 geben Denkinhalte in einem separaten `reasoning_content`-Feld zurück, anstatt sie im JSON-Body zu platzieren. Die Engine prüft darauf und verwendet es als Fallback, wenn das JSON-Feld `reasoning` leer ist.
+**Extended thinking.** Models like DeepSeek R1 return reasoning content in a separate `reasoning_content` field rather than in the JSON body. The engine checks for this and uses it as a fallback when the JSON `reasoning` field is empty.
 
-**Rich Content.** Wenn ein Werkzeug HTML- oder Markdown-Artefakte erzeugt, wird die an das LLM gesendete Beobachtung durch eine kurze Zusammenfassung ersetzt (`"[Artifact generated: filename] The content is rendered as a preview in the UI..."`). Dies verhindert, dass das LLM große HTML-Blöcke in seiner endgültigen Antwort wiederholt — ein häufiger Fehlermodus, bei dem das Modell hilfreich die gesamte Werkzeugausgabe zurückpastet.
+**Rich content.** In native mode, when a tool produces HTML or markdown artifacts, the observation sent to the LLM is replaced with a short summary (`"[Artifact generated: filename] The content is rendered as a preview in the UI..."`). This prevents the LLM from echoing large HTML blobs in its final answer — a common failure mode where the model helpfully pastes back the entire tool output.
 
-## SSE-Ereignisprotokoll
+## SSE event protocol
 
-Die Web-Schicht übersetzt die Iterations-Callbacks des Agenten in Server-Sent Events für das Frontend. Ereignisse werden auf zwei SSE-Kanälen ausgegeben: `step` für die Tool-Schleife und `answer` für die Synthesephase.
+The web layer translates the agent's iteration callbacks into Server-Sent Events for the frontend. Events are emitted on two SSE channels: `step` for the tool loop, and `answer` for the synthesis phase.
 
 ```mermaid
 sequenceDiagram
@@ -278,7 +278,7 @@ sequenceDiagram
     participant UI as Frontend
 
     Agent->>SSE: step {type: "thinking", status: "start"}
-    Note over Agent: LLM call (non-streaming)
+    Note over Agent: LLM call
     Agent->>SSE: step {type: "thinking", status: "done", reasoning}
     Agent->>SSE: step {type: "iteration", status: "start", tool_name, tool_args}
     Note over Agent: Tool execution
@@ -293,19 +293,19 @@ sequenceDiagram
     Agent->>SSE: done {answer, iterations, usage, elapsed}
 ```
 
-| Ereignis | Kanal | Payload | Wann |
+| Event | Channel | Payload | When |
 |-------|---------|---------|------|
-| Thinking start | `step` | `{type: "thinking", status: "start", iteration}` | Vor jedem LLM-Aufruf |
-| Thinking done | `step` | `{type: "thinking", status: "done", iteration, reasoning}` | Nach LLM-Antwort, vor Tool-Ausführung |
-| Iteration start | `step` | `{type: "iteration", status: "start", iteration, tool_name, tool_args}` | Tool-Ausführung beginnt |
-| Iteration done | `step` | `{type: "iteration", status: "done", iteration, tool_name, observation, error, iter_elapsed}` | Tool-Ausführung abgeschlossen |
-| Answer signal | `step` | `{type: "answer", status: "start"}` | Agent signalisiert final_answer |
-| Answer start | `answer` | `{status: "start"}` | Synthesis-Streaming beginnt |
-| Answer delta | `answer` | `{status: "delta", content}` | Jedes gestreamte Token |
-| Answer done | `answer` | `{status: "done"}` | Synthesis-Streaming abgeschlossen |
-| Compact | `compact` | `{original_messages, kept_messages}` | Kontext wurde beim Laden komprimiert |
-| Phase | `phase` | `{phase: "selecting_tools", total_tools}` | Tool-Auswahlphase aktiv |
-| Inject | `inject` | `{type: "inject", content}` | Benutzerunterbrechung empfangen |
-| Done | `done` | `{answer, iterations, usage, elapsed}` | Finales Ergebnis-Payload |
+| Thinking start | `step` | `{type: "thinking", status: "start", iteration}` | Before each LLM call |
+| Thinking done | `step` | `{type: "thinking", status: "done", iteration, reasoning}` | After LLM responds, before tool execution |
+| Iteration start | `step` | `{type: "iteration", status: "start", iteration, tool_name, tool_args}` | Tool execution begins |
+| Iteration done | `step` | `{type: "iteration", status: "done", iteration, tool_name, observation, error, iter_elapsed}` | Tool execution completes |
+| Answer signal | `step` | `{type: "answer", status: "start"}` | Agent signals final_answer |
+| Answer start | `answer` | `{status: "start"}` | Synthesis streaming begins |
+| Answer delta | `answer` | `{status: "delta", content}` | Each streamed token |
+| Answer done | `answer` | `{status: "done"}` | Synthesis streaming completes |
+| Compact | `compact` | `{original_messages, kept_messages}` | Context was compacted on load |
+| Phase | `phase` | `{phase: "selecting_tools", total_tools}` | Tool selection phase active |
+| Inject | `inject` | `{type: "inject", content}` | User interrupt received |
+| Done | `done` | `{answer, iterations, usage, elapsed}` | Final result payload |
 
-Das Frontend nutzt `step`-Ereignisse, um die zusammenklappbaren Tool-Call-Karten zu rendern (zeigt, welches Tool läuft, seine Argumente und die Beobachtung), die `answer`-Deltas zum Streamen des Antworttexts und `compact` zur Anzeige des Kontext-Zusammenfassungs-Trennzeichens. Das `done`-Ereignis enthält die vollständigen Metadaten – Gesamtiterationen, Token-Nutzung und verstrichene Zeit – für die Antwort-Fußzeile.
+The frontend uses `step` events to render the collapsible tool-call cards (showing which tool is running, its arguments, and the observation), the `answer` deltas to stream the response text, and `compact` to display the context-summarization divider. The `done` event carries the complete metadata — total iterations, token usage, and elapsed time — for the response footer.

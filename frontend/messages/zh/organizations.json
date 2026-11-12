@@ -190,5 +190,10 @@
   "cannotLeaveMarketOrg": "无法离开应用市场组织",
   "cannotAddMemberToMarketOrg": "无法将成员添加到市场",
   "marketplaceReviewLocked": "市场始终需要审查",
-  "reviewBypassExplanation": "组织成员和管理员在发布到此组织时可以绕过审查。所有其他用户需要管理员批准才能使其资源可见。"
+  "reviewBypassExplanation": "组织成员和管理员在发布到此组织时可以绕过审查。所有其他用户需要管理员批准才能使其资源可见。",
+  "auditLog": "Audit Log",
+  "auditLogTitle": "Audit Log: {name}",
+  "auditLogDescription": "Events that belong to this organization and the calls made through its agents and workflows. IP addresses and browsers are not shown here.",
+  "auditEvents": "Events",
+  "auditNoEvents": "No events recorded for this organization yet."
 }

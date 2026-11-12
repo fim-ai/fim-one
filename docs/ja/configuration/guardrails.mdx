@@ -8,30 +8,34 @@ description: "エージェントまたはユーザーに到達する前に、安
 これらは既存のツール許可ゲート
 （`core/hooks/*`）および`core/security/*`内の認証情報/SSRF保護と意図的に直交しています——ガードレールは*何が実行されているか*ではなく、*何が言われているか*を検査します。
 
-## 3つのレイヤー
+## The three layers
 
-| レイヤー        | 所有者                          | ゲート対象                              |
+| Layer        | Owner                          | What it gates                              |
 | ------------ | ------------------------------ | ------------------------------------------ |
-| Permission   | `core/hooks/*`                 | 特定のツール呼び出しが実行可能かどうか   |
-| Security     | `core/security/*`              | 認証情報、SSRF、MCP認証      |
-| **Guardrail** | `core/agent/guardrail.py`     | ユーザー入力とモデル出力のコンテンツ     |
+| Permission   | `core/hooks/*`                 | Whether a specific tool call may execute   |
+| Security     | `core/security/*`              | Credentials, SSRF, MCP authentication      |
+| **Guardrail** | `core/agent/guardrail.py`     | Content of user input and model output     |
 
-ターンは3つすべてを独立して通過します：
+A turn passes through all three independently:
 
-* 入力ガードレールはLLM呼び出しの**前に実行**されるため、トリップワイヤーはトークンを消費せずにターンを中止します。
-* パーミッションゲートはモデルが呼び出すツールを決定した**後に実行**されます。
-* セキュリティチェックは各コネクター/プロバイダー統合**内で実行**されます。
-* 出力ガードレールはエージェントが最終的な回答を生成した**後、ユーザーにストリーミングされる前に実行**されます。
+* Input guardrails run **before any LLM call**, so a tripwire aborts the
+  turn without spending tokens.
+* The permission gate runs **after** the model decides which tool to invoke.
+* Security checks run **inside** each connector / provider integration.
+* Output guardrails run **after** the agent has produced its final answer.
+  When the answer is streamed token by token, the check runs once the
+  stream completes, so text may already be on screen when the tripwire
+  fires.
 
-## デフォルトで有効なガードレール
+## Built-in guardrails
 
-| 名前           | 側面    | 動作 |
+| Name           | Side    | Behaviour |
 | -------------- | ------- | --------- |
-| `jailbreak`    | input   | 既知のプロンプトオーバーライドフレーズ（「ignore previous instructions」、DAN、developer-modeなど）の正規表現ベースの検出器。デフォルトで有効。 |
-| `max_length`   | output  | エージェントの回答が `FIM_GUARDRAIL_MAX_OUTPUT_CHARS`（デフォルト50,000文字）を超えたときにトリップワイヤーが動作します。デフォルトで無効。 |
+| `jailbreak`    | input   | Regex-based detector for known prompt-override phrases ("ignore previous instructions", DAN, developer-mode, etc.). Enabled by default. |
+| `max_length`   | output  | Tripwires when the agent answer exceeds `FIM_GUARDRAIL_MAX_OUTPUT_CHARS` (default 50 000 chars). Disabled by default. |
 
-トリップワイヤーが発動すると、チャットストリームは構造化された
-`guardrail_tripwired` Server-Sent Eventを発行します：
+When a tripwire fires, the chat stream emits a structured
+`guardrail_tripwired` Server-Sent Event:
 
 ```json
 {
@@ -46,7 +50,7 @@ description: "エージェントまたはユーザーに到達する前に、安
 }
 ```
 
-フロントエンドはこれを汎用エラーの代わりに「ブロック」通知としてレンダリングします。
+The frontend renders this as a "blocked" notice instead of a generic error.
 
 ## 設定
 

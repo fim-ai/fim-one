@@ -1,41 +1,41 @@
 ---
-title: "アーティファクト"
+title: "Artifacts"
 icon: "file-export"
-description: "会話全体で生成されたすべてのAIファイルを参照、プレビュー、ダウンロードします。"
+description: "Browse, preview, and download all AI-generated files across your conversations."
 ---
 
-アーティファクトは、会話中にAIエージェントが生成するファイル — 画像、HTMLページ、コードファイル、ドキュメント、その他の出力です。アーティファクトページは、会話全体にわたるギャラリーで、エージェントが作成したすべてのファイルを検索、プレビュー、ダウンロードできます。
+Artifacts are the files that AI agents produce during conversations — images, HTML pages, code files, documents, and other outputs. The Artifacts page is a cross-conversation gallery that lets you find, preview, and download the deliverables your agents have produced.
 
-## アーティファクトの作成方法
+## How Artifacts Are Created
 
-`ToolResult` に `artifacts` リストを返すツールは、ダウンロード可能なファイルを生成します。エージェントは特別な指示を必要としません — アーティファクト作成はツール実行の自然な副作用です。
+Any tool that returns a `ToolResult` with an `artifacts` list generates downloadable files. The agent doesn't need special instructions — artifact creation is a natural side effect of tool execution.
 
-一般的なプロデューサー:
+Common producers:
 
-| ツール | アーティファクト型 | 例 |
+| Tool | Artifact Type | Example |
 |------|--------------|---------|
-| `python_exec` | 画像、HTML、CSV、JSON | matplotlibチャートをPNGとして保存 |
-| `template_render` | HTML | フォーマットされたレポート |
-| コード実行ツール | 任意のファイル | 生成されたコード、エクスポートされたデータ |
-| 画像生成 | 画像 | AI生成イラスト |
+| `python_exec` | Images, HTML, CSV, JSON | A matplotlib chart saved as PNG |
+| `template_render` | HTML | A formatted report |
+| Code execution tools | Any file | Generated code, exported data |
+| Image generation | Images | AI-generated illustrations |
 
-ツールがアーティファクトを生成すると、会話内にダウンロード可能な添付ファイルとしてインラインで表示されます。すべてのアーティファクトは、会話間での閲覧用にアーティファクトギャラリーにも収集されます。
+When a tool produces an artifact, it appears inline in the conversation as a downloadable attachment. Deliverables — the files an answer hands over as final output — are also collected in the Artifacts gallery for cross-conversation browsing; intermediate files stay in their conversation.
 
-## ギャラリー
+## The Gallery
 
-アーティファクトページ（`/artifacts`）は、すべての会話で生成したすべてのファイルの統合ビューを提供します。
+The Artifacts page (`/artifacts`) provides a unified view of the deliverables from all your conversations.
 
-### フィルタリング
+### Filtering
 
-4つのタイプフィルターでビューを絞り込めます:
+Filter tabs narrow the view (All plus four types):
 
-| フィルター | ファイルタイプ |
+| Filter | File Types |
 |--------|-----------|
-| **すべて** | すべてのファイル |
-| **画像** | PNG、JPG、GIF、SVG、WebP |
-| **HTML** | HTMLページとレポート |
-| **コード** | Python、JavaScript、TypeScript、JSON、YAML、XML、CSS、SQL、Markdown、シェルスクリプト |
-| **ファイル** | その他すべて — CSV、PDF、プレーンテキスト、バイナリファイル |
+| **All** | Everything |
+| **Images** | PNG, JPG, GIF, SVG, WebP |
+| **HTML** | HTML pages and reports |
+| **Code** | Any text file except HTML, plus JSON: source code, Markdown, CSV, plain text, YAML |
+| **Files** | Everything else — PDF, archives, binary files |
 
 ### プレビュー
 
@@ -56,6 +56,6 @@ description: "会話全体で生成されたすべてのAIファイルを参照�
 - 作成タイムスタンプ
 - ソース会話（生成されたときの会話に戻るためにクリック）
 
-## ストレージ
+## Storage
 
-アーティファクトはサーバーファイルシステムに保存され、会話ごとに1つのディレクトリが使用されます。各アーティファクトはUUIDベースのファイル名を取得し、会話へのアクセスなしではURLを推測できないようになっています。ファイルは直接提供されます。個別のアーティファクトのデータベースレコードはなく、ストレージレイヤーはシンプルで高速です。
+Artifacts are stored on the server filesystem, one directory per conversation. Each artifact is stored under a random 12-character id plus its original name; download URLs carry the conversation UUID. Files are served directly — no database records for individual artifacts, keeping the storage layer simple and fast.

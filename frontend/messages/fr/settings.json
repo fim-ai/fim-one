@@ -46,7 +46,6 @@
     "usernamePlaceholder": "Entrez un nom d'utilisateur",
     "usernameMinLength": "Le nom d'utilisateur doit contenir au moins 2 caractères",
     "usernameSaved": "Nom d'utilisateur enregistré",
-    "usernameSaveFailed": "Échec de l'enregistrement du nom d'utilisateur",
     "usernameTaken": "Ce nom d'utilisateur est déjà pris",
     "usernameCooldown": "Le nom d'utilisateur ne peut être modifié qu'une fois tous les 7 jours. Veuillez réessayer dans {days} jours.",
     "usernameChangeConfirmTitle": "Modifier le nom d'utilisateur ?",
@@ -279,7 +278,14 @@
     "dataExportDownloading": "Préparation de l'export...",
     "dataExportSuccess": "Export de données lancé",
     "dataExportFailed": "Échec de l'export de données",
-    "bindErrorTimeout": "Le fournisseur a mis trop de temps à répondre. Veuillez réessayer."
+    "bindErrorTimeout": "Le fournisseur a mis trop de temps à répondre. Veuillez réessayer.",
+    "sessionsPendingSecondFactor": "Awaiting second factor",
+    "securityEventsTitle": "Security Events",
+    "securityEventsDescription": "Changes to your password, two-factor authentication, sign-in providers, API keys and sessions, with where each was made from.",
+    "securityEventsEvent": "Event",
+    "securityEventsByAdministrator": "By an administrator",
+    "securityEventsNoData": "No security events yet",
+    "securityEventsLoadFailed": "Failed to load security events"
   },
   "appearance": {
     "title": "Apparence",
@@ -370,7 +376,14 @@
     "tokens": "jetons",
     "noQuota": "Aucune limite de quota définie",
     "unentitled": "Abonnez-vous pour continuer",
-    "unentitledHint": "Cette instance nécessite un abonnement payant avant de pouvoir utiliser les modèles."
+    "unentitledHint": "Cette instance nécessite un abonnement payant avant de pouvoir utiliser les modèles.",
+    "origins": {
+      "direct_chat": "Direct Chat",
+      "workflows": "Workflows",
+      "evaluations": "Evaluations",
+      "ai_assist": "AI assist",
+      "deleted_agents": "Deleted agents"
+    }
   },
   "notifications": {
     "title": "Notifications",

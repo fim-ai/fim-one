@@ -9,9 +9,9 @@ description: "Lancez FIM One en quelques minutes — ou essayez la version cloud
   Vous ne voulez pas auto-héberger ? Essayez FIM One instantanément sur [**cloud.fim.ai**](https://cloud.fim.ai/) — pas de Docker, pas de clés API, pas de configuration. Connectez-vous et vous êtes prêt. _Accès anticipé._
 </Tip>
 
-## Option A : Docker (Recommandé)
+## Option A: Docker (Recommended)
 
-Aucun Python ou Node.js local requis — tout est construit à l'intérieur du conteneur.
+No local Python or Node.js required — everything is built inside the container.
 
 ```bash
 git clone https://github.com/fim-ai/fim-one.git
@@ -25,9 +25,9 @@ cp example.env .env
 docker compose up --build -d
 ```
 
-Ouvrez http://localhost:3000 — au premier lancement, vous serez guidé pour créer un compte administrateur. C'est tout.
+Open http://localhost:3000 — on first launch you'll be guided through creating an admin account. That's it.
 
-Après la construction initiale, les démarrages suivants ne nécessitent que :
+After the initial build, subsequent starts only need:
 
 ```bash
 docker compose up -d          # start (skip rebuild if image unchanged)
@@ -35,13 +35,13 @@ docker compose down           # stop
 docker compose logs -f        # view logs
 ```
 
-Les données sont conservées dans les volumes nommés Docker (`fim-data`, `fim-uploads`) et survivent aux redémarrages du conteneur.
+Data is persisted in the bind-mounted `./data` and `./uploads` directories and in the `postgres_data` / `redis_data` named volumes, and survives container restarts.
 
-**Remarque :** Le mode Docker ne supporte pas le rechargement à chaud. Les modifications du code nécessitent de reconstruire l'image (`docker compose up --build -d`). Pour un développement actif avec rechargement en direct, utilisez **Option B** ci-dessous.
+**Note:** Docker mode does not support hot reload. Code changes require rebuilding the image (`docker compose up --build -d`). For active development with live reload, use **Option B** below.
 
-## Option B : Développement local
+## Option B: Local Development
 
-Prérequis : Python 3.11+, [uv](https://docs.astral.sh/uv/), Node.js 18+, pnpm.
+Prerequisites: Python 3.11+, [uv](https://docs.astral.sh/uv/), Node.js 18+, pnpm.
 
 ```bash
 git clone https://github.com/fim-ai/fim-one.git
@@ -55,16 +55,16 @@ uv sync --all-extras
 cd frontend && pnpm install && cd ..
 
 # Launch (with hot reload)
-./start.sh
+./start.sh dev
 ```
 
-| Commande         | Ce qui démarre                                          | URL                                      |
+| Command          | What starts                                             | URL                                      |
 | ---------------- | ------------------------------------------------------- | ---------------------------------------- |
 | `./start.sh`         | Next.js + FastAPI                                       | http://localhost:3000 (UI) + :8000 (API) |
-| `./start.sh dev`     | Identique, avec rechargement à chaud (Python `--reload` + Next.js HMR) | Identique                                     |
-| `./start.sh dev:api` | API uniquement, mode développement (`--reload`)         | http://localhost:8000/api                |
-| `./start.sh dev:ui`  | Next.js uniquement, mode développement (HMR)           | http://localhost:3000                    |
-| `./start.sh api`     | FastAPI uniquement (sans interface, pour intégration ou tests)     | http://localhost:8000/api                |
+| `./start.sh dev`     | Same, with hot reload (Python `--reload` + Next.js HMR) | Same                                     |
+| `./start.sh dev:api` | API only, dev mode (`--reload`)                         | http://localhost:8000/api                |
+| `./start.sh dev:ui`  | Next.js only, dev mode (HMR)                           | http://localhost:3000                    |
+| `./start.sh api`     | FastAPI only (headless, for integration or testing)     | http://localhost:8000/api                |
 
 ## Configuration
 
@@ -93,14 +93,15 @@ Pour une liste complète de toutes les options de configuration, consultez la r�
 
 ## Déploiement en production
 
-### Docker (Recommandé)
+### Docker (Recommended)
 
-`docker compose up -d` démarre tout ce dont vous avez besoin — **aucune configuration manuelle de service requise** :
+`docker compose up -d` brings up everything you need — **no manual service configuration required**:
 
-| Service | Objectif | Configuré par |
-|---------|----------|---------------|
-| **fim-one** | API + Frontend | `.env` (vos clés LLM, etc.) |
-| **Redis** | Relais d'interruption inter-workers | Auto-configuré par compose |
+| Service | Purpose | Configured by |
+|---------|---------|---------------|
+| **fim-one** | API + Frontend | `.env` (your LLM keys, etc.) |
+| **PostgreSQL** | Application database | Auto-configured by compose (`POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB`) |
+| **Redis** | Cross-worker interrupt relay | Auto-configured by compose |
 
 ```bash
 docker compose up --build -d   # first time / after code changes
@@ -109,39 +110,78 @@ docker compose logs -f         # view logs
 docker compose down            # stop all services
 ```
 
-#### Mise à l'échelle avec des Workers
+#### ARM64 Hosts
 
-Par défaut, l'API s'exécute avec un seul processus worker. Pour gérer plus d'utilisateurs simultanés, augmentez les workers via `.env` :
+The images build for both `linux/amd64` and `linux/arm64` (e.g. Kunpeng servers) from the same `Dockerfile` and `Dockerfile.sandbox`. Every base image is multi-arch and every Python dependency in `uv.lock` ships a Linux ARM64 wheel, so nothing is compiled from source. On an ARM64 host, `docker compose up --build -d` or `./deploy.sh` builds ARM64 images with no extra steps.
+
+To build on one machine and run on another, for example ARM64 images for an offline server, use `scripts/build-images.sh` (requires `docker buildx`):
+
+```bash
+scripts/build-images.sh --platform arm64 --save ./images   # or amd64, or all
+# → fim-one:latest-arm64, fim-sandbox:python-arm64, ./images/fim-one-latest-arm64.tar
+```
+
+A non-native architecture is built under QEMU emulation and takes several times longer. Docker Desktop includes QEMU; on Linux, register it once with `docker run --privileged --rm tonistiigi/binfmt --install arm64` (or `amd64`). The container is privileged because it registers the emulator in the host kernel.
+
+On the target host, load the archive and give the images the names Docker Compose uses, then start without rebuilding. `docker compose config --images` prints those names; the app image is `<project>-fim-one`, where `<project>` is the Compose project name (the checkout directory name, lowercased and without characters such as dots).
+
+```bash
+docker load -i fim-one-latest-arm64.tar
+docker compose config --images          # e.g. fim-one-fim-one, fim-one-docker-socket-proxy, fim-sandbox:python, ...
+docker tag fim-one:latest-arm64 <project>-fim-one:latest
+docker tag fim-one:latest-arm64 <project>-docker-socket-proxy:latest   # the sandbox proxy runs from the app image
+docker tag fim-sandbox:python-arm64 fim-sandbox:python
+docker compose up -d --no-build
+```
+
+On a host without internet access:
+
+- `postgres:16-alpine` and `redis:7-alpine` are not in the archive. Pull them for the target architecture on a connected machine and transfer them with `docker save` / `docker load`.
+- With `CODE_EXEC_BACKEND=docker`, JavaScript execution uses `node:20-slim`, which is not in the archive either. Transfer it the same way, or the first JavaScript run fails on the image pull.
+- Do not use `./deploy.sh` there: it always rebuilds (`up -d --build`), which needs the network. Use `docker compose up -d --no-build`.
+
+#### Scaling with Workers
+
+By default, the API runs with a single worker process. To handle more concurrent users, increase workers via `.env`:
 
 ```bash
 WORKERS=4   # number of Uvicorn worker processes
 ```
 
-Exigences multi-worker :
-- **PostgreSQL** — SQLite est single-writer et ne supporte pas les écritures concurrentes. Définissez `DATABASE_URL` sur une chaîne de connexion PostgreSQL.
-- **Redis** — déjà inclus dans Docker Compose (auto-configuré). Gère le relais d'interruption/injection entre workers.
+Multi-worker requirements:
+- **PostgreSQL** — SQLite is single-writer and does not support concurrent writes. Docker Compose already runs PostgreSQL and points `DATABASE_URL` at it; on bare metal, set `DATABASE_URL` to a PostgreSQL connection string.
+- **Redis** — already included in Docker Compose (auto-configured). Handles cross-worker interrupt/inject relay.
 
-Avec `WORKERS=1` (par défaut), Redis ou PostgreSQL ne sont pas nécessaires — SQLite fonctionne bien.
+With `WORKERS=1` (default) outside Docker Compose, no Redis or PostgreSQL is needed — SQLite works fine.
 
-#### Proxy inverse Nginx
+#### Nginx Reverse Proxy
 
-Pour HTTPS et un domaine personnalisé, placez un proxy inverse Nginx devant :
+For HTTPS and custom domain, put an Nginx reverse proxy in front:
 
 ```
 User → Nginx (443/HTTPS) → localhost:3000
 ```
 
-L'API s'exécute en interne sur le port 8000 — Next.js proxifie automatiquement les requêtes `/api/*`. Seul le port 3000 doit être exposé.
+The API runs internally on port 8000 — Next.js proxies `/api/*` requests automatically. Only port 3000 needs to be exposed.
 
-#### Bac à sable d'exécution de code
+Behind a reverse proxy, set `FORWARDED_ALLOW_IPS` to the proxy's address or network so FIM One sees the real client address. Without it every request appears to come from the proxy, which is what IP rules (admin Security → IP Rules) and login history would then record.
 
-Si vous utilisez le bac à sable d'exécution de code (`CODE_EXEC_BACKEND=docker`), montez le socket Docker :
+#### Code Execution Sandbox
+
+With the bundled `docker-compose.yml`, code execution runs in throw-away sandbox containers without a network (`CODE_EXEC_BACKEND=docker`, the compose default). The application container does **not** get the Docker socket. A small `docker-socket-proxy` service holds it and only starts sandbox containers:
 
 ```yaml
 # docker-compose.yml
-volumes:
-  - /var/run/docker.sock:/var/run/docker.sock
+docker-socket-proxy:
+  command: ["python", "/app/docker_proxy.py"]
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock   # here, and nowhere else
+fim-one:
+  environment:
+    DOCKER_HOST: tcp://docker-socket-proxy:2375
 ```
+
+Do not add the socket to the `fim-one` service: access to it is equivalent to root on the host. The application runs as an unprivileged user (`fim`, uid 10001); on first start the entrypoint hands `./data` and `./uploads` over to that user. See [Security → Code execution and the Docker socket](/security#code-execution-and-the-docker-socket), which also has the upgrade steps for an existing deployment.
 
 #### Tunnel Cloudflare
 

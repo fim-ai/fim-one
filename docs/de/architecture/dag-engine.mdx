@@ -7,11 +7,11 @@ mode: "wide"
 
 Wie diese Engine sich zu Industrie-**Graph-Engineering**, klassischen visuellen Workflows und der ReAct-Schleife verhält, finden Sie unter [Planning Landscape](/architecture/planning-landscape).
 
-## Die Pipeline
+## The pipeline
 
-DAG-Modus zerlegt ein komplexes Ziel in einen gerichteten azyklischen Graphen von Schritten, führt sie mit maximaler Parallelität aus und reflektiert dann, ob das Ziel tatsächlich erreicht wurde. Falls nicht, plant er neu und versucht es erneut — autonom, bis zu einem konfigurierbaren Budget.
+DAG mode decomposes a complex goal into a directed acyclic graph of steps, executes them with maximum parallelism, then reflects on whether the goal was actually achieved. If not, it re-plans and tries again — autonomously, up to a configurable budget.
 
-Die Pipeline hat vier Phasen, die eine Schleife bilden:
+The pipeline has four phases that form a loop:
 
 ```mermaid
 flowchart TD
@@ -20,20 +20,20 @@ flowchart TD
     C --> D["4. PlanAnalyzer"]
     D --> E{Achieved?}
     E -->|"Yes"| F["5. stream_synthesize"]
-    E -->|"No + confidence < threshold"| G["6. Replan"]
+    E -->|"No + recoverable"| G["6. Replan"]
     G --> B
-    E -->|"No + confident enough"| H["Fallback answer"]
+    E -->|"No + judged unreachable"| H["Fallback answer"]
 ```
 
-**Plan.** Das intelligente LLM zerlegt die angereicherte Abfrage in 2–6 Schritte mit expliziten Abhängigkeitskanten. Jeder Schritt erhält eine Aufgabenbeschreibung, einen optionalen Tool-Hinweis und einen Modell-Hinweis, der steuert, ob er auf dem schnellen oder intelligenten LLM ausgeführt wird.
+**Plan.** The smart LLM decomposes the enriched query into steps (2-4 for simple goals, up to 10 for complex ones) with explicit dependency edges. Each step gets a task description, optional tool hint, and a model hint that controls whether it runs on the fast or smart LLM.
 
-**Ausführung.** Der DAGExecutor startet unabhängige Schritte parallel (bis zu 5 gleichzeitig) und respektiert dabei den Abhängigkeitsgraph. Jeder Schritt läuft als eigenständiger ReAct-Agent ohne Speicher — er erhält nur seine Aufgabenbeschreibung und die Ergebnisse seiner abgeschlossenen Abhängigkeiten.
+**Execute.** The DAGExecutor launches independent steps in parallel (up to 5 concurrent), respecting the dependency graph. Each step runs as a self-contained ReAct agent with no memory — it receives only its task description and the results of its completed dependencies. Steps the planner marks `llm_direct` (pure transformation of dependency outputs) run as a single tool-less LLM call instead.
 
-**Analyse.** Der PlanAnalyzer bewertet, ob der ausgeführte Plan das ursprüngliche Ziel erreicht hat, und erzeugt ein strukturiertes Urteil: `achieved` (boolean), `confidence` (0.0–1.0), `reasoning` und eine optionale `final_answer`.
+**Analyze.** The PlanAnalyzer evaluates whether the executed plan achieved the original goal, producing a structured verdict: `achieved` (boolean), `confidence` (0.0-1.0), `reasoning`, and an optional `final_answer`.
 
-**Neuplanung.** Wenn das Ziel nicht erreicht wurde und die Konfidenz unter der Stopschwelle liegt, kehrt die Pipeline zur Planung mit einem Replan-Kontext zurück, der zusammenfasst, was passiert ist und was schief gelaufen ist. Diese Schleife läuft bis zu `DAG_MAX_REPLAN_ROUNDS` Mal autonom.
+**Re-plan.** If the goal was not achieved and the analyzer does not judge it unreachable, the pipeline loops back to planning with a replan context that summarizes what happened and what went wrong. `DAG_MAX_REPLAN_ROUNDS` (default 3) caps the rounds in total: the first plan plus up to N−1 autonomous re-plans.
 
-Zwei LLMs arbeiten durchgehend zusammen: Ein **intelligentes LLM** kümmert sich um Planung, Analyse und Antwortsynthesize (Aufgaben, die hohe Reasoning-Fähigkeit erfordern), während das **allgemeine LLM** standardmäßig die Schrittausführung übernimmt (mit `model_hint="fast"` Schritten, die zum schnellen LLM delegiert werden, um Kosten zu sparen). Kontext-Komprimierung und Verlaufszusammenfassung verwenden das schnelle LLM. Jeder strukturierte Ausgabeaufruf verwendet `structured_llm_call`, das eine 3-stufige Degradationskette (Native FC, JSON Mode, Klartext mit Regex-Fallback) bietet, um modellspezifische Ausgabeeigenheiten zu handhaben.
+Two LLMs collaborate throughout: a **smart LLM** handles planning, analysis, and answer synthesis (tasks requiring high reasoning capability), while the **general LLM** handles step execution by default (with `model_hint="fast"` steps delegated to the fast LLM for cost savings). Context compaction and history summary use the fast LLM. Every structured output call uses `structured_llm_call`, which provides a 3-level degradation chain (Native FC, JSON Mode, plain text with regex fallback) to handle model-specific output quirks.
 
 ## LLM-Aufrufe-Karte
 
@@ -73,37 +73,37 @@ Die Aufrufe 1 und 5 sind **für den Benutzer unsichtbar** — es sind Infrastruk
 
 ## DAGPlanner
 
-Die Aufgabe des Planers besteht darin, ein übergeordnetes Ziel in einen gültigen DAG aus konkreten, umsetzbaren Schritten umzuwandeln. Dies geschieht mit einem einzigen `structured_llm_call` zum intelligenten LLM.
+The planner's job is to turn a high-level goal into a valid DAG of concrete, actionable steps. It does this with a single `structured_llm_call` to the smart LLM.
 
-**Prompt-Design.** Der Planungs-Prompt injiziert das aktuelle Datum und Jahr (damit der LLM zeitabhängige Suchen planen kann), erzwingt Sprachübereinstimmung (Aufgabenbeschreibungen müssen die gleiche Sprache wie das Ziel verwenden) und beschränkt die Schrittanzahl auf 2–6. Jeder Schritt hat fünf Felder: `id`, `task`, `dependencies`, `tool_hint` und `model_hint`. Der Prompt entmutigt explizit das Aufteilen von trivial verwandten Teilaufgaben – „wenn mehrere Überprüfungen in einem einzigen Skript durchgeführt werden können, kombinieren Sie sie in EINEN Schritt."
+**Prompt design.** The planning prompt injects the current datetime and year (so the LLM can plan time-aware searches), enforces language matching (task descriptions must use the same language as the goal), and constrains step count (2-4 for simple goals, 5-8 for moderately complex ones, up to 10). Each step has six fields: `id`, `task`, `dependencies`, `tool_hint`, `model_hint`, and `step_type` (`react` or `llm_direct`). The prompt explicitly discourages splitting trivially related sub-tasks — "do NOT create separate steps for trivially related sub-tasks that can be done in a single script."
 
-**Strukturierte Extraktion.** Der Planer verwendet `structured_llm_call` mit einem `_PLAN_SCHEMA`, das das `steps`-Array-Schema definiert, und eine `parse_fn`, die rohe Dicts in `PlanStep`-Objekte konvertiert. Wenn der LLM ein einzelnes Step-Objekt statt eines `{"steps": [...]}` Wrappers zurückgibt, stellt der Parser automatisch wieder her. Die in [ReAct Engine — structured\_llm\_call](/architecture/react-engine#structured_llm_call--unified-output-extraction) dokumentierte 3-stufige Degradationskette behandelt LLM-Ausgabeeigenheiten über verschiedene Anbieter hinweg.
+**Structured extraction.** The planner uses `structured_llm_call` with a `_PLAN_SCHEMA` that defines the `steps` array schema and a `parse_fn` that converts raw dicts to `PlanStep` objects. If the LLM returns a single step object instead of a `{"steps": [...]}` wrapper, the parser auto-recovers. The 3-level degradation chain documented in [ReAct Engine — structured\_llm\_call](/architecture/react-engine#structured_llm_call--unified-output-extraction) handles model output quirks across providers.
 
-**DAG-Validierung.** Nach der Extraktion validiert der Planer die Graphstruktur mit Kahns Algorithmus für topologische Sortierung. Zwei Invarianten werden überprüft:
+**DAG validation.** After extraction, the planner validates the graph structure using Kahn's algorithm for topological sorting. Two invariants are checked:
 
-1. **Keine hängenden Verweise.** Wenn ein Schritt auf eine Abhängigkeits-ID verweist, die nicht im Plan vorhanden ist, wird der Verweis stillschweigend mit einer Warnmeldung gelöscht. Dies ist ein Wiederherstellungsmechanismus – LLMs lassen manchmal Schritte weg, auf die sie verwiesen haben, und ein hartes Fehlschlag würde den gesamten Planungsaufruf verschwenden.
+1. **No dangling references.** If a step references a dependency ID that does not exist in the plan, the reference is silently pruned with a warning log. This is a recovery mechanism — LLMs sometimes omit steps they referenced, and hard-failing would waste the entire planning call.
 
-2. **Keine Zyklen.** Wenn Kahns Algorithmus nicht alle Knoten besuchen kann (was bedeutet, dass mindestens ein Zyklus vorhanden ist), wirft der Planer einen `ValueError`. Zyklen sind nicht wiederherstellbar – ein zyklischer Plan kann nicht ausgeführt werden.
+2. **No cycles.** If Kahn's algorithm cannot visit all nodes (meaning at least one cycle exists), the planner raises a `ValueError`. Cycles are unrecoverable — a cyclic plan cannot be executed.
 
-**model\_hint.** Der Planer weist `"fast"` Schritten zu, die er als einfach und deterministisch einstuft (Datenlookup, Formatkonvertierung, einfache Abfrage), `null` Schritten, die standardmäßiges Reasoning erfordern (aufgelöst zum allgemeinen Modell), und `"reasoning"` Schritten, die tiefe Analyse erfordern. Der Executor verwendet diesen Hinweis, um das entsprechende LLM pro Schritt über die `ModelRegistry` auszuwählen. Im Zweifelsfall weist der Prompt den LLM an, `null` zu verwenden – es ist immer sicherer, das leistungsfähigere Modell zu verwenden. Für domänenspezifische Aufgaben (Recht, Medizin, Finanzen) erhält der Planer Domänenkontext vom Router und wird angewiesen, `model_hint="reasoning"` Schritten zuzuweisen, die spezialisierte Genauigkeit erfordern.
+**model\_hint.** The planner assigns `"fast"` to steps it considers simple and deterministic (data lookup, format conversion, straightforward retrieval), `null` to steps requiring standard reasoning (resolved to the general model), and `"reasoning"` to steps requiring deep analysis. The executor uses this hint to select the appropriate LLM per step via the `ModelRegistry`. When in doubt, the prompt instructs the LLM to use `null` — it is always safer to use the more capable model. For domain-specific tasks (legal, medical, financial), the planner receives domain context from the router and is guided to assign `model_hint="reasoning"` to steps requiring specialist accuracy.
 
-**Eingabekonstruktion.** Die angereicherte Abfrage kombiniert Gesprächsverlauf mit der aktuellen Anfrage. Wenn das Gespräch lang ist, wird der Verlauf über `DbMemory` geladen und als `"Previous conversation: ..."` formatiert. Wenn die resultierende angereicherte Abfrage 16K Token überschreitet (geschätzt über `CompactUtils.estimate_tokens`), wird sie mit dem `planner_input` Hinweis-Prompt von ContextGuard LLM-zusammengefasst, bevor sie an den Planer übergeben wird. Das Fallback, wenn kein schneller LLM verfügbar ist: hart auf die letzten 20K Zeichen abschneiden.
+**Input construction.** The enriched query combines conversation history with the current request. If the conversation is long, history is loaded via `DbMemory` and formatted as `"Previous conversation: ..."`. When the resulting enriched query exceeds 16K tokens (estimated via `CompactUtils.estimate_tokens`), it is LLM-summarized using the `planner_input` hint prompt from ContextGuard before being passed to the planner. The fallback when no fast LLM is available: hard-truncate to the last 20K characters.
 
 ## DAGExecutor
 
-Der Executor nimmt einen validierten `ExecutionPlan` und führt seine Schritte gleichzeitig aus, wobei er Abhängigkeitskanten respektiert und Ressourcenlimits durchsetzt.
+The executor takes a validated `ExecutionPlan` and runs its steps concurrently, respecting dependency edges and enforcing resource limits.
 
-**Concurrency-Modell.** Ein `asyncio.Semaphore` begrenzt die parallele Schrittausführung auf `max_concurrency` (Standard 5, konfigurierbar über die Umgebungsvariable `MAX_CONCURRENCY`). Die Dispatch-Schleife identifiziert alle Schritte, deren Abhängigkeiten abgeschlossen sind, startet sie als `asyncio.Task`-Instanzen und wartet, bis mindestens einer beendet ist, bevor sie erneut prüft. Schritte werden in sortierter ID-Reihenfolge gestartet, um deterministisches Verhalten zu gewährleisten.
+**Concurrency model.** An `asyncio.Semaphore` limits parallel step execution to `max_concurrency` (default 5, configurable via `MAX_CONCURRENCY` env var). The dispatch loop identifies all steps whose dependencies have completed, launches them as `asyncio.Task` instances, and waits for at least one to finish before checking again. Steps are launched in sorted ID order for deterministic behavior.
 
-**ReAct-Agent pro Schritt.** Jeder Schritt läuft als unabhängiger ReAct-Agent, der von `_resolve_agent()` erstellt wird. Wenn der Schritt einen `model_hint` hat, der einer Rolle in der `ModelRegistry` entspricht, wird ein temporärer Agent mit dem entsprechenden LLM erstellt. Andernfalls wird das Standardmodell (allgemein) der Registry verwendet. Diese Pro-Schritt-Agenten haben **kein Gedächtnis** — sie starten neu mit nur ihrer Aufgabenbeschreibung, dem ursprünglichen Ziel, eventuellen Tool-Hinweisen und den Ergebnissen abgeschlossener Abhängigkeiten. Diese Isolation ist beabsichtigt: DAG-Schritte sollten eigenständige Arbeitseinheiten sein, die keinen Zustand über den Graphen hinweg durchsickern lassen. Da jeder Schritt eine Standard-`ReActAgent`-Instanz ist, erbt er automatisch alle Harness-Funktionen: [Zyklenerkennung](/architecture/react-engine#cycle-detection) verhindert, dass ein Schritt bei demselben fehlgeschlagenen Tool in einer Schleife hängt, und die [Completion-Checkliste](/architecture/react-engine#completion-checklist) verifiziert Schlussfolgerungen, bevor ein Schritt sein Ergebnis abschließt.
+**Per-step ReAct agent.** Each step runs as an independent ReAct agent created by `_resolve_agent()`. If the step has a `model_hint` that matches a role in the `ModelRegistry`, a temporary agent is created with the corresponding LLM. With no hint the `general` role is used; if the requested role is not registered, the step falls back to the executor's base agent. These per-step agents have **no memory** — they start fresh with only their task description, the original goal, any tool hints, and the results of completed dependencies. This isolation is deliberate: DAG steps should be self-contained units of work that do not leak state across the graph. Because each step is a standard `ReActAgent` instance, it automatically inherits all harness features: [cycle detection](/architecture/react-engine#cycle-detection) prevents a step from looping on the same failing tool, and the [completion checklist](/architecture/react-engine#completion-checklist) verifies conclusions before a step finalizes its result.
 
-**Abhängigkeitskontexteinspeisung.** `_build_step_context()` formatiert die Ergebnisse aller abgeschlossenen Abhängigkeitsschritte in einen Textblock: jede Abhängigkeits-ID, Status, Aufgabenbeschreibung und Ergebnis. Wenn ein `ContextGuard` konfiguriert ist und der kombinierte Kontext `max_message_chars` überschreitet, wird er hart gekürzt mit einem `[Dependency context truncated]`-Suffix. Dies verhindert, dass ein Schritt, der von mehreren ausführlichen Vorgängern abhängt, sein eigenes Kontextfenster überlädt.
+**Dependency context injection.** `_build_step_context()` formats the results of all completed dependency steps into a text block: each dependency's ID, status, task description, and result. If a `ContextGuard` is configured and the combined context exceeds `max_message_chars`, it is hard-truncated with a `[Dependency context truncated]` suffix. This prevents a step that depends on multiple verbose predecessors from blowing out its own context window.
 
-**Strukturierter Content-Multiplikator.** Wenn Abhängigkeitsergebnisse strukturierte Inhalte enthalten — rechtliche Zitate, Markdown-Tabellen oder Code-Blöcke — wendet `_build_step_context()` einen Multiplikator auf das Kürzungsbudget an (Standard `3.0`, konfigurierbar über `DAG_STRUCTURED_CONTEXT_MULTIPLIER`). Dies stellt sicher, dass Zitate, tabellarische Daten und andere strukturierte Artefakte über Schrittgrenzen hinweg erhalten bleiben, anstatt mitten in einer Referenz gekürzt zu werden.
+**Structured content multiplier.** When dependency results contain structured content — legal citations, markdown tables, or code blocks — `_build_step_context()` applies a multiplier to the truncation budget (default `3.0`, configurable via `DAG_STRUCTURED_CONTEXT_MULTIPLIER`). This ensures that citations, tabular data, and other structured artifacts are preserved across step boundaries rather than being truncated mid-reference.
 
-**Schritt-Timeout.** Jeder Schritt wird mit `asyncio.wait_for` mit einem Standard-Timeout von 600 Sekunden (10 Minuten) umhüllt. Wenn ein Schritt dies überschreitet, wird er abgebrochen und mit `"failed"` und einer Timeout-Nachricht gekennzeichnet. Das Timeout ist pro Schritt, nicht pro Plan — ein 5-Schritt-Plan kann theoretisch 50 Minuten laufen, wenn Schritte sequenziell ausgeführt werden.
+**Step timeout.** Each step is wrapped in `asyncio.wait_for` with a default timeout of 600 seconds (10 minutes). If a step exceeds this, it is cancelled and marked as `"failed"` with a timeout message. The timeout is per-step, not per-plan — a 5-step plan can theoretically run for 50 minutes if steps execute sequentially.
 
-**Unterbrechung und Abbruch.** Der Executor hat zwei unterschiedliche Abbruchpfade, die jeweils durch ein anderes Ereignis ausgelöst werden:
+**Interruption and cancellation.** The executor has two distinct cancellation paths, each triggered by a different event:
 
 ```mermaid
 flowchart LR
@@ -111,15 +111,15 @@ flowchart LR
     C["HTTP client disconnects"] -->|"run_task.cancel()"| D["Running step tasks cancelled\nasyncio.gather awaits cleanup"]
 ```
 
-*Eleganter Übersprung — Stop-Ereignis.* Wenn ein Benutzer während der Ausführung eine Nachricht sendet, setzt der Orchestrator in `chat.py` `exec_stop_event`. Der Executor prüft dieses Flag am Anfang jedes Dispatch-Zyklus: Wenn gesetzt, werden alle verbleibenden `pending`-Schritte sofort mit dem Grund `"Skipped — user changed requirements"` als `"skipped"` gekennzeichnet, und die Schleife wird beendet. Bereits laufende Schritte dürfen sich vollenden — nur nicht gestartete Schritte werden abgebrochen. Dieser schnelle Ausstieg ermöglicht es der Pipeline, um die aktualisierte Absicht des Benutzers neu zu planen, ohne auf die Fertigstellung des gesamten ursprünglichen Plans zu warten.
+*Graceful skip — stop event.* When a user sends a follow-up message during execution, the orchestrator in `chat.py` sets `exec_stop_event`. The executor checks this flag at the top of each dispatch cycle: if set, all remaining `pending` steps are immediately marked `"skipped"` with the reason `"Skipped — user changed requirements"`, and the loop exits. Steps already running are allowed to complete — only unstarted steps are abandoned. This fast-exit lets the pipeline re-plan around the user's updated intent without waiting for the full original plan to finish.
 
-*Sofortiger Abbruch — asyncio-Abbruch.* Wenn der HTTP-Client die Verbindung trennt, bricht `chat.py` die Top-Level-`run_task` über `asyncio.Task.cancel()` ab. Der Executor fängt `asyncio.CancelledError` ab, bricht alle derzeit laufenden Schritt-Tasks ab, wartet, bis sie über `asyncio.gather(..., return_exceptions=True)` bestätigen, und wirft dann erneut. Die Client-Trennung wird erkannt, indem alle 0,5 Sekunden `await request.is_disconnected()` innerhalb der SSE-Ereignisschleife abgerufen wird.
+*Immediate abort — asyncio cancellation.* When the HTTP client disconnects, `chat.py` cancels the top-level `run_task` via `asyncio.Task.cancel()`. The executor catches `asyncio.CancelledError`, cancels all currently-running step tasks, waits for them to acknowledge via `asyncio.gather(..., return_exceptions=True)`, then re-raises. Client disconnect is detected by polling `await request.is_disconnected()` every 0.5 seconds inside the SSE event loop.
 
-Der semantische Unterschied ist wichtig: **Stop-Ereignis** bedeutet „Überspringe, was noch nicht gestartet wurde, aber bewahre, was bereits läuft" — abgeschlossene Schrittergebnisse bleiben verfügbar, um die Neuplanung zu informieren. **CancelledError** bedeutet „Brich alles sofort ab" — alle laufenden Arbeiten werden ohne Ergebniswiederherstellung verworfen.
+The semantic difference matters: **stop event** means "skip what hasn't started yet, but preserve what's already running" — completed step results remain available to inform re-planning. **CancelledError** means "abort everything immediately" — all in-flight work is dropped with no result recovery.
 
-**Deadlock-Erkennung.** Wenn die Dispatch-Schleife keine laufenden Tasks und keine startbereiten Schritte findet (weil ihre Abhängigkeiten fehlgeschlagen sind), werden alle verbleibenden ausstehenden Schritte mit `"failed"` und einer Nachricht gekennzeichnet, die erklärt, dass ihre Abhängigkeiten nie abgeschlossen wurden. Dies verhindert, dass der Executor auf unbestimmte Zeit hängt.
+**Deadlock detection.** If the dispatch loop finds no tasks running and no steps ready to launch (because their dependencies failed), all remaining pending steps are marked `"failed"` with a message explaining that their dependencies never completed. This prevents the executor from hanging indefinitely.
 
-**Fortschritts-Callbacks.** Der Executor feuert `(step_id, event, data)`-Callbacks für drei Ereignistypen: `"started"` (Schritt gestartet), `"iteration"` (Tool-Aufruf innerhalb eines Schritts) und `"completed"` (Schritt beendet). Die SSE-Schicht in `chat.py` überbrückt diese Callbacks zu `step_progress`-Ereignissen, die das Frontend für die Echtzeit-DAG-Visualisierung verwendet.
+**Progress callbacks.** The executor fires `(step_id, event, data)` callbacks for three core event types: `"started"` (step launched), `"iteration"` (tool call within a step), and `"completed"` (step finished), plus verification events (`"verifying"`, `"verification"`, `"re_verification"`, `"citation_verification"`) and `"thinking_delta"`. The SSE layer in `chat.py` bridges these callbacks to `step_progress` events that the frontend uses to render real-time DAG visualization.
 
 ## Zitierverifikation
 
@@ -133,88 +133,88 @@ Der Verifizierer arbeitet in drei Phasen:
 
 Die Zitierverifikation erhöht die Latenz für Schritte, die Zitate enthalten, beeinflusst aber nicht Schritte ohne diese. Deaktivieren Sie sie, indem Sie `DAG_CITATION_VERIFICATION=false` setzen, wenn Ihr Anwendungsfall keine zitierempfindlichen Bereiche umfasst.
 
-## Domänengesteuertes Routing
+## Domain-aware routing
 
-Der Auto-Router klassifiziert Abfragen jetzt mit einem **`domain_hint`** neben der bestehenden Modusauswahl. Erkannte Domänen sind `legal`, `medical` und `financial`; Abfragen außerhalb dieser Domänen erhalten `null`.
+Before execution, the ReAct and DAG endpoints each classify the query with `classify_domain()` on the fast LLM, producing a **`domain_hint`**; the auto-router only chooses the mode. Recognized domains default to `legal`, `medical`, `financial`, `tax`, `compliance`, and `patent` (`ESCALATION_DOMAINS`); queries outside these domains receive `null`.
 
-Die Domänenklassifizierung beeinflusst die Pipeline auf zwei Arten:
+Domain classification influences the pipeline in two ways:
 
-**DAG-Modus.** Wenn der Router DAG auswählt und einen nicht-null `domain_hint` bereitstellt, wird der Domänenkontext in den Planner-Prompt eingefügt. Dies leitet den Planner an, `model_hint="reasoning"` für Schritte zuzuweisen, die spezialisierte Genauigkeit erfordern, und `tool_hint="read_skill"` für Schritte vorzuschlagen, die verfügbaren Domänenfähigkeiten entsprechen.
+**DAG mode.** When a DAG request has a non-null `domain_hint`, the domain context is injected into the planner prompt. This guides the planner toward assigning `model_hint="reasoning"` for steps that require specialist accuracy and suggesting `tool_hint="read_skill"` for steps that match available domain skills.
 
-**ReAct-Modus.** Wenn der Router ReAct für eine domänenspezifische Abfrage auswählt, eskaliert das System vom allgemeinen Modell zum **Reasoning-Modell** über `registry.get_by_role("reasoning")`. Zusätzlich werden obligatorische Anweisungen eingefügt, die den Agenten verpflichten, `web_search` zu verwenden, bevor domänenspezifische Inhalte geschrieben werden, und Zitate über die Suche zu verifizieren. Das `read_skill`-Tool wird in der Toolauswahl fixiert (nicht herausgefiltert), um sicherzustellen, dass Domänenwissen immer zugänglich ist.
+**ReAct mode.** For a domain-specific ReAct request, the system escalates from the general model to the **reasoning model** via `registry.get_by_role("reasoning")`. Additionally, instructions are injected telling the agent to verify any cited laws, regulations, or precedents with `web_search` before writing, and to answer directly when the provided context is sufficient. The `read_skill` tool is pinned in tool selection (not filtered out), ensuring domain knowledge is always accessible.
 
-Die Routing-Verzerrung verschiebt sich auch: eng gekoppelte Domänenanalyse (bei der mehrere Teilaufgaben Kontext und Zitate teilen) bevorzugt den ReAct-Modus, um Kontextverluste über DAG-Schrittgrenzen hinweg zu vermeiden.
+In DAG mode the planner is also told to keep tightly-coupled domain analysis (where multiple sub-tasks share context and citations) together in fewer, deeper steps, to avoid losing context across step boundaries.
 
 ## PlanAnalyzer
 
-Der Analyzer bewertet, ob der ausgeführte Plan das ursprüngliche Ziel erreicht hat. Er erzeugt ein strukturiertes `AnalysisResult` mit vier Feldern:
+The analyzer evaluates whether the executed plan achieved the original goal. It produces a structured `AnalysisResult` with five fields (the four below plus `unrecoverable`, a boolean set when another round could not reach the goal):
 
-- **`achieved`** (boolean) — `true` nur wenn das Ziel vollständig erreicht wurde.
-- **`confidence`** (float, 0.0-1.0) — wie sicher sich der Analyzer in seiner Bewertung ist. Widersprüchliche Quellen senken diesen Wert.
-- **`final_answer`** (string oder null) — eine synthetisierte Antwort bei Erfolg, `null` andernfalls.
-- **`reasoning`** (string) — die Chain-of-Thought-Begründung des LLM.
+- **`achieved`** (boolean) — `true` only if the goal was fully accomplished.
+- **`confidence`** (float, 0.0-1.0) — how certain the analyzer is in its assessment. Sources that contradict each other lower this score.
+- **`final_answer`** (string or null) — a synthesized answer when achieved, `null` otherwise.
+- **`reasoning`** (string) — the LLM's chain-of-thought justification.
 
-**Strukturierte Extraktion.** Der Analyzer verwendet `structured_llm_call` mit `_ANALYSIS_SCHEMA`, einer `parse_fn`, die Typkonvertierung und Confidence-Begrenzung handhabt, und einem `regex_fallback` für fehlerhaft formatiertes JSON. Der Regex-Fallback (`_regex_extract_analysis`) extrahiert `achieved`, `confidence`, `final_answer` und `reasoning` Felder aus teilweise gültigem JSON mittels Pattern Matching. Dies ist wichtig, da Analyseantworten tendenziell länger und komplexer sind als Planungsantworten, was JSON-Formatierungsfehler wahrscheinlicher macht.
+**Structured extraction.** The analyzer uses `structured_llm_call` with `_ANALYSIS_SCHEMA`, a `parse_fn` that handles type coercion and confidence clamping, and a `regex_fallback` for malformed JSON. The regex fallback (`_regex_extract_analysis`) extracts `achieved`, `confidence`, `final_answer`, and `reasoning` fields from partially valid JSON using pattern matching. This matters because analysis responses tend to be longer and more complex than planning responses, making JSON formatting errors more likely.
 
-**Sichere Standardeinstellung.** Falls alle Extraktionsebenen fehlschlagen (native FC, JSON-Modus, Klartext, Regex), gibt der Analyzer `AnalysisResult(achieved=False, confidence=0.0, reasoning="Could not parse analysis response")` zurück. Dies stellt sicher, dass die Pipeline immer ein verwertbares Ergebnis erhält — ein Parse-Fehler wird zu einem „nicht erreicht"-Urteil, das eine Neuplanung auslöst, anstatt abzustürzen.
+**Safe default.** If all extraction levels fail (native FC, JSON mode, plain text, regex), the analyzer returns `AnalysisResult(achieved=False, confidence=0.0, reasoning="Could not parse analysis response")`. This ensures the pipeline always gets a usable result — a parse failure becomes a "not achieved" verdict, which triggers re-planning rather than crashing.
 
-**Schritt-Ergebnis-Formatierung.** Das Ergebnis jedes Schritts wird in der Analyseeingabe auf 10K Zeichen gekürzt. Dies verhindert, dass eine einzelne Schritt-Ausgabe (z. B. ein großer Web-Scrape oder Datendump) das Kontextfenster des Analyzers dominiert und andere Schritt-Ergebnisse verdrängt.
+**Step result formatting.** Each step's result is truncated to 10K characters in the analysis prompt. This prevents a single step's verbose output (e.g., a large web scrape or file dump) from dominating the analyzer's context window and crowding out other steps' results.
 
-**Vergleich mehrerer Quellen.** Die Analyseeingabe enthält eine Direktive, um Ergebnisse aus verschiedenen Quellen explizit zu vergleichen. Wenn Web-Suchergebnisse, Wissensbank-Abruf und Dateivorgänge alle Daten beitragen, muss der Analyzer Widersprüche kennzeichnen (unterschiedliche Zahlen, Daten, Aussagen) und angeben, welche Quelle wahrscheinlich zuverlässiger ist. Widersprüche senken den Confidence-Wert, was wiederum die Neuplanungsentscheidung beeinflusst.
+**Multi-source comparison.** The analysis prompt includes a directive to explicitly compare results from different sources. When web search results, knowledge base retrieval, and file operations all contribute data, the analyzer must flag contradictions (different numbers, dates, claims) and indicate which source is likely more authoritative. Contradictions lower the confidence score, which in turn influences the re-planning decision.
 
-## Neuplanung
+## Re-planning
 
-Die Neuplanungsschleife ist das charakteristischste Merkmal der DAG-Engine: Sie kann sich autonom von Teilfehlern erholen, indem sie reflektiert, was schief gelaufen ist, und einen anderen Ansatz versucht.
+The re-planning loop is the DAG engine's most distinctive feature: it can autonomously recover from partial failures by reflecting on what went wrong and trying a different approach.
 
-**Entscheidungslogik.** Nach jeder Runde von Plan-Ausführung-Analyse bewertet der Orchestrator in `chat.py` das Analyseergebnis:
+**Decision logic.** After each round of plan-execute-analyze, the orchestrator in `chat.py` evaluates the analysis result:
 
-1. **`achieved == True`** — Schleife beenden, zur Streaming-Synthese übergehen.
-2. **Benutzereinspruch während dieser Runde** — immer neu planen, unabhängig von Konfidenz oder Budget. Nachfolgende Benutzernachrichten werden als Anforderungsänderungen behandelt, die einen neuen Versuch erfordern. Dies verbraucht nicht das autonome Neuplanungsbudget.
-3. **Autonomes Neuplanungsbudget erschöpft** — Schleife beenden. Das Budget beträgt `max_replan_rounds - 1` autonome Neuplanungen (Standard: 2 autonome Neuplanungen aus einem Budget von 3 Gesamtrunden).
-4. **`confidence >= replan_stop_confidence`** — Schleife beenden. Auch wenn das Ziel nicht vollständig erreicht wurde, deutet ein hoher Konfidenzwert (Standard-Schwellenwert: 0,8, konfigurierbar über `DAG_REPLAN_STOP_CONFIDENCE`) darauf hin, dass der Analyzer sich ziemlich sicher ist, was passiert ist — Neuplanung wird wahrscheinlich nicht helfen.
-5. **Andernfalls** — neu planen. Das Ziel wurde nicht erreicht, die Konfidenz ist niedrig und das Budget bleibt erhalten.
+1. **`achieved == True`** — exit the loop, proceed to streaming synthesis.
+2. **User inject occurred during this round** — always re-plan, regardless of confidence or budget. User follow-up messages are treated as requirement changes that demand a fresh attempt. This does not consume the autonomous replan budget.
+3. **Autonomous replan budget exhausted** — exit the loop. The budget is `max_replan_rounds - 1` autonomous replans (default: 2 autonomous replans from a budget of 3 total rounds).
+4. **`unrecoverable` and `confidence >= replan_stop_confidence`** — exit the loop. The analyzer judged that another round cannot reach the goal (impossible request, missing capability, dead resource) and is confident about it (default threshold: 0.8, configurable via `DAG_REPLAN_STOP_CONFIDENCE`). A confident "not achieved yet" still re-plans.
+5. **Otherwise** — re-plan. The goal was not achieved, confidence is low, and budget remains.
 
-**Neuplanungskontext.** Bei der Neuplanung ruft der Orchestrator `_format_replan_context()` auf, um eine Zusammenfassung der vorherigen Runde zu erstellen. Dies umfasst die Begründung des Analyzers und eine gekürzte Vorschau des Ergebnisses jedes Schritts (maximal 500 Zeichen pro Schritt). Die aggressive Kürzung ist beabsichtigt: Der Planer muss wissen, *was passiert ist* und *was schief gelaufen ist*, nicht die vollständigen Details der Ausgabe jedes Schritts. Dieser Kontext wird an `DAGPlanner.plan()` als `context`-Parameter zusammen mit der ursprünglichen angereicherten Abfrage übergeben.
+**Replan context.** When re-planning, the orchestrator calls `_format_replan_context()` to build a summary of the previous round. This includes the analyzer's reasoning and a truncated preview of each step's result (500 characters per step for the latest round, 200 for older rounds; `DAG_REPLAN_RECENT_TRUNCATION` / `DAG_REPLAN_OLDER_TRUNCATION`). Steps that already completed carry over into the next plan with their results. The aggressive truncation is deliberate: the planner needs to know *what happened* and *what went wrong*, not the full detail of every step's output. This context is passed to `DAGPlanner.plan()` as the `context` parameter, alongside the original enriched query.
 
-**Maximale Runden.** Die Umgebungsvariable `DAG_MAX_REPLAN_ROUNDS` (Standard 3) steuert die Gesamtzahl der Planungsrunden. Mit Standardeinstellungen ist die erste Runde der ursprüngliche Plan, was bis zu 2 autonome Neuplanungen ermöglicht. Benutzergesteuerte Neuplanungen (über Nachrichteneinspruch) werden nicht gegen dieses Budget angerechnet — ein Benutzer kann die Pipeline unbegrenzt steuern.
+**Max rounds.** The `DAG_MAX_REPLAN_ROUNDS` environment variable (default 3) controls the total number of planning rounds. With default settings, the first round is the initial plan, leaving up to 2 autonomous re-plans. User-triggered re-plans (via message injection) do not count against this budget — a user can steer the pipeline indefinitely.
 
-**SSE-Ereignis.** Wenn die Pipeline sich entscheidet, neu zu planen, sendet sie ein `replanning`-Phasenereignis mit der Begründung des Analyzers. Das Frontend nutzt dies, um dem Benutzer anzuzeigen, warum die Pipeline erneut versucht wird.
+**SSE event.** When the pipeline decides to re-plan, it emits a `replanning` phase event containing the analyzer's reasoning. The frontend uses this to show the user why the pipeline is retrying.
 
-**enriched\_query-Akkumulation.** Nachfolgende Benutzernachrichten werden über Runden hinweg an die angereicherte Abfrage angehängt: `enriched_query += "\n\n[User follow-up]: {content}"`. Dies bedeutet, dass der Planer die vollständige Entwicklung der Benutzerabsicht sieht — die ursprüngliche Anfrage plus alle nachfolgenden Klarstellungen — wenn er einen überarbeiteten Plan erstellt.
+**enriched\_query accumulation.** User follow-up messages are appended to the enriched query across rounds: `enriched_query += "\n\n[User follow-up]: {content}"`. This means the planner sees the full evolution of the user's intent — the original request plus all subsequent clarifications — when building a revised plan.
 
-## Streaming-Synthese
+## Streaming synthesis
 
-Wenn der Analyzer bestätigt, dass das Ziel erreicht wurde (`analysis.achieved == True`), streamt die Pipeline eine synthetisierte endgültige Antwort an den Benutzer über `PlanAnalyzer.stream_synthesize()`.
+When the analyzer confirms the goal was achieved (`analysis.achieved == True`), the pipeline streams a synthesized final answer to the user via `PlanAnalyzer.stream_synthesize()`.
 
-**Eingabe.** Der Syntheseaufruf erhält drei Eingaben: das ursprüngliche Ziel, die formatierten Schrittergebnisse (max. 10.000 Zeichen pro Schritt) und die Begründung des Analyzers aus dem nicht-streaming Analyseaufruf. Die Begründung bietet eine "Roadmap" für das, was die Synthese abdecken sollte.
+**Input.** The synthesis call receives three inputs: the original goal, the formatted step results (10K characters max per step), and the analyzer's reasoning from the non-streaming analysis call. The reasoning provides a "roadmap" for what the synthesis should cover.
 
-**Systemaufforderung.** Die Syntheseaufforderung weist das LLM an, direkt zu antworten, ohne Meta-Kommentare ("do NOT include phrases like 'based on the results'"), die Sprache des ursprünglichen Ziels zu verwenden und Ergebnisse aus verschiedenen Quellen gegebenenfalls zu vergleichen. Eine Sprachanweisung aus Benutzereinstellungen wird angehängt, falls verfügbar.
+**System prompt.** The synthesis prompt instructs the LLM to answer directly without meta-commentary ("do NOT include phrases like 'based on the results'"), match the language of the original goal, and compare results from different sources when applicable. A language directive from user preferences is appended if available.
 
-**Streaming.** Die Methode verwendet `stream_chat()`, um Token inkrementell auszugeben. Die SSE-Schicht umhüllt jeden Chunk in einem `answer`-Ereignis mit `status: "delta"`, was dem Frontend die Echtzeitdarstellung der endgültigen Antwort ermöglicht.
+**Streaming.** The method uses `stream_chat()` to yield tokens incrementally. The SSE layer wraps each chunk in an `answer` event with `status: "delta"`, giving the frontend real-time rendering of the final answer.
 
-**Fallback-Kette.** Zwei Fallback-Pfade behandeln Fehler:
+**Fallback chain.** Two fallback paths handle failure:
 
-1. **stream\_synthesize wirft eine Ausnahme** — Fallback zu `analysis.final_answer` aus dem nicht-streaming `analyze()`-Aufruf. Diese Antwort wurde bereits während der Analyse generiert, daher ist sie verfügbar, auch wenn der Streaming-Aufruf fehlschlägt.
+1. **stream\_synthesize raises an exception** — fall back to `analysis.final_answer` from the non-streaming `analyze()` call. This answer was already generated during analysis, so it is available even if the streaming call fails.
 
-2. **Ziel nicht erreicht (keine Synthese versucht)** — alle abgeschlossenen Schrittergebnisse verketten, getrennt durch horizontale Linien. Jedem Ergebnis wird seine Schritt-ID vorangestellt. Wenn überhaupt keine Schritte abgeschlossen wurden, geben Sie `"(goal not achieved)"` zurück.
+2. **Goal not achieved (no synthesis attempted)** — concatenate all completed step results, separated by horizontal rules. Each result is prefixed with its step ID. If no steps completed at all, return a short message saying the task could not be completed and suggesting the user rephrase or simplify the goal.
 
-Das Fallback-Design stellt sicher, dass der Benutzer immer eine Antwort erhält — beeinträchtigt, aber niemals leer.
+The fallback design ensures the user always gets an answer — degraded but never empty.
 
-## Multi-LLM-Architektur
+## Multi-LLM architecture
 
-Das Kosten- und Latenzprofil der DAG-Engine wird durch ihr Multi-Modell-Design geprägt. Die Aufgabenteilung ist:
+The DAG engine's cost and latency profile is shaped by its multi-model design. The division of labor is:
 
-| Rolle | Verwendet für | Optimiert für |
+| Role | Used for | Optimized for |
 |------|----------|---------------|
-| **Smart LLM** | Planung, Analyse, Antwortsyntheseese | Reasoning-Fähigkeit |
-| **General LLM** | Schrittausführung (Standard), ReAct-Agent | Balance zwischen Fähigkeit und Kosten |
-| **Fast LLM** | `model_hint="fast"` Schritte, Kontextkomprimierung, Verlaufszusammenfassung | Kosten und Latenz |
-| **Reasoning LLM** | `model_hint="reasoning"` Schritte, Domain-eskalierter ReAct | Tiefe Analysefähigkeit |
+| **Smart LLM** | Planning, analysis, answer synthesis | Reasoning capability |
+| **General LLM** | Step execution (default), ReAct agent | Balance of capability and cost |
+| **Fast LLM** | `model_hint="fast"` steps, context compaction, history summary | Cost and latency |
+| **Reasoning LLM** | `model_hint="reasoning"` steps, domain-escalated ReAct | Deep analysis capability |
 
-Das Smart LLM verarbeitet die drei Aufrufe, die das tiefste Reasoning erfordern: Zerlegung eines Ziels in einen kohärenten Plan, Beurteilung, ob der Plan das Ziel erreicht hat, und Synthese einer endgültigen Antwort, die mehrere Schrittergebnisse kohärent integriert. Diese Aufrufe finden einmal pro Runde statt (oder einmal insgesamt für die Synthese), daher werden ihre höheren Pro-Token-Kosten amortisiert.
+The smart LLM handles the three calls that require the deepest reasoning: decomposing a goal into a coherent plan, judging whether the plan achieved the goal, and synthesizing a final answer that coherently integrates multiple step results. These calls happen once per round (or once total for synthesis), so their higher per-token cost is amortized.
 
-Das General LLM verarbeitet standardmäßig die Schrittausführung — die ReAct-Schleife jedes DAG-Schritts läuft auf dem General-Modell, es sei denn, der Planer weist explizit einen anderen `model_hint` zu. Das Fast LLM ist für Schritte reserviert, die mit `model_hint="fast"` gekennzeichnet sind (einfache Lookups, Formatkonvertierungen) und für Infrastrukturaufrufe (Kontextkomprimierung, Verlaufszusammenfassung). Das Reasoning LLM wird für Schritte mit `model_hint="reasoning"` und für Domain-eskalierte ReAct-Aufgaben verwendet (siehe [Domain-aware routing](#domain-aware-routing)).
+The general LLM handles step execution by default — each DAG step's ReAct loop runs on the general model unless the planner explicitly assigns a different `model_hint`. The fast LLM is reserved for steps tagged `model_hint="fast"` (simple lookups, format conversions) and for infrastructure calls (context compaction, history summarization). The reasoning LLM is used for steps tagged `model_hint="reasoning"` and for domain-escalated ReAct tasks (see [Domain-aware routing](#domain-aware-routing)).
 
-**Pro-Schritt-Überschreibung.** Das Feld `model_hint` auf jedem `PlanStep` steuert, welches LLM diesen Schritt ausführt. Wenn `model_hint` `null` ist, verwendet der Executor das General-Modell. Wenn es `"fast"` ist, verwendet der Executor das Fast LLM über die Model Registry. Wenn es `"reasoning"` ist, verwendet der Executor das Reasoning LLM. Der Planer wird angewiesen, `"fast"` für deterministische Aufgaben, `null` für standardmäßiges Reasoning und `"reasoning"` für tiefe Analyse zu setzen — kann aber auch auf jede benutzerdefinierte Rolle gesetzt werden, die in der `ModelRegistry` registriert ist. Die Modellauflösung erfolgt **einmal pro Schritt** über `_resolve_agent()` unmittelbar bevor die ReAct-Schleife des Schritts beginnt — alle Iterationen innerhalb des Schritts (Tool-Auswahl, die ReAct-Schleife, ContextGuard-Komprimierung) verwenden das gleiche aufgelöste LLM. Das Modell ändert sich niemals während eines Schritts.
+**Per-step override.** The `model_hint` field on each `PlanStep` controls which LLM runs that step. When `model_hint` is `null`, the executor uses the general model. When it is `"fast"`, the executor uses the fast LLM via the model registry. When it is `"reasoning"`, the executor uses the reasoning LLM. The planner is instructed to set `"fast"` for deterministic tasks, `null` for standard reasoning, and `"reasoning"` for deep analysis — but it can also be set to any custom role registered in the `ModelRegistry`. Model resolution happens **once per step** via `_resolve_agent()` immediately before that step's ReAct loop begins — all iterations within the step (tool selection, the ReAct loop) use the same resolved LLM; ContextGuard compaction uses the fast LLM. The model never changes mid-step.
 
-**Budget-Unabhängigkeit.** Jede LLM-Rolle hat ein unabhängiges Kontextbudget, das aus ihrer Modellkonfiguration berechnet wird. Die DAG-Schrittausführung verwendet das Budget des aufgelösten Schrittmodells (standardmäßig General); Planungs- und Analyseaufrufe verwenden das Budget des Smart LLM. Dies ist wichtig, da Operatoren häufig ein großes Kontextmodell (128K+) für die Planung mit verschiedenen Modellen für die Schrittausführung kombinieren. Details zur Berechnung von Budgets finden Sie unter [Context Management — Budget Configuration](/architecture/context-management#layer-5--budget-configuration).
+**Budget independence.** Each LLM role has an independent context budget, computed from its model configuration. DAG step execution uses the resolved step model's budget (general by default); planning and analysis calls use the smart LLM's budget. This is important because operators often pair a large-context model (128K+) for planning with different models for step execution. For details on how budgets are computed, see [Context Management — Budget Configuration](/architecture/context-management#layer-5--budget-configuration).

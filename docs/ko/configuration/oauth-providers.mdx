@@ -24,19 +24,19 @@ FIM One은 GitHub, Google, Discord, Feishu(Lark)를 통한 소셜 로그인을 �
 
 ## GitHub
 
-**개발자 콘솔:** https://github.com/settings/developers
+**Developer console:** https://github.com/settings/developers
 
-1. **OAuth Apps** → **New OAuth App**을 클릭합니다.
-2. 다음을 입력합니다:
-   - **Application name** — 아무 이름이나 가능 (예: `FIM One`)
-   - **Homepage URL** — 프론트엔드 URL (예: `https://yourdomain.com`)
+1. Click **OAuth Apps** → **New OAuth App**.
+2. Fill in:
+   - **Application name** — any name (e.g. `FIM One`)
+   - **Homepage URL** — your frontend URL (e.g. `https://yourdomain.com`)
    - **Authorization callback URL** — `https://yourdomain.com/api/auth/oauth/github/callback`
-3. **Register application**을 클릭한 후 **Generate a new client secret**을 클릭합니다.
-4. **Client ID**와 생성된 **Client Secret**을 `.env`에 복사합니다.
+3. Click **Register application**, then click **Generate a new client secret**.
+4. Copy the **Client ID** and the generated **Client Secret** into your `.env`.
 
-**자동으로 요청되는 스코프:** `read:user`, `user:email`
+**Scopes requested automatically:** `read:user`, `user:email`
 
-비공개 기본 이메일을 가진 GitHub 계정은 올바르게 처리됩니다 — FIM One은 공개 프로필 이메일이 아닌 `/user/emails`에서 기본 확인된 이메일을 항상 가져옵니다.
+GitHub accounts with a private primary email are handled correctly — FIM One fetches the primary email from `/user/emails` (not the public profile email) and records whether GitHub marks it verified.
 
 ```env
 GITHUB_CLIENT_ID=Ov23li...
@@ -118,15 +118,15 @@ FEISHU_APP_ID=cli_a1b2c3d4e5f6...
 FEISHU_APP_SECRET=...
 ```
 
-### 중요: Feishu 이메일 동작
+### Important: Feishu Email Behavior
 
-Feishu 사용자 정보 API (`authen/v1/user_info`)는 사용자의 **기업 연락처 이메일** (联系邮箱) — 조직 관리자가 Feishu 관리 콘솔에서 구성한 주소를 반환합니다. 이는 사용자의 개인 Feishu 로그인 이메일이 **아닙니다**.
+The Feishu user info API (`authen/v1/user_info`) returns an `email` and an **enterprise contact email** (联系邮箱, `enterprise_email`) — the address configured by the organization admin in the Feishu admin console. FIM One reads `email` first, then `enterprise_email`. The address counts as verified only when it is the enterprise email of a tenant listed in `FEISHU_TRUSTED_TENANT_KEYS`.
 
-결과:
-- 조직 관리자가 연락처 이메일을 구성하지 않은 사용자는 유효한 Feishu 계정이 있어도 API에서 빈 이메일 필드를 받게 됩니다.
-- 개인 Feishu 계정(기업에 속하지 않음)의 사용자는 항상 빈 이메일을 받습니다.
+Consequences:
+- Users whose org admin has not configured a contact email will get an empty email field from the API, even though they have a valid Feishu account.
+- Users on personal Feishu accounts (not part of an enterprise) will always get an empty email.
 
-FIM One은 이를 우아하게 처리합니다: 아래의 [계정 바인딩 규칙](#account-binding-rules)을 참조하세요.
+FIM One handles this gracefully: see [Account Binding Rules](#account-binding-rules) below.
 
 ---
 
@@ -134,45 +134,44 @@ FIM One은 이를 우아하게 처리합니다: 아래의 [계정 바인딩 규�
 
 등록된 사용자는 **설정 → 계정**에서 추가 OAuth 제공자를 연결할 수 있습니다. 사용자가 연결을 시작할 때 다음 규칙이 적용됩니다:
 
-### 일반 규칙 (GitHub, Google, Discord)
+### Linking from Settings (all providers)
 
-OAuth 제공자가 반환한 이메일은 FIM 계정의 등록된 이메일과 일치해야 합니다. 이는 실수로 다른 사람의 소셜 계정을 귀하의 FIM 계정에 연결하는 것을 방지합니다.
+Linking needs a full sign-in: a session that has passed two-factor authentication where it is enabled. API keys and the temporary 2FA token cannot link a provider.
 
-이메일이 일치하지 않으면 바인딩이 `email_mismatch` 오류로 거부됩니다.
+- **Both sides have an email** → the email returned by the provider must match the FIM account's email. This prevents accidentally linking another person's social account to your FIM account. A mismatch is rejected with an `email_mismatch` error.
+- **Either side has no email** (the provider returned none, or the FIM account has no email) → binding succeeds on the signed-in session alone. In practice this affects Feishu accounts without an enterprise email and some Discord accounts.
 
-### Feishu 예외
+### First sign-in with a provider (no binding yet)
 
-Feishu의 API는 로그인 이메일이 아닌 엔터프라이즈 연락처 이메일을 반환하며, 이 필드는 개인 계정이나 관리자가 구성하지 않은 조직의 계정에서 비어 있는 경우가 많으므로, Feishu의 이메일 일치 확인은 더 느슨한 규칙을 따릅니다:
+When a user signs in through a provider that is not linked to any account yet:
 
-- **양쪽 모두 이메일을 가지고 있음** → 이메일이 일치해야 합니다(다른 제공자와 동일한 확인).
-- **한쪽이 이메일을 가지고 있지 않음** (Feishu가 빈 값을 반환했거나 FIM 계정에 이메일이 없음) → 티켓 기반 인증만으로 바인딩이 성공합니다.
+1. FIM One looks for an existing account with the same email. The match is used only when the address is verified on both sides: the provider reports it as verified, and the existing account's email is verified. For Feishu, "verified" means the enterprise email of a tenant listed in `FEISHU_TRUSTED_TENANT_KEYS`.
+2. If a match is found, the provider is linked to that existing FIM account and the user is logged in.
+3. Otherwise a new FIM account is created with whatever email the provider returned (none, if it returned none). This is refused with `registration_disabled` when registration is disabled or invite-only.
 
-### Feishu 로그인 (아직 바인딩되지 않음)
+**When is an account's email verified?** When it was registered with the emailed verification code (`email_verification_enabled` on and SMTP configured), when an administrator created it, when it is the first account of the installation, or when it was created by a provider sign-in whose provider reported the address as verified. An account registered with an email and a password on a deployment that does not send verification codes holds an **unverified** address: a provider sign-in for that address is not linked to it and creates a separate account instead, so two accounts can then hold the same address. A password signs in to the account it was set on; an emailed sign-in or reset code goes to the account whose address is verified. To use one account with both, sign in with the password first and link the provider under Settings → Account, instead of using the provider's button on the sign-in page.
 
-사용자가 처음으로 Feishu를 통해 로그인할 때 (기존 바인딩 없음):
-
-1. FIM One은 Feishu 엔터프라이즈 연락처 이메일과 일치하는 기존 계정을 찾습니다.
-2. 일치하는 항목이 발견되면 Feishu 계정이 기존 FIM 계정에 자동으로 바인딩되고 사용자가 로그인됩니다.
-3. 일치하는 항목이 없으면 (이메일이 비어있는 경우 포함), Feishu `open_id`로 식별되는 새로운 FIM 계정이 생성됩니다. 계정은 null 이메일을 가지며, 사용자는 나중에 설정에서 이메일을 입력할 수 있습니다.
+If the matched or linked account has two-factor authentication enabled, the sign-in stops at the 2FA step before a session is issued.
 
 ---
 
-## 환경 변수 빠른 참조
+## Environment Variables Quick Reference
 
-| 변수 | 제공자 | 필수 | 설명 |
+| Variable | Provider | Required | Description |
 |---|---|---|---|
-| `GITHUB_CLIENT_ID` | GitHub | Both | GitHub OAuth 앱 클라이언트 ID |
-| `GITHUB_CLIENT_SECRET` | GitHub | Both | GitHub OAuth 앱 클라이언트 시크릿 |
-| `GOOGLE_CLIENT_ID` | Google | Both | Google OAuth 2.0 클라이언트 ID |
-| `GOOGLE_CLIENT_SECRET` | Google | Both | Google OAuth 2.0 클라이언트 시크릿 |
-| `DISCORD_CLIENT_ID` | Discord | Both | Discord OAuth2 애플리케이션 클라이언트 ID |
-| `DISCORD_CLIENT_SECRET` | Discord | Both | Discord OAuth2 애플리케이션 클라이언트 시크릿 |
-| `FEISHU_APP_ID` | Feishu | Both | Feishu 사내 앱 ID (`CLIENT_ID`가 아님) |
-| `FEISHU_APP_SECRET` | Feishu | Both | Feishu 사내 앱 시크릿 |
-| `FRONTEND_URL` | All | Prod | OAuth 완료 후 브라우저가 리디렉션되는 위치 (예: `https://yourdomain.com`) |
-| `API_BASE_URL` | All | Prod | 외부에서 접근 가능한 백엔드 URL, 콜백 URL 구성에 사용됨 |
-| `NEXT_PUBLIC_API_URL` | All | Prod | OAuth 리디렉션을 위한 브라우저 측 API URL — 빌드 시 포함됨 |
+| `GITHUB_CLIENT_ID` | GitHub | Both | GitHub OAuth App client ID |
+| `GITHUB_CLIENT_SECRET` | GitHub | Both | GitHub OAuth App client secret |
+| `GOOGLE_CLIENT_ID` | Google | Both | Google OAuth 2.0 client ID |
+| `GOOGLE_CLIENT_SECRET` | Google | Both | Google OAuth 2.0 client secret |
+| `DISCORD_CLIENT_ID` | Discord | Both | Discord OAuth2 application client ID |
+| `DISCORD_CLIENT_SECRET` | Discord | Both | Discord OAuth2 application client secret |
+| `FEISHU_APP_ID` | Feishu | Both | Feishu in-house app ID (note: not `CLIENT_ID`) |
+| `FEISHU_APP_SECRET` | Feishu | Both | Feishu in-house app secret |
+| `FEISHU_TRUSTED_TENANT_KEYS` | Feishu | No | Comma-separated `tenant_key` values whose enterprise email may match an existing account by email |
+| `FRONTEND_URL` | All | Prod | Where the browser is redirected after OAuth completes (e.g. `https://yourdomain.com`) |
+| `API_BASE_URL` | All | Prod | Externally reachable backend URL, used to build callback URLs |
+| `NEXT_PUBLIC_API_URL` | All | Prod | Browser-side API URL for OAuth redirects — baked in at build time |
 
-"Required: Both"는 `_ID`와 `_SECRET` (또는 Feishu의 경우 `_APP_ID`와 `_APP_SECRET`)을 함께 설정해야 함을 의미합니다. 하나만 설정하면 효과가 없습니다.
+"Required: Both" means both the `_ID` and `_SECRET` (or `_APP_ID` and `_APP_SECRET` for Feishu) must be set together; setting only one has no effect.
 
-> `FRONTEND_URL`, `API_BASE_URL`, `NEXT_PUBLIC_API_URL`의 전체 문서는 [환경 변수](/configuration/environment-variables)를 참조하세요.
+> See [Environment Variables](/configuration/environment-variables) for full documentation of `FRONTEND_URL`, `API_BASE_URL`, and `NEXT_PUBLIC_API_URL`.

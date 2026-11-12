@@ -12,7 +12,11 @@
     "feishu": "Feishu",
     "wecom": "WeCom",
     "slack": "Slack",
-    "teams": "Microsoft Teams"
+    "teams": "Microsoft Teams",
+    "lark_webhook": "Lark / Feishu webhook",
+    "slack_webhook": "Slack webhook",
+    "wecom_webhook": "WeCom webhook",
+    "email": "Email"
   },
   "columns": {
     "name": "Nom",
@@ -68,7 +72,20 @@
     "encrypt_key_edit_placeholder": "Configuré - laissez vide pour conserver",
     "pickChat": "Sélectionner dans la liste des groupes",
     "verification_token_hint": "Trouvez-le dans Feishu Open Platform -> Events & Callbacks -> onglet Encryption Strategy -> champ Verification Token. Cliquez sur l'icône en forme d'œil pour le révéler.",
-    "encrypt_key_required": "La clé de chiffrement est requise. Activez le chiffrement dans Feishu Open Platform -> Events & Callbacks -> Encryption Strategy, et collez la clé ici."
+    "encrypt_key_required": "La clé de chiffrement est requise. Activez le chiffrement dans Feishu Open Platform -> Events & Callbacks -> Encryption Strategy, et collez la clé ici.",
+    "typeHint": "Only a Feishu app can carry approval requests. Webhook and email channels send notifications.",
+    "sectionWebhook": "Webhook",
+    "sectionWebhookDescription": "Add a custom bot (incoming webhook) to the group on the platform and paste the URL it gives you. Anyone holding this URL can post to that group.",
+    "webhook_url": "Webhook URL",
+    "webhook_url_edit_placeholder": "Configured - leave blank to keep",
+    "webhook_url_required": "Webhook URL is required.",
+    "webhook_url_invalid": "Enter the https webhook URL issued by this platform.",
+    "sectionEmail": "Recipients",
+    "sectionEmailDescription": "Messages are sent from this instance's SMTP account. The operator's recipient allowlist applies.",
+    "email_to": "Recipient addresses",
+    "email_to_placeholder": "ops@example.com, oncall@example.com",
+    "email_to_hint": "Separate several addresses with commas.",
+    "email_to_required": "Enter at least one recipient email address."
   },
   "discard": {
     "title": "Abandonner les modifications non enregistrées ?",
@@ -99,7 +116,12 @@
     "playgroundHint": "Simulez un appel d'outil sensible, envoyez une véritable carte d'approbation au groupe Feishu et observez la décision revenir en direct.",
     "testSend": "Envoyer un message de test",
     "testing": "Envoi en cours...",
-    "testSendHint": "Envoyer une notification simple au chat configuré — utile pour vérifier les identifiants sans impliquer le flux d'approbation."
+    "testSendHint": "Envoyer une notification simple au chat configuré — utile pour vérifier les identifiants sans impliquer le flux d'approbation.",
+    "typeLabel": "Type",
+    "webhookUrlLabel": "Webhook URL",
+    "webhookConfigured": "Configured (hidden)",
+    "recipientsLabel": "Recipients",
+    "testSendHintOutbound": "Send a short notice to this channel's target to check that it can deliver."
   },
   "actions": {
     "viewDetails": "Afficher les détails",
@@ -186,5 +208,6 @@
       "close": "Fermer",
       "closeStopsPolling": "Fermer"
     }
-  }
+  },
+  "webhookTarget": "Webhook"
 }

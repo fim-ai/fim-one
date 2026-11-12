@@ -339,14 +339,23 @@ flowchart LR
 
 2026-09-06に計画を見直しました。中核部分は完成しています。ReActエンジン、コネクタ、認証情報、承認ゲート、監査、マルチテナント組織が含まれます。ここからは、コードベースにすでに存在する機能を完成させ、正しく維持することに取り組みます。新たな機能領域には着手しません。以下に記載されていないものは予定していません。最後の注記を参照してください。
 
-### v0.9.5 — 未完了部分の仕上げ
+### v0.9.5 — Finishing What Is In
 
-**目標**: ツリー内に残っている未完了のパスを仕上げる。
+**Goal**: close out the half-finished paths already in the tree.
 
-- [ ] メインのチャットパスにチャンク化されたコンパクション入力とモデル対応の予算を導入し、どのモデルの組み合わせでもウィンドウ内に収まるようにする
-- [ ] 次回の LiteLLM アップグレードで Responses-bridge のストリーミング使用量を検証する（上流側のマッピングミスが疑われる）
-- [ ] ネイティブな GPT-5.x パスがリリース全体で稼働した後、LiteLLM の chat→responses ブリッジを廃止する
-- [ ] Stripe billing の本番稼働 — 受信漏れの webhook を検出するため Stripe と毎晩照合し、フルスタックの回帰テストと本番用の price ID を用意する
+- [x] Chunked compaction input and model-aware budgets on the main chat path, so any model mix stays within window
+- [x] One credential rule and one call record for chat, delegated agents and workflow steps; MCP calls recorded
+- [x] A shared MCP server with a credential in its URL or launch arguments is owner-only while fallback is off
+- [x] Read-only database connectors enforced by a read-only transaction (PostgreSQL family, MySQL), not by keyword check alone
+- [x] Workflow database steps bind `{{variable}}` values as query parameters; trigger responses carry an error code, not step details
+- [x] Workflow approvals suspend the run and resume it on decision, across restarts; approval inbox; crash recovery for interrupted runs
+- [x] Workflow Start step input types checked before a run starts; connector actions that require confirmation usable in workflows
+- [x] One audit record for account, organization, credential, resource and approval actions, with IP address and outcome; OAuth sign-ins logged
+- [x] Usage read from an append-only ledger: deleting does not lower "used"; stopped and failed turns and the AI helpers count
+- [x] Audit retention with a daily sweep; organization admins and users read their own audit; deleted users de-identified in kept records
+- [ ] Verify Responses-bridge streaming usage numbers on the next LiteLLM upgrade (upstream mis-mapping suspected)
+- [ ] Retire the LiteLLM chat→responses bridge once the native GPT-5.x path has run a full release
+- [ ] Stripe billing go-live — nightly reconcile against Stripe for missed webhooks, full-stack regression tests, live price ID
 
 ### v0.9 プリプランから出荷済み
 

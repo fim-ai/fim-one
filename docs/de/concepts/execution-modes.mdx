@@ -4,17 +4,21 @@ icon: "route"
 description: "Standalone, Copilot und Hub — drei Möglichkeiten zur Bereitstellung von FIM One."
 ---
 
-## Drei Modi
+## Three modes
 
-FIM One arbeitet in drei Modi, die davon bestimmt werden, wie der Agent bereitgestellt und verwendet wird:
+FIM One operates in three modes, determined by how the agent is deployed and used:
 
-| Modus | Was es ist | Bereitstellung | Beispiel |
+| Mode | What it is | Delivery | Example |
 |------|-----------|----------|---------|
-| **Standalone** | Universeller KI-Assistent | Portal | Chat, Suche, Code-Ausführung, Wissensdatenbank-Q&A |
-| **Copilot** | KI eingebettet in ein Host-System | iframe / Widget / Embed | „Finance Copilot" eingebettet in ERP-Web-UI |
-| **Hub** | Zentrale systemübergreifende Orchestrierung | Portal / API | Agent fragt ERP ab, prüft OA-Genehmigungen, benachrichtigt über Lark |
+| **Standalone** | General-purpose AI assistant | Portal | Chat, search, code execution, knowledge base Q&A |
+| **Copilot** | AI embedded in a host system | API today; iframe / widget embed is planned | "Finance Copilot" embedded in ERP web UI |
+| **Hub** | Central cross-system orchestration | Portal / API | Agent queries ERP, checks OA approvals, notifies via Lark |
 
-Die Entwicklung ist natürlich: Beginnen Sie mit Standalone, betten Sie es als Copilot in ein Host-System ein, und richten Sie dann einen Hub für systemübergreifende Orchestrierung ein. Der Copilot läuft weiterhin eingebettet; der Hub fügt eine zentrale Orchestrierungsebene hinzu.
+The progression is natural: start standalone, embed into a host system as a Copilot, then set up a Hub for cross-system orchestration. The Copilot keeps running embedded; the Hub adds a central orchestration layer.
+
+<Note>
+FIM One does not ship an embeddable iframe or widget yet. Today a Copilot is built by calling the API from the host system's own UI; the drop-in embed is planned.
+</Note>
 
 ## Modusdetails
 
@@ -29,26 +33,26 @@ Der Standardmodus. FIM One funktioniert als vollwertiger KI-Assistent:
 
 Kein externer Systemzugriff erforderlich. Nützlich für allgemeine Analysen, Recherchen und Code-Aufgaben.
 
-### Copilot (eingebettet)
+### Copilot (embedded)
 
-Betten Sie FIM One in die Web-UI eines Host-Systems ein. Der Agent arbeitet neben Benutzern in ihrer vertrauten Oberfläche – kein Kontextwechsel erforderlich. Der Copilot-Modus kann mehrere Konnektoren verwenden (z. B. die Datenbank des Host-Systems + einen Benachrichtigungsdienst).
+Put FIM One inside a host system's web UI, today by having the host page call the API. The agent works alongside users in their familiar interface — no context switching required. Copilot mode can use multiple connectors (e.g., the host system's DB + a notification service).
 
 ```mermaid
 flowchart LR
   subgraph Host["Host System (ERP / CRM / OA)"]
-    Copilot["FIM One Copilot<br/>(iframe / widget)"]
+    Copilot["FIM One Copilot<br/>(host UI + API)"]
   end
   Copilot -- Connectors --> DB["DB"]
   Copilot -- Connectors --> API["API"]
   Copilot -- Connectors --> Lark["Lark"]
 ```
 
-Beispiele:
-- **Finance Copilot**: Verbunden mit Kingdee (金蝶) über DB-Konnektor → Finanzberichte abfragen, Analysberichte generieren
-- **Contract Copilot**: Verbunden mit Vertragsmanagementsystem über API-Konnektor → Verträge suchen, Klauseln extrahieren, Risiken bewerten
-- **HR Copilot**: Verbunden mit HR-System über API-Konnektor → Mitarbeiterinformationen abfragen, Statistiken generieren
+Examples:
+- **Finance Copilot**: Connected to Kingdee (金蝶) via DB connector → query financial statements, generate analysis reports
+- **Contract Copilot**: Connected to contract management system via API connector → search contracts, extract clauses, assess risk
+- **HR Copilot**: Connected to HR system via API connector → query employee info, generate statistics
 
-Der Agent nutzt die gleiche ReAct/DAG-Engine wie der Standalone-Modus, hat aber jetzt Zugriff auf echte Geschäftsdaten über den Konnektor.
+The agent uses the same ReAct/DAG engine as Standalone mode, but now has access to real business data through the connector.
 
 ### Hub (zentrale Orchestrierung)
 
@@ -71,24 +75,24 @@ Beispiele:
 
 Jeder Konnektor ist eine unabhängige Brücke. Das Hinzufügen oder Entfernen eines Konnektors beeinträchtigt die anderen nicht.
 
-## Liefermethoden
+## Delivery methods
 
-| Liefermethode | Beschreibung | Typischer Modus |
+| Delivery | Description | Typical mode |
 |----------|-------------|-------------|
-| **Portal (Web UI)** | Integrierte Next.js-Schnittstelle | Standalone, Hub |
-| **API (headless)** | HTTP/SSE-Endpunkte (`/api/execute`, `/api/stream`) | Hub (programmgesteuerte Zugriffe) |
-| **iframe / Embed** | In Host-System-Seiten injiziert | Copilot |
+| **Portal (Web UI)** | Built-in Next.js interface | Standalone, Hub |
+| **API (headless)** | HTTP/SSE endpoints (`POST /api/react`, `/api/dag`, `/api/auto`) | Hub (programmatic access), Copilot |
+| **iframe / Embed** | Injected into host system pages (planned, not shipped) | Copilot |
 
-Liefermethode und Modus sind verwandt, aber nicht gekoppelt: Sie können auf einen Hub über die API zugreifen oder einen eigenständigen Agent über das Portal verwenden. Das typische Muster ist jedoch Portal für Hub und Embed für Copilot.
+Delivery and mode are related but not locked: you can access a Hub via API, or use a standalone agent through the Portal. But the typical pattern is Portal for Hub and the API for Copilot.
 
-## Ausführungs-Engines (interne Implementierung)
+## Execution engines (internal implementation)
 
-Unter der Haube bietet FIM One zwei Ausführungs-Engines:
+Under the hood, FIM One provides two execution engines:
 
-| Engine | Am besten für | Funktionsweise |
+| Engine | Best for | How it works |
 |--------|----------|-------------|
-| **ReAct** | Einzelne komplexe Abfragen | Reason → Act → Observe Loop mit Tools |
-| **DAG Planning** | Multi-Step parallele Aufgaben | LLM generiert Abhängigkeitsgraph, unabhängige Schritte laufen gleichzeitig |
+| **ReAct** | Single complex queries | Reason → Act → Observe loop with tools |
+| **DAG Planning** | Multi-step parallel tasks | LLM generates dependency graph, independent steps run concurrently |
 
 ```mermaid
 flowchart TD
@@ -101,23 +105,29 @@ flowchart TD
   step_3 --> ReAct3["ReAct Agent"] --> Tools3["Tools"]
 ```
 
-ReAct ist die atomare Einheit; DAG ist die Orchestrierungsschicht. Beide Engines funktionieren in allen drei Modi (Standalone, Copilot, Hub). Im Hub-Modus kann ein einzelner DAG-Schritt Konnektoren zu verschiedenen Systemen aufrufen.
+ReAct is the atomic unit; DAG is the orchestration layer. Both engines work in all three modes (Standalone, Copilot, Hub). In Hub mode, a single DAG step might call connectors to different systems.
 
-## Zwei Ausführungsparadigmen
+New agents and plain chat run on ReAct by default. DAG can be selected per agent or per message, and Auto lets a fast model pick between the two for each request.
 
-FIM One bietet zwei komplementäre Paradigmen für die Erledigung von Aufgaben:
+## Two execution paradigms
 
-| Paradigma | Orchestrierung | Am besten geeignet für |
+FIM One provides two complementary paradigms for getting work done:
+
+| Paradigm | Orchestration | Best for |
 |----------|--------------|----------|
-| **Agent (Chat)** | LLM entscheidet nächsten Schritt dynamisch (ReAct oder DAG) | Explorative Aufgaben, Gespräche, flexible Argumentation |
-| **Workflow** | Festes DAG, das zur Entwurfszeit definiert wird (visueller Editor, 26 Knotentypen) | Genehmigungsketten, geplante ETL, mehrstufige Automatisierungen |
+| **Agent (Chat)** | LLM decides next step dynamically (ReAct or DAG) | Exploratory tasks, conversations, flexible reasoning |
+| **Workflow** | Fixed DAG defined at design time (visual editor, 9 node types) | Approval chains, scheduled runs, multi-step automations |
 
-**Agenten** glänzen, wenn die Aufgabe offen ist — „analysiere die Daten dieses Quartals und empfehle Maßnahmen." Der LLM plant und passt sich spontan an.
+**Agents** excel when the task is open-ended — "analyze this quarter's data and recommend actions." The LLM plans and adapts on the fly.
 
-**Workflows** glänzen, wenn der Prozess bekannt und wiederholbar ist — „jeden Montag Rechnungen aus dem ERP abrufen, Compliance-Prüfungen durchführen, Ausnahmen an einen Prüfer weiterleiten." Der visuelle Editor ermöglicht es dir, Knoten (Agent, Connector, KB, LLM, HTTP, Code, Human Approval, Sub-Workflow) in ein festes DAG zu verbinden.
+**Workflows** excel when the process is known and repeatable — "every Monday, pull invoices from ERP, run compliance checks, route exceptions to a reviewer." The visual editor lets you wire nodes (Start, End, LLM, Condition Branch, Agent, Knowledge Retrieval, Connector, MCP, Human Intervention) into a fixed DAG.
 
-Die beiden Paradigmen lassen sich natürlich kombinieren: Ein Workflow kann einen Agenten bei jedem Schritt aufrufen, der flexible Argumentation innerhalb einer ansonsten festen Pipeline benötigt. Agenten können Workflows nicht direkt aufrufen — die Beziehung ist unidirektional.
+**Runs, approvals and inputs.** A run belongs to whoever started it (for a trigger key or a schedule, the workflow's owner) and does not depend on the browser tab that started it: close the tab and it continues; reopen the workflow or its Run History to see where it is. A run that reaches a Human Intervention step, or a Connector step whose action requires confirmation, is stored as *waiting* (encrypted) and takes no server resources while it waits. Whoever may decide (the assignee of an approval step, otherwise the person the run belongs to) finds the request under Workflows → Approvals and approves or rejects it there. The run then continues after the step, or fails at it when the request is rejected or runs out of time, including when the server was restarted in between. Before it continues, the run is checked like a new run would be (accounts, quota, plan) and it takes a concurrent-run slot; what a confirmed connector action sends is exactly what the request showed. The Start step lists the workflow's inputs with a type (Text, Number, Boolean, JSON, List) and whether each is required; with its "Check inputs before a run starts" switch on, a run whose inputs do not fit is refused before any step runs, with an error naming the input. A required input must be given (or have a default); an optional input left empty is not passed to the steps, except a Text input, for which empty text is itself a value. A run that was executing when the server stopped is closed as failed and can be started again.
+
+Workflows are an optional module, off by default. An administrator turns it on under Admin → Settings → Modules; until then the Workflows page, its APIs and triggers are unavailable.
+
+The two paradigms compose in both directions. A Workflow can invoke an Agent at any step that needs flexible reasoning within an otherwise fixed pipeline. An Agent can run a Workflow mid-conversation through the `run_workflow` tool, which is offered for active workflows without a Human Intervention step that the user owns or has subscribed to; the run uses the chatting user's credentials and token quota.
 
 <Tip>
-**Wann man welches wählt:** Wenn du sehr spezifische, Schritt-für-Schritt-Anweisungen für einen Agenten schreibst, gehört dieser Prozess wahrscheinlich in einen Workflow. Wenn die Aufgabe Urteilsvermögen, Erkundung oder Anpassung an unerwartete Daten erfordert, behalte sie als Agenten.
+**When to choose which:** If you find yourself writing very specific, step-by-step instructions for an Agent, that process probably belongs in a Workflow. If the task requires judgment, exploration, or adapting to unexpected data, keep it as an Agent.
 </Tip>

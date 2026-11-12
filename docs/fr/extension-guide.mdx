@@ -24,15 +24,15 @@ FIM One est construit autour d'un ensemble de classes de base abstraites minces 
 
 ---
 
-## Fournisseur LLM personnalisé
+## Custom LLM provider
 
-`BaseLLM` a deux méthodes requises — `chat` et `stream_chat` — plus une propriété `abilities` optionnelle qui indique au reste du système ce que le modèle peut faire.
+`BaseLLM` has two required methods — `chat` and `stream_chat` — plus an optional `abilities` property that tells the rest of the system what the model can do.
 
 ```python
 from collections.abc import AsyncIterator
 from typing import Any
 
-from fim_one.core.model.base import BaseLLM
+from fim_one.core.model.base import REASONING_INHERIT, BaseLLM
 from fim_one.core.model.types import ChatMessage, LLMResult, StreamChunk
 
 
@@ -52,6 +52,8 @@ class MyLLM(BaseLLM):
             "json_mode": True,   # supports response_format JSON mode
             "vision":   False,
             "streaming": True,
+            "thinking": False,   # emits reasoning tokens
+            "tool_choice": True, # accepts a forced tool_choice (read by structured output)
         }
 
     async def chat(
@@ -63,6 +65,7 @@ class MyLLM(BaseLLM):
         temperature: float | None = None,
         max_tokens: int | None = None,
         response_format: dict[str, Any] | None = None,
+        reasoning_effort: str | object | None = REASONING_INHERIT,
     ) -> LLMResult:
         # Call your provider, return LLMResult(message=..., usage=...)
         ...
@@ -81,16 +84,16 @@ class MyLLM(BaseLLM):
         yield  # make type-checker happy
 ```
 
-### Inscription via ModelRegistry
+### Registration via ModelRegistry
 
-`ModelRegistry` mappe les noms aux instances `BaseLLM` et résout par rôle. Le système utilise quatre rôles intégrés : `general`, `fast`, `compact`, et `vision`. Vous pouvez en ajouter les vôtres.
+`ModelRegistry` maps names to `BaseLLM` instances and resolves by role. The system looks up three roles: `general`, `fast`, and `reasoning`. You can add your own.
 
 ```python
 from fim_one.core.model.registry import ModelRegistry
 
 registry = ModelRegistry()
 registry.register("my-llm", MyLLM(api_key="...", model="my-v1"), roles=["general"])
-registry.register("my-fast", MyLLM(api_key="...", model="my-mini"), roles=["fast", "compact"])
+registry.register("my-fast", MyLLM(api_key="...", model="my-mini"), roles=["fast"])
 
 # Retrieve later
 llm = registry.get_default()           # first "general" model, or first registered
@@ -98,7 +101,7 @@ llm = registry.get_by_role("fast")     # first model with the "fast" role
 llm = registry.get("my-llm")           # by exact name
 ```
 
-Le dictionnaire `abilities` est le contrat entre le LLM et le moteur ReAct. Quand `tool_call=True` et que l'agent a été créé avec `use_native_tools=True`, le moteur utilisera l'appel de fonction natif. Sinon, il bascule automatiquement en mode JSON.
+The `abilities` dict is the contract between the LLM and the ReAct engine. When `tool_call=True` and the agent was created with `use_native_tools=True`, the engine will use native function calling. Otherwise it falls back to JSON mode automatically.
 
 ---
 
@@ -191,9 +194,9 @@ async def run(self, **kwargs: Any) -> ToolResult:
 
 ---
 
-## Mémoire personnalisé
+## Custom memory
 
-`BaseMemory` est la couche de persistance pour l'historique de conversation. Trois méthodes : `add_message`, `get_messages`, `clear`.
+`BaseMemory` is the persistence layer for conversation history. Three methods: `add_message`, `get_messages`, `clear`.
 
 ```python
 import redis.asyncio as redis
@@ -219,7 +222,7 @@ class RedisMemory(BaseMemory):
         await self._redis.delete(self._key)
 ```
 
-Injecter via le constructeur de l'agent : `ReActAgent(llm=llm, memory=RedisMemory(conv_id, url))`.
+Inject via the agent constructor: `ReActAgent(llm=llm, tools=registry, memory=RedisMemory(conv_id, url))`.
 
 ---
 

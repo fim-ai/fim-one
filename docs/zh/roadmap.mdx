@@ -339,14 +339,23 @@ flowchart LR
 
 重新规划于2026-09-06。核心已构建完成：ReAct引擎、连接器、凭据、审批闸门、审计、多租户组织。接下来将完成代码库中已有的内容并确保其正确性，而不是开启新的功能领域。下方未列出的任何内容均不在计划中；请参阅结尾说明。
 
-### v0.9.5——完成现有工作
+### v0.9.5 — Finishing What Is In
 
-**目标**：完成代码树中已有的半成品路径。
+**Goal**: close out the half-finished paths already in the tree.
 
-- [ ] 在主聊天路径中实现分块压缩输入和模型感知预算，确保任何模型组合都不会超出上下文窗口
-- [ ] 在下一次LiteLLM升级时验证Responses桥接的流式使用量数据（怀疑存在上游映射错误）
-- [ ] 原生GPT-5.x路径完成一次完整版本发布后，弃用LiteLLM的聊天→Responses桥接
-- [ ] Stripe计费正式上线——每晚与Stripe对账以发现遗漏的webhook，执行全栈回归测试，并配置正式价格ID
+- [x] Chunked compaction input and model-aware budgets on the main chat path, so any model mix stays within window
+- [x] One credential rule and one call record for chat, delegated agents and workflow steps; MCP calls recorded
+- [x] A shared MCP server with a credential in its URL or launch arguments is owner-only while fallback is off
+- [x] Read-only database connectors enforced by a read-only transaction (PostgreSQL family, MySQL), not by keyword check alone
+- [x] Workflow database steps bind `{{variable}}` values as query parameters; trigger responses carry an error code, not step details
+- [x] Workflow approvals suspend the run and resume it on decision, across restarts; approval inbox; crash recovery for interrupted runs
+- [x] Workflow Start step input types checked before a run starts; connector actions that require confirmation usable in workflows
+- [x] One audit record for account, organization, credential, resource and approval actions, with IP address and outcome; OAuth sign-ins logged
+- [x] Usage read from an append-only ledger: deleting does not lower "used"; stopped and failed turns and the AI helpers count
+- [x] Audit retention with a daily sweep; organization admins and users read their own audit; deleted users de-identified in kept records
+- [ ] Verify Responses-bridge streaming usage numbers on the next LiteLLM upgrade (upstream mis-mapping suspected)
+- [ ] Retire the LiteLLM chat→responses bridge once the native GPT-5.x path has run a full release
+- [ ] Stripe billing go-live — nightly reconcile against Stripe for missed webhooks, full-stack regression tests, live price ID
 
 ### 从pre-replan v0.9计划中已交付
 

@@ -122,5 +122,13 @@
   "kbDisabled": "Wissensdatenbank deaktiviert",
   "kbToggleFailed": "Status der Wissensdatenbank konnte nicht aktualisiert werden",
   "emptyTitle": "Noch keine Wissensdatenbanken vorhanden",
-  "emptyDescription": "Erstellen Sie Ihre erste Wissensdatenbank, um Informationen zu organisieren und abzurufen."
+  "emptyDescription": "Erstellen Sie Ihre erste Wissensdatenbank, um Informationen zu organisieren und abzurufen.",
+  "retryWithImageRecognition": "Read again with image recognition",
+  "visionNoticeLabel": "Read as text only",
+  "visionNotice": {
+    "token_quota_exceeded": "Read as text only. Images and scanned pages were not recognised because your token quota was used up. Retry after your quota resets.",
+    "subscription_required": "Read as text only. Images and scanned pages were not recognised because your account has no plan that includes model use. Retry after you subscribe.",
+    "quota_unavailable": "Read as text only. Images and scanned pages were not recognised because your plan and token quota could not be checked. Retry shortly.",
+    "other": "Read as text only. Images and scanned pages were not recognised. Retry later."
+  }
 }

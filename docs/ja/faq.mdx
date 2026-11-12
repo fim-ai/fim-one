@@ -78,125 +78,124 @@ description: "FIM One についてのよくある質問 — セットアップ�
   </Accordion>
 </AccordionGroup>
 
-## デプロイ
+## Deployment
 
 <AccordionGroup>
-  <Accordion title="システム要件を教えてください。">
-    **最小要件:**
+  <Accordion title="What are the system requirements?">
+    **Minimum requirements:**
 
-    | リソース | 要件 |
+    | Resource | Requirement |
     |----------|-------------|
     | **Python** | 3.11+ |
-    | **RAM** | 最低 2 GB |
-    | **ディスク** | 1 GB の空き容量（アップロードしたドキュメントとベクトルストア用の容量は別途必要） |
-    | **Node.js** | 18+（ローカル開発用） |
+    | **RAM** | 2 GB minimum |
+    | **Disk** | 1 GB free (plus space for uploaded documents and vector store) |
+    | **Node.js** | 18+ (for local development) |
 
-    **本番環境での推奨要件:**
+    **Recommended for production:**
 
-    | リソース | 推奨 |
+    | Resource | Recommendation |
     |----------|----------------|
-    | **RAM** | 4 GB 以上（特に埋め込みモデルをローカルで実行する場合） |
-    | **CPU** | 2 コア以上 |
-    | **データベース** | 複数ワーカーでのデプロイには PostgreSQL |
+    | **RAM** | 4 GB+ (especially if running embedding models locally) |
+    | **CPU** | 2+ cores |
+    | **Database** | PostgreSQL for multi-worker deployments |
 
-    **Docker の代替:** Docker 20+ および Docker Compose v2。ローカルの Python や Node.js は不要です — すべてコンテナ内でビルドされます。
+    **Docker alternative:** Docker 20+ and Docker Compose v2. No local Python or Node.js required — everything is built inside the container.
   </Accordion>
 
-  <Accordion title="FIM One は ARM / Apple Silicon で動作しますか？">
-    はい。Docker とローカル開発のどちらも、Apple Silicon（M1/M2/M3/M4）搭載 Mac を含む ARM アーキテクチャで動作します。Docker イメージは `linux/arm64` 向けにネイティブでビルドされ、すべての Python および Node.js 依存関係には ARM 対応の wheel またはフォールバックがあります。
+  <Accordion title="Does FIM One work on ARM / Apple Silicon?">
+    Yes. Both Docker and local development work on ARM architectures, including Apple Silicon (M1/M2/M3/M4) Macs. The Docker image builds natively for `linux/arm64`, and all Python and Node.js dependencies have ARM-compatible wheels or fallbacks.
   </Accordion>
 
-  <Accordion title="どのデータベースがサポートされていますか？">
-    FIM One では、データベースを 2 つの異なる用途で使用します。
+  <Accordion title="What databases are supported?">
+    FIM One uses databases in two distinct ways:
 
-    **1. 内部データベース（FIM One 自身のデータ）:**
-    - **SQLite** — 設定不要のデフォルトで、開発環境や単一ワーカーでのデプロイに適しています。
-    - **PostgreSQL** — 本番環境に推奨され、複数ワーカーの構成（`WORKERS > 1`）では必須です。
+    **1. Internal database (FIM One's own data):**
+    - **SQLite** — zero-config default, great for development and single-worker deployments.
+    - **PostgreSQL** — recommended for production, required for multi-worker setups (`WORKERS > 1`).
 
-    **2. コネクターの接続先（接続するシステム）:**
+    **2. Connector targets (systems you connect to):**
 
-    FIM One は、Database Connectors を介して外部データベースにデータソースとして接続できます。
+    FIM One can connect to external databases as data sources via Database Connectors:
 
-    | データベース | 状態 |
+    | Database | Status |
     |----------|--------|
-    | PostgreSQL | 対応 |
-    | MySQL | 対応 |
-    | DM (Dameng) | 対応 |
-    | KingbaseES | 対応 |
-    | Highgo | 対応 |
+    | PostgreSQL | Supported |
+    | MySQL | Supported |
+    | DM (Dameng) | Supported |
+    | KingbaseES | Supported |
+    | Highgo | Supported |
 
-    各データベースコネクターは、`list_tables`、`describe_table`、`query` の 3 つのツールを自動生成します。スキーマのイントロスペクション、AI を活用したアノテーション、読み取り専用のクエリ実行がデフォルトで含まれます。
+    Database connectors are exposed to the agent through one `database` tool with `list_tables`, `discover`, and `query` operations (`DATABASE_TOOL_MODE=legacy` restores three tools per connector). Schema introspection and AI-powered annotation are included, and queries are read-only by default. A database connector is private to its owner and cannot be shared.
   </Accordion>
 
-  <Accordion title="複数のユーザーで同じインスタンスを共有できますか？">
-    はい。FIM One は、最初からマルチテナントのデプロイ向けに構築されています。
+  <Accordion title="Can multiple users share the same instance?">
+    Yes. FIM One is built for multi-tenant deployments from the ground up:
 
-    - **JWT 認証** — トークンベースの認証と、ユーザーごとに分離されたセッション。
-    - **組織分離** — リソース（エージェント、コネクター、MCP サーバー）は組織単位でスコープされます。ナレッジベースは所有者ごとに非公開に保たれ、直接共有されることはありません。
-    - **ロールベースのアクセス制御** — 適切な権限境界を持つ管理者ロールとユーザーロール。
-    - **リソースの所有権** — 会話と設定はユーザーごとに分離されます。
+    - **JWT authentication** — token-based auth with per-user session isolation.
+    - **Organization isolation** — resources (agents, connectors, MCP servers) are scoped to organizations. Knowledge bases stay private to their owner and are never shared directly.
+    - **Role-based access** — admin and user roles with appropriate permission boundaries.
+    - **Resource ownership** — conversations and configurations are isolated per user.
 
-    複数ユーザー向けの本番環境では、内部データベースとして PostgreSQL を使用し、想定される同時実行数に合わせて `WORKERS` を設定してください。
+    For multi-user production deployments, use PostgreSQL as the internal database and set `WORKERS` to match your expected concurrency.
   </Accordion>
 </AccordionGroup>
 
-## 機能
+## Features
 
 <AccordionGroup>
-  <Accordion title="ReActとDAGモードの違いは何ですか？">
-    FIM Oneは2つの実行エンジンを提供し、それぞれ異なるタスクタイプに適しています：
+  <Accordion title="What is the difference between ReAct and DAG mode?">
+    FIM One offers two execution engines, each suited to different task types:
 
-    | | ReAct（標準） | DAG（プランナー） |
+    | | ReAct (Standard) | DAG (Planner) |
     |---|---|---|
-    | **動作方法** | 単一の推論ループ：推論、実行、観察、繰り返し | LLMが目標を依存グラフに分解し、独立したステップが並列実行 |
-    | **最適な用途** | 焦点を絞ったクエリ、単一システムの検索、会話タスク | 複数ステップのタスク、クロスシステムオーケストレーション、並列データ収集 |
-    | **並行処理** | 順序実行（一度に1つのツール） | 並行実行（独立したステップがasyncioで同時実行） |
-    | **再計画** | N/A | 目標が達成されない場合、最大3ラウンドの自動再計画 |
+    | **How it works** | Single reasoning loop: Reason, Act, Observe, repeat | LLM decomposes the goal into a dependency graph; independent steps run in parallel |
+    | **Best for** | Focused queries, single-system lookups, conversational tasks | Multi-step tasks, cross-system orchestration, parallel data gathering |
+    | **Concurrency** | Sequential (one tool at a time) | Concurrent (independent steps run simultaneously via asyncio) |
+    | **Re-planning** | N/A | Up to 3 rounds in total (the first plan plus 2 automatic re-plans) if goals are not met |
 
-    **自動モード**（デフォルト）は高速LLM分類器を使用して各受信クエリを分析し、最適なエンジンに自動的にルーティングします。チャットUIの3方向トグル（自動/標準/プランナー）を使用して手動でモードを選択することもできます。
+    Chat and new agents start in **Standard** (ReAct) mode. **Auto mode** uses a fast LLM classifier to analyze each incoming query and routes it to the optimal engine automatically. Select the mode via the three-way toggle in the chat UI (Auto / Standard / Planner).
 
-    詳細については、[実行モード](/concepts/execution-modes)を参照してください。
+    For a deep dive, see [Execution Modes](/concepts/execution-modes).
   </Accordion>
 
-  <Accordion title="新しいコネクタを追加するにはどうしますか？">
-    FIM Oneは、Pythonコードを必要としない3つの方法でコネクタを作成できます：
+  <Accordion title="How do I add a new connector?">
+    FIM One provides three ways to create connectors — no Python code required:
 
-    **1. OpenAPI仕様をインポート** — YAML、JSON、またはOpenAPI仕様を指すURLをアップロードします。FIM Oneは仕様を解析し、すべてのアクションを自動的に生成します。
+    **1. Import an OpenAPI spec** — Upload a YAML, JSON, or URL pointing to an OpenAPI specification. FIM One parses the spec and generates connectors with all actions automatically.
 
-    **2. AIチャットビルダー** — 接続したいAPIを自然言語で説明します。AIは設定、アクション、テスト、エージェント配線用の10個の専門ビルダーツールを使用して、会話でコネクタ設定を生成および反復します。
+    **2. AI chat builder** — Describe the API you want to connect in natural language. The AI generates and iterates on the connector configuration in conversation, using 10 specialized builder tools for settings, actions, testing, and agent wiring.
 
-    **3. MCPプロトコル** — 任意のMCP（Model Context Protocol）サーバーを直接接続します。サードパーティのMPエコシステムがそのまま動作します。
+    **3. MCP protocol** — Connect any MCP (Model Context Protocol) server directly. The third-party MCP ecosystem works out of the box.
 
-    データベースコネクタの場合、接続詳細（ホスト、ポート、認証情報）を設定すると、FIM Oneがスキーマイントロスペクションとクエリツールを自動生成します。
+    For database connectors, configure the connection details (host, port, credentials) and FIM One auto-generates schema introspection and query tools.
 
-    [AIビルダー](/concepts/ai-builder)ドキュメントと[拡張ガイド](/extension-guide)を参照して、ステップバイステップの手順を確認してください。
+    See the [AI Builder](/concepts/ai-builder) documentation and the [Extension Guide](/extension-guide) for step-by-step instructions.
   </Accordion>
 
-  <Accordion title="FIM Oneを既存システムに埋め込むことはできますか？">
-    はい。FIM Oneの**コパイロットモード**は、ホストシステムへの埋め込みのために特別に設計されています。以下の方法で統合できます：
+  <Accordion title="Can I embed FIM One into my existing system?">
+    Yes, through the API. FIM One's **Copilot mode** means putting the agent inside a host system's UI:
 
-    - **iframe** — FIM Oneチャットインターフェースを任意のWebページに直接埋め込みます。
-    - **ウィジェット** — 既存UIにオーバーレイする軽量チャットウィジェット。
-    - **API** — FastAPIバックエンドを直接使用して、完全にカスタマイズされた統合を実現します。
+    - **API** — Call the FastAPI backend (`POST /api/react`, `/api/dag`, `/api/auto`, streamed over SSE) from your own page or widget. This is what works today.
+    - **iframe / Widget** — A drop-in embed snippet is planned and not shipped yet.
 
-    コパイロットモードでは、AIはユーザーの使い慣れたインターフェース内でユーザーと協力して動作し、データをクエリし、レポートを生成し、アクションをオーケストレーションします。ユーザーがアプリケーションを切り替える必要はありません。
+    In Copilot mode, the AI works alongside users in their familiar interface — querying data, generating reports, and orchestrating actions without forcing users to switch applications.
 
-    スタンドアロン、コパイロット、ハブ配信モードの設定詳細については、[実行モード](/concepts/execution-modes)を参照してください。
+    See [Execution Modes](/concepts/execution-modes) for the Standalone, Copilot, and Hub delivery modes, and the [API Overview](/api/overview) for the streaming endpoints.
   </Accordion>
 
-  <Accordion title="翻訳システムはどのように機能しますか？">
-    FIM Oneは6言語（英語、中国語、日本語、韓国語、ドイツ語、フランス語）をサポートし、完全に自動化された翻訳パイプラインを備えています：
+  <Accordion title="How does the translation system work?">
+    FIM One supports 6 languages (English, Chinese, Japanese, Korean, German, French) with a fully automated translation pipeline:
 
-    1. **英語ソースファイルのみを編集** — `frontend/messages/en/*.json`のUIストリング、`docs/*.mdx`（ルートレベル）のドキュメント、および`README.md`。
-    2. **コミット時に自動翻訳** — プリコミットフックが英語ファイルへの変更を検出し、プロジェクトの高速LLMを使用して翻訳します。翻訳は増分的です：新規、変更、または削除されたコンテンツのみが処理されます。
-    3. **翻訳されたファイルを手動で編集しない** — `messages/zh/`、`messages/ja/`、`docs/zh/`、`docs/ja/`などのファイルはすべて自動生成され、上書きされます。
+    1. **Only edit English source files** — UI strings in `frontend/messages/en/*.json`, documentation in `docs/*.mdx` (root level), and `README.md`.
+    2. **Auto-translate on commit** — A pre-commit hook detects changes to English files and translates them via the project's Fast LLM. Translations are incremental: only new, modified, or deleted content is processed.
+    3. **Never manually edit translated files** — Files in `messages/zh/`, `messages/ja/`, `docs/zh/`, `docs/ja/`, etc. are all auto-generated and will be overwritten.
 
-    クローン後に翻訳フックを設定するには：
+    To set up the translation hook after cloning:
     ```bash
     bash scripts/setup-hooks.sh
     ```
 
-    完全な再翻訳を強制するには：
+    To force a full retranslation:
     ```bash
     uv run scripts/translate.py --all
     ```

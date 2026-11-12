@@ -22,13 +22,13 @@ Hook 是在智能体执行生命周期中明确定义的点**在 LLM 循环之�
 
 Hooks 是 FIM One 如何将"智能体应该..."转变为"智能体无法绕过..."的方式。
 
-## 钩子的插入点
+## Where hooks plug in
 
-目前定义了三个钩子点。每个都标记了智能体在一次循环迭代中跨越的边界：
+Three hook points are defined today. Each marks a boundary the agent crosses during one loop iteration:
 
 ```mermaid
 flowchart TD
-    S(["Session start"]) --> SS["SessionStart hooks<br/>inject dynamic context"]
+    S(["Session start"]) --> SS["SessionStart hooks<br/>run for side effects"]
     SS --> LLM["LLM inference<br/>(reasoning / tool pick)"]
     LLM --> DECIDE{"Tool call?"}
     DECIDE -->|no| ANSWER(["Final answer"])
@@ -42,13 +42,13 @@ flowchart TD
     OBS --> LLM
 ```
 
-| 钩子点 | 触发时机 | 能否阻止？ | 能否修改数据？ |
+| Hook point | Fires when | Can it block? | Can it mutate data? |
 |---|---|---|---|
-| `SessionStart` | 会话的第一次 LLM 调用之前 | 否 | 是 — 将上下文注入初始提示词 |
-| `PreToolUse` | LLM 选择工具之后，工具运行之前 | **是**（通过 `allow=False`） | 是 — 可在执行前重写 `tool_args` |
-| `PostToolUse` | 工具返回之后，观察结果发送给 LLM 之前 | 否 | 是 — 可重写观察结果 |
+| `SessionStart` | Before the first LLM call of a session | No | No — runs for side effects only |
+| `PreToolUse` | After the LLM picks a tool, before the tool runs | **Yes** (via `allow=False`) | Yes — can rewrite `tool_args` before execution |
+| `PostToolUse` | After the tool returns, before the observation goes to the LLM | No | Yes — can rewrite the observation |
 
-同一点的多个钩子按优先级顺序运行。较早的 `PreToolUse` 钩子重写的参数会传递给后续钩子，因此中间件可以组合。
+Multiple hooks at the same point run in priority order. An earlier `PreToolUse` hook's rewritten args are carried forward to later hooks, so middleware composes.
 
 ## 何时使用 hook 与指令
 
@@ -65,9 +65,9 @@ flowchart TD
 
 经验法则：**如果错误行为会导致事故，使用 hook。如果错误行为只是小烦恼，指令就足够了。**
 
-## hook 合约
+## The hook contract
 
-hook 是 `PreToolUseHook`、`PostToolUseHook` 或 `SessionStartHook` 的子类，具有一个必需方法：
+A hook is a subclass of `PreToolUseHook` or `PostToolUseHook` (a session-start hook is registered as a plain `Hook` object) with one required method:
 
 ```python
 class ReadOnlyGuard(PreToolUseHook):
@@ -87,27 +87,27 @@ class ReadOnlyGuard(PreToolUseHook):
         return HookResult()               # default: allow=True, no mutation
 ```
 
-传入的 `HookContext` 包含 `tool_name`、`tool_args`、`agent_id`、`user_id` 和一个灵活的 `metadata` 字典，引擎会填充每个请求的事实（组织 id、对话 id、连接器操作的 `requires_confirmation` 标志等）。
+The `HookContext` passed in carries `tool_name`, `tool_args`, `agent_id`, `user_id`, and a flexible `metadata` dict the engine populates with per-request facts (org id, tool call id, the connector action's `requires_confirmation` flag).
 
-返回的 `HookResult` 控制结果：
+The `HookResult` returned controls the outcome:
 
-- `allow: bool = True` — 工具调用是否继续进行（对于 `PostToolUse` / `SessionStart` 忽略）
-- `error: str | None` — 人类可读的原因，在被阻止时作为观察结果呈现给 LLM
-- `modified_args: dict | None` — 如果设置，在执行前替换工具参数
-- `modified_result: Any | None` — 如果设置（PostToolUse），在返回给 LLM 前替换观察结果
-- `side_effects: list[str]` — hook 所做操作的审计跟踪，合并到智能体的跟踪中
+- `allow: bool = True` — whether the tool call proceeds (ignored for `PostToolUse` / `SessionStart`)
+- `error: str | None` — human-readable reason, surfaced to the LLM as the observation when blocked
+- `modified_args: dict | None` — if set, replaces the tool args before execution
+- `modified_result: str | None` — if set (PostToolUse), replaces the observation before it returns to the LLM
+- `side_effects: list[str]` — notes on what the hook did, collected by the registry (not surfaced in the agent's trace today)
 
-## 案例研究：`FeishuGateHook`
+## Case study: `ApprovalGateHook`
 
-在这个系统之上发布的第一个钩子是 `FeishuGateHook` — 一个 `PreToolUse` 钩子，它将任何标记为 `requires_confirmation=True` 的工具转换为发送到组织 Feishu 群组的人工审批卡片。
+The first hook shipped on top of this system is `ApprovalGateHook` (`fim_one.core.assembly.confirmation`; registry key `approval_gate`, formerly `feishu_gate` / `FeishuGateHook`) — a `PreToolUse` hook that turns any tool call needing confirmation (the action's `requires_confirmation` flag, or the agent's confirm-all setting) into a human approval. The hook builds a `ConfirmationSpec` and hands it to `ConfirmationService`, which records the request, delivers it as a card in the portal chat or as a Feishu card in the approval channel bound to the agent, according to the agent's confirmation mode (Auto / Inline only / Channel only), and waits for the decision; Auto uses the in-portal card when no channel is bound. In a chat with no agent the tool's own flag alone decides, and the person chatting approves inline. Who may decide is written on the request when it is created and read back by the portal and the channel callback alike.
 
-这个钩子演示了完整的生命周期：
+This hook exercises the full lifecycle:
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant ReAct as ReAct loop
-    participant Hook as FeishuGateHook
+    participant Hook as ApprovalGateHook
     participant DB as ConfirmationRequest
     participant Feishu as Feishu group
     participant Op as Operator
@@ -126,14 +126,14 @@ sequenceDiagram
     ReAct->>ReAct: Execute oa__purchase_pay
 ```
 
-这个设计的优势：
+What this design is buying:
 
-- **工具调用被真正暂停。** 智能体的 SSE 流在"我将调用 `oa__purchase_pay`"和观察结果之间暂停。用户看到智能体在等待，这与底层实际发生的情况相匹配。
-- **审批在进程重启后仍然存在。** 待处理行在数据库中，而不是在内存中。如果后端在卡片未处理时重启，下一次轮询会从中断处继续。
-- **决策被审计。** `ConfirmationRequest` 保存 `payload`、`responded_at`、`responded_by_open_id` 和最终状态 — 一份谁在何时批准了什么的可审计记录。
-- **决策循环中没有 LLM。** 模型生成工具调用。人类生成判决。钩子是确定性的桥梁。
+- **The tool call is genuinely suspended.** The agent's SSE stream pauses between "I will call `oa__purchase_pay`" and the observation. The user sees the agent waiting, which matches what is happening under the hood.
+- **Approval survives a process restart.** The pending row is in the database, not in memory. If the backend restarts while a card is outstanding, the next poll picks up where it left off.
+- **The decision is audited.** `ConfirmationRequest` keeps `payload`, `responded_at`, `responded_by_open_id`, and the final status — an auditable record of who approved what and when.
+- **No LLM in the decision loop.** The model produces the tool call. Humans produce the verdict. The hook is the deterministic bridge.
 
-`FeishuGateHook` 依赖于配置的 [Feishu 频道](/configuration/channels/feishu) — 钩子通过频道的 `send_interactive_card()` 方法发送卡片，并监听频道解析的回调事件。这种分离是有意的：钩子拥有"审批状态机"，频道拥有"IM 平台机制"。同一个钩子明天可以针对 Slack 或 WeCom，而无需改变其逻辑 — 只需改变频道实现。
+The channel path depends on a [Feishu Channel](/configuration/channels/feishu) bound as the agent's approval channel. The service asks only whether the channel implements `ApprovalCarrier` (`send_approval`, `parse_decision`, `approval_target`), never which platform it is; the Feishu channel is the first implementation. The separation is deliberate: the service owns the approval state machine, the channel owns the IM platform mechanics. A Slack or WeCom channel that implements the carrier protocol would carry approvals without a change to the gate. A callback can decide only requests its own channel delivered.
 
 ## 候选钩子（暂未规划）
 
@@ -150,30 +150,30 @@ sequenceDiagram
 
 ## Hooks vs. Channels
 
-这两个抽象解决了正交的问题：
+The two abstractions solve orthogonal problems:
 
-| 概念 | 建模内容 | 生命周期 | 示例 |
+| Concept | What it models | Lifetime | Example |
 |---|---|---|---|
-| **Hook** | 智能体执行中平台代码运行的一个点 | 每次工具调用 | `FeishuGateHook`, `AuditLogHook` |
-| **Channel** | 到外部消息平台的可插拔适配器 | 每个组织长期存在 | `FeishuChannel`, 计划中的 `SlackChannel` |
+| **Hook** | A point in the agent's execution where platform code runs | Per tool call | `ApprovalGateHook`, `AuditLogHook` |
+| **Channel** | A pluggable adapter to an external messaging platform | Long-lived per org | `FeishuChannel`, planned `SlackChannel` |
 
-Hooks 消费 Channels — 需要与外部世界通信的 hook（发送卡片、发布警报、上报给群组）会调用组织的 Channel。没有任何 hook 使用的 channel 仍然有用（例如智能体可以通过工具主动发送通知），但审批门模式特别需要两个部分都到位。
+Hooks consume Channels — a hook that needs to talk to the outside world (send a card, post an alert, escalate to a group) calls into the org's Channel. A channel without any hook using it is still useful (e.g. agents can proactively send notifications via a tool), but the approval-gate pattern specifically requires both halves to be in place.
 
-换句话说：**Channels 是"我在哪里与人类交谈"的管道，Hooks 是"我何时必须与人类交谈"的策略**。生产环境中的人机协作工作流需要两者。
+Put differently: **Channels are the "where do I talk to humans" plumbing, Hooks are the "when do I have to talk to humans" policy**. Production human-in-the-loop workflows need both.
 
-## 当前状态（v0.8.4）
+## Current state (v0.9.4)
 
-已交付内容与后续计划一览：
+Snapshot of what shipped and what is still ahead:
 
-- ✅ `HookRegistry`、`HookContext`、`HookResult` 基础组件已接入 ReAct 和 DAG
-- ✅ `PreToolUseHook` / `PostToolUseHook` / `SessionStartHook` 抽象基类
-- ✅ `FeishuGateHook`——已完整实现，包括 `ConfirmationRequest` 表、轮询循环、超时/过期处理，以及由回调驱动的状态变更
-- ✅ Feishu 通道回调端点，可解码 `card.action.trigger` 并更新待处理记录
-- ✅ 智能体级钩子声明：`agent.model_config_json.hooks.class_hooks` 会在每个 ReAct/DAG 会话中解析为已实例化的 `HookRegistry`
-- ✅ **钩子会在所有执行入口触发**：主聊天路径（门户、API、DAG）、委派的子智能体（`CallAgentTool`），以及工作流 `AGENT` 节点。Eval Center 有意绕过钩子（自动化评估不得因等待人工审批而阻塞）。
+- ✅ `HookRegistry`, `HookContext`, `HookResult` primitives wired into both ReAct and DAG
+- ✅ `PreToolUseHook` / `PostToolUseHook` abstract bases
+- ✅ `ApprovalGateHook` and `ConfirmationService` — complete, including the `ConfirmationRequest` table, polling loop, timeout/expire, and callback-driven state flips; workflow approval steps and confirmations of connector actions in a workflow use the same service, and instead of polling they suspend the run and are told of the decision through `ConfirmationService.on_decided`
+- ✅ Feishu channel callback endpoint that decodes `card.action.trigger` and updates the pending row
+- ✅ Agent-level hook declarations: `agent.model_config_json.hooks.class_hooks` resolves to an instantiated `HookRegistry` on every ReAct/DAG session
+- ✅ **Hooks fire on every execution surface**: the main chat path (Portal, API, DAG), delegated sub-agents (`CallAgentTool`), and Workflow `AGENT` nodes. Eval Center runs intentionally **bypass** hooks (automated evaluation must not block on human approval).
 
-  委派的智能体不会继承调用方的注册表——它会根据自身的 `model_config_json` 构建**自己的**注册表。由于确认闸门会自动附加到每个智能体，重新构建的结果包含的内容比继承更多：被委派的智能体会获得该闸门，*以及*它自身声明的其他钩子；闸门读取的是被委派智能体自身的 `require_confirmation_for_all`，而不是调用方的配置。两个执行入口都会**默认拒绝**：如果无法构建智能体的钩子，就不会运行该智能体。
-- ❌ `AuditLogHook`、`ReadOnlyGuard`、`ResultTruncateHook`、`ConnectorRateLimitHook`（不在计划内）
-- ❌ 用户自定义的 YAML 钩子声明（不在计划内）
+  A delegated agent does not inherit its caller's registry — it builds **its own** from its own `model_config_json`. Because the confirmation gate is auto-attached to every agent, rebuilding is a superset of inheriting: the delegate gets the gate *plus* whatever it declares for itself, and the gate resolves the delegate's `require_confirmation_for_all` rather than its caller's. Both surfaces fail **closed**: an agent whose hooks cannot be built is not run.
+- ❌ `AuditLogHook`, `ReadOnlyGuard`, `ResultTruncateHook`, `ConnectorRateLimitHook` (not planned)
+- ❌ User-defined YAML hook declarations (not planned)
 
-钩子系统是生产环境加固的**关键基础**。它的首个使用者（`FeishuGateHook`）本身也是一项生产功能，因此我们选择提前交付基础框架，以赶上 2026-04-24 路演，而不是等到完整的钩子目录都准备就绪。
+The Hook System is a **load-bearing foundation** for production hardening. Its first user (`ApprovalGateHook`) is also a production feature in its own right, which is why the skeleton shipped early for the 2026-04-24 roadshow rather than waiting for the full hook catalog.

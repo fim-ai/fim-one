@@ -29,9 +29,9 @@ curl -H "Authorization: Bearer fim_your_api_key_here" \
   https://your-domain.com/api/agents
 ```
 
-### 使用 JWT 令牌
+### Using JWT Token
 
-对于 SSE 流式端点（`/api/react` 和 `/api/dag`），你可以在请求体中传递令牌：
+The SSE streaming endpoints (`/api/react`, `/api/dag` and `/api/auto`) read the token from the request body, not from the `Authorization` header. The value can be a JWT access token or an API key:
 
 ```json
 {
@@ -40,13 +40,13 @@ curl -H "Authorization: Bearer fim_your_api_key_here" \
 }
 ```
 
-有关详细的设置说明，请参阅[身份验证](/api/authentication)。
+See [Authentication](/api/authentication) for detailed setup instructions.
 
 ## 响应格式
 
-### 成功响应
+### Success Response
 
-所有成功的 API 响应遵循以下结构：
+Most endpoints that return a single resource or an acknowledgement wrap it in this structure (list endpoints and the sign-in endpoints return their payload directly):
 
 ```json
 {
@@ -59,15 +59,15 @@ curl -H "Authorization: Bearer fim_your_api_key_here" \
 }
 ```
 
-### 错误响应
+### Error Response
 
-错误响应包括错误代码和人类可读的消息：
+Error responses carry a human-readable `detail`, a machine-readable `error_code` (`null` for a few generic errors), and `error_args` with values for the message:
 
 ```json
 {
-  "success": false,
-  "error": "conversation_not_found",
-  "message": "The conversation does not exist or has been deleted"
+  "detail": "Conversation not found",
+  "error_code": "conversation_not_found",
+  "error_args": {}
 }
 ```
 
@@ -88,47 +88,52 @@ curl -H "Authorization: Bearer fim_your_api_key_here" \
 }
 ```
 
-## 流式传输 (Server-Sent Events)
+## Streaming (Server-Sent Events)
 
-聊天端点 (`POST /api/react` 和 `POST /api/dag`) 返回 Server-Sent Events 以实现实时流式传输。每个事件都有一个 `type` 字段，指示其内容：
+Chat endpoints (`POST /api/react`, `POST /api/dag` and `POST /api/auto`) return Server-Sent Events for real-time streaming. Each event has a `type` field indicating its content:
 
-| 事件类型 | 描述 |
+| Event Type | Description |
 |-----------|-------------|
-| `step` | ReAct 推理步骤（工具调用、思考）。对于具有扩展思考能力的模型（Claude、o-series、DeepSeek-R1），在工具决策阶段包括实时 `thinking_delta` 内容 |
-| `step_progress` | DAG 步骤进度（已启动/迭代/已完成）。当底层智能体流式传输推理 token 时，可能包括 `thinking_delta` 内容 |
-| `phase` | 管道阶段转换（规划/执行/分析） |
-| `compact` | 上下文压缩已发生 |
-| `answer` | 流式答案文本（开始/增量/完成） |
-| `done` | 最终结果负载 |
-| `suggestions` | 建议的后续问题 |
-| `title` | 自动生成的对话标题 |
-| `end` | 流终止符（始终为最后） |
+| `step` | ReAct reasoning step (tool calls, thinking). For models with extended thinking (Claude, o-series, DeepSeek-R1), includes real-time `thinking_delta` content during tool-decision phases |
+| `step_title` | Short generated label for a ReAct iteration (`iteration`, `title`) |
+| `step_progress` | DAG step progress (started/iteration/completed). May include `thinking_delta` content when the underlying agent streams reasoning tokens |
+| `phase` | Pipeline phase transition (selecting_tools/planning/executing/analyzing) |
+| `compact` | Context compaction occurred |
+| `answer` | Streamed answer text (start/delta/done) |
+| `error` | Structured terminator, sent when the monthly token quota runs out mid-answer (`code: "QUOTA_EXCEEDED"`) or the run fails. Followed by `end` |
+| `guardrail_tripwired` | A content guardrail blocked the turn (`kind`, `guardrail_name`, `reason`) |
+| `done` | Final result payload |
+| `post_processing` | Marker between `done` and `end` while follow-up suggestions are generated |
+| `suggestions` | Suggested follow-up questions (`{"items": [...]}`) |
+| `end` | Stream terminator (always last) |
 
-### SSE 流示例
+The conversation title is generated in the background after `end`; read it from `GET /api/conversations/{id}`.
+
+### Example SSE Stream
 
 ```
 event: step
-data: {"type": "tool_call", "tool": "search", "input": "Paris weather"}
+data: {"cursor": 0, "data": {"type": "iteration", "status": "start", "iteration": 1, "tool_name": "web_search", "tool_args": {"query": "Paris weather"}}}
 
 event: answer
-data: {"type": "delta", "text": "Based on current data, "}
+data: {"cursor": 3, "data": {"status": "delta", "content": "Based on current data, "}}
 
 event: answer
-data: {"type": "delta", "text": "Paris has pleasant weather."}
+data: {"cursor": 4, "data": {"status": "delta", "content": "Paris has pleasant weather."}}
 
 event: done
-data: {"answer": "Based on current data, Paris has pleasant weather.", "tokens": 128}
+data: {"cursor": 6, "data": {"answer": "Based on current data, Paris has pleasant weather.", "iterations": 2, "elapsed": 4.2, "usage": {"prompt_tokens": 96, "completion_tokens": 32, "total_tokens": 128}}}
 
 event: suggestions
-data: ["What about tomorrow's forecast?", "Compare with other European cities"]
+data: {"cursor": 8, "data": {"items": ["What about tomorrow's forecast?", "Compare with other European cities"]}}
 
 event: end
 data: {}
 ```
 
-### 基于游标的恢复
+### Cursor-based resume
 
-每个 SSE 事件都携带一个限定于对话的单调递增 `cursor` 整数。客户端应跟踪看到的最高游标。当连接在转向中断时（网络错误、代理超时、服务器重启），客户端可以重新订阅而无需重新运行智能体：
+Every persisted SSE event is sent as `{"cursor": <int>, "data": {...}}`; the cursor increases monotonically within the assistant turn. Clients should track the highest cursor seen. When the connection drops mid-turn (network error, proxy timeout, server restart), the client can re-subscribe without re-running the agent:
 
 ```http
 POST /api/chat/resume
@@ -141,18 +146,50 @@ Authorization: Bearer <jwt>
 }
 ```
 
-响应是一个 SSE 流，重放 `cursor > 42` 的缓存事件，并以终端 `event: resume_done` 帧结束。传递 `cursor: -1` 以请求从头开始的完整重放。
+The response is an SSE stream that replays cached events with `cursor > 42` and ends with a terminal `event: resume_done` frame. Pass `cursor: -1` to request a full replay from the beginning.
 
-错误响应：
-- `404 conversation_not_found` — 对话 id 无效或不由已认证用户拥有
-- `404 no_recent_assistant_message` — 对话没有可恢复的持久化助手转向（例如，没有用户消息的全新对话）
-- `400 invalid_cursor` — 游标不是非负整数或 `-1`
+Error responses:
+- `404 conversation_not_found` — conversation id is invalid or not owned by the authenticated user
+- `404 no_recent_assistant_message` — conversation has no persisted assistant turn to resume from (e.g., a brand-new conversation with no user messages yet)
+- `400 invalid_cursor` — cursor is not a non-negative integer or `-1`
 
-参考前端实现（playground 中的 `useSseResume` hook）使用指数退避（300ms → 1s → 3s，最多 3 次尝试）自动重试网络断开连接，并区分用户主动中止和网络错误以避免意外重连。有关完整模式，请参阅 `playground-page.tsx` 集成。
+The reference frontend implementation (`useSseResume` hook in the playground) auto-retries network disconnects with exponential backoff (300ms → 1s → 3s, max 3 attempts) and distinguishes user-initiated abort from network error to avoid unintended reconnects. See the `playground-page.tsx` integration for the full pattern.
 
 <Note>
-恢复是无状态的 — 它从助手消息的存储 `sse_events` 数组重放。如果智能体的转向在任何助手消息被持久化之前被中断（例如，在 `done` 之前崩溃），悬空的 `tool_use` 块会在下一个转向由 `DbMemory._repair_dangling_tool_calls` 自动修复。合成 `tool_result` 行使用 `metadata_.synthetic=true` 和 `metadata_.reason="interrupted"` 持久化以供审计。
+Resume is stateless — it replays from the assistant message's stored `sse_events` array. If the agent's turn was interrupted before any assistant message was persisted (e.g., a crash before `done`), the dangling `tool_use` block is auto-repaired by `DbMemory._repair_dangling_tool_calls` on the next turn. Synthetic `tool_result` rows are persisted with `metadata_.synthetic=true` and `metadata_.reason="interrupted"` for audit.
 </Note>
+
+## Business References
+
+A system that embeds FIM One can tag each conversation with the id of the business object it is about, such as a contract number or a ticket id, and later reopen the latest conversation for that object.
+
+- `business_ref` is optional text. It is normalized to Unicode NFC, then surrounding whitespace is trimmed; an empty value means no reference. A value longer than 200 characters after normalization, or one containing control characters (C0 or C1), zero-width or other format characters, or the line and paragraph separators U+2028 and U+2029, is refused with `422` (`invalid_business_ref` for query parameters). The value is otherwise stored as given: it is not unique, not interpreted, and never passed to the model.
+- Filters and lookups match exactly and case-sensitively, after the same NFC normalization: `HT-1` does not find `ht-1`, while a reference sent in decomposed form finds the one stored in composed form.
+- A reference belongs to the conversation's owner. Filters and lookups only ever consider the caller's own conversations, and administrator lists and exports do not show it. The administrators' full backup (`GET /api/admin/export/full-backup`) leaves it out, so anything rebuilt from that backup has no references. The owner's data export (`GET /api/auth/me/export`) includes it.
+
+```bash
+# Start a conversation for contract HT-2026-0042
+curl -X POST "https://your-domain.com/api/conversations" \
+  -H "Authorization: Bearer fim_your_api_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{"mode": "react", "title": "Contract review", "business_ref": "HT-2026-0042"}'
+
+# The caller's most recently active conversation for it (data is null if none)
+curl "https://your-domain.com/api/conversations/latest?business_ref=HT-2026-0042" \
+  -H "Authorization: Bearer fim_your_api_key_here"
+
+# All of the caller's conversations for it; combines with status, q, page and size
+curl "https://your-domain.com/api/conversations?business_ref=HT-2026-0042" \
+  -H "Authorization: Bearer fim_your_api_key_here"
+
+# Change it, or clear it with null or ""
+curl -X PATCH "https://your-domain.com/api/conversations/<id>" \
+  -H "Authorization: Bearer fim_your_api_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{"business_ref": null}'
+```
+
+`GET /api/conversations/latest` orders by the newest message, falling back to the creation time, and considers active conversations unless `status=archived` is given. The list keeps its own order (starred first, then newest created).
 
 ## 速率限制
 
@@ -182,18 +219,22 @@ curl "https://your-domain.com/api/conversations?page=2&size=50" \
 }
 ```
 
-## 错误代码
+## Error Codes
 
-常见错误代码及其含义：
+Common error codes and their meanings:
 
-| 错误代码 | HTTP 状态 | 含义 |
+| `error_code` | HTTP Status | Meaning |
 |-----------|-------------|---------|
-| `unauthorized` | 401 | 无效或缺失身份验证 |
-| `forbidden` | 403 | 用户缺少此资源的权限 |
-| `not_found` | 404 | 资源不存在 |
-| `bad_request` | 400 | 无效的请求参数 |
-| `rate_limit_exceeded` | 429 | 请求过于频繁（计划中） |
-| `internal_error` | 500 | 服务器错误 |
+| `authentication_required` | 401 | A streaming endpoint was called without a token in the body |
+| `token_expired` / `invalid_token` | 401 | The JWT in a streaming request has expired or is malformed |
+| `invalid_credentials` | 401 | Wrong email or password at sign-in |
+| `api_key_scope_denied` | 403 | The API key's scopes do not allow this request |
+| `ip_not_allowed` | 403 | The client address is refused by the instance's IP rules |
+| `subscription_required` | 402 | The instance is paid-only and the user has no plan |
+| `token_quota_exceeded` | 429 | The user's monthly token quota is used up |
+| `2fa_too_many_attempts` | 429 | Five incorrect two-factor codes within 15 minutes |
+
+Errors raised by the authentication layer for a bad `Authorization` header (`Invalid token`, `Token has expired`, `Invalid API key`, `API key is disabled`) return `401` with `error_code: null`; rely on the status code and `detail` for those. Request validation failures return `422`.
 
 ## API 游乐场
 
@@ -216,9 +257,9 @@ API 游乐场从您的浏览器运行请求，因此请确保您的 API 密钥�
 - **JavaScript/TypeScript**：即将推出
 - **Go**：即将推出
 
-## 版本控制
+## Versioning
 
-当前 API 版本为 `v0.8.0`。版本号不包含在 URL 路径中；重大变更将通过主版本号升级和迁移期来通知。
+The API carries the application version, reported by `GET /api/version`. Version is not included in the URL path; breaking changes will be signaled through major version bumps and a migration period.
 
 ## 支持
 

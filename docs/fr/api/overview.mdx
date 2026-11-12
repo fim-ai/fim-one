@@ -29,9 +29,9 @@ curl -H "Authorization: Bearer fim_your_api_key_here" \
   https://your-domain.com/api/agents
 ```
 
-### Utilisation du jeton JWT
+### Using JWT Token
 
-Pour les points de terminaison de streaming SSE (`/api/react` et `/api/dag`), vous pouvez transmettre le jeton dans le corps de la requête à la place :
+The SSE streaming endpoints (`/api/react`, `/api/dag` and `/api/auto`) read the token from the request body, not from the `Authorization` header. The value can be a JWT access token or an API key:
 
 ```json
 {
@@ -40,13 +40,13 @@ Pour les points de terminaison de streaming SSE (`/api/react` et `/api/dag`), vo
 }
 ```
 
-Consultez [Authentification](/api/authentication) pour des instructions de configuration détaillées.
+See [Authentication](/api/authentication) for detailed setup instructions.
 
 ## Format de réponse
 
-### Réponse réussie
+### Success Response
 
-Toutes les réponses API réussies suivent cette structure :
+Most endpoints that return a single resource or an acknowledgement wrap it in this structure (list endpoints and the sign-in endpoints return their payload directly):
 
 ```json
 {
@@ -59,15 +59,15 @@ Toutes les réponses API réussies suivent cette structure :
 }
 ```
 
-### Réponse d'erreur
+### Error Response
 
-Les réponses d'erreur incluent un code d'erreur et un message lisible par l'homme :
+Error responses carry a human-readable `detail`, a machine-readable `error_code` (`null` for a few generic errors), and `error_args` with values for the message:
 
 ```json
 {
-  "success": false,
-  "error": "conversation_not_found",
-  "message": "The conversation does not exist or has been deleted"
+  "detail": "Conversation not found",
+  "error_code": "conversation_not_found",
+  "error_args": {}
 }
 ```
 
@@ -90,45 +90,50 @@ Les points de terminaison de liste retournent des résultats paginés :
 
 ## Streaming (Server-Sent Events)
 
-Les points de terminaison de chat (`POST /api/react` et `POST /api/dag`) retournent des Server-Sent Events pour le streaming en temps réel. Chaque événement a un champ `type` indiquant son contenu :
+Chat endpoints (`POST /api/react`, `POST /api/dag` and `POST /api/auto`) return Server-Sent Events for real-time streaming. Each event has a `type` field indicating its content:
 
-| Type d'événement | Description |
+| Event Type | Description |
 |-----------|-------------|
-| `step` | Étape de raisonnement ReAct (appels d'outils, réflexion). Pour les modèles avec pensée étendue (Claude, série o, DeepSeek-R1), inclut le contenu `thinking_delta` en temps réel pendant les phases de décision d'outils |
-| `step_progress` | Progression de l'étape DAG (démarrée/itération/complétée). Peut inclure le contenu `thinking_delta` lorsque l'agent sous-jacent diffuse les tokens de raisonnement |
-| `phase` | Transition de phase du pipeline (planification/exécution/analyse) |
-| `compact` | Compaction de contexte effectuée |
-| `answer` | Texte de réponse diffusé (début/delta/terminé) |
-| `done` | Charge utile du résultat final |
-| `suggestions` | Questions de suivi suggérées |
-| `title` | Titre de conversation généré automatiquement |
-| `end` | Terminateur de flux (toujours dernier) |
+| `step` | ReAct reasoning step (tool calls, thinking). For models with extended thinking (Claude, o-series, DeepSeek-R1), includes real-time `thinking_delta` content during tool-decision phases |
+| `step_title` | Short generated label for a ReAct iteration (`iteration`, `title`) |
+| `step_progress` | DAG step progress (started/iteration/completed). May include `thinking_delta` content when the underlying agent streams reasoning tokens |
+| `phase` | Pipeline phase transition (selecting_tools/planning/executing/analyzing) |
+| `compact` | Context compaction occurred |
+| `answer` | Streamed answer text (start/delta/done) |
+| `error` | Structured terminator, sent when the monthly token quota runs out mid-answer (`code: "QUOTA_EXCEEDED"`) or the run fails. Followed by `end` |
+| `guardrail_tripwired` | A content guardrail blocked the turn (`kind`, `guardrail_name`, `reason`) |
+| `done` | Final result payload |
+| `post_processing` | Marker between `done` and `end` while follow-up suggestions are generated |
+| `suggestions` | Suggested follow-up questions (`{"items": [...]}`) |
+| `end` | Stream terminator (always last) |
 
-### Flux SSE
+The conversation title is generated in the background after `end`; read it from `GET /api/conversations/{id}`.
+
+### Example SSE Stream
 
 ```
 event: step
-data: {"type": "tool_call", "tool": "search", "input": "Paris weather"}
+data: {"cursor": 0, "data": {"type": "iteration", "status": "start", "iteration": 1, "tool_name": "web_search", "tool_args": {"query": "Paris weather"}}}
 
 event: answer
-data: {"type": "delta", "text": "Based on current data, "}
+data: {"cursor": 3, "data": {"status": "delta", "content": "Based on current data, "}}
 
 event: answer
-data: {"type": "delta", "text": "Paris has pleasant weather."}
+data: {"cursor": 4, "data": {"status": "delta", "content": "Paris has pleasant weather."}}
 
 event: done
-data: {"answer": "Based on current data, Paris has pleasant weather.", "tokens": 128}
+data: {"cursor": 6, "data": {"answer": "Based on current data, Paris has pleasant weather.", "iterations": 2, "elapsed": 4.2, "usage": {"prompt_tokens": 96, "completion_tokens": 32, "total_tokens": 128}}}
 
 event: suggestions
-data: ["What about tomorrow's forecast?", "Compare with other European cities"]
+data: {"cursor": 8, "data": {"items": ["What about tomorrow's forecast?", "Compare with other European cities"]}}
 
 event: end
 data: {}
 ```
 
-### Reprise basée sur le curseur
+### Cursor-based resume
 
-Chaque événement SSE porte un entier `cursor` monotone limité à la conversation. Les clients doivent suivre le curseur le plus élevé observé. Lorsque la connexion s'interrompt en cours de tour (erreur réseau, délai d'attente du proxy, redémarrage du serveur), le client peut se réabonner sans relancer l'agent :
+Every persisted SSE event is sent as `{"cursor": <int>, "data": {...}}`; the cursor increases monotonically within the assistant turn. Clients should track the highest cursor seen. When the connection drops mid-turn (network error, proxy timeout, server restart), the client can re-subscribe without re-running the agent:
 
 ```http
 POST /api/chat/resume
@@ -141,18 +146,50 @@ Authorization: Bearer <jwt>
 }
 ```
 
-La réponse est un flux SSE qui rejoue les événements en cache avec `cursor > 42` et se termine par une trame terminale `event: resume_done`. Passez `cursor: -1` pour demander une relecture complète depuis le début.
+The response is an SSE stream that replays cached events with `cursor > 42` and ends with a terminal `event: resume_done` frame. Pass `cursor: -1` to request a full replay from the beginning.
 
-Réponses d'erreur :
-- `404 conversation_not_found` — l'id de conversation est invalide ou n'appartient pas à l'utilisateur authentifié
-- `404 no_recent_assistant_message` — la conversation n'a pas de tour assistant persisté à partir duquel reprendre (par exemple, une conversation toute nouvelle sans messages utilisateur)
-- `400 invalid_cursor` — le curseur n'est pas un entier non-négatif ou `-1`
+Error responses:
+- `404 conversation_not_found` — conversation id is invalid or not owned by the authenticated user
+- `404 no_recent_assistant_message` — conversation has no persisted assistant turn to resume from (e.g., a brand-new conversation with no user messages yet)
+- `400 invalid_cursor` — cursor is not a non-negative integer or `-1`
 
-L'implémentation frontend de référence (hook `useSseResume` dans le playground) réessaie automatiquement les déconnexions réseau avec backoff exponentiel (300ms → 1s → 3s, max 3 tentatives) et distingue l'abandon initié par l'utilisateur de l'erreur réseau pour éviter les reconnexions involontaires. Consultez l'intégration `playground-page.tsx` pour le modèle complet.
+The reference frontend implementation (`useSseResume` hook in the playground) auto-retries network disconnects with exponential backoff (300ms → 1s → 3s, max 3 attempts) and distinguishes user-initiated abort from network error to avoid unintended reconnects. See the `playground-page.tsx` integration for the full pattern.
 
 <Note>
-La reprise est sans état — elle rejoue à partir du tableau `sse_events` stocké du message assistant. Si le tour de l'agent a été interrompu avant qu'un message assistant ne soit persisté (par exemple, un crash avant `done`), le bloc `tool_use` en suspens est automatiquement réparé par `DbMemory._repair_dangling_tool_calls` au tour suivant. Les lignes `tool_result` synthétiques sont persistées avec `metadata_.synthetic=true` et `metadata_.reason="interrupted"` à titre d'audit.
+Resume is stateless — it replays from the assistant message's stored `sse_events` array. If the agent's turn was interrupted before any assistant message was persisted (e.g., a crash before `done`), the dangling `tool_use` block is auto-repaired by `DbMemory._repair_dangling_tool_calls` on the next turn. Synthetic `tool_result` rows are persisted with `metadata_.synthetic=true` and `metadata_.reason="interrupted"` for audit.
 </Note>
+
+## Business References
+
+A system that embeds FIM One can tag each conversation with the id of the business object it is about, such as a contract number or a ticket id, and later reopen the latest conversation for that object.
+
+- `business_ref` is optional text. It is normalized to Unicode NFC, then surrounding whitespace is trimmed; an empty value means no reference. A value longer than 200 characters after normalization, or one containing control characters (C0 or C1), zero-width or other format characters, or the line and paragraph separators U+2028 and U+2029, is refused with `422` (`invalid_business_ref` for query parameters). The value is otherwise stored as given: it is not unique, not interpreted, and never passed to the model.
+- Filters and lookups match exactly and case-sensitively, after the same NFC normalization: `HT-1` does not find `ht-1`, while a reference sent in decomposed form finds the one stored in composed form.
+- A reference belongs to the conversation's owner. Filters and lookups only ever consider the caller's own conversations, and administrator lists and exports do not show it. The administrators' full backup (`GET /api/admin/export/full-backup`) leaves it out, so anything rebuilt from that backup has no references. The owner's data export (`GET /api/auth/me/export`) includes it.
+
+```bash
+# Start a conversation for contract HT-2026-0042
+curl -X POST "https://your-domain.com/api/conversations" \
+  -H "Authorization: Bearer fim_your_api_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{"mode": "react", "title": "Contract review", "business_ref": "HT-2026-0042"}'
+
+# The caller's most recently active conversation for it (data is null if none)
+curl "https://your-domain.com/api/conversations/latest?business_ref=HT-2026-0042" \
+  -H "Authorization: Bearer fim_your_api_key_here"
+
+# All of the caller's conversations for it; combines with status, q, page and size
+curl "https://your-domain.com/api/conversations?business_ref=HT-2026-0042" \
+  -H "Authorization: Bearer fim_your_api_key_here"
+
+# Change it, or clear it with null or ""
+curl -X PATCH "https://your-domain.com/api/conversations/<id>" \
+  -H "Authorization: Bearer fim_your_api_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{"business_ref": null}'
+```
+
+`GET /api/conversations/latest` orders by the newest message, falling back to the creation time, and considers active conversations unless `status=archived` is given. The list keeps its own order (starred first, then newest created).
 
 ## Limitation de débit
 
@@ -182,18 +219,22 @@ Tous les horodatages sont au format ISO 8601 avec le fuseau horaire UTC :
 }
 ```
 
-## Codes d'erreur
+## Error Codes
 
-Codes d'erreur courants et leurs significations :
+Common error codes and their meanings:
 
-| Code d'erreur | Statut HTTP | Signification |
+| `error_code` | HTTP Status | Meaning |
 |-----------|-------------|---------|
-| `unauthorized` | 401 | Authentification invalide ou manquante |
-| `forbidden` | 403 | L'utilisateur n'a pas les permissions pour cette ressource |
-| `not_found` | 404 | La ressource n'existe pas |
-| `bad_request` | 400 | Paramètres de requête invalides |
-| `rate_limit_exceeded` | 429 | Trop de requêtes (prévu) |
-| `internal_error` | 500 | Erreur serveur |
+| `authentication_required` | 401 | A streaming endpoint was called without a token in the body |
+| `token_expired` / `invalid_token` | 401 | The JWT in a streaming request has expired or is malformed |
+| `invalid_credentials` | 401 | Wrong email or password at sign-in |
+| `api_key_scope_denied` | 403 | The API key's scopes do not allow this request |
+| `ip_not_allowed` | 403 | The client address is refused by the instance's IP rules |
+| `subscription_required` | 402 | The instance is paid-only and the user has no plan |
+| `token_quota_exceeded` | 429 | The user's monthly token quota is used up |
+| `2fa_too_many_attempts` | 429 | Five incorrect two-factor codes within 15 minutes |
+
+Errors raised by the authentication layer for a bad `Authorization` header (`Invalid token`, `Token has expired`, `Invalid API key`, `API key is disabled`) return `401` with `error_code: null`; rely on the status code and `detail` for those. Request validation failures return `422`.
 
 ## Terrain de jeu API
 
@@ -218,7 +259,7 @@ Bien que l'API FIM One soit entièrement basée sur REST, des SDK sont disponibl
 
 ## Versioning
 
-La version actuelle de l'API est `v0.8.0`. La version n'est pas incluse dans le chemin d'accès de l'URL ; les modifications incompatibles seront signalées par des augmentations de version majeure et une période de migration.
+The API carries the application version, reported by `GET /api/version`. Version is not included in the URL path; breaking changes will be signaled through major version bumps and a migration period.
 
 ## Support
 

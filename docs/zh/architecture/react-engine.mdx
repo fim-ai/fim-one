@@ -6,19 +6,19 @@ description: "FIM One 的 ReAct 引擎如何工作——双模式执行、结构
 
 关于此循环如何与 DAG 调度、工作流蓝图和行业**图工程**并行运作，请参阅[规划景观](/architecture/planning-landscape)。
 
-## 架构
+## The architecture
 
-ReAct引擎实现了一个两阶段执行模型。第一阶段是迭代式工具使用循环：智能体反复向LLM请求操作，执行请求的工具，追加观察结果，并持续执行，直到LLM发出“完成”信号。第二阶段是答案合成：通过单独的流式LLM调用读取完整的执行轨迹，并生成面向用户的响应。
+The ReAct engine implements a two-phase execution model. The first phase is an iterative tool-use loop: the agent repeatedly asks the LLM for an action, executes any requested tool, appends the observation, and continues until the LLM signals "done." The second phase is answer delivery: `stream_answer()` streams the user-facing response. When the loop ended on the `finish` signal (the chat path, `REACT_FINISH_SIGNAL` default on) it continues the same message history as one more streamed turn; when the loop already wrote a final answer, that text is replayed as is; only when neither applies does it fall back to a separate synthesis call over the execution trace.
 
-这种拆分是经过刻意设计的。工具迭代以速度为优化目标——循环中的每次LLM调用都使用非流式的`chat()`，因为用户无需看到部分JSON操作或中间推理token。答案生成则以用户体验为优化目标——使用流式的`stream_chat()`，让用户实时看到token逐步出现。这样就兼顾了两者的优势：快速执行工具，并及时交付答案。
+This split is deliberate. Tool iterations are optimized for speed — in JSON mode every LLM call in the loop uses non-streaming `chat()`, because the user does not need to see partial JSON actions; in native function-calling mode the loop uses `stream_chat()` so reasoning tokens reach the client as `thinking` deltas. Answer generation is optimized for UX — it uses streaming `stream_chat()` so the user sees tokens appearing in real time. The result is the best of both worlds: fast tool execution with responsive answer delivery.
 
 ```mermaid
 flowchart TD
-    A["User query"] --> B["Tool loop<br/>(non-streaming chat() x N)"]
+    A["User query"] --> B["Tool loop<br/>(LLM call x N)"]
     B -->|"tool_call"| E["Execute tool"]
     E --> F{"Cycle<br/>detected?"}
     F -->|"No"| B
-    F -->|"Yes"| G["Inject warning:<br/>try different approach"]
+    F -->|"Yes"| G["Warn, then refuse<br/>repeated calls"]
     G --> B
     B -->|"done signal"| H{"tools ≥<br/>threshold?"}
     H -->|"Yes (once)"| I["Completion checklist:<br/>verify answer"]
@@ -27,42 +27,42 @@ flowchart TD
     C --> D["SSE token stream → frontend"]
 ```
 
-工具循环会生成一个包含完整对话历史的`AgentResult`——系统提示词、用户查询、每条智能体消息以及每个工具结果。`stream_answer()`方法会将这条轨迹提炼为简洁、连贯的答案。在合成上下文中，每个工具结果最多截取2,000个字符，即使经过复杂的多工具工作流，也能保持提示词精简。
+The tool loop produces an `AgentResult` containing the full conversation history — system prompt, user query, every assistant message, every tool result. The `stream_answer()` method distills this trace into a concise, coherent answer. In the synthesis fallback, tool results are truncated to 8,000 characters each (`REACT_TOOL_OBS_TRUNCATION`), keeping the prompt lean even after complex multi-tool workflows.
 
-**模型绑定。** LLM会注入`ReActAgent.__init__()`并存储为`self._llm`。单次`run()`调用中的每次调用——包括工具循环的所有迭代和最终答案合成——都使用同一个实例。模型不会在迭代之间发生变化。若要使用其他模型，必须构造新的`ReActAgent`。在DAG模式下，`DAGExecutor._resolve_agent()`利用了这一模式：它会在某个步骤的ReAct循环开始前立即为该步骤创建一个新的智能体，并根据`step.model_hint`从`ModelRegistry`中选择模型。详情请参阅[DAG引擎——按步骤覆盖](/architecture/dag-engine#multi-llm-architecture)。
+**Model binding.** Two LLMs are injected into `ReActAgent.__init__()`: `llm` (stored as `self._llm`) and an optional `fast_llm`. Tool-decision iterations and tool selection run on the fast model when one is given (`self._tool_llm = fast_llm or llm`); `stream_answer()` uses the primary `llm`. Neither changes between iterations. To use a different model, a new `ReActAgent` must be constructed. In DAG mode, `DAGExecutor._resolve_agent()` exploits this pattern: it creates a fresh agent per step (selecting the model from `ModelRegistry` based on `step.model_hint`) immediately before that step's ReAct loop begins. See [DAG Engine — Per-step override](/architecture/dag-engine#multi-llm-architecture) for details.
 
-## 双模式执行
+## Dual-mode execution
 
-ReAct 引擎支持两种不同的模式来与工具循环中的 LLM 交互。
+The ReAct engine supports two distinct modes of interacting with the LLM during the tool loop.
 
-**JSON 模式** (`_run_json`) 将工具描述直接嵌入系统提示中，并指示 LLM 使用 JSON 对象进行响应——要么是带有工具名称和参数的 `tool_call` 操作，要么是 `final_answer` 信号。智能体从响应内容中解析 JSON，执行工具，并将观察结果作为用户消息追加。
+**JSON Mode** (`_run_json`) embeds tool descriptions directly in the system prompt and instructs the LLM to respond with a JSON object — either a `tool_call` action with a tool name and arguments, or a `final_answer` signal. The agent parses the JSON from the response content, executes the tool, and appends the observation as a user message.
 
-**原生函数调用** (`_run_native`) 使用 LLM 提供商的内置工具调用 API。工具描述通过 `tools` 参数传递，LLM 在 API 响应中返回结构化的 `tool_calls`，而不是在其内容中发出 JSON。这是支持该功能的模型的首选模式。
+**Native Function Calling** (`_run_native`) uses the LLM provider's built-in tool-calling API. Tool descriptions are passed via the `tools` parameter, and the LLM returns structured `tool_calls` in the API response rather than emitting JSON in its content. This is the preferred mode for models that support it.
 
-模式选择是自动的。属性 `_native_mode_active` 仅在两个条件都满足时返回 `True`：智能体是使用 `use_native_tools=True`（默认值）创建的，且 LLM 公告 `abilities["tool_call"] = True`。如果任一条件不满足，引擎将回退到 JSON 模式。
+Mode selection is automatic. The property `_native_mode_active` returns `True` only when both conditions hold: the agent was created with `use_native_tools=True` (the default) and the LLM advertises `abilities["tool_call"] = True`. If either condition fails, the engine falls back to JSON mode.
 
-| 方面 | JSON 模式 | 原生函数调用 |
+| Aspect | JSON Mode | Native Function Calling |
 |--------|-----------|------------------------|
-| LLM 输出 | 消息内容中的 JSON 对象 | API 响应中的 `tool_calls` |
-| 系统提示 | 在文本中嵌入完整工具描述 | 通过 `tools` 参数传递工具 |
-| 并行工具调用 | 每次迭代一个工具 | 通过 `asyncio.gather` 多个 |
-| 解析失败处理 | 使用重新格式化提示重试 | 不适用（由 API 结构化） |
-| 循环 LLM 调用 | 非流式 `chat()` | 非流式 `chat()` |
-| 最适合 | 不支持工具调用的模型 | GPT-4、Claude 等 |
+| LLM output | JSON object in message content | `tool_calls` in API response |
+| System prompt | Embeds full tool descriptions in text | Tools passed via `tools` parameter |
+| Parallel tool calls | One tool per iteration | Multiple via `asyncio.gather` |
+| Parse failure handling | Retry with reformat prompt | N/A (structured by API) |
+| Loop LLM calls | Non-streaming `chat()` | Streaming `stream_chat()` |
+| Best for | Models without tool-call support | GPT-4, Claude, and similar |
 
-两种模式共享相同的答案合成阶段——`stream_answer()` 的工作方式与工具循环的运行方式无关。
+Both modes share the same answer synthesis phase — `stream_answer()` works identically regardless of how the tool loop ran.
 
-## structured_llm_call — 统一输出提取
+## structured_llm_call — unified output extraction
 
-任何需要 LLM 返回符合 JSON 模式的数据的调用点都使用 `structured_llm_call()`。这是整个框架中结构化输出的单一入口点 — DAG 规划器、计划分析器、工具选择以及任何需要从 LLM 解析 JSON 的未来组件都使用它。
+Any call site that needs the LLM to return data conforming to a JSON schema uses `structured_llm_call()`. This is the single entry point for structured output across the entire framework — the DAG planner, plan analyzer, tool selection, and any future component that needs parsed JSON from an LLM.
 
-该函数实现了一个 3 级降级链，根据 LLM 声称的能力按顺序尝试每个级别：
+The function implements a 3-level degradation chain, attempting each level in order based on the LLM's advertised capabilities:
 
-**级别 1：原生函数调用。** 使用 LLM 的 `tool_call` / `tool_choice` API 强制返回结构化响应。当 `abilities["tool_call"] = True` 时可用。如果 LLM 返回 `tool_calls`，参数直接提取。如果解析失败，则降级到下一级别。
+**Level 1: Native Function Calling.** Uses the LLM's `tool_call` / `tool_choice` API to force a structured response. Available when `abilities["tool_call"]` is true and `tool_choice` is not disabled. If the LLM returns `tool_calls`, the arguments are extracted directly. If parsing fails, falls through to the next level.
 
-**级别 2：JSON 模式。** 设置 `response_format={"type": "json_object"}` 以限制 LLM 的输出格式。当 `abilities["json_mode"] = True` 时可用。如果响应无法解析，使用重新格式化提示重试一次（"Your previous response could not be parsed as valid JSON..."），然后降级。
+**Level 2: JSON Mode.** Sets `response_format={"type": "json_object"}` to constrain the LLM's output format. Available when `abilities["json_mode"] = True`. If the response cannot be parsed, retries once with a reformat prompt ("Your previous response could not be parsed as valid JSON..."), then falls through.
 
-**级别 3：纯文本。** 调用 LLM 时不施加格式限制，并使用 `extract_json()` 从自由格式文本中提取 JSON。如果提取失败，则尝试可选的 `regex_fallback` 函数。在放弃之前使用重新格式化提示重试一次。
+**Level 3: Plain Text.** Calls the LLM with no format constraints and extracts JSON from free-form text using `extract_json()`. If extraction fails, an optional `regex_fallback` function is tried. Retries once with the reformat prompt before giving up.
 
 ```mermaid
 flowchart TD
@@ -85,31 +85,31 @@ flowchart TD
     DEFAULT -->|No| ERR["Raise StructuredOutputError"]
 ```
 
-降级链意味着每个模型 — 从具有完整工具调用支持的 GPT-4 到只能生成纯文本的本地 LLM — 都可以参与结构化输出场景。最坏情况是 5 次 LLM 调用（1 次原生 + 1 次 JSON + 1 次 JSON 重试 + 1 次纯文本 + 1 次纯文本重试），但实际上大多数调用在级别 1 中一次尝试就能解决。
+The degradation chain means every model — from GPT-4 with full tool-call support to a local LLM that can only produce plain text — can participate in structured output scenarios. The worst case is 5 LLM calls (1 native + 1 JSON + 1 JSON retry + 1 plain + 1 plain retry), but in practice most calls resolve at Level 1 in a single attempt.
 
-| 模型能力 | 路径 | 最大 LLM 调用次数 |
-|---------|------|-----------------|
+| Model capability | Path taken | Max LLM calls |
+|-----------------|------------|---------------|
 | tool_call + json_mode | L1 → L2 → L3 | 5 |
-| 仅 json_mode | L2 → L3 | 4 |
-| 仅纯文本 | L3 | 2 |
+| json_mode only | L2 → L3 | 4 |
+| Plain text only | L3 | 2 |
 
-结果是一个 `StructuredCallResult`，包含解析后的值、原始字典、成功的级别以及累积的 token 使用量。调用点使用 `parse_fn` 将原始字典转换为域对象（例如 DAG 计划），使用 `default_value` 在完全失败可接受时提供回退。
+The result is a `StructuredCallResult` containing the parsed value, the raw dict, which level succeeded, and cumulative token usage. Call sites use `parse_fn` to transform the raw dict into a domain object (e.g., a DAG plan) and `default_value` to provide a fallback when total failure is acceptable.
 
-`structured_llm_call` 被以下组件使用：DAG 规划器（计划模式）、计划分析器（分析模式）、工具选择（工具列表模式）以及任何需要可靠结构化输出的组件。它也在 [Planning Landscape](/architecture/planning-landscape) 中讨论。
+`structured_llm_call` is used by: the DAG planner (plan schema), the plan analyzer (analysis schema), tool selection (tool list schema), and any component that needs reliable structured output. It is also discussed in [Planning Landscape](/architecture/planning-landscape).
 
-## 工具选择
+## Tool selection
 
-当智能体可以访问许多工具时——在 Hub 模式中很常见，其中多个连接器各自公开多个操作——将每个工具的完整架构注入到对话上下文中是浪费的。一个包含 20 个工具的连接器中心仅在工具描述中就消耗大约 5K 个令牌，挤占了对话历史和工具结果的空间。
+When an agent has access to many tools — common when an agent is bound to several connectors that each expose several actions — injecting every tool's full schema into the conversation context is wasteful. An agent with 20 tools consumes roughly 5K tokens in tool descriptions alone, crowding out space for conversation history and tool results.
 
-引擎通过轻量级选择阶段来解决这个问题。当注册工具的总数超过 `TOOL_SELECTION_THRESHOLD`（12）时，智能体在进入主循环之前运行一个初步的 LLM 调用。此调用接收一个紧凑的目录——每个工具大约 80 个字符，仅包含名称和单行描述，没有参数架构——并为当前查询选择最相关的工具，最多 `_TOOL_SELECTION_MAX`（6）个。
+The engine addresses this with a lightweight selection phase. When the total number of registered tools exceeds `TOOL_SELECTION_THRESHOLD` (12), the agent selects a subset before entering the main loop. It first tries a keyword match between the query and the tool names and descriptions; when no tool clearly dominates, it runs a selection call on the fast LLM. This call receives a compact catalog — approximately 80 characters per tool, containing only the name and a one-line description, no parameter schemas — and picks the most relevant tools for the current query, up to `_TOOL_SELECTION_MAX` (6). Pinned tools (`read_skill`, `update_plan`, and in chat `web_search` and `ask_user_question`) and the `request_tools` meta-tool are added on top.
 
-选择使用 `structured_llm_call` 和一个简单的架构（`{"tools": ["tool_name_1", "tool_name_2"]}`），因此它受益于相同的 3 级降级。选定的工具名称用于构建一个过滤的 `ToolRegistry`，主循环将其用于系统提示构造和工具执行。
+The selection uses `structured_llm_call` with a simple schema (`{"tools": ["tool_name_1", "tool_name_2"]}`), so it benefits from the same 3-level degradation. The selected tool names are used to build a filtered `ToolRegistry` that the main loop uses for both system prompt construction and tool execution.
 
-选择失败是故意设计为非致命的。如果 LLM 返回无法解析的输出、所有选定的名称都无效，或发生任何异常，智能体会回退到完整工具集。这确保了有缺陷的选择永远不会阻止智能体的运行——它只是使用比最优情况下更多的上下文。
+Selection failure is deliberately non-fatal. If the LLM returns unparseable output, if all selected names are invalid, or if any exception occurs, the agent falls back to the full tool set. This ensures that a flawed selection never prevents the agent from functioning — it just uses more context than optimal.
 
-## 迭代循环
+## The iteration loop
 
-核心循环驱动 JSON 模式和原生模式，消息处理方式略有不同。每次迭代遵循相同的高级模式：检查上下文预算、调用 LLM、处理响应，然后执行工具或中断。
+The core loop drives both JSON mode and native mode, with minor differences in message handling. Each iteration follows the same high-level pattern: check the context budget, call the LLM, process the response, and either execute a tool or break.
 
 ```mermaid
 sequenceDiagram
@@ -119,13 +119,13 @@ sequenceDiagram
     participant Hooks as HookRegistry
     participant Tool as Tool Registry
 
-    loop Each iteration (max 50)
+    loop Each iteration (max 20 by default)
         Agent->>CG: check_and_compact(messages)
         CG-->>Agent: messages (within budget)
-        Agent->>LLM: chat(messages) [non-streaming]
+        Agent->>LLM: chat(messages) or stream_chat(messages)
         LLM-->>Agent: response
         alt tool_call action
-            Agent->>Hooks: run_pre_tool_use_hooks(ctx)
+            Agent->>Hooks: run_pre_tool(ctx)
             alt hook blocks
                 Hooks-->>Agent: allow=False, error="..."
                 Agent->>Agent: append block message, continue
@@ -133,11 +133,11 @@ sequenceDiagram
                 Hooks-->>Agent: allow=True, modified_args?
                 Agent->>Tool: execute(tool_name, args)
                 Tool-->>Agent: observation
-                Agent->>Hooks: run_post_tool_use_hooks(ctx, result)
+                Agent->>Hooks: run_post_tool(ctx)
                 Hooks-->>Agent: modified_result?
-                Agent->>Agent: cycle check (hash args)
+                Agent->>Agent: cycle check (hash args, before the call runs)
                 opt identical call ≥ threshold
-                    Agent->>Agent: inject "try different approach" warning
+                    Agent->>Agent: warn at 2 identical calls, refuse from 3
                 end
                 Agent->>Agent: append observation, continue
             end
@@ -153,29 +153,29 @@ sequenceDiagram
     LLM-->>Agent: token stream → SSE to client
 ```
 
-**JSON 模式循环。** LLM 的响应通过 `_parse_action()` 解析，该函数使用 `extract_json()` 在内容中查找 JSON 对象。如果解析失败，智能体会附加原始响应和重新格式化请求，然后继续——这会计入 `max_iterations`，防止无限重试循环。成功时，操作要么是 `tool_call`（执行工具，将观察结果作为用户消息附加），要么是 `final_answer`（中断并继续进行合成）。
+**JSON mode loop.** The LLM's response is parsed via `_parse_action()`, which uses `extract_json()` to find a JSON object in the content. If parsing fails, the agent appends the raw response and a reformat request, then continues — this counts against `max_iterations`, preventing infinite retry loops. On success, the action is either a `tool_call` (execute the tool, append the observation as a user message) or a `final_answer` (break and proceed to synthesis).
 
-**原生模式循环。** LLM 的响应可能包含一个或多个 `tool_calls`。单个响应中的所有工具调用通过 `asyncio.gather` 并行执行，所有工具结果消息在任何其他消息之前附加。这个排序约束至关重要——OpenAI API（和兼容提供商）要求 `tool` 消息紧跟在产生 `tool_calls` 的 `assistant` 消息之后。在它们之间插入任何其他消息（例如用户中断）会破坏协议。当不存在 `tool_calls` 时，响应被视为最终答案。
+**Native mode loop.** The LLM's response may contain one or more `tool_calls`. All tool calls in a single response are executed in parallel via `asyncio.gather`, and all tool result messages are appended before any other message. This ordering constraint is critical — the OpenAI API (and compatible providers) requires that `tool` messages immediately follow the `assistant` message that produced the `tool_calls`. Inserting any other message (such as a user interrupt) between them would break the protocol. When no `tool_calls` are present, the response is treated as the final answer.
 
-**最大迭代次数。** 默认限制为 50 次迭代。如果循环在没有产生 `final_answer` 的情况下耗尽此限制，智能体会从累积的步骤结果合成一个回退响应——总结调用了哪些工具以及它们是否成功或失败。这是一个安全网，而不是正常的退出路径。
+**Max iterations.** The web app defaults to 20 iterations (`REACT_MAX_ITERATIONS`; the `ReActAgent` library default is 50), and DAG steps to 15 (`DAG_STEP_MAX_ITERATIONS`). If the loop exhausts this limit without producing a `final_answer`, the agent synthesizes a fallback response from the accumulated step results — a summary of which tools were called and whether they succeeded or failed. This is a safety net, not a normal exit path.
 
-[上下文管理](/architecture/context-management)解释了 ContextGuard 如何在每次迭代上强制执行 token 预算，包括告诉压缩 LLM 保留最近推理链的提示系统。
+[Context Management](/architecture/context-management) explains how ContextGuard enforces the token budget on every iteration, including the hint system that tells the compaction LLM to preserve recent reasoning chains.
 
-## 工具执行钩子
+## Tool execution hooks
 
-迭代循环中的每个工具调用都由两个钩子点包装：
+Every tool call in the iteration loop is wrapped by two hook points:
 
-- **`PreToolUse`** — 在 LLM 选择工具后、工具运行前触发。钩子可以：
-  - **阻止**调用，返回 `allow=False`（LLM 会看到解释原因的观察，例如"等待人工批准"或"组织处于只读模式"）
-  - **重写**工具参数后再执行
-  - **触发副作用**（发送飞书卡片、创建审计行、发出指标）
-- **`PostToolUse`** — 在工具返回后、观察到达 LLM 前触发。钩子可以：
-  - **重写**观察（例如将 200 KB 的 SQL 结果截断为 4 KB 摘要）
-  - **触发副作用**（写入 `ConnectorCallLog`、更新使用计数器）
+- **`PreToolUse`** — fires after the LLM picks a tool, before the tool runs. A hook can:
+  - **Block** the call by returning `allow=False` (the LLM sees an observation explaining why, e.g. "waiting for human approval" or "org is in read-only mode")
+  - **Rewrite** the tool arguments before execution
+  - **Trigger side effects** (post a Feishu card, create an audit row, emit a metric)
+- **`PostToolUse`** — fires after the tool returns, before the observation reaches the LLM. A hook can:
+  - **Rewrite** the observation (e.g. truncate a 200 KB SQL result to a 4 KB summary)
+  - **Trigger side effects** (write to `ConnectorCallLog`, update usage counters)
 
-钩子运行在 **LLM 循环之外** — LLM 说或做的任何事都无法跳过它们。这是对无法信任提示词指令的策略的确定性执行层：人工在环批准（`FeishuGateHook`）、审计日志、速率限制和只读模式保护。详见 [钩子系统](/architecture/hook-system)。
+Hooks run **outside the LLM loop** — nothing the LLM says or does can skip them. This is the deterministic enforcement layer for policies that cannot be trusted to a prompt instruction: today human-in-the-loop approval (`ApprovalGateHook`); the same layer can carry audit logging, rate limiting, and read-only-mode guards. See [Hook System](/architecture/hook-system) for the full design.
 
-相同的钩子点也存在于 [DAG 引擎](/architecture/dag-engine) 中 — 每个 DAG 步骤都运行自己的 ReAct 循环，因此无论哪个执行引擎驱动工具调用，钩子都统一适用。
+The same hook points exist in the [DAG engine](/architecture/dag-engine) — each DAG step runs its own ReAct loop, so hooks apply uniformly regardless of which execution engine is driving the tool call.
 
 ## 中期循环自我反思
 
@@ -192,61 +192,61 @@ sequenceDiagram
 
 这每次注入消耗约 100 个令牌（无额外 LLM 调用），对短运行（`< 6` 个工具调用）无影响。它通过解决不同的失败模式来补充 ContextGuard（管理令牌预算）和逐步验证（验证单个结果）：智能体在多次迭代中失去对目标的关注。
 
-## 循环检测
+## Cycle detection
 
-自我反思会询问LLM是否陷入循环——但LLM经常回答"否"并继续循环。循环检测是一种确定性的替代方案，无法被绕过。
+Self-reflection asks the LLM whether it is going in circles — but the LLM often answers "no" and keeps looping. Cycle detection is a deterministic alternative that cannot be bypassed.
 
-在每次工具执行后，智能体对 `(tool_name, arguments)` 对进行哈希处理。当同一哈希出现 `_CYCLE_DETECTION_THRESHOLD` 次（默认值：**3**，可通过 `REACT_CYCLE_DETECTION_THRESHOLD` 配置）时，会向对话中注入一条警告消息：
+Before each tool call runs, the agent hashes the `(tool_name, arguments)` pair. On the 2nd identical call (`REACT_CYCLE_DETECTION_THRESHOLD`, default **2**) the call still runs and a warning message is injected into the conversation. From the 3rd (`REACT_CYCLE_BLOCK_THRESHOLD`, default **3**) the call is refused and the refusal is returned as the tool result. Three consecutive rounds in which every call was refused (`REACT_STALL_ROUNDS`) end the run with a summary of the steps taken. A second counter tracks calls per URL host and path, ignoring the query string, and warns at 8 and refuses at 15 (`REACT_ENDPOINT_WARN_THRESHOLD` / `REACT_ENDPOINT_BLOCK_THRESHOLD`). The warning reads:
 
 > You have called `{tool}` with identical arguments N times and received the same result. Please try a different approach or tool.
 
-该警告是智能体内部历史记录中的常规用户消息——它不会作为单独的UI事件呈现给最终用户。智能体在下一次LLM调用时会看到该警告，并被迫改变策略。追踪器在每次 `run()` 调用开始时重置。
+The warning is a regular user message in the agent's internal history — it is not surfaced to the end user as a separate UI event. The agent sees the warning on its next LLM call and is forced to change strategy. The tracker resets at the start of each `run()` call.
 
-由于DAG步骤通过ReActAgent执行，循环检测也可以保护单个DAG步骤免受工具调用循环的影响。
+Because DAG steps execute via ReActAgent, cycle detection also protects individual DAG steps from tool-call loops.
 
-## 完成检查清单
+## Completion checklist
 
-当智能体已使用至少`_COMPLETION_CHECK_MIN_TOOLS`个工具（默认值：**3**，可通过`REACT_COMPLETION_CHECK_MIN_TOOLS`配置）并决定生成最终答案时，会在接受答案前注入一次性验证提示：
+When the agent has used at least `_COMPLETION_CHECK_MIN_TOOLS` tools (default: **3**, configurable via `REACT_COMPLETION_CHECK_MIN_TOOLS`) and decides to produce a final answer, a one-time verification prompt is injected before the answer is accepted:
 
-1. 答案是否完全解决了原始问题？
-2. 关键事实是否从工具结果中得到验证？
-3. 收集的信息中是否存在矛盾？
+1. Does the answer fully address the original question?
+2. Were key facts verified from tool results?
+3. Are there contradictions in the gathered information?
 
-清单是内部交互。回答它的轮次是验证，而不是答案——逐字接受它会导致"让我验证：1. ... ✓"泄露到聊天中。因此该轮次在内部被消耗，智能体被再次要求提供面向用户的答案，这正是`stream_answer()`流式传输的内容。如果智能体反而决定某些内容缺失，它会恢复工具调用循环，其后续答案将被原样采用。
+The checklist is an internal exchange. The turn that answers it is verification, not the answer — accepting it verbatim is what leaks "Let me verify: 1. ... ✓" into the chat. So that turn is consumed internally and the agent is asked once more for the user-facing answer, which is what `stream_answer()` streams. If the agent instead decides something is missing, it resumes the tool-call loop and its later answer is taken as-is.
 
-清单每次运行最多触发一次，不会对简单对话响应（未使用工具）触发，并且当剩余迭代预算无法同时覆盖验证轮次和答案轮次时会被跳过。
+The checklist fires at most once per run, does not trigger for simple conversational responses (no tools used), and is skipped when the remaining iteration budget cannot cover both the verification turn and the answer turn, or when the inline final answer is longer than `REACT_COMPLETION_CHECK_SKIP_CHARS` (default 800). An open `update_plan` item forces the check regardless of tool count.
 
-该阈值防止了简单任务上的不必要延迟——单个工具调用（例如，运行快速计算）不需要验证，而多工具调查受益于最终的合理性检查。设置`REACT_COMPLETION_CHECK_MIN_TOOLS=1`以启用始终验证。
+The threshold prevents unnecessary latency on simple tasks — a single tool call (e.g., running a quick calculation) does not warrant verification, while a multi-tool investigation benefits from a final sanity check. Set `REACT_COMPLETION_CHECK_MIN_TOOLS=1` and raise `REACT_COMPLETION_CHECK_SKIP_CHARS` for always-on verification.
 
-该功能默认启用（`ReActAgent`上的`completion_check=True`），可按智能体实例禁用。DAG步骤继承默认值——每个步骤都获得自己的一次性清单。
+The feature is enabled by default (`completion_check=True` on `ReActAgent`) and can be disabled per agent instance. DAG steps inherit the default — each step gets its own one-shot checklist.
 
-## 答案合成 (stream_answer)
+## Answer synthesis (stream_answer)
 
-工具循环和答案合成之间的分离是一个核心架构决策。工具迭代产生原始数据 — JSON 操作、工具观察、错误消息。用户需要一个连贯、格式良好的答案，而不是智能体内部跟踪的转储。
+The separation between the tool loop and answer synthesis is a core architectural decision. Tool iterations produce raw data — JSON actions, tool observations, error messages. The user needs a coherent, well-formatted answer, not a dump of the agent's internal trace.
 
-`stream_answer()` 从两个组件构建合成提示。系统提示指示 LLM 充当合成器：直接呈现结果、使用 markdown 格式、避免元注释（"基于工具输出..."），并匹配原始查询的语言。用户消息包含原始问题和格式化的执行跟踪 — 每个工具调用及其结果，工具结果截断为 2,000 个字符。
+On the synthesis fallback path, `stream_answer()` builds a synthesis prompt from two components. The system prompt instructs the LLM to act as a synthesizer: present results directly, use markdown formatting, avoid meta-commentary ("based on the tool output..."), and match the language of the original query. The user message contains the original question and a formatted execution trace — each tool call and its result, with tool results truncated to 8,000 characters.
 
-合成调用使用 `stream_chat()`，逐步产生令牌。web 层将这些令牌包装在 SSE `answer` 事件中，带有 `delta` 状态，以便前端可以在它们到达时呈现它们。
+The synthesis call uses `stream_chat()`, yielding tokens incrementally. The web layer wraps these tokens in SSE `answer` events with `delta` status so the frontend can render them as they arrive.
 
-如果 `stream_answer()` 失败 — 网络错误、LLM 超时、任何异常 — web 层回退到 `result.answer`，工具循环最后一次迭代中的简短文本。这是一个降级的体验（无流式传输、可能不太精致的散文），但它确保用户始终获得响应。
+If `stream_answer()` fails — network error, LLM timeout, any exception — the web layer falls back to `result.answer`, the brief text from the tool loop's final iteration. This is a degraded experience (no streaming, potentially less polished prose), but it ensures the user always gets a response.
 
-## 中断处理
+## Interruption handling
 
-用户可以在智能体仍在处理时发送后续消息。这些消息通过 `interrupt_queue` 传递——一个按对话注册的 `InterruptQueue`，在迭代之间累积消息。
+Users can send follow-up messages while the agent is still processing. These are delivered via an `interrupt_queue` — an `InterruptQueue` registered per conversation that accumulates messages between iterations.
 
-由于工具调用排序约束，不同模式下的队列排空时机不同：
+The drain timing differs between modes because of the tool-call ordering constraint:
 
-- **JSON 模式**：队列在每条助手消息之后立即排空，在检查操作是否为 `final_answer` 之前。这是安全的，因为 JSON 模式使用普通的用户/助手消息，没有结构配对要求。
+- **JSON mode**: the queue is drained immediately after each assistant message, before checking whether the action is a `final_answer`. This is safe because JSON mode uses plain user/assistant messages with no structural pairing requirements.
 
-- **Native FC 模式**：队列仅在工具结果消息被追加后排空。`tool` 消息必须紧跟在包含 `tool_calls` 的 `assistant` 消息之后——在它们之间插入用户消息会违反 API 协议并导致错误。
+- **Native FC mode**: the queue is drained only after tool result messages have been appended. The `tool` messages must immediately follow the `assistant` message containing `tool_calls` — inserting a user message between them would violate the API protocol and cause errors.
 
-注入的消息被标记为 `pinned=True`，确保它们在 ContextGuard 的任何后续压缩中存活。参见[固定消息](/architecture/context-management#pinned-messages)了解固定机制如何防止压缩丢弃关键消息。
+Injected messages are marked as `pinned=True`, ensuring they survive any subsequent compaction by ContextGuard. See [Pinned Messages](/architecture/context-management#pinned-messages) for how the pinning mechanism prevents compaction from discarding critical messages.
 
-当 `final_answer` 待处理但已有注入消息到达时，智能体会抑制最终答案并继续循环，以便处理用户的后续消息。来自同一次排空的多个注入被合并为单个 `[USER INTERRUPT]` 消息——这防止 LLM 看到碎片化的短消息序列，并鼓励它整体处理所有后续消息。
+When a `final_answer` is pending but injected messages have arrived, the agent suppresses the final answer and continues looping so it can address the user's follow-up. Each injected message is appended as its own pinned `[USER INTERRUPT]` user message, capped at 25,000 characters (`REACT_MAX_INJECT_CHARS`); only the last one carries the instruction to acknowledge and adjust.
 
-## 错误处理和回退
+## Error handling and fallbacks
 
-引擎设计为在 LLM 或工具失败时永不崩溃。每条错误路径要么静默恢复，要么向用户显示有用的消息。
+The engine is designed to never crash on LLM or tool failures. Every error path either recovers silently or surfaces a useful message to the user.
 
 ```mermaid
 flowchart TD
@@ -259,17 +259,17 @@ flowchart TD
     L["stream_answer() failure"] --> M["Fall back to result.answer"]
 ```
 
-**JSON 解析失败。** 当 LLM 在 JSON 模式下返回非 JSON 内容时，`_parse_action()` 将其包装为 `final_answer`，推理内容为 `"(could not parse LLM output as JSON)"`。循环检测到这个哨兵值，追加原始内容和重新格式化指令，然后继续。如果重试也失败，原始内容就成为答案——虽然不完美，但不会导致崩溃。
+**JSON parse failure.** When the LLM returns non-JSON content in JSON mode, `_parse_action()` wraps it as a `final_answer` with the reasoning `"(could not parse LLM output as JSON)"`. The loop detects this sentinel, appends the raw content and a reformat instruction, and continues. If the retry also fails, the raw content becomes the answer — imperfect, but not a crash.
 
-**工具错误。** "工具未找到"和"工具执行异常"都会产生错误观察，这些观察被追加到对话中。LLM 在下一次迭代时看到错误，可以决定是否使用不同的参数重试或继续进行。这使得智能体对于临时工具失败具有自我修复能力。
+**Tool errors.** Both "tool not found" and "tool execution exception" produce error observations that are appended to the conversation. The LLM sees the error on the next iteration and can decide whether to retry with different arguments or move on. This makes the agent self-healing for transient tool failures.
 
-**扩展思考。** DeepSeek R1 等模型在单独的 `reasoning_content` 字段中返回推理内容，而不是在 JSON 正文中。引擎检查这一点，并在 JSON `reasoning` 字段为空时将其用作回退。
+**Extended thinking.** Models like DeepSeek R1 return reasoning content in a separate `reasoning_content` field rather than in the JSON body. The engine checks for this and uses it as a fallback when the JSON `reasoning` field is empty.
 
-**富文本内容。** 当工具生成 HTML 或 markdown 工件时，发送给 LLM 的观察被替换为简短摘要（`"[Artifact generated: filename] The content is rendered as a preview in the UI..."`）。这可以防止 LLM 在最终答案中回显大型 HTML 块——这是一种常见的失败模式，其中模型会有帮助地粘贴回整个工具输出。
+**Rich content.** In native mode, when a tool produces HTML or markdown artifacts, the observation sent to the LLM is replaced with a short summary (`"[Artifact generated: filename] The content is rendered as a preview in the UI..."`). This prevents the LLM from echoing large HTML blobs in its final answer — a common failure mode where the model helpfully pastes back the entire tool output.
 
-## SSE 事件协议
+## SSE event protocol
 
-Web 层将智能体的迭代回调转换为服务器发送事件（Server-Sent Events）供前端使用。事件在两个 SSE 通道上发出：`step` 用于工具循环，`answer` 用于合成阶段。
+The web layer translates the agent's iteration callbacks into Server-Sent Events for the frontend. Events are emitted on two SSE channels: `step` for the tool loop, and `answer` for the synthesis phase.
 
 ```mermaid
 sequenceDiagram
@@ -278,7 +278,7 @@ sequenceDiagram
     participant UI as Frontend
 
     Agent->>SSE: step {type: "thinking", status: "start"}
-    Note over Agent: LLM call (non-streaming)
+    Note over Agent: LLM call
     Agent->>SSE: step {type: "thinking", status: "done", reasoning}
     Agent->>SSE: step {type: "iteration", status: "start", tool_name, tool_args}
     Note over Agent: Tool execution
@@ -293,19 +293,19 @@ sequenceDiagram
     Agent->>SSE: done {answer, iterations, usage, elapsed}
 ```
 
-| 事件 | 通道 | 负载 | 触发时机 |
+| Event | Channel | Payload | When |
 |-------|---------|---------|------|
-| 思考开始 | `step` | `{type: "thinking", status: "start", iteration}` | 每次 LLM 调用前 |
-| 思考完成 | `step` | `{type: "thinking", status: "done", iteration, reasoning}` | LLM 响应后，工具执行前 |
-| 迭代开始 | `step` | `{type: "iteration", status: "start", iteration, tool_name, tool_args}` | 工具执行开始 |
-| 迭代完成 | `step` | `{type: "iteration", status: "done", iteration, tool_name, observation, error, iter_elapsed}` | 工具执行完成 |
-| 答案信号 | `step` | `{type: "answer", status: "start"}` | 智能体发出 final_answer 信号 |
-| 答案开始 | `answer` | `{status: "start"}` | 合成流开始 |
-| 答案增量 | `answer` | `{status: "delta", content}` | 每个流式令牌 |
-| 答案完成 | `answer` | `{status: "done"}` | 合成流完成 |
-| 压缩 | `compact` | `{original_messages, kept_messages}` | 加载时压缩了上下文 |
-| 阶段 | `phase` | `{phase: "selecting_tools", total_tools}` | 工具选择阶段活跃 |
-| 注入 | `inject` | `{type: "inject", content}` | 收到用户中断 |
-| 完成 | `done` | `{answer, iterations, usage, elapsed}` | 最终结果负载 |
+| Thinking start | `step` | `{type: "thinking", status: "start", iteration}` | Before each LLM call |
+| Thinking done | `step` | `{type: "thinking", status: "done", iteration, reasoning}` | After LLM responds, before tool execution |
+| Iteration start | `step` | `{type: "iteration", status: "start", iteration, tool_name, tool_args}` | Tool execution begins |
+| Iteration done | `step` | `{type: "iteration", status: "done", iteration, tool_name, observation, error, iter_elapsed}` | Tool execution completes |
+| Answer signal | `step` | `{type: "answer", status: "start"}` | Agent signals final_answer |
+| Answer start | `answer` | `{status: "start"}` | Synthesis streaming begins |
+| Answer delta | `answer` | `{status: "delta", content}` | Each streamed token |
+| Answer done | `answer` | `{status: "done"}` | Synthesis streaming completes |
+| Compact | `compact` | `{original_messages, kept_messages}` | Context was compacted on load |
+| Phase | `phase` | `{phase: "selecting_tools", total_tools}` | Tool selection phase active |
+| Inject | `inject` | `{type: "inject", content}` | User interrupt received |
+| Done | `done` | `{answer, iterations, usage, elapsed}` | Final result payload |
 
-前端使用 `step` 事件渲染可折叠的工具调用卡片（显示正在运行的工具、其参数和观察结果），使用 `answer` 增量流式传输响应文本，使用 `compact` 显示上下文摘要分隔符。`done` 事件携带完整的元数据——总迭代次数、令牌使用情况和经过的时间——用于响应页脚。
+The frontend uses `step` events to render the collapsible tool-call cards (showing which tool is running, its arguments, and the observation), the `answer` deltas to stream the response text, and `compact` to display the context-summarization divider. The `done` event carries the complete metadata — total iterations, token usage, and elapsed time — for the response footer.

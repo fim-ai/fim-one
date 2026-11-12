@@ -1,27 +1,30 @@
 ---
-title: "信创数据库"
+title: "Xinchuang (信创) Databases"
 icon: "database"
-description: "将 FIM One 连接到国产数据库：KingbaseES、DM8 和 HighGo。"
+description: "Connect FIM One to domestic Chinese databases: KingbaseES, DM8, and HighGo."
 ---
 
-FIM One 的数据库连接器开箱即用地支持 PostgreSQL、MySQL 和 Oracle 线协议。这意味着四个最常见的信创（国产软件）数据库中的三个可以零额外配置工作；只有 DM8（达梦）需要供应商驱动程序。
+FIM One's Database Connector ships five drivers: PostgreSQL, MySQL,
+KingbaseES, HighGo, and DM8. KingbaseES and HighGo speak the PostgreSQL
+wire protocol, so two of the three supported Xinchuang (信创 —
+domestically-produced software) databases work with zero extra glue;
+only DM8 (达梦) needs a vendor driver.
 
-本指南将逐步介绍如何连接每一个。
+This guide walks through connecting each one.
 
 <Info>
-  想了解驱动程序架构？请查看
-  [`src/fim_one/core/tool/connector/database/drivers/`](https://github.com/fim-ai/fim-one/tree/master/src/fim_one/core/tool/connector/database/drivers)。
-  当线协议与 Postgres 兼容时，添加第五个驱动程序大约需要 60 行代码。
+  Looking for the driver architecture? See
+  [`src/fim_one/core/tool/connector/database/drivers/`](https://github.com/fim-ai/fim-one/tree/master/src/fim_one/core/tool/connector/database/drivers).
+  Adding another driver is ~60 lines when the wire protocol is Postgres-compatible.
 </Info>
 
-## 支持矩阵
+## Support matrix
 
-| 数据库         | 厂商                   | 协议                     | 驱动包                           | 状态       |
+| Database       | Vendor                 | Protocol                 | Driver package                 | Status    |
 |----------------|------------------------|--------------------------|--------------------------------|-----------|
-| KingbaseES     | 人大金仓 / Kingbase     | PostgreSQL 线路协议       | `asyncpg` (ships with `[postgres]`) | 可用于生产环境 |
-| HighGo         | 瀚高 / HighGo          | PostgreSQL 线路协议       | `asyncpg` (ships with `[postgres]`) | 可用于生产环境 |
-| DM8            | 达梦 / DaMeng           | 原生 DM 协议              | `dmPython` (vendor wheel)      | 可用于生产环境 |
-| GBase          | 南大通用 / GBase        | ODBC / 原生               | —                              | 暂无计划 |
+| KingbaseES     | 人大金仓 / Kingbase     | PostgreSQL wire protocol | `asyncpg` (ships with `[postgres]`) | Production-ready |
+| HighGo         | 瀚高 / HighGo          | PostgreSQL wire protocol | `asyncpg` (ships with `[postgres]`) | Production-ready |
+| DM8            | 达梦 / DaMeng          | Native DM protocol       | `dmPython` (vendor wheel)      | Production-ready |
 
 ## 1. KingbaseES (人大金仓)
 
@@ -85,7 +88,9 @@ uv run python scripts/test_xinchuang_dbs.py \
 
 ## 3. DM8 (达梦)
 
-DM8 **不是** PostgreSQL 兼容的 — 它有自己的 wire protocol 和目录视图（`ALL_TABLES`、`ALL_TAB_COLUMNS` 等），采用 Oracle 风格。FIM One 提供了一个专用的 `DM8Driver`，它包装了官方的 Python 客户端。
+DM8 is **not** PostgreSQL-compatible — it has its own wire protocol
+and its own catalog views (`ALL_TABLES`, `ALL_TAB_COLUMNS`, ...). FIM One ships a dedicated `DM8Driver` that wraps the
+official Python client.
 
 ### 前置条件：安装 `dmPython`
 
@@ -145,8 +150,8 @@ uv run python scripts/test_xinchuang_dbs.py \
 自 v0.8.1 以来的默认设置），这些工具会融合为单个 `database`
 元工具，包含 `list_tables` / `discover` / `query` 子命令。
 
-## 相关内容
+## Related
 
-- [数据库配置](/configuration/database) — FIM One自身的后端存储
-- [环境变量](/configuration/environment-variables) — `DATABASE_TOOL_MODE`、`CREDENTIAL_ENCRYPTION_KEY`
-- [路线图](/roadmap) — 计划中的工作；GBase及其他企业级驱动程序不在其中
+- [Database configuration](/configuration/database) — backend storage for FIM One itself
+- [Environment variables](/configuration/environment-variables) — `DATABASE_TOOL_MODE`, `CREDENTIAL_ENCRYPTION_KEY`
+- [Roadmap](/roadmap) — planned work; no further database drivers are on it

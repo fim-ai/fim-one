@@ -14,23 +14,23 @@ LLM은 유한한 컨텍스트 윈도우를 가지고 있습니다. 128K 토큰 �
 
 FIM One은 5계층 심층 방어 아키텍처로 이를 해결합니다. 각 계층은 문제의 다른 규모를 다루며, 깔끔하게 구성됩니다 — 어떤 단일 계층도 완벽할 필요가 없습니다. 왜냐하면 다음 계층이 놓친 것을 포착하기 때문입니다.
 
-## 방어의 5개 계층
+## Five layers of defense
 
-컨텍스트 관리는 단일 메커니즘이 아닙니다. 각 계층이 특정 세분성에서 특정 관심사를 처리하는 스택입니다:
+Context management is not a single mechanism. It is a stack, where each layer handles a specific concern at a specific granularity:
 
-| 계층 | 구성 요소 | 역할 | 작동 시점 |
+| Layer | Component | What it does | When it acts |
 |-------|-----------|-------------|-------------|
-| **5** | Budget Configuration | 모델 사양에서 사용 가능한 입력 토큰 예산 계산 | 시작 시 / 요청당 |
-| **4** | DbMemory | 지속된 히스토리 로드, 로드 시 압축 | 요청당 한 번 |
-| **3** | ContextGuard | 반복당 예산 강제 | 모든 ReAct 반복 |
-| **2** | CompactUtils | 토큰 추정, 스마트 자르기, LLM 압축 | 계층 3 및 4에서 호출 |
-| **1** | Memory Implementations | 추상 인터페이스 + 구체적 전략 | 프레임워크 수준 |
+| **5** | Budget Configuration | Computes usable input token budget from model specs | At startup / per-request |
+| **4** | DbMemory | Loads persisted history, compacts on load | Once per request |
+| **3** | ContextGuard | Per-iteration budget enforcement | Every ReAct iteration |
+| **2** | CompactUtils | Token estimation, smart truncation, LLM compaction | Called by layers 3 and 4 |
+| **1** | Memory Implementations | Abstract interface + concrete strategies | Framework-level |
 
-계층은 하위부터 위로 번호가 매겨집니다. 왜냐하면 상위 계층이 하위 계층에 의존하기 때문입니다. 계층 5는 예산을 설정합니다. 계층 4는 로드 시간 압축을 초기에 수행합니다. 계층 3은 모든 반복에서 예산을 강제합니다. 계층 2와 1은 계층 3과 4가 사용하는 기본 요소를 제공합니다.
+The layers are numbered bottom-up because higher layers depend on lower ones. Layer 5 sets the budget. Layer 4 does the initial load-time compaction. Layer 3 enforces the budget on every iteration. Layers 2 and 1 provide the primitives that layers 3 and 4 use.
 
 ```mermaid
 flowchart TD
-    L5["Layer 5: Budget Configuration<br/><i>context_size - max_output</i>"]
+    L5["Layer 5: Budget Configuration<br/><i>(context_size - max_output) × 0.92</i>"]
     L4["Layer 4: DbMemory<br/><i>Load history, compact on load</i>"]
     L3["Layer 3: ContextGuard<br/><i>Per-iteration enforcement</i>"]
     L2["Layer 2: CompactUtils<br/><i>Estimation, truncation, LLM compact</i>"]
@@ -43,82 +43,102 @@ flowchart TD
     L4 -.->|"implements"| L1
 ```
 
-### Layer 5 — 예산 구성
+### Layer 5 — Budget Configuration
 
-예산은 두 가지 값으로 계산됩니다:
+The budget is computed from two values of the model in use:
 
 ```
-usable_input_tokens = context_size - max_output_tokens
+usable_input_tokens = (context_size - max_output_tokens) × 0.92
 ```
 
-기본값: `128,000 - 64,000 = 64,000 tokens`.
+With defaults: `(128,000 - 64,000) × 0.92 = 58,880 tokens`. The 8% margin absorbs the error of heuristic token estimation, so compaction triggers before the provider's hard limit.
 
-정적 시스템 프롬프트 예약은 차감되지 않습니다. 시스템 프롬프트(에이전트 지시사항, 도구 설명, 형식 지정 오버헤드)는 ContextGuard가 동적으로 추정하는 메시지 목록에 포함됩니다. 상단에 고정 예약을 차감하면 중복 계산되어 예산을 낭비하게 됩니다. 일반적인 시스템 프롬프트는 3K-5K 토큰을 소비하며, 많은 도구나 긴 지시사항이 있는 에이전트는 더 많이 사용할 수 있습니다. ContextGuard는 실제 크기를 자동으로 고려합니다.
+No static system prompt reserve is subtracted. The system prompt (agent instructions, tool descriptions, formatting overhead) is included in the message list that ContextGuard estimates dynamically — subtracting a fixed reserve on top would double-count it and waste budget. A typical system prompt consumes 3K-5K tokens; agents with many tools or long instructions may use more. ContextGuard accounts for the actual size automatically.
 
-예산 값은 우선순위 순서로 해결되는 세 가지 소스에서 올 수 있습니다:
+The values come from the models a chat turn resolved: the agent's own model and fast model when it sets them, otherwise the active model group, otherwise the system default. Each resolved model reports its own `context_size` and `max_output_tokens`, so two agents on different models get different budgets in the same deployment.
 
-1. **데이터베이스 ModelConfig** — 관리자가 설정한 모델별 `context_size` 및 `max_output_tokens`.
-2. **환경 변수** — `LLM_CONTEXT_SIZE` 및 `LLM_MAX_OUTPUT_TOKENS`.
-3. **하드코딩된 기본값** — 128K 컨텍스트, 64K 출력.
+A model with no context size configured (the field left empty in its model configuration) falls back to the system budget for its role, resolved in priority order:
 
-메인 LLM과 빠른 LLM은 독립적인 예산을 가집니다. DAG 단계 실행은 빠른 LLM의 예산을 사용하고, ReAct 모드는 메인 LLM의 예산을 사용합니다. 이는 운영자가 종종 ReAct용 대용량 컨텍스트 모델(히스토리가 누적되는 경우)과 DAG 단계용 더 작고 빠른 모델(각 단계가 새로 시작되는 경우)을 쌍으로 사용하기 때문에 중요합니다.
+1. **System ModelConfig for the role** — `context_size` and `max_output_tokens` of the system `general` or `fast` model set by the admin.
+2. **Environment variables** — `LLM_CONTEXT_SIZE` / `FAST_LLM_CONTEXT_SIZE` and `LLM_MAX_OUTPUT_TOKENS`.
+3. **Hardcoded defaults** — 128K context, 64K output.
 
-4,000 토큰의 최소값이 적용됩니다. 잘못 구성된 값이 더 작은 예산을 생성하면 시스템은 조용히 실패하지 않고 4K로 고정합니다.
+The main LLM and fast LLM have independent budgets, and which one applies depends on who reads the message list:
+
+- **ReAct mode** sends one message list to both models: the fast model decides tool calls, the main model writes the final answer (and the fast model stands in when the main model is unavailable). The list is budgeted against the **smaller** of the two budgets, so any mix of windows stays within both. When a legal, medical or similar domain query escalates the turn to the reasoning model, that model's window replaces the main model's in the comparison.
+- **DAG mode** budgets history loading and planning against the main model, and each step against the model that runs it (the general model by default, or the one the step's `model_hint` selects).
+
+At startup the backend logs a warning when the system fast model's window is smaller than the general model's budget: nothing overflows, but conversations compact earlier than the general model alone would need.
+
+A floor of 4,000 tokens is enforced — if misconfigured values would produce a smaller budget, the system clamps to 4K rather than failing silently. One misconfiguration is handled before the floor: when the output reserve is as large as the window itself (a small model whose max output tokens was left at the 64K default), half the window is reserved instead. Set the model's max output tokens to get an exact budget.
 
 ### Layer 4 — DbMemory
 
-`DbMemory`는 프로덕션 메모리 구현입니다. 데이터베이스에서 지속된 대화 기록을 로드하고 에이전트가 보기 전에 토큰 예산에 맞게 압축합니다.
+`DbMemory` is the production memory implementation. It loads persisted conversation history from the database and compacts it to fit the token budget before the agent sees it.
 
-설계는 **의도적으로 읽기 전용**입니다. 지속성은 `chat.py`에서 처리됩니다 — 전체 메시지 수명 주기(메타데이터, 사용량 추적, 이미지 첨부 포함)를 소유하는 API 계층입니다. `DbMemory`는 읽기만 합니다. `add_message()` 및 `clear()` 메서드는 작동하지 않습니다. 이러한 분리는 이중 쓰기를 방지하고 지속성 로직을 한 곳에 유지합니다.
+The design is **read-only by intention**. Persistence is handled by `chat.py` — the API layer that owns the full message lifecycle (including metadata, usage tracking, and image attachments). `DbMemory` does not persist conversation turns: its `add_message()` and `clear()` methods are no-ops, and its only write is a synthetic `tool` result row for a tool call left dangling by an interrupted turn. This separation prevents double-writes and keeps the persistence logic in one place.
 
-로드 시 `DbMemory`는:
+On load, `DbMemory`:
 
-1. 대화의 모든 `user` 및 `assistant` 메시지를 생성 시간 순서로 쿼리합니다.
-2. 후행 사용자 메시지(현재 쿼리, 에이전트가 다시 추가할)를 삭제합니다.
-3. 이미지 첨부를 재구성합니다 — 이미지를 포함한 사용자 메시지는 메타데이터(`file_id`, `mime_type`)를 데이터베이스에 저장하고, `DbMemory`는 디스크에서 base64 data-URL을 재구성하여 LLM이 이전 턴의 이미지를 "볼" 수 있도록 합니다.
-4. 압축: `compact_llm`이 제공된 경우 `CompactUtils.llm_compact()`를 사용합니다. 그렇지 않으면 `CompactUtils.smart_truncate()`로 폴백합니다.
+1. Queries all `user`, `assistant` and `tool` messages for the conversation, ordered by creation time.
+2. Drops the trailing user message (the current query, which the agent will re-append).
+3. Reconstructs image attachments — user messages that included images store metadata (`file_id`, `mime_type`) in the database, and `DbMemory` rebuilds the base64 data-URLs from disk so the LLM can "see" images from earlier turns.
+4. Compacts: if a `compact_llm` was provided, uses `CompactUtils.llm_compact()`. Otherwise, falls back to `CompactUtils.smart_truncate()`. The whole stored conversation is the input here, so this is where the history most often exceeds the summarising model's window; it is then summarised in parts (see [Chunked compaction input](#chunked-compaction-input)).
 
-압축 후 `DbMemory`는 추적 플래그(`was_compacted`, `_original_count`, `_compacted_count`)를 설정하여 SSE 계층이 프론트엔드에 `compact` 이벤트를 내보내는 데 사용합니다.
+After compaction, `DbMemory` sets tracking flags (`was_compacted`, `_original_count`, `_compacted_count`) that the SSE layer uses to emit a `compact` event to the frontend.
 
 ### Layer 3 — ContextGuard
 
-`ContextGuard`는 반복별 예산 집행자입니다. 독립형 ReAct 모드와 DAG 단계 내 에이전트 모두에서 모든 ReAct 반복의 최상단에서 호출됩니다. 이것은 메시지가 LLM API에 도달하기 전의 마지막 방어선입니다.
+`ContextGuard` is the per-iteration budget enforcer. It is called at the top of every ReAct iteration — both in standalone ReAct mode and inside each DAG step's agent. This is the last line of defense before the messages hit the LLM API.
 
-집행은 3단계 프로세스를 따릅니다:
+The enforcement follows a three-step process:
 
-1. **과도한 개별 메시지 자르기.** 50K 문자를 초과하는 단일 메시지는 `[Truncated]` 접미사와 함께 강제로 자릅니다. 이는 웹 스크래핑이 전체 웹페이지를 반환하거나 파일 읽기가 대규모 데이터 세트를 덤프하는 등의 폭주하는 도구 출력을 포착합니다.
+1. **Truncate oversized individual messages.** Any single message exceeding 50K characters is hard-truncated with a `[Truncated]` suffix. This catches runaway tool outputs — a web scrape that returns an entire webpage, a file read that dumps a large dataset.
 
-2. **총 토큰 추정.** 총합이 예산 내에 맞으면 즉시 반환합니다. 대부분의 반복은 여기를 통과합니다 — 압축은 예외이지 규범이 아닙니다.
+2. **Estimate total tokens.** If the total fits within budget, return immediately. Most iterations pass here — compaction is the exception, not the norm.
 
-3. **예산 초과 시 압축.** `compact_llm`을 사용할 수 있으면 힌트별 프롬프트를 사용한 LLM 기반 압축을 사용합니다. 그렇지 않으면 `smart_truncate`로 폴백합니다.
+3. **Compact if over budget.** If a `compact_llm` is available, use LLM-powered compaction with a hint-specific prompt. Otherwise, fall back to `smart_truncate`.
 
-**힌트 시스템**은 ContextGuard를 일률적이지 않은 상황 인식형으로 만드는 것입니다. 다양한 상황에는 다양한 압축 전략이 필요합니다:
+The **hint system** is what makes ContextGuard context-aware rather than one-size-fits-all. Different situations need different compaction strategies:
 
-| 힌트 | 사용처 | 보존 | 삭제 |
+| Hint | Used by | Preserves | Drops |
 |------|---------|-----------|-------|
-| `react_iteration` | ReAct 에이전트 루프 | 최근 추론 체인, 현재 목표, 중요 데이터 | 오래된 중복 단계, 실패한 재시도, 장황한 도구 출력 |
-| `planner_input` | DAG 강화 쿼리 | 사용자 의도 진화, 주요 결정, 제약 조건 | 대화 세부 사항, 인사말, 도구 호출 메커니즘 |
-| `step_dependency` | DAG 단계 컨텍스트 | 핵심 데이터, 숫자, 결론 | 추론 프로세스, 실패한 시도, 장황한 형식 |
-| `general` | 기본 폴백 | 핵심 사실, 결정, 도구 결과 | 인사말, 채우기, 중복 왕복 |
+| `react_iteration` | ReAct agent loop | Recent reasoning chain, current goal, critical data | Old redundant steps, failed retries, verbose tool outputs |
+| `planner_input` | DAG enriched query | User intent evolution, key decisions, constraints | Dialogue details, greetings, tool call mechanics |
+| `step_dependency` | Defined, no caller today | Key data, numbers, conclusions | Reasoning process, failed attempts, verbose formatting |
+| `general` | Default fallback | Key facts, decisions, tool results | Greetings, filler, redundant back-and-forth |
 
-각 힌트는 압축 LLM에 무엇을 유지하고 무엇을 버릴지 알려주는 신중하게 작성된 시스템 프롬프트에 매핑됩니다. 프롬프트는 "대화와 동일한 언어로 작성하세요"로 끝납니다 — CJK 사용자의 요약이 그렇지 않으면 영어로 기본 설정되는 경우에 중요한 세부 사항입니다.
+Each hint maps to a carefully worded system prompt that tells the compaction LLM what to keep and what to discard. Each prompt instructs the LLM to write in the same language as the conversation — a detail that matters for CJK users whose summaries would otherwise default to English.
 
-LLM 압축이 실패하면(네트워크 오류, 빈 응답, 모든 예외), ContextGuard는 조용히 `smart_truncate`로 폴백합니다. 에이전트는 실패를 보지 못합니다. 이는 의도적인 신뢰성 선택입니다: 반복이 충돌하는 것보다 휴리스틱 자르기를 통해 일부 컨텍스트를 잃는 것이 낫습니다.
+If LLM compaction fails (network error, empty response, any exception), ContextGuard falls back to `smart_truncate` silently. The agent never sees the failure. This is a deliberate reliability choice: better to lose some context via heuristic truncation than to crash the iteration.
+
+#### Chunked compaction input
+
+The summariser is the fast model, and its window can be smaller than the history it is asked to condense: a large main model paired with a small fast one, or a long stored conversation loaded by `DbMemory`. Sending that history as one request overflows the summariser, and compaction degrades to truncation exactly when it is needed.
+
+`CompactUtils.summarize_history()` is the single summarising step behind `ContextGuard`, `DbMemory` and the DAG planner-input summary. It takes the summariser's own input budget (from the window that model declares) and guarantees no request exceeds it:
+
+1. History that fits goes out as one request, as before.
+2. Longer history is cut into consecutive parts. A tool call and its results always land in the same part; only a single exchange larger than a whole part is split, and an over-long message is cut rather than dropped.
+3. The parts are folded in order: the first is summarised on its own, and each later request carries the summary so far (capped at 10K tokens, or a quarter of the summariser's budget if smaller) plus the next part, and asks for one updated summary in the same format.
+4. `CONTEXT_GUARD_MAX_COMPACT_CHUNKS` (default 8) bounds the number of requests. History needing more parts keeps the first part and the most recent ones, and the summariser is told there is a gap.
+
+If the compact prompt alone leaves no room for history in the summariser's window, or any part fails, the result is the same `smart_truncate` fallback. The split only concerns the text the summariser reads: the message list kept for the main model still never starts with tool results whose tool call was summarised away.
 
 ### Layer 2 — CompactUtils
 
-`CompactUtils`는 상태 없는 유틸리티 클래스입니다 — 인스턴스 없음, 상태 없음, 순수 함수만 있습니다. 레이어 3과 4가 구축하는 세 가지 기능을 제공합니다.
+`CompactUtils` is a stateless utility class — no instances, no state, just pure functions. It provides three capabilities that layers 3 and 4 build on.
 
-**토큰 추정**은 토크나이저 라이브러리를 임포트하지 않고 텍스트를 대략적인 토큰 수로 변환합니다. 휴리스틱:
+**Token estimation** converts text to an approximate token count without importing a tokenizer library. The heuristic:
 
-- ASCII 문자: ~토큰당 4자
-- CJK / 비ASCII 문자: ~토큰당 1.5자
-- 이미지: 이미지당 765토큰 (고정 비용)
-- 메시지당 오버헤드: 4토큰 (역할 마커, 구분자)
+- ASCII characters: ~4 characters per token
+- CJK / non-ASCII characters: ~1.5 characters per token
+- Images: 765 tokens per image (flat cost)
+- Per-message overhead: 4 tokens (role marker, delimiters)
 
-**`smart_truncate`** 는 휴리스틱 폴백입니다. 고정된 메시지를 무조건 유지한 다음, 고정되지 않은 메시지를 역순으로 탐색하면서 예산이 소진될 때까지 누적합니다. 결과는 맞는 대화의 접미사입니다. 또한 결과가 절대 어시스턴트 메시지로 시작하지 않도록 보장합니다 — 선행 사용자 메시지가 없는 고아 어시스턴트 턴은 LLM을 혼동시킵니다.
+**`smart_truncate`** is the heuristic fallback. It keeps pinned messages unconditionally, then walks backward through non-pinned messages, accumulating until the budget is exhausted. The result is a suffix of the conversation that fits. It also ensures the result never starts with an assistant message — an orphaned assistant turn with no preceding user message confuses LLMs.
 
-**`llm_compact`** 는 LLM 기반 경로입니다. 메시지를 세 그룹으로 분할합니다 — 시스템 메시지 (항상 유지), 고정된 메시지 (항상 유지), 압축 가능한 메시지. 가장 오래된 압축 가능한 메시지는 단일 `[Conversation summary]` 시스템 메시지로 요약되고, 가장 최근 4개 메시지는 그대로 유지됩니다. 압축된 결과가 여전히 너무 길면, 압축된 출력에 대해 `smart_truncate`로 폴백합니다 — 이중 안전장치입니다.
+**`llm_compact`** is the LLM-powered path. It splits messages into three groups — system messages (always kept), pinned messages (always kept), and compactable messages. The oldest compactable messages are summarized into a single `[Conversation summary]` system message (in parts when they exceed the summariser's window); the most recent 4 messages are kept verbatim, more when the cut would otherwise separate a tool call from its results. If the compacted result is still too long, it falls back to `smart_truncate` on the compacted output — belt and suspenders.
 
 ### Layer 1 — 메모리 구현
 
@@ -132,9 +152,9 @@ LLM 압축이 실패하면(네트워크 오류, 빈 응답, 모든 예외), Cont
 
 WindowMemory와 SummaryMemory는 테스트를 위한 유용한 프리미티브로 사용되고 웹 레이어 없이 FIM One의 핵심 라이브러리를 임베드하는 사용자를 위해 코드베이스에 남아 있습니다. 이들은 죽은 코드가 아니라 아키텍처가 성장해 나온 단순한 경우들입니다.
 
-## ReAct를 통한 컨텍스트 흐름
+## How context flows through ReAct
 
-ReAct 에이전트는 두 가지 서로 다른 단계에서 컨텍스트 관리를 사용합니다: 로드 시간과 반복 시간.
+The ReAct agent uses context management at two distinct phases: load time and iteration time.
 
 ```mermaid
 sequenceDiagram
@@ -151,7 +171,7 @@ sequenceDiagram
     Chat->>Agent: run(query)
     Agent->>Agent: Assemble: system + history + pinned query
 
-    loop Each iteration (non-streaming)
+    loop Each iteration
         Agent->>CG: check_and_compact(messages, hint="react_iteration")
         CG->>CG: Truncate oversized, estimate, compact if needed
         CG-->>Agent: messages (within budget)
@@ -178,15 +198,15 @@ sequenceDiagram
     Chat->>Chat: Persist, emit compact SSE if compacted
 ```
 
-도구 반복은 속도를 위해 스트리밍되지 않는 `chat()`을 사용하고, 답변 합성은 `stream_answer()`를 통해 스트리밍 `stream_chat()`을 사용합니다. 이러한 두 단계 분할 — 빠른 도구 루프 다음에 스트리밍 합성 — 은 지연 시간과 사용자 경험을 모두 최적화합니다. 이중 모드 실행 및 도구 선택을 포함한 전체 ReAct 엔진 아키텍처는 [ReAct Engine](/architecture/react-engine)을 참조하세요.
+Tool iterations run on the fast model when one is configured (non-streaming `chat()` in JSON mode, `stream_chat()` in native mode); the answer is streamed through `stream_answer()`. This two-phase split — tool loop followed by a streamed answer — optimizes both latency and user experience. For full ReAct engine architecture including dual-mode execution and tool selection, see [ReAct Engine](/architecture/react-engine).
 
-핵심 통찰: **DbMemory는 과거 컨텍스트 문제(이전 요청의 턴)를 처리하고, ContextGuard는 요청 내 성장 문제(에이전트 루프 중에 누적되는 도구 결과)를 처리합니다.** 이들은 서로 다른 시간 척도에서 작동하며 서로 다른 실패 모드를 포착합니다.
+The key insight: **DbMemory handles the historical context problem (turns from previous requests), while ContextGuard handles the within-request growth problem (tool results accumulating during an agent loop).** They operate at different timescales and catch different failure modes.
 
-사용자의 현재 쿼리는 항상 `pinned=True`로 표시됩니다. 이는 모든 압축에서 생존을 보장합니다 — `smart_truncate`와 `llm_compact` 모두 고정된 메시지를 무조건 보존합니다. 기록이 얼마나 공격적으로 압축되든 사용자의 실제 질문은 절대 손실되지 않습니다.
+The user's current query is always marked as `pinned=True`. This ensures it survives all compaction — both `smart_truncate` and `llm_compact` preserve pinned messages unconditionally. No matter how aggressively the history is compressed, the user's actual question is never lost.
 
-## DAG를 통한 컨텍스트 흐름
+## How context flows through DAG
 
-DAG 모드는 ReAct와 근본적으로 다른 컨텍스트 형태를 가지고 있습니다. 하나의 긴 대화 스레드 대신 트리 구조를 가지고 있습니다: 계획 단계, 여러 병렬 실행 단계, 분석 단계. 각 단계는 자체 컨텍스트 관리 전략을 가지고 있습니다.
+DAG mode has a fundamentally different context shape than ReAct. Instead of one long conversation thread, it has a tree: a planning phase, multiple parallel execution steps, and an analysis phase. Each phase has its own context management strategy.
 
 ```mermaid
 flowchart TD
@@ -204,24 +224,24 @@ flowchart TD
     I --> K
     J --> K
     K --> L{"Achieved?"}
-    L -->|No, low confidence| M["6. Replan: 500-char step summaries"]
+    L -->|No, recoverable| M["6. Replan: 500-char step summaries"]
     M --> F
     L -->|Yes| N["stream_synthesize → Final answer"]
 ```
 
-**단계 1 — 히스토리 로딩.** DbMemory는 ReAct와 동일하게 대화 히스토리를 로드하고 압축합니다. 압축된 히스토리는 `"Previous conversation:"`으로 접두사가 붙은 텍스트 블록으로 포맷됩니다.
+**Phase 1 — History loading.** DbMemory loads and compacts conversation history, same as ReAct. The compacted history is formatted into a text block prefixed with `"Previous conversation:"`.
 
-**단계 2 — 풍부한 쿼리 구성.** 히스토리 텍스트와 현재 쿼리가 `enriched_query`로 결합됩니다. 이것이 16K 토큰을 초과하면 `planner_input` 힌트 프롬프트를 사용하여 LLM으로 요약됩니다. 16K 임계값은 플래너가 전체 쿼리를 한 번에 읽어야 하기 때문에 선택되었습니다 — ReAct와 달리 계획 중에 반복적인 압축이 없습니다.
+**Phase 2 — Enriched query construction.** The history text and current query are combined into an `enriched_query`. If this exceeds 16K tokens, it is LLM-summarized using the `planner_input` hint prompt, in parts when the history exceeds the fast model's window. The 16K threshold is chosen because the planner needs to read the entire query in a single pass — unlike ReAct, there is no iterative compaction during planning.
 
-**단계 3 — 계획.** 플래너는 2개 메시지 프롬프트를 받습니다: 시스템 프롬프트와 풍부한 쿼리. ContextGuard가 없습니다 — 풍부한 쿼리는 이미 16K 체크로 크기가 제어됩니다.
+**Phase 3 — Planning.** The planner receives a 2-message prompt: system prompt plus enriched query. No ContextGuard here — the enriched query is already size-controlled by the 16K check.
 
-**단계 4 — 단계 실행.** 각 DAG 단계는 자체 ContextGuard를 가진 독립적인 ReAct 에이전트로 실행됩니다. 중요한 점은 이러한 단계 에이전트는 **메모리가 없다**는 것입니다 — 작업 설명과 의존성 컨텍스트만으로 새로 시작합니다. 이는 의도적입니다: DAG 단계는 자체 포함된 작업 단위여야 합니다. 의존성 결과는 `_build_step_context`를 통해 주입되며, ContextGuard의 `max_message_chars` 제한인 50K에서 문자 단위로 잘립니다.
+**Phase 4 — Step execution.** Each DAG step runs as an independent ReAct agent with its own ContextGuard. Critically, these step agents have **no memory** — they start fresh with only their task description and dependency context. This is by design: DAG steps should be self-contained units of work. Dependency results are injected via `_build_step_context`, which character-truncates at 50K (the ContextGuard's `max_message_chars` limit).
 
-**단계 5 — 분석.** 단계 결과는 분석기 LLM을 위해 단계별로 10K 문자에서 잘려서 포맷됩니다. 이는 단일 단계의 상세한 출력이 분석 컨텍스트를 지배하는 것을 방지합니다.
+**Phase 5 — Analysis.** Step results are formatted for the analyzer LLM with per-step truncation at 10K characters. This prevents a single step's verbose output from dominating the analysis context.
 
-**단계 6 — 재계획.** 분석기가 목표가 달성되지 않았고 신뢰도가 임계값 아래라고 판단할 때, 단계 결과는 재계획 컨텍스트를 위해 각각 500자로만 잘립니다. 재계획은 *무엇이 일어났는지*와 *무엇이 잘못되었는지*를 알아야 하지만, 모든 단계의 출력의 전체 세부사항은 필요하지 않습니다. 이 적극적인 잘라내기는 재계획 프롬프트를 플래너가 효율적으로 처리할 수 있을 정도로 간결하게 유지합니다.
+**Phase 6 — Replanning.** When the analyzer determines the goal was not achieved and does not judge it unreachable, step results are truncated to 500 characters each for the latest round (200 for older rounds) in the replanning context. Replanning needs to know *what happened* and *what went wrong*, not the full detail of every step's output. This aggressive truncation keeps the replan prompt compact enough for the planner to process efficiently.
 
-전체 DAG 파이프라인 아키텍처(LLM Call Map 및 재계획 로직 포함)는 [DAG Engine](/architecture/dag-engine)을 참조하세요.
+For the full DAG pipeline architecture including the LLM Call Map and re-planning logic, see [DAG Engine](/architecture/dag-engine).
 
 ## 고정된 메시지
 
@@ -235,37 +255,37 @@ flowchart TD
 
 이것은 트레이드오프입니다. 오래된 주입된 메시지의 고정을 해제하면 이들이 요약되거나 잘릴 수 있습니다. 하지만 대안 — 고정된 메시지가 다른 모든 컨텍스트를 밀어내도록 허용하는 것 — 은 더 나쁩니다. 시스템은 가장 최근의 컨텍스트를 유지하는 것을 선호하며, 이는 거의 항상 오래된 주입보다 더 관련성이 있습니다.
 
-## 토큰 추정
+## Token estimation
 
-FIM One은 실제 토크나이저 대신 휴리스틱 토큰 추정을 사용합니다. 이는 명확한 장단점이 있는 의도적인 선택입니다.
+FIM One uses heuristic token estimation rather than a real tokenizer. This is a deliberate choice with clear trade-offs.
 
-**실제 토크나이저를 사용하지 않는 이유?** 세 가지 이유가 있습니다:
+**Why not a real tokenizer?** Three reasons:
 
-1. **의존성 비용.** `tiktoken`(OpenAI의 토크나이저)은 15MB의 컴파일된 Rust 바인딩입니다. `sentencepiece`(일부 오픈소스 모델에서 사용)는 자체 빌드 요구사항이 있습니다. 여러 LLM 제공자를 대상으로 하는 프레임워크의 경우, 단일 정확한 토크나이저는 없습니다 — 각 모델 계열이 다른 것을 사용합니다.
+1. **Dependency cost.** `tiktoken` (OpenAI's tokenizer) is 15MB of compiled Rust bindings. `sentencepiece` (used by some open-source models) has its own build requirements. For a framework that targets multiple LLM providers, there is no single correct tokenizer — each model family uses a different one.
 
-2. **속도.** 휴리스틱 추정은 문자열에 대한 단일 패스입니다. 실제 토큰화는 어휘 조회, BPE 병합 작업, 특수 토큰 처리를 포함합니다. ContextGuard는 매 반복마다 추정을 호출하며, 때로는 여러 번 호출합니다 — 속도 차이가 중요합니다.
+2. **Speed.** Heuristic estimation is a single pass over the string. Real tokenization involves vocabulary lookup, BPE merge operations, and special token handling. ContextGuard calls estimation on every iteration, sometimes multiple times — the speed difference matters.
 
-3. **충분히 좋음.** 휴리스틱은 혼합 언어 텍스트에 맞게 조정되었습니다(ASCII/CJK 분할은 두 가지 주요 경우를 다룹니다). 엣지 케이스(많은 구두점이 있는 코드, 특이한 유니코드)의 경우 1.5-2배 정도 벗어날 수 있지만, 컨텍스트 관리는 본질적으로 근사치입니다. 64K 예산에서 30% 벗어나도 여전히 충분한 여유가 있습니다.
+3. **Good enough.** The heuristic is tuned for mixed-language text (the ASCII/CJK split covers the two major cases). It can be 1.5-2x off for edge cases (heavily punctuated code, unusual Unicode), but context management is inherently approximate. Being 30% off on a ~59K budget still leaves a comfortable margin.
 
-구체적인 휴리스틱:
+The concrete heuristics:
 
-| 콘텐츠 유형 | 비율 | 근거 |
+| Content type | Ratio | Rationale |
 |-------------|-------|-----------|
-| ASCII 텍스트 | ~4자/토큰 | 영어 산문과 코드는 GPT/Claude 토크나이저 전반에서 평균 3.5-4.5자/토큰 |
-| CJK / 비ASCII | ~1.5자/토큰 | 각 CJK 문자는 일반적으로 1-2개 토큰; 1.5는 기하 평균 |
-| 이미지 | 765토큰/이미지 | 비전 API에서 base64 인코딩된 이미지의 대략적인 비용 |
-| 메시지당 오버헤드 | 4토큰 | 역할 마커, 구분자, 포매팅 |
+| ASCII text | ~4 chars/token | English prose and code average 3.5-4.5 chars/token across GPT/Claude tokenizers |
+| CJK / non-ASCII | ~1.5 chars/token | Each CJK character is typically 1-2 tokens; 1.5 is the geometric mean |
+| Images | 765 tokens/image | Approximate cost of a base64-encoded image in the vision API |
+| Per-message overhead | 4 tokens | Role marker, delimiters, formatting |
 
-추정은 비어있지 않은 콘텐츠에 대해 항상 최소 1개 토큰을 반환합니다. 이는 예산 산술에서 0으로 나누기 엣지 케이스를 방지합니다.
+The estimation always returns at least 1 token for non-empty content. This prevents division-by-zero edge cases in budget arithmetic.
 
-## 사용자가 보는 것
+## What the user sees
 
-컨텍스트 관리는 일반적인 경우에는 보이지 않도록 설계되었으며, 활성화될 때만 최소한의 방해를 줍니다. 사용자 대면 신호는 다음과 같습니다:
+Context management is designed to be invisible in the common case and minimally intrusive when it activates. The user-facing signals are:
 
-**CompactDivider.** `DbMemory`가 로드 시 히스토리를 압축할 때, 프론트엔드는 "Earlier context (N messages) was summarized by AI."라는 텍스트가 있는 점선 구분선을 렌더링합니다. 이는 요약과 보존된 최근 메시지 사이에 나타나며, 사용자에게 이전 컨텍스트가 압축되었음을 시각적으로 알려주면서 대화 흐름을 방해하지 않습니다.
+**CompactDivider.** When `DbMemory` compacts history on load, the frontend renders a dashed divider with the text "Earlier context (N messages) was summarized by AI." This appears between the summary and the preserved recent messages, giving the user a visual cue that older context has been compressed without interrupting the conversation flow.
 
-**토큰 사용량 표시.** 각 응답 끝의 `done` 카드는 "X.Xk in / X.Xk out"을 표시합니다 — 소비된 총 입력 및 출력 토큰입니다. 여기에는 압축에 소비된 토큰(요약을 위한 빠른 LLM 호출)이 포함됩니다. 토큰 소비를 모니터링하는 사용자는 압축이 오버헤드를 추가할 때를 볼 수 있습니다.
+**Token usage display.** The `done` card at the end of each response shows "X.Xk in / X.Xk out" — the total input and output tokens consumed. Tokens the fast LLM spends on compaction are not included in this figure.
 
-**우아한 오류 처리.** 컨텍스트 관리가 완전히 실패하면 — 폴백 체인이 주어진 상황에서는 발생하지 않아야 하지만 이론상 가능한 시나리오 — 오류는 응답의 에이전트 오류 텍스트로 표시되며, 시스템 충돌이 아닙니다. 대화는 계속되고 사용자는 재시도하거나 다시 표현할 수 있습니다.
+**Graceful error handling.** If context management fails entirely — a scenario that should not happen given the fallback chain, but could in theory — the error surfaces as agent error text in the response, not as a system crash. The conversation continues; the user can retry or rephrase.
 
-목표는 대부분의 사용자가 컨텍스트 관리에 대해 생각하지 않는 것입니다. 사용자는 긴 대화를 나누고, 시스템이 예산을 투명하게 처리하며, 유일한 가시적 결과물은 가끔 나타나는 압축 구분선입니다. 토큰 효율성을 신경 쓰는 파워 사용자와 운영자의 경우, 사용량 표시와 구성 가능한 예산 매개변수가 필요한 제어를 제공합니다.
+The goal is that most users never think about context management. They have long conversations, the system handles the budget transparently, and the only visible artifact is an occasional compact divider. For power users and operators who care about token efficiency, the usage display and the configurable budget parameters provide the control they need.

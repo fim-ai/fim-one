@@ -4,17 +4,21 @@ icon: "route"
 description: "独立、副驾驶和中心三种部署 FIM One 的方式。"
 ---
 
-## 三种模式
+## Three modes
 
-FIM One 根据智能体的部署和使用方式，运行在三种模式中：
+FIM One operates in three modes, determined by how the agent is deployed and used:
 
-| 模式 | 定义 | 交付方式 | 示例 |
+| Mode | What it is | Delivery | Example |
 |------|-----------|----------|---------|
-| **独立模式** | 通用 AI 助手 | 门户 | 聊天、搜索、代码执行、知识库问答 |
-| **副驾驶模式** | 嵌入宿主系统的 AI | iframe / 小部件 / 嵌入 | "财务副驾驶"嵌入 ERP 网页界面 |
-| **中枢模式** | 中央跨系统编排 | 门户 / API | 智能体查询 ERP、检查 OA 审批、通过 Lark 通知 |
+| **Standalone** | General-purpose AI assistant | Portal | Chat, search, code execution, knowledge base Q&A |
+| **Copilot** | AI embedded in a host system | API today; iframe / widget embed is planned | "Finance Copilot" embedded in ERP web UI |
+| **Hub** | Central cross-system orchestration | Portal / API | Agent queries ERP, checks OA approvals, notifies via Lark |
 
-这个过程是自然递进的：从独立模式开始，将其嵌入宿主系统作为副驾驶模式，然后设置中枢模式进行跨系统编排。副驾驶模式保持嵌入运行；中枢模式添加了一个中央编排层。
+The progression is natural: start standalone, embed into a host system as a Copilot, then set up a Hub for cross-system orchestration. The Copilot keeps running embedded; the Hub adds a central orchestration layer.
+
+<Note>
+FIM One does not ship an embeddable iframe or widget yet. Today a Copilot is built by calling the API from the host system's own UI; the drop-in embed is planned.
+</Note>
 
 ## 模式详情
 
@@ -29,26 +33,26 @@ FIM One 根据智能体的部署和使用方式，运行在三种模式中：
 
 无需外部系统访问。适用于常规分析、研究和代码任务。
 
-### Copilot（嵌入式）
+### Copilot (embedded)
 
-将 FIM One 嵌入到主机系统的网页 UI 中。智能体在用户熟悉的界面中与用户协作——无需切换上下文。Copilot 模式可以使用多个连接器（例如，主机系统的数据库 + 通知服务）。
+Put FIM One inside a host system's web UI, today by having the host page call the API. The agent works alongside users in their familiar interface — no context switching required. Copilot mode can use multiple connectors (e.g., the host system's DB + a notification service).
 
 ```mermaid
 flowchart LR
   subgraph Host["Host System (ERP / CRM / OA)"]
-    Copilot["FIM One Copilot<br/>(iframe / widget)"]
+    Copilot["FIM One Copilot<br/>(host UI + API)"]
   end
   Copilot -- Connectors --> DB["DB"]
   Copilot -- Connectors --> API["API"]
   Copilot -- Connectors --> Lark["Lark"]
 ```
 
-示例：
-- **财务 Copilot**：通过数据库连接器连接到金蝶 → 查询财务报表、生成分析报告
-- **合同 Copilot**：通过 API 连接器连接到合同管理系统 → 搜索合同、提取条款、评估风险
-- **人力资源 Copilot**：通过 API 连接器连接到人力资源系统 → 查询员工信息、生成统计数据
+Examples:
+- **Finance Copilot**: Connected to Kingdee (金蝶) via DB connector → query financial statements, generate analysis reports
+- **Contract Copilot**: Connected to contract management system via API connector → search contracts, extract clauses, assess risk
+- **HR Copilot**: Connected to HR system via API connector → query employee info, generate statistics
 
-智能体使用与独立模式相同的 ReAct/DAG 引擎，但现在可以通过连接器访问真实的业务数据。
+The agent uses the same ReAct/DAG engine as Standalone mode, but now has access to real business data through the connector.
 
 ### Hub（中央编排）
 
@@ -71,24 +75,24 @@ flowchart LR
 
 每个连接器都是独立的桥梁。添加或删除一个不会影响其他的。
 
-## 交付方式
+## Delivery methods
 
-| 交付方式 | 描述 | 典型模式 |
+| Delivery | Description | Typical mode |
 |----------|-------------|-------------|
-| **Portal (Web UI)** | 内置 Next.js 界面 | 独立部署、Hub |
-| **API (无头)** | HTTP/SSE 端点 (`/api/execute`, `/api/stream`) | Hub (程序化访问) |
-| **iframe / 嵌入** | 注入到宿主系统页面中 | Copilot |
+| **Portal (Web UI)** | Built-in Next.js interface | Standalone, Hub |
+| **API (headless)** | HTTP/SSE endpoints (`POST /api/react`, `/api/dag`, `/api/auto`) | Hub (programmatic access), Copilot |
+| **iframe / Embed** | Injected into host system pages (planned, not shipped) | Copilot |
 
-交付方式和模式相关但不绑定：你可以通过 API 访问 Hub，或通过 Portal 使用独立部署的智能体。但典型的模式是 Portal 用于 Hub，嵌入用于 Copilot。
+Delivery and mode are related but not locked: you can access a Hub via API, or use a standalone agent through the Portal. But the typical pattern is Portal for Hub and the API for Copilot.
 
-## 执行引擎（内部实现）
+## Execution engines (internal implementation)
 
-在幕后，FIM One 提供两个执行引擎：
+Under the hood, FIM One provides two execution engines:
 
-| 引擎 | 最适合 | 工作原理 |
+| Engine | Best for | How it works |
 |--------|----------|-------------|
-| **ReAct** | 单个复杂查询 | 推理 → 行动 → 观察循环与工具 |
-| **DAG Planning** | 多步骤并行任务 | LLM 生成依赖图，独立步骤并发运行 |
+| **ReAct** | Single complex queries | Reason → Act → Observe loop with tools |
+| **DAG Planning** | Multi-step parallel tasks | LLM generates dependency graph, independent steps run concurrently |
 
 ```mermaid
 flowchart TD
@@ -101,23 +105,29 @@ flowchart TD
   step_3 --> ReAct3["ReAct Agent"] --> Tools3["Tools"]
 ```
 
-ReAct 是原子单位；DAG 是编排层。两个引擎在所有三种模式（独立模式、副驾驶模式、Hub 模式）中都可工作。在 Hub 模式中，单个 DAG 步骤可能会调用不同系统的连接器。
+ReAct is the atomic unit; DAG is the orchestration layer. Both engines work in all three modes (Standalone, Copilot, Hub). In Hub mode, a single DAG step might call connectors to different systems.
 
-## 两种执行范式
+New agents and plain chat run on ReAct by default. DAG can be selected per agent or per message, and Auto lets a fast model pick between the two for each request.
 
-FIM One 提供两种互补的范式来完成工作：
+## Two execution paradigms
 
-| 范式 | 编排 | 最适合 |
+FIM One provides two complementary paradigms for getting work done:
+
+| Paradigm | Orchestration | Best for |
 |----------|--------------|----------|
-| **智能体（聊天）** | LLM 动态决定下一步（ReAct 或 DAG） | 探索性任务、对话、灵活推理 |
-| **工作流** | 在设计时定义的固定 DAG（可视化编辑器、26 种节点类型） | 审批链、定时 ETL、多步自动化 |
+| **Agent (Chat)** | LLM decides next step dynamically (ReAct or DAG) | Exploratory tasks, conversations, flexible reasoning |
+| **Workflow** | Fixed DAG defined at design time (visual editor, 9 node types) | Approval chains, scheduled runs, multi-step automations |
 
-**智能体**在任务开放式时表现出色——"分析本季度数据并推荐行动"。LLM 即时规划和适应。
+**Agents** excel when the task is open-ended — "analyze this quarter's data and recommend actions." The LLM plans and adapts on the fly.
 
-**工作流**在流程已知且可重复时表现出色——"每周一，从 ERP 拉取发票、运行合规检查、将异常路由给审核者"。可视化编辑器让你将节点（智能体、连接器、知识库、LLM、HTTP、代码、人工审批、子工作流）连接到固定的 DAG 中。
+**Workflows** excel when the process is known and repeatable — "every Monday, pull invoices from ERP, run compliance checks, route exceptions to a reviewer." The visual editor lets you wire nodes (Start, End, LLM, Condition Branch, Agent, Knowledge Retrieval, Connector, MCP, Human Intervention) into a fixed DAG.
 
-这两种范式可以自然地组合：工作流可以在任何需要灵活推理的步骤调用智能体，以在其他固定管道中进行推理。智能体无法直接调用工作流——这种关系是单向的。
+**Runs, approvals and inputs.** A run belongs to whoever started it (for a trigger key or a schedule, the workflow's owner) and does not depend on the browser tab that started it: close the tab and it continues; reopen the workflow or its Run History to see where it is. A run that reaches a Human Intervention step, or a Connector step whose action requires confirmation, is stored as *waiting* (encrypted) and takes no server resources while it waits. Whoever may decide (the assignee of an approval step, otherwise the person the run belongs to) finds the request under Workflows → Approvals and approves or rejects it there. The run then continues after the step, or fails at it when the request is rejected or runs out of time, including when the server was restarted in between. Before it continues, the run is checked like a new run would be (accounts, quota, plan) and it takes a concurrent-run slot; what a confirmed connector action sends is exactly what the request showed. The Start step lists the workflow's inputs with a type (Text, Number, Boolean, JSON, List) and whether each is required; with its "Check inputs before a run starts" switch on, a run whose inputs do not fit is refused before any step runs, with an error naming the input. A required input must be given (or have a default); an optional input left empty is not passed to the steps, except a Text input, for which empty text is itself a value. A run that was executing when the server stopped is closed as failed and can be started again.
+
+Workflows are an optional module, off by default. An administrator turns it on under Admin → Settings → Modules; until then the Workflows page, its APIs and triggers are unavailable.
+
+The two paradigms compose in both directions. A Workflow can invoke an Agent at any step that needs flexible reasoning within an otherwise fixed pipeline. An Agent can run a Workflow mid-conversation through the `run_workflow` tool, which is offered for active workflows without a Human Intervention step that the user owns or has subscribed to; the run uses the chatting user's credentials and token quota.
 
 <Tip>
-**何时选择哪一种：** 如果你发现自己在为智能体编写非常具体的分步说明，该流程可能应该在工作流中。如果任务需要判断、探索或适应意外数据，请将其保持为智能体。
+**When to choose which:** If you find yourself writing very specific, step-by-step instructions for an Agent, that process probably belongs in a Workflow. If the task requires judgment, exploration, or adapting to unexpected data, keep it as an Agent.
 </Tip>

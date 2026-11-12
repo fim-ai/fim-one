@@ -1,18 +1,18 @@
 ---
-title: "커넥터 아키텍처"
+title: "Connector Architecture"
 icon: "link"
-description: "FIM One이 AI를 통해 레거시 시스템을 연결하는 방식 — Copilot에서 Hub까지."
+description: "How FIM One connects existing systems to agents: API connectors, database connectors, and MCP servers."
 ---
 
 ## Copilot vs Hub
 
-아키텍처는 두 가지 통합 규모를 지원합니다:
+The architecture supports two integration scales:
 
 ```mermaid
 flowchart TD
     subgraph Copilot["Copilot (embedded)"]
         subgraph Host["Host System (ERP)"]
-            C["FIM One Copilot<br/>(iframe / widget)"]
+            C["FIM One Copilot<br/>(host UI + API)"]
         end
         C --> DB1["DB"]
         C --> API1["API"]
@@ -29,59 +29,60 @@ flowchart TD
     end
 ```
 
-**Copilot**은 호스트 시스템의 UI에 내장됩니다. 사용자는 익숙한 인터페이스를 떠나지 않고 AI와 상호작용합니다. 여러 커넥터(호스트 DB + 알림 서비스 등)를 사용할 수 있습니다.
+**Copilot** puts the agent inside a host system's UI, today by having the host page call the FIM One API (a drop-in iframe / widget embed is planned). Users interact with AI without leaving their familiar interface. It can use multiple connectors (host DB + notification service, etc.).
 
-**Hub**는 모든 시스템을 연결하는 독립형 포털입니다. 단일 시스템에 내장되지 않으며, 시스템과 AI가 만나는 중앙 인텔리전스 계층입니다.
+**Hub** is a standalone portal that connects all systems. It's not embedded in any single system -- it's the central intelligence layer where systems meet AI.
 
-동일한 커넥터 아키텍처, 다른 전달 방식입니다. Copilot은 Hub와 동일한 `ConnectorToolAdapter`를 사용합니다.
+Same connector architecture, different delivery. A Copilot uses the same `ConnectorToolAdapter` as a Hub.
 
 ## 핵심 원칙
 
 **클라이언트는 코드를 변경하지 않습니다.** FIM One은 그들의 시스템에 능동적으로 연결되어 데이터베이스를 읽고, API를 호출하며, 메시지 버스에 푸시합니다. 클라이언트는 자격 증명과 네트워크 접근만 제공하면 됩니다.
 
-## 3계층 아키텍처
+## Three-Layer Architecture
 
 ```mermaid
 flowchart TB
-    A["<b>FIM One Platform</b><br/>ReAct / DAG / Portal UI<br/><i>Multi-tenant, scheduling, conversation persistence</i>"]
-    B["<b>커넥터 거버넌스 레이어</b><br/>audit log, auth passthrough, operation classification<br/><i>read_only enforcement, confirmation gate, circuit breaker</i>"]
-    C["<b>MCP Protocol (Transport)</b><br/>stdio / HTTP transport<br/><i>Standard tool description, process isolation</i>"]
-    D["<b>레거시 시스템</b><br/>DB / API / MQ<br/><i>클라이언트의 기존 시스템</i>"]
+    A["<b>FIM One Platform</b><br/>ReAct / DAG / Portal UI<br/><i>Multi-tenant, conversation persistence</i>"]
+    B["<b>Connector Governance Layer</b><br/>call log, per-user credentials, confirmation gate<br/><i>read-only SQL, column masking, circuit breaker</i>"]
+    C["<b>Integration adapters</b><br/>API connector (HTTP) · Database connector (SQL drivers) · MCP server (stdio / HTTP)"]
+    D["<b>Existing System</b><br/>API / DB<br/><i>Client's existing systems</i>"]
 
     A --> B --> C --> D
 ```
 
-각 계층은 서로 다른 책임을 가집니다:
+Each layer has a distinct responsibility:
 
-| 계층 | 담당 | 변경 시점 |
+| Layer | Owns | Changes when... |
 |---|---|---|
-| **플랫폼** | 오케스트레이션, 멀티테넌트, UI | 새로운 플랫폼 기능 출시 |
-| **커넥터 거버넌스 레이어** | 엔터프라이즈 거버넌스 정책 | 보안/규정 준수 요구사항 변경 |
-| **MCP Protocol** | 전송, 도구 인터페이스 표준 | 없음 (개방형 표준) |
-| **레거시 시스템** | 비즈니스 데이터 및 로직 | 없음 (그것이 핵심) |
+| **Platform** | Orchestration, multi-tenant, UI | New platform features ship |
+| **Connector Governance Layer** | Enterprise governance policies | Security/compliance requirements change |
+| **Integration adapters** | Talking to one kind of system | A new protocol or database driver is added |
+| **Existing System** | Business data and logic | Never (that's the whole point) |
 
-## MCP를 전송 계층으로 사용하는 이유
+## Three Integration Types
 
-어댑터는 **MCP 서버**로 구현됩니다. 이는 의도적인 아키텍처 선택입니다:
+In the portal these live under **Integrations**, with one tab each:
 
-- **재사용성**: FIM One은 이미 MCP 클라이언트(v0.3)를 포함하고 있습니다. 레거시 시스템 어댑터를 추가하는 것은 MCP 도구를 추가하는 것과 동일한 인프라를 재사용합니다.
-- **표준 프로토콜**: MCP는 개방형 표준입니다. 발명하거나 유지할 독점 프로토콜이 없습니다.
-- **에코시스템**: 타사 MCP 서버(데이터베이스, API, SaaS 도구)가 즉시 작동합니다.
-- **프로세스 격리**: 각 MCP 서버는 별도의 프로세스로 실행됩니다. 오작동하는 어댑터가 플랫폼을 중단시킬 수 없습니다.
-
-### MCP만으로 제공되지 않는 기능
-
-**Connector Governance Layer**는 순수 MCP에 없는 엔터프라이즈 거버넌스 기능을 추가합니다.
-
-| 우려 사항 | MCP | Connector Governance Layer |
+| Type | What it is | Runs as |
 |---|---|---|
-| 읽기 전용 적용 | 아니요 | 작업에 `read_only` 플래그 적용, 기본적으로 쓰기 차단 |
-| 감사 로깅 | 아니요 | 모든 도구 호출 기록(타임스탬프, 사용자, 도구, 매개변수, 결과) |
-| 인증 전달 | 아니요 | 호스트 시스템 인증을 프록시하여 에이전트가 로그인한 사용자를 대신해 작업 |
-| 확인 게이트 | 아니요 | 쓰기 작업에 사람의 승인이 필요함(SSE `confirmation_required`) |
-| 회로 차단기 | 아니요 | 연결 실패 시 정상적인 기능 저하로 전환 |
-| 작업 분류 | 아니요 | 작업을 읽기/쓰기/관리자로 태그하고 수준별 정책 적용 |
-| 열 수준 마스킹 | 아니요 | 개인 데이터로 표시된 데이터베이스 열은 값을 반환하는 대신 마스크를 반환 |
+| **API connector** | A base URL, an auth method (none, bearer, API key, basic) and a list of actions (method, path, parameter schema). Created by hand, by importing an OpenAPI spec, or with the AI builder | `ConnectorToolAdapter`, an in-process HTTP client that injects the caller's credential |
+| **Database connector** | A connection to PostgreSQL, MySQL, DM, KingbaseES or HighGo, with an introspected and annotatable schema | `DatabaseToolAdapter` over the matching driver; SQL is validated and read-only by default |
+| **MCP server** | Any server speaking the Model Context Protocol, over stdio or HTTP | A separate process (stdio) or remote endpoint, adapted into the same `Tool` protocol |
+
+API and database connectors are records in the database. A connector that is created or edited in the portal is picked up by the next chat request; nothing is redeployed or restarted. MCP is the route for third-party tool servers and for adapters that need their own process.
+
+### What the governance layer adds
+
+| Concern | What FIM One does |
+|---|---|
+| Read-only SQL | Database connectors reject anything but `SELECT` unless the owner switches `read_only` off. The SQL is checked first, and on PostgreSQL, KingbaseES, HighGo and MySQL the query then runs in a read-only transaction, so the database itself refuses a write (MySQL's does not cover `CREATE`/`DROP`/`ALTER`, which the check refuses; DM8 has the check only). The check also refuses functions that act outside the query (`dblink*`, `pg_read_*`, `pg_ls_*`, `lo_import`/`lo_export`, `pg_terminate_backend`, `pg_reload_conf`, `pg_sleep*` and the like). It is a list of known names, not a sandbox: the real fence is the database account. Give the connector an account that can only `SELECT` the tables it should see, with no superuser, file or replication rights |
+| Call log | Every connector, database and MCP call is recorded: time, user, where it came from (chat, a delegated agent, a workflow step), the connector or MCP server, the action or tool, status, duration, and whose credential it used |
+| Per-user credentials | Each user stores their own credential; the owner's is used only when the owner allows fallback (see [Sharing and credentials](/architecture/sharing-and-credentials)) |
+| Confirmation gate | Actions marked `requires_confirmation` (or every tool call, when the agent is set to confirm all) pause for human approval, in chat (`awaiting_confirmation` SSE event) or in a Feishu approval card |
+| Circuit breaker | Repeated failures against a connector stop further calls for a cool-down period |
+| Column-level masking | Database columns marked as personal data return a mask instead of their values |
+| Sharing limits | API connectors and MCP servers can be published to an organization or the Market; database connectors cannot, and their SQL tool is offered only to the owner |
 
 ### 데이터베이스 열 마스킹
 
@@ -95,61 +96,55 @@ flowchart TB
 
 소유자가 직접 사용하는 쿼리 플레이그라운드에는 마스킹이 적용되지 않습니다. 마스킹은 에이전트와 대화 기록에 전달되는 내용을 제어하며, 연결을 구성한 사용자가 직접 검사할 수 있는 내용에는 적용되지 않습니다.
 
-### 왜 커스텀 프로토콜을 만들지 않는가
+### Values bound into a workflow step's SQL
 
-프로토콜은 상용화된 기술입니다. 기술적 가치는 어댑터 자체(도메인 지식, 스키마 매핑, 엣지 케이스 처리)와 거버넌스 계층(감사, 인증, 안전성)에 있습니다. 전송 프로토콜을 새로 만드는 것은 기능을 추가하지 않으면서 유지보수 비용만 증가시킵니다. Stripe는 HTTPS를 사용하고, Docker는 cgroups를 사용하며, FIM One은 MCP를 사용합니다.
+A `{{variable}}` in the SQL of a workflow database step is sent to the database as a value, never as SQL text. How it is compared is then up to the database:
 
-## 배포 모델
+- **PostgreSQL, KingbaseES, HighGo, DM8**: a parameter of the type the query expects. Text that is not a number fails the step where a number is expected.
+- **MySQL, MariaDB**: every value is sent as text. Compared with a text column it is compared as text. Compared with a numeric column, MySQL converts the text by its own lenient rule: `'5abc'` counts as 5 and text with no leading digits as 0, with a warning and no error, so `WHERE id = {{v}}` with `abc` matches the row whose id is 0. `CAST({{v}} AS SIGNED)` follows the same rule and does not help. If an input must be a number, check it before the query, in a Condition step ahead of the database step; the Start step records the inputs it is given and does not check their type.
 
-모든 것이 단일 Docker Compose 배포에서 실행됩니다. 클라이언트는 아무것도 설치하지 않습니다.
+## Deployment Model
+
+Everything runs in a single Docker Compose deployment. The client installs nothing.
 
 ```mermaid
 flowchart TD
-    subgraph Docker["FIM One 배포 (Docker Compose)"]
-        subgraph Core["FIM One 코어"]
+    subgraph Docker["FIM One Deployment (Docker Compose)"]
+        subgraph Core["FIM One Core"]
             R["ReAct / DAG"]
-            P["플랫폼 API"]
-            U["포털 UI"]
-            G["커넥터 거버넌스"]
+            P["Platform API"]
+            U["Portal UI"]
+            G["Connector Governance"]
         end
 
-        subgraph MCP1["MCP 서버: 재무 DB"]
-            M1["SQL 쿼리 (읽기 전용)"]
-        end
+        A1["Database connector<br/>SQL queries (read-only)"]
+        A2["API connector<br/>REST calls"]
+        A3["MCP server<br/>third-party tools"]
 
-        subgraph MCP2["MCP 서버: OA 시스템"]
-            M2["REST API 호출"]
-        end
-
-        subgraph MCP3["MCP 서버: Lark"]
-            M3["웹훅 알림"]
-        end
-
-        Core --> MCP1
-        Core --> MCP2
-        Core --> MCP3
+        Core --> A1
+        Core --> A2
+        Core --> A3
     end
 
-    MCP1 --> Oracle["클라이언트의 Oracle DB"]
-    MCP2 --> Seeyon["클라이언트의 Seeyon OA"]
-    MCP3 --> Lark["Lark API"]
+    A1 --> PG["Client's finance database"]
+    A2 --> Seeyon["Client's Seeyon OA"]
+    A3 --> Ext["External tool service"]
 ```
 
 <Note>
-모두 FIM One에서 제공합니다. 클라이언트는 다음만 제공합니다:
-- 데이터베이스 자격증명 (읽기 전용 계정 권장)
-- API 엔드포인트 및 키 (사용 가능한 경우)
-- 네트워크 화이트리스트 액세스
+All provided by FIM One. Client provides only:
+- Database credentials (read-only account recommended)
+- API endpoints and keys (if available)
+- Network whitelist access
 </Note>
 
-**액세스 계층**: FIM One은 클라이언트가 제공할 수 있는 모든 액세스에 맞게 조정됩니다:
+**Access hierarchy**: FIM One adapts to whatever access the client can provide:
 
-| 클라이언트가 보유한 것 | FIM One 연결 방식 |
+| What client has | How FIM One connects |
 |---|---|
-| 문서화된 API | HTTP API 어댑터 (최선의 경우) |
-| 문서화되지 않은 API | HTTP API 어댑터 + 수동 스키마 매핑 |
-| 데이터베이스 액세스만 | 데이터베이스 어댑터 (직접 SQL, 기본적으로 읽기 전용) |
-| 데이터베이스 + 메시지 버스 | 데이터베이스 어댑터 + 메시지 푸시 어댑터 |
+| API with an OpenAPI spec | API connector, actions imported from the spec (best case) |
+| API without documentation | API connector with actions defined by hand or with the AI builder |
+| Database access only | Database connector (direct SQL, read-only by default) |
 
 ## 에이전트-커넥터 분리
 
@@ -180,54 +175,47 @@ flowchart TB
 - **커넥터 제거** = 설정 제거. 코드 변경 없음.
 - 동일한 에이전트가 단일 작업에서 내장 도구와 커넥터를 함께 사용할 수 있습니다.
 
-## 핫 플러그 진화
+## Adding a Connector
 
-| 버전 | 새로운 커넥터를 추가하는 방법 | 재시작 필요? |
+No code and no restart are involved. A connector is created in the portal in one of three ways:
+
+| Way | What you provide | Who does it |
 |---|---|---|
-| **v0.6** | Connector Governance Layer를 포함한 Python MCP Server 작성, docker-compose에 추가 | 재배포 |
-| **v0.8** | YAML/JSON 설정 작성, 플랫폼이 MCP Server 생성 | 재시작 |
-| **v1.0** | OpenAPI 스펙 업로드, AI가 설정 자동 생성 | **재시작 불필요 (핫 플러그)** |
+| **Import an OpenAPI spec** | A YAML / JSON spec or its URL; actions are generated from it | Implementation engineer |
+| **AI builder** | A description of the API in natural language; the builder writes and tests the actions | Implementation engineer, with review |
+| **Manual** | Base URL, auth method, and each action's method, path and parameters | Implementation engineer |
 
-엔터프라이즈 배포는 "한 번 구현하면 몇 개월 동안 실행" -- 핫 플러그는 v1.0의 편의 기능이지, v0.6의 필수 요구사항이 아닙니다.
+Database connectors take connection details instead and introspect the schema. Systems that need custom code are wrapped as an MCP server and added under the MCP tab.
 
-## 데이터 흐름 예시
+## Data Flow Example
 
-사용자: "재무 시스템에서 연체된 모든 계약을 확인하고 요약을 Lark에 푸시해줘."
+User: "Check all overdue contracts from the finance system and push a summary to Lark."
 
 ```
-1. 사용자가 Portal / API를 통해 메시지 전송
+1. User sends message via Portal / API
 
-2. FIM One (ReAct 모드):
-   Think: 재무 DB에서 연체된 계약을 쿼리한 후 Lark에 푸시해야 한다.
+2. FIM One (ReAct mode):
+   Think: I need to query the finance DB for overdue contracts, then push to Lark.
 
-3. Act: contract_query(status="overdue", days_past_due=">30")
-   → Connector Governance: 감사 로그, 읽기 전용 확인 (통과)
-   → MCP Server: SQL로 변환
-   → Client DB: SELECT * FROM contracts WHERE status='overdue' AND ...
-   ← 연체된 계약 7건 반환
+3. Act: database("query", "finance_db", sql="SELECT ... FROM contracts WHERE status='overdue' AND ...")
+   → Connector Governance: SQL validated as read-only, call logged
+   → Database connector: runs the query on the client DB
+   ← Returns 7 overdue contracts
 
-4. Think: 연체된 계약 7건을 찾았다. 요약하여 푸시하겠다.
+4. Think: Found 7 overdue contracts. I'll summarize and push.
 
 5. Act: lark_push(message="7 overdue contracts found: ...")
-   → Connector Governance: 감사 로그, 쓰기 작업 → 확인 게이트
-   → 사용자가 Portal을 통해 승인
-   → MCP Server: Lark 웹훅에 POST
-   ← 푸시 성공
+   → Connector Governance: call logged, action requires confirmation → confirmation gate
+   → User approves via Portal
+   → API connector: POST to Lark webhook
+   ← Push successful
 
-6. Answer: "연체된 계약 7건을 찾았습니다. 요약이 Lark 그룹에 푸시되었습니다."
+6. Answer: "Found 7 overdue contracts. Summary pushed to Lark group."
 ```
 
-## 커넥터 표준화 레벨
+## Relationship to Existing MCP Ecosystem
 
-| 레벨 | 버전 | 접근 방식 | 구축자 |
-|---|---|---|---|
-| **레벨 1** | v0.6 | Python MCP Server with Connector Governance | FIM One 개발자 |
-| **레벨 2** | v0.8 | YAML/JSON config, platform auto-generates MCP Server | 구현 엔지니어 (Python 불필요) |
-| **레벨 3** | v1.0 | Upload OpenAPI/Swagger spec, AI generates config | AI (인간 검토 포함) |
-
-## 기존 MCP 에코시스템과의 관계
-
-FIM One의 MCP 클라이언트(v0.3에서 제공)는 이미 타사 MCP 서버를 지원합니다. 레거시 시스템 어댑터는 엔터프라이즈 거버넌스를 위해 커넥터 거버넌스 계층으로 구축된 **도메인별 MCP 서버**입니다.
+FIM One's MCP client supports third-party MCP servers alongside its own API and database connectors. All three end up in the same `ToolRegistry`, so the agent treats them alike.
 
 ```mermaid
 flowchart TB
@@ -238,10 +226,10 @@ flowchart TB
         M4["any community MCP server"]
     end
 
-    subgraph CG["Connector Governance (FIM One)"]
-        C1["read_only enforcement"]
-        C2["audit logging"]
-        C3["auth passthrough"]
+    subgraph CG["API and database connectors (FIM One)"]
+        C1["read-only SQL"]
+        C2["call log"]
+        C3["per-user credentials"]
         C4["confirmation gate"]
     end
 
@@ -250,4 +238,4 @@ flowchart TB
     TR --> Agent["Agent sees all as tools"]
 ```
 
-커넥터 거버넌스 계층은 MCP를 대체하지 않으며, 엔터프라이즈 레거시 시스템 통합에 필요한 거버넌스 계층으로 MCP를 확장합니다.
+Connectors do not replace MCP. They cover the common cases (a REST API, a SQL database) with governance built in; MCP covers everything that ships as a tool server. MCP servers carry per-user credentials and the same fallback switch as connectors.

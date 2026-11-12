@@ -4,27 +4,27 @@ icon: "magnifying-glass"
 description: "FIM One이 리소스를 발견하고 조립하는 방식 — 에이전트 제약 및 글로벌 자동 검색의 이중 모드 아키텍처."
 ---
 
-## 두 가지 모드
+## The two modes
 
-FIM One의 모든 채팅 요청은 하나의 질문으로 시작됩니다: **에이전트가 선택되었는가?** 이 답변에 따라 리소스(커넥터, 지식 베이스, 스킬, MCP 서버)가 어떻게 발견되고 LLM이 사용할 수 있는 도구 세트로 조립되는지가 결정됩니다.
+Every chat request in FIM One starts with a question: **is an Agent selected?** The answer determines how resources — Connectors, Knowledge Bases, Skills, and MCP servers — are discovered and assembled into the tool set the LLM can use.
 
-**에이전트 제약 모드**는 사용자가 특정 에이전트를 선택할 때 활성화됩니다. 시스템은 해당 에이전트가 명시적으로 구성된 리소스만 로드합니다:
+**Agent-Constrained Mode** activates when the user picks a specific Agent. The system loads only the resources that Agent has been explicitly configured with:
 
-- **커넥터**: 에이전트의 바인딩된 `connector_ids`만 도구로 로드됩니다.
-- **지식 베이스**: 에이전트의 바인딩된 `kb_ids`만 검색 도구로 주입됩니다.
-- **스킬**: 전역적으로 사용 가능 — 사용자가 볼 수 있는 모든 활성 스킬이 주입됩니다. 스킬은 조직의 SOP이지 에이전트별 지식이 아니기 때문입니다. (아래의 [전역 SOP로서의 스킬](#skills-as-global-sops) 참조)
-- **MCP 서버**: 항상 사용자 범위 — 사용자가 볼 수 있는 모든 활성 MCP 서버가 두 모드 모두에서 로드됩니다.
-- **지시사항**: 에이전트의 `instructions` 필드는 시스템 프롬프트에 주입되는 페르소나와 행동 지침을 정의합니다.
+- **Connectors**: only the Agent's bound `connector_ids` are loaded as tools.
+- **Knowledge Bases**: only the Agent's bound `kb_ids` are injected as retrieval tools.
+- **Skills**: globally available when the Skills module is enabled (it is off by default) — all active Skills visible to the user are injected, because Skills are organizational SOPs, not Agent-specific knowledge. (See [Skills as Global SOPs](#skills-as-global-sops) below.)
+- **MCP Servers**: only the Agent's bound `mcp_server_ids` are loaded; an Agent with none bound gets no MCP tools.
+- **Instructions**: the Agent's `instructions` field defines the persona and behavioral guidelines injected into the system prompt.
 
-**전역 자동 발견 모드**는 에이전트가 선택되지 않았을 때(예: 새 채팅) 활성화됩니다. 시스템은 사용자가 접근 가능한 모든 것을 자동으로 발견합니다:
+**Global Auto-Discovery Mode** activates when no Agent is selected (e.g., a new chat). The system auto-discovers everything accessible to the user:
 
-- **커넥터**: 사용자가 볼 수 있는 모든 커넥터(개인 + 조직 공유 + 마켓 구독)가 로드됩니다.
-- **지식 베이스**: 접근 가능한 모든 KB는 `kb_retrieve`를 통해 검색에 사용 가능합니다.
-- **스킬**: 사용자가 볼 수 있는 모든 활성 스킬이 SOP 스텁으로 주입됩니다.
-- **MCP 서버**: 에이전트 제약 모드와 동일 — 사용자가 볼 수 있는 모든 활성 서버입니다.
-- **지시사항**: 일반적인 어시스턴트 페르소나가 사용됩니다.
+- **Connectors**: all Connectors visible to the user (own + subscribed from an organization or the Market) are loaded.
+- **Knowledge Bases**: the user's own KBs are available for retrieval via `kb_retrieve` (knowledge bases cannot be shared).
+- **Skills**: all active Skills visible to the user are injected as SOP stubs.
+- **MCP Servers**: all active servers visible to the user.
+- **Instructions**: a generic assistant persona is used.
 
-분기는 모든 채팅 요청에서 호출되는 `_resolve_tools()` 내부에서 발생합니다:
+The branching happens inside `_resolve_tools()`, which is called on every chat request:
 
 ```mermaid
 flowchart TD
@@ -35,41 +35,41 @@ flowchart TD
     AC --> SK["Inject Global Skills<br/>(both modes)"]
     AD --> SK
 
-    SK --> MCP["Load User MCP Servers<br/>(both modes)"]
+    SK --> MCP["Load MCP Servers<br/>(agent-bound, or all visible)"]
     MCP --> TR["<b>ToolRegistry</b>"]
     TR --> EE["Execution Engine<br/>(ReAct or DAG)"]
 ```
 
-실제 효과: 사용자는 에이전트를 구성하지 않고도 즉시 채팅을 시작할 수 있습니다. 시스템은 사용 가능한 리소스를 발견하고 도구로 노출합니다. 에이전트를 선택하면 범위가 좁혀집니다 — 새로운 기능을 잠금 해제하는 것이 아니라 기존 기능에 초점을 맞춥니다.
+The practical effect: users can start chatting immediately without configuring an Agent. The system discovers available resources and exposes them as tools. Selecting an Agent narrows the scope — it does not unlock new capabilities, it focuses existing ones.
 
-### 각 모드가 발견하는 것
+### What each mode discovers
 
-두 모드는 **범위**에서 다르지만, 종류에서는 다르지 않습니다. 둘 다 `ToolRegistry`를 생성합니다 — 단지 다르게 채울 뿐입니다.
+The two modes differ in **scope**, not in kind. Both produce a `ToolRegistry` — they just fill it differently.
 
-**자동 발견 모드 (에이전트 미선택):**
+**Auto-Discovery Mode (no Agent selected):**
 
-| 리소스 | 발견 | 도구 형식 |
+| Resource | Discovery | Tool Form |
 |---|---|---|
-| 커넥터 (API) | `resolve_visibility()` — 사용자에게 모두 표시 | `ConnectorMetaTool` (점진적) |
-| 커넥터 (DB) | `resolve_visibility()` — 사용자에게 모두 표시 | `DatabaseMetaTool` (점진적) |
-| 지식 베이스 | 접근 가능한 모든 KB | `kb_retrieve` |
-| 스킬 | `resolve_visibility()` — 모두 활성 | `read_skill` (점진적 스텁) |
-| MCP 서버 | `resolve_visibility()` — 모두 사용자 표시 | `MCPServerMetaTool` (점진적) |
-| 에이전트 | `resolve_visibility()` — 모두 활성, 빌더 제외 | `call_agent` (위임 카탈로그) |
-| 기본 제공 도구 | `discover_builtin_tools()` — 전체 세트 | 카테고리 필터 미적용 |
+| Connectors (API) | `resolve_visibility()` — all visible to user | `ConnectorMetaTool` (progressive) |
+| Connectors (DB) | `resolve_visibility()` — all visible to user | `DatabaseMetaTool` (progressive) |
+| Knowledge Bases | The user's own KBs | `kb_retrieve` |
+| Skills | `resolve_visibility()` — all active | `read_skill` (progressive stubs) |
+| MCP Servers | `resolve_visibility()` — all user-visible | `MCPServerMetaTool` (progressive) |
+| Agents | `resolve_visibility()` — all active, non-builder | `call_agent` (delegation catalog) |
+| Built-in Tools | `discover_builtin_tools()` — full set | No category filter applied |
 
-**에이전트 제약 모드 (에이전트 선택):**
+**Agent-Constrained Mode (Agent selected):**
 
-| 리소스 | 발견 | 도구 형식 |
+| Resource | Discovery | Tool Form |
 |---|---|---|
-| 커넥터 | `agent.connector_ids`만 | `ConnectorMetaTool` 또는 레거시 작업별 |
-| 지식 베이스 | `agent.kb_ids`만 | `GroundedRetrieveTool` / `KBRetrieveTool` |
-| 스킬 | 전역 — **에이전트로 제약되지 않음** | `read_skill` |
-| MCP 서버 | 사용자 범위 — **에이전트로 제약되지 않음** | `MCPServerMetaTool` (점진적) |
-| 에이전트 위임 | 사용 불가 — 에이전트는 특화됨 | _(비활성화)_ |
-| 기본 제공 도구 | `agent.tool_categories` 필터 | 카테고리별 부분집합 |
+| Connectors | Only `agent.connector_ids` | `ConnectorMetaTool` or legacy per-action |
+| Knowledge Bases | Only `agent.kb_ids` | `GroundedRetrieveTool` / `KBRetrieveTool` |
+| Skills | Global — **not constrained by Agent** | `read_skill` |
+| MCP Servers | Only `agent.mcp_server_ids` | `MCPServerMetaTool` (progressive) |
+| Agent Delegation | Not available — agents are specialized | _(disabled)_ |
+| Built-in Tools | `agent.tool_categories` filter | Subset by category |
 
-핵심 비대칭성: 커넥터와 지식 베이스는 에이전트로 범위가 지정되지만, 스킬과 MCP 서버는 두 모드 모두에서 전역으로 유지됩니다. `CallAgentTool` (에이전트 위임)은 자동 발견 모드에서만 사용 가능합니다 — 특정 에이전트를 선택했을 때는 **등록되지 않습니다**. 이는 보안 조치입니다: 마켓플레이스 에이전트가 `call_agent`를 사용하여 다른 에이전트를 호출하고 해당 에이전트의 개인 프롬프트에 접근할 수 있기 때문입니다. 스킬은 조직 규칙입니다 (모두가 동일한 표준 운영 절차를 따름). 반면 커넥터와 KB는 기능 바인딩입니다 (서로 다른 에이전트가 서로 다른 시스템에 연결됨).
+The key asymmetry: Connectors, Knowledge Bases and MCP Servers are scoped by the Agent, but Skills remain global in both modes. `CallAgentTool` (agent delegation) is only available in Auto-Discovery mode — it is **not** registered when a specific Agent is selected. This is a security measure: a marketplace agent could otherwise use `call_agent` to invoke other agents and access their private prompts. Skills are organizational rules (everyone follows the same SOPs), while Connectors and KBs are capability bindings (different agents connect to different systems).
 
 ## 모든 것이 도구입니다
 
@@ -106,13 +106,13 @@ LLM 수준에서 모든 리소스 유형은 호출 가능한 도구의 평면 �
 
 스킬은 두 가지 주입 모드를 지원합니다 -- **progressive** (기본값)와 **inline** -- `SKILL_TOOL_MODE` 또는 에이전트의 `model_config_json.skill_tool_mode`로 제어됩니다. progressive 모드에서는 시스템 프롬프트에 컴팩트한 스텁만 나타나고, LLM은 필요에 따라 `read_skill(name)`을 호출하여 전체 콘텐츠를 로드합니다. 이는 모든 리소스 유형에서 컨텍스트 소비를 최소화하는 FIM One의 광범위한 [Progressive Disclosure](/architecture/progressive-disclosure) 아키텍처의 일부입니다.
 
-## 에이전트는 컨테이너가 아닌 페르소나
+## Agent as persona, not container
 
-FIM One의 아키텍처는 에이전트 중심 모델에서 리소스 중심 모델로의 의도적인 전환을 반영합니다.
+FIM One's architecture reflects a deliberate shift from an Agent-centric model to a Resource-centric model.
 
-**이전 모델:** 에이전트는 모든 리소스에 대한 접근을 제어하는 컨테이너였습니다. 에이전트를 선택하지 않으면 커넥터, 스킬, 특화된 KB가 없었습니다. 에이전트는 모든 기능에 대한 필수 진입점이었습니다.
+**Previous model:** the Agent was a container that gated access to all resources. No Agent selected meant no Connectors, no Skills, no specialized KB. The Agent was the mandatory entry point for any capability.
 
-**현재 모델:** 에이전트는 페르소나입니다 — 지침 및 동작 가이드라인의 집합 — 선택적 리소스 제약과 결합됩니다. 리소스는 에이전트와 독립적으로 존재합니다. 에이전트를 선택하면 범위가 좁혀지고, 선택하지 않으면 완전히 열립니다.
+**Current model:** the Agent is a persona — a set of instructions and behavioral guidelines — combined with an optional resource constraint. Resources exist independently of Agents. Selecting an Agent narrows the scope; not selecting one opens it fully.
 
 ```mermaid
 flowchart LR
@@ -134,27 +134,27 @@ flowchart LR
     end
 ```
 
-이는 다음을 의미합니다:
+This means:
 
-- **사용자는 에이전트를 구성하지 않고도 즉시 채팅을 시작할 수 있습니다.**
-- **시스템은 사용 가능한 리소스를 자동으로 발견하고** 도구로 노출합니다.
-- **에이전트는 경량 페르소나가 되어** 빠르게 생성할 수 있습니다 — 지침을 작성하고 선택적으로 특정 커넥터 및 KB를 바인딩하기만 하면 됩니다.
-- **리소스 관리는 에이전트 관리와 분리됩니다.** 조직에 커넥터를 게시하면 자동 발견 모드, 에이전트 바인딩 드롭다운, 에이전트 위임 해결에서 모든 곳에서 사용할 수 있게 됩니다.
+- **Users can start chatting immediately** without configuring an Agent.
+- **The system auto-discovers available resources** and exposes them as tools.
+- **Agents become lightweight personas** that can be created quickly — just write instructions and optionally bind specific Connectors and KBs.
+- **Resource management is decoupled** from Agent management. Publishing a Connector to an organization makes it available to every member who subscribes to it — in auto-discovery mode, in Agent binding dropdowns, and in agent delegation resolution.
 
 ## 에이전트 위임
 
 FIM One은 `CallAgentTool`을 통해 전문 에이전트에게 작업을 위임하는 것을 지원합니다. 단, **자동 모드**(에이전트 미선택)에서만 가능합니다. 사용자가 특정 에이전트를 선택하면 위임이 비활성화되고 해당 에이전트는 자신의 도구에만 집중합니다.
 
-### 두 가지 모드: 자동 vs 에이전트 선택
+### Two modes: Auto vs Agent-selected
 
-| 측면 | 자동 모드 (에이전트 미선택) | 에이전트 선택 모드 |
+| Aspect | Auto Mode (no agent selected) | Agent-Selected Mode |
 |---|---|---|
-| `call_agent` | 활성화됨 — 모든 표시된 에이전트에 위임 | **비활성화됨** — 등록되지 않음 |
-| 도구 범위 | 모든 표시된 커넥터, KB, 스킬, MCP | 에이전트의 바인딩된 리소스 + 글로벌 스킬/MCP만 |
-| 오케스트레이션 | 시스템 LLM이 반복마다 최적의 에이전트를 동적으로 선택 | 에이전트가 자신의 도구를 직접 사용 |
-| 사용 사례 | 일반 쿼리, 도메인 간 작업 | 집중된 전문가 작업 |
+| `call_agent` | Enabled — delegates to any visible agent | **Disabled** — not registered |
+| Tool scope | All visible Connectors, KB, Skills, MCP | Only the Agent's bound resources + global Skills |
+| Orchestration | System LLM dynamically picks the best agent per iteration | Agent uses its own tools directly |
+| Use case | General queries, cross-domain tasks | Focused specialist tasks |
 
-**에이전트 선택 모드에서 위임이 비활성화되는 이유:** 보안. 마켓플레이스 에이전트가 `call_agent`를 사용하여 다른 에이전트를 호출하고 해당 에이전트의 비공개 시스템 프롬프트를 읽을 수 있습니다. 위임을 자동 모드로 제한함으로써 — 개별 에이전트의 프롬프트가 아닌 시스템 LLM이 흐름을 제어하는 곳 — 비공개 에이전트 프롬프트는 신뢰할 수 없는 에이전트 구성에 노출되지 않습니다.
+**Why delegation is disabled in Agent-selected mode:** Security. A marketplace agent could use `call_agent` to invoke other agents and read their private system prompts. By restricting delegation to Auto mode — where the system LLM (not any individual agent's prompt) controls the flow — private agent prompts are never exposed to untrusted agent configurations.
 
 ### 오토 모드를 오케스트레이션 레이어로
 
@@ -164,9 +164,9 @@ FIM One은 `CallAgentTool`을 통해 전문 에이전트에게 작업을 위임�
 
 런타임에 사용자에게 보이는 모든 활성, 비빌더 에이전트는 카탈로그로 조립됩니다. 각 에이전트의 이름과 설명은 `call_agent` 도구의 매개변수 스키마에 나열되어 있으므로, LLM이 의미론적으로 올바른 전문가를 선택할 수 있습니다 — 하드코딩된 라우팅 없이.
 
-### 전체 도구 상속
+### Full tool inheritance
 
-위임된 에이전트가 `call_agent(agent_id, task)`를 통해 호출될 때, 자신의 구성에서 구축된 완전한 `ToolRegistry`를 받습니다 — 바인딩된 커넥터, KB 및 내장 도구를 포함합니다. 위임된 에이전트는 텍스트 전용 자문가가 아니라 완전한 실행 단위입니다.
+When a delegated agent is invoked via `call_agent(agent_id, task)`, it is assembled the way a chat with that agent is: a complete `ToolRegistry` built from its own configuration — its bound Connectors, Knowledge Bases and MCP servers (connected for the duration of the call) and its built-in tool categories — together with its own approval gate. Delegated agents are full execution units, not text-only advisors. An agent that has been switched off or is no longer visible to the user when it is called is reported as unavailable instead of being run.
 
 ### 일단계 위임
 
@@ -194,42 +194,40 @@ flowchart TD
     SYN --> ANS["Final Answer"]
 ```
 
-## 가시성 모델
+## Visibility model
 
-모든 리소스 검색 — 두 모드 모두에서 — 은 세 가지 계층의 통합된 가시성 모델에 의해 관리됩니다:
+All resource discovery — in both modes — is governed by a unified visibility model with two tiers:
 
-| 계층 | 설명 | 예시 |
+| Tier | Description | Example |
 |---|---|---|
-| **Own** | 사용자가 생성한 리소스. 항상 표시됨. | 팀의 API를 위해 구축한 커넥터 |
-| **Organization-shared** | 사용자의 조직에서 `visibility: "org"`를 가진 리소스. 승인된 모든 조직 구성원에게 표시됨. | IT에서 게시한 회사 전체 ERP 커넥터 |
-| **Market-subscribed** | FIM One Market에서 설치한 리소스. 구독자에게 표시됨. | 설치한 커뮤니티 구축 Slack 커넥터 |
+| **Own** | Created by the user. Always visible. | A Connector you built for your team's API |
+| **Subscribed** | Resources published to one of the user's organizations or to the Market that the user has subscribed to. Visible while the resource is still shared and approved. Org membership alone grants nothing. | A company-wide ERP Connector published by IT, or a community-built Slack Connector you installed |
 
-`web/visibility.py`의 `resolve_visibility()` 함수는 단일 쿼리에서 세 가지 계층을 모두 포함하는 SQL 필터를 구축합니다:
+The `resolve_visibility()` function in `web/visibility.py` builds a SQL filter that covers both tiers in a single query:
 
 ```python
 conditions = [
     model.user_id == user_id,                    # own resources
-    and_(model.visibility == "org",              # org-shared
-         model.org_id.in_(user_org_ids),
-         or_(model.publish_status == None,
+    and_(model.id.in_(subscribed_ids),           # subscribed, and still shared
+         model.visibility == "org",
+         or_(model.publish_status.is_(None),
              model.publish_status == "approved")),
-    model.id.in_(subscribed_ids),                # Market-subscribed
 ]
 ```
 
-이 동일한 필터는 모든 곳에서 사용됩니다:
+This same filter is used everywhere:
 
-- 에이전트 없음 모드에서 커넥터 자동 검색
-- `CallAgentTool`을 위한 에이전트 카탈로그 구축
-- 시스템 프롬프트 주입을 위한 표시 가능한 스킬 로드
-- MCP 서버 해석
-- 에이전트 구성 조회 (사용자가 자신에게 표시되는 에이전트만 선택할 수 있도록 보장)
+- Auto-discovering Connectors in no-agent mode
+- Building the Agent catalog for `CallAgentTool`
+- Loading visible Skills for system prompt injection
+- MCP server resolution
+- Agent configuration lookup (ensuring a user can only select Agents visible to them)
 
-이러한 균일성은 **커넥터를 조직에 게시하면 자동 검색 모드, 에이전트 바인딩 드롭다운, 에이전트 위임 해석에서 자동으로 사용 가능**하다는 의미입니다 — 특별한 연결이 필요 없습니다. 가시성 모델은 "이 사용자가 액세스할 수 있는 것이 무엇인가"에 대한 단일 정보 소스입니다.
+The uniformity means that **a Connector published to an organization becomes available to its subscribers** in auto-discovery mode, in Agent binding dropdowns, and in agent delegation resolution — no special wiring required. The visibility model is the single source of truth for "what can this user access."
 
-## 관계도
+## Relationship map
 
-FIM One은 두 가지 병렬 실행 패러다임 — **Chat (에이전트 기반)** 및 **Workflow (DAG 기반)** — 을 가지고 있으며, 이들은 동일한 기본 리소스를 공유하지만 다르게 조율합니다.
+FIM One has two parallel execution paradigms — **Chat (Agent-driven)** and **Workflow (DAG-driven)** — that share the same underlying resources but orchestrate them differently.
 
 ```mermaid
 flowchart TD
@@ -242,6 +240,7 @@ flowchart TD
         TR --> BUILT["Built-in Tools"]
         TR --> CALL["call_agent<br/>→ Delegate Agent"]
         TR --> READ["read_skill<br/>→ SOP text"]
+        TR --> RUNWF["run_workflow<br/>→ Workflow run"]
     end
 
     subgraph WF_EXEC["Workflow Execution (fixed DAG)"]
@@ -249,37 +248,35 @@ flowchart TD
         WF --> WF_AGENT["AGENT Node"]
         WF --> WF_LLM["LLM Node"]
         WF --> WF_CONN["CONNECTOR Node"]
-        WF --> WF_KB["KB_RETRIEVAL Node"]
+        WF --> WF_KB["KNOWLEDGE_RETRIEVAL Node"]
         WF --> WF_MCP["MCP Node"]
-        WF --> WF_HTTP["HTTP Node"]
-        WF --> WF_CODE["CODE Node"]
-        WF --> WF_HUMAN["HUMAN Node"]
-        WF --> WF_SUB["SUB_WORKFLOW Node"]
+        WF --> WF_COND["CONDITION_BRANCH Node"]
+        WF --> WF_HUMAN["HUMAN_INTERVENTION Node"]
     end
 
     SKILLS["Skills<br/>(Global SOPs)"] -.->|"injected into<br/>system prompt"| AGENT
     WF_AGENT -->|"invokes"| AGENT
 ```
 
-다이어그램의 주요 내용:
+Key takeaways from the diagram:
 
-- **에이전트와 Workflow는 병렬 패러다임입니다.** 둘 다 커넥터, 지식 베이스 및 MCP 서버를 사용할 수 있습니다 — 하지만 메커니즘이 다릅니다. 에이전트는 이들을 `ToolRegistry`의 도구로 사용하고, Workflow는 이들을 타입이 지정된 DAG 노드로 사용합니다.
-- **Workflow는 에이전트를 조율할 수 있습니다** `AGENT` 노드를 통해 — Workflow 단계는 자체 ReAct/DAG 루프가 있는 전체 에이전트를 호출할 수 있습니다. 역은 성립하지 않습니다: 에이전트는 Workflow를 직접 호출할 수 없습니다 (API/webhook 트리거를 통해서만 간접적으로 가능).
-- **스킬은 에이전트에만 주입됩니다.** 스킬은 시스템 프롬프트 텍스트입니다 — 에이전트 동작을 안내합니다. Workflow는 스킬을 사용하지 않습니다. 왜냐하면 Workflow 노드는 결정론적 로직을 실행하고, LLM 기반 추론이 아니기 때문입니다.
-- **공유 리소스, 다른 접근 패턴.** 커넥터는 에이전트에 의해 호출될 수 있습니다 (`ConnectorToolAdapter`를 통해), Workflow에 의해 호출될 수 있습니다 (`CONNECTOR` 노드를 통해), 또는 동일한 비즈니스 프로세스에서 둘 다에 의해 호출될 수 있습니다 — 예를 들어, Workflow가 Workflow도 나중 단계에서 사용하는 동일한 커넥터를 쿼리하는 에이전트를 트리거합니다.
+- **Agent and Workflow are parallel paradigms.** Both can use Connectors, Knowledge Bases, and MCP Servers — but through different mechanisms. Agents use them as tools in a `ToolRegistry`; Workflows use them as typed DAG nodes.
+- **Workflow can orchestrate Agents** via the `AGENT` node — a Workflow step can invoke a full Agent with its own ReAct/DAG loop. The reverse also works: an Agent can run a Workflow through the `run_workflow` tool when the Workflows module is enabled, except workflows that contain a Human Intervention step.
+- **Skills are injected into Agents only.** Skills are system prompt text — they guide Agent behavior. Workflows don't consume Skills because Workflow nodes execute deterministic logic, not LLM-guided reasoning.
+- **Shared resources, different access patterns.** A Connector can be called by an Agent (via `ConnectorToolAdapter`), by a Workflow (via `CONNECTOR` node), or by both in the same business process — e.g., a Workflow triggers an Agent that queries the same Connector the Workflow also uses in a later step.
 
-## 워크플로우 엔진 — 다른 실행 패러다임
+## Workflow Engine — the other execution paradigm
 
-이 문서는 에이전트 기반 채팅 실행에 중점을 두고 있지만, FIM One에는 고정 프로세스 자동화를 위한 26가지 노드 유형을 갖춘 시각적 DAG 편집기인 완전한 **워크플로우 엔진**이 포함되어 있습니다.
+While this document focuses on Agent-driven chat execution, FIM One includes a full **Workflow Engine** — a visual DAG editor with 9 node types for fixed-process automation. It is an optional module, off by default.
 
-| 측면 | 에이전트 (채팅) | 워크플로우 |
+| Aspect | Agent (Chat) | Workflow |
 |---|---|---|
-| 오케스트레이션 | LLM이 다음 단계를 동적으로 결정 | 설계 시점에 정의된 고정 DAG |
-| 최적 용도 | 탐색적 작업, 대화, 유연한 추론 | 승인 체인, 예약된 ETL, 다단계 자동화 |
-| 호출 가능 대상 | 커넥터, KB, MCP, 내장 도구, 위임된 에이전트, 스킬 | 에이전트, 커넥터, KB, MCP, LLM, HTTP, 코드, 사람 승인, 서브 워크플로우 |
-| 트리거 | 채팅의 사용자 메시지 | 수동, cron 스케줄, 또는 API/웹훅 |
-| 중첩 | 1단계 위임 (자동 모드 → 위임된 에이전트) | SUB_WORKFLOW 노드를 통한 임의의 DAG 깊이 |
+| Orchestration | LLM decides next step dynamically | Fixed DAG defined at design time |
+| Best for | Exploratory tasks, conversations, flexible reasoning | Approval chains, scheduled ETL, multi-step automations |
+| Can call | Connectors, KB, MCP, Built-in Tools, Delegated Agents, Skills, Workflows (`run_workflow`) | Agents, Connectors, KB, MCP, LLM, Human approval |
+| Trigger | User message in chat | Manual, cron schedule, or API/webhook |
+| Nesting | One-level delegation (Auto mode → delegated Agent) | No sub-workflow nesting |
 
-두 패러다임은 상호 보완적입니다. 작업이 개방형일 때는 에이전트를 사용하세요("이번 분기 판매 데이터를 분석하고 조치를 권장하세요"). 프로세스가 정해져 있을 때는 워크플로우를 사용하세요("매주 월요일에 ERP에서 새 송장을 가져오고, 규정 준수 검사를 실행하고, 예외를 담당자에게 라우팅하세요"). 워크플로우는 고정 파이프라인 내에서 유연한 추론이 필요한 모든 단계에 대해 에이전트를 호출할 수 있습니다.
+The two paradigms are complementary. Use Agents when the task is open-ended ("analyze this quarter's sales data and recommend actions"). Use Workflows when the process is known ("every Monday, pull new invoices from ERP, run compliance checks, and route exceptions to a human reviewer"). A Workflow can invoke an Agent for any step that needs flexible reasoning within an otherwise fixed pipeline.
 
-에이전트 실행 모드 및 워크플로우 노드 유형에 대한 자세한 내용은 [실행 모드](/concepts/execution-modes)를 참조하세요.
+For details on Agent execution modes and Workflow node types, see [Execution Modes](/concepts/execution-modes).

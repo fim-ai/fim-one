@@ -7,11 +7,11 @@ mode: "wide"
 
 关于此引擎与行业**图工程**、经典可视化工作流和 ReAct 循环的关系，请参阅[规划景观](/architecture/planning-landscape)。
 
-## 管道
+## The pipeline
 
-DAG 模式将复杂目标分解为有向无环图 (DAG) 的步骤，以最大并行度执行它们，然后反思是否实际达成了目标。如果没有，它会重新规划并再次尝试 — 自主地，直到达到可配置的预算。
+DAG mode decomposes a complex goal into a directed acyclic graph of steps, executes them with maximum parallelism, then reflects on whether the goal was actually achieved. If not, it re-plans and tries again — autonomously, up to a configurable budget.
 
-管道有四个阶段形成一个循环：
+The pipeline has four phases that form a loop:
 
 ```mermaid
 flowchart TD
@@ -20,20 +20,20 @@ flowchart TD
     C --> D["4. PlanAnalyzer"]
     D --> E{Achieved?}
     E -->|"Yes"| F["5. stream_synthesize"]
-    E -->|"No + confidence < threshold"| G["6. Replan"]
+    E -->|"No + recoverable"| G["6. Replan"]
     G --> B
-    E -->|"No + confident enough"| H["Fallback answer"]
+    E -->|"No + judged unreachable"| H["Fallback answer"]
 ```
 
-**规划。** 智能 LLM 将富化的查询分解为 2-6 个步骤，具有显式依赖边。每个步骤都获得任务描述、可选工具提示和模型提示，该提示控制它是在快速还是智能 LLM 上运行。
+**Plan.** The smart LLM decomposes the enriched query into steps (2-4 for simple goals, up to 10 for complex ones) with explicit dependency edges. Each step gets a task description, optional tool hint, and a model hint that controls whether it runs on the fast or smart LLM.
 
-**执行。** DAGExecutor 并行启动独立步骤（最多 5 个并发），尊重依赖图。每个步骤作为自包含的 ReAct 智能体运行，没有内存 — 它仅接收其任务描述和已完成依赖的结果。
+**Execute.** The DAGExecutor launches independent steps in parallel (up to 5 concurrent), respecting the dependency graph. Each step runs as a self-contained ReAct agent with no memory — it receives only its task description and the results of its completed dependencies. Steps the planner marks `llm_direct` (pure transformation of dependency outputs) run as a single tool-less LLM call instead.
 
-**分析。** PlanAnalyzer 评估执行的计划是否达成了原始目标，生成结构化的判决：`achieved`（布尔值）、`confidence`（0.0-1.0）、`reasoning` 和可选的 `final_answer`。
+**Analyze.** The PlanAnalyzer evaluates whether the executed plan achieved the original goal, producing a structured verdict: `achieved` (boolean), `confidence` (0.0-1.0), `reasoning`, and an optional `final_answer`.
 
-**重新规划。** 如果目标未达成且置信度低于停止阈值，管道循环回规划，使用重新规划上下文总结发生了什么以及哪里出错了。此循环自主运行最多 `DAG_MAX_REPLAN_ROUNDS` 次。
+**Re-plan.** If the goal was not achieved and the analyzer does not judge it unreachable, the pipeline loops back to planning with a replan context that summarizes what happened and what went wrong. `DAG_MAX_REPLAN_ROUNDS` (default 3) caps the rounds in total: the first plan plus up to N−1 autonomous re-plans.
 
-两个 LLM 全程协作：**智能 LLM** 处理规划、分析和答案合成（需要高推理能力的任务），而**通用 LLM** 默认处理步骤执行（使用 `model_hint="fast"` 的步骤委托给快速 LLM 以节省成本）。上下文压缩和历史摘要使用快速 LLM。每个结构化输出调用都使用 `structured_llm_call`，它提供 3 级降级链（Native FC、JSON Mode、带正则表达式回退的纯文本）来处理特定模型的输出怪癖。
+Two LLMs collaborate throughout: a **smart LLM** handles planning, analysis, and answer synthesis (tasks requiring high reasoning capability), while the **general LLM** handles step execution by default (with `model_hint="fast"` steps delegated to the fast LLM for cost savings). Context compaction and history summary use the fast LLM. Every structured output call uses `structured_llm_call`, which provides a 3-level degradation chain (Native FC, JSON Mode, plain text with regex fallback) to handle model-specific output quirks.
 
 ## LLM 调用映射
 
@@ -73,37 +73,37 @@ flowchart TD
 
 ## DAGPlanner
 
-规划器的工作是将高级目标转化为有效的 DAG，包含具体、可执行的步骤。它通过单次 `structured_llm_call` 调用智能 LLM 来完成此操作。
+The planner's job is to turn a high-level goal into a valid DAG of concrete, actionable steps. It does this with a single `structured_llm_call` to the smart LLM.
 
-**提示词设计。** 规划提示词注入当前日期和年份（使 LLM 能够规划时间感知搜索），强制语言匹配（任务描述必须使用与目标相同的语言），并将步骤数限制在 2-6 之间。每个步骤有五个字段：`id`、`task`、`dependencies`、`tool_hint` 和 `model_hint`。提示词明确反对拆分平凡相关的子任务——"如果多个检查可以在单个脚本中完成，将它们合并为一个步骤。"
+**Prompt design.** The planning prompt injects the current datetime and year (so the LLM can plan time-aware searches), enforces language matching (task descriptions must use the same language as the goal), and constrains step count (2-4 for simple goals, 5-8 for moderately complex ones, up to 10). Each step has six fields: `id`, `task`, `dependencies`, `tool_hint`, `model_hint`, and `step_type` (`react` or `llm_direct`). The prompt explicitly discourages splitting trivially related sub-tasks — "do NOT create separate steps for trivially related sub-tasks that can be done in a single script."
 
-**结构化提取。** 规划器使用 `structured_llm_call` 配合 `_PLAN_SCHEMA`，该模式定义 `steps` 数组架构和一个 `parse_fn`，用于将原始字典转换为 `PlanStep` 对象。如果 LLM 返回单个步骤对象而不是 `{"steps": [...]}` 包装器，解析器会自动恢复。[ReAct 引擎——structured_llm_call](/architecture/react-engine#structured_llm_call--unified-output-extraction) 中记录的 3 级降级链处理跨提供商的模型输出异常。
+**Structured extraction.** The planner uses `structured_llm_call` with a `_PLAN_SCHEMA` that defines the `steps` array schema and a `parse_fn` that converts raw dicts to `PlanStep` objects. If the LLM returns a single step object instead of a `{"steps": [...]}` wrapper, the parser auto-recovers. The 3-level degradation chain documented in [ReAct Engine — structured\_llm\_call](/architecture/react-engine#structured_llm_call--unified-output-extraction) handles model output quirks across providers.
 
-**DAG 验证。** 提取后，规划器使用 Kahn 算法进行拓扑排序来验证图结构。检查两个不变量：
+**DAG validation.** After extraction, the planner validates the graph structure using Kahn's algorithm for topological sorting. Two invariants are checked:
 
-1. **无悬空引用。** 如果步骤引用计划中不存在的依赖 ID，该引用会被静默剪除并记录警告日志。这是一种恢复机制——LLM 有时会遗漏它们引用的步骤，硬失败会浪费整个规划调用。
+1. **No dangling references.** If a step references a dependency ID that does not exist in the plan, the reference is silently pruned with a warning log. This is a recovery mechanism — LLMs sometimes omit steps they referenced, and hard-failing would waste the entire planning call.
 
-2. **无循环。** 如果 Kahn 算法无法访问所有节点（意味着至少存在一个循环），规划器会抛出 `ValueError`。循环是不可恢复的——循环规划无法执行。
+2. **No cycles.** If Kahn's algorithm cannot visit all nodes (meaning at least one cycle exists), the planner raises a `ValueError`. Cycles are unrecoverable — a cyclic plan cannot be executed.
 
-**model_hint。** 规划器为它认为简单且确定性的步骤分配 `"fast"`（数据查找、格式转换、直接检索），为需要标准推理的步骤分配 `null`（解析为通用模型），为需要深度分析的步骤分配 `"reasoning"`。执行器使用此提示通过 `ModelRegistry` 为每个步骤选择适当的 LLM。在不确定时，提示词指示 LLM 使用 `null`——使用更强大的模型总是更安全的。对于特定领域的任务（法律、医疗、金融），规划器从路由器接收领域上下文，并被引导为需要专家准确性的步骤分配 `model_hint="reasoning"`。
+**model\_hint.** The planner assigns `"fast"` to steps it considers simple and deterministic (data lookup, format conversion, straightforward retrieval), `null` to steps requiring standard reasoning (resolved to the general model), and `"reasoning"` to steps requiring deep analysis. The executor uses this hint to select the appropriate LLM per step via the `ModelRegistry`. When in doubt, the prompt instructs the LLM to use `null` — it is always safer to use the more capable model. For domain-specific tasks (legal, medical, financial), the planner receives domain context from the router and is guided to assign `model_hint="reasoning"` to steps requiring specialist accuracy.
 
-**输入构造。** 丰富的查询将对话历史与当前请求相结合。如果对话很长，历史通过 `DbMemory` 加载并格式化为 `"Previous conversation: ..."`。当生成的丰富查询超过 16K 令牌（通过 `CompactUtils.estimate_tokens` 估计）时，它会使用 ContextGuard 中的 `planner_input` 提示词由 LLM 进行总结，然后传递给规划器。当没有可用的快速 LLM 时的回退方案：硬截断到最后 20K 个字符。
+**Input construction.** The enriched query combines conversation history with the current request. If the conversation is long, history is loaded via `DbMemory` and formatted as `"Previous conversation: ..."`. When the resulting enriched query exceeds 16K tokens (estimated via `CompactUtils.estimate_tokens`), it is LLM-summarized using the `planner_input` hint prompt from ContextGuard before being passed to the planner. The fallback when no fast LLM is available: hard-truncate to the last 20K characters.
 
 ## DAGExecutor
 
-执行器接收一个经过验证的 `ExecutionPlan` 并并发运行其步骤，同时尊重依赖边并强制执行资源限制。
+The executor takes a validated `ExecutionPlan` and runs its steps concurrently, respecting dependency edges and enforcing resource limits.
 
-**并发模型。** 一个 `asyncio.Semaphore` 将并行步骤执行限制为 `max_concurrency`（默认为 5，可通过 `MAX_CONCURRENCY` 环境变量配置）。调度循环识别所有依赖项已完成的步骤，将它们作为 `asyncio.Task` 实例启动，并等待至少一个完成后再次检查。步骤按排序的 ID 顺序启动，以确保确定性行为。
+**Concurrency model.** An `asyncio.Semaphore` limits parallel step execution to `max_concurrency` (default 5, configurable via `MAX_CONCURRENCY` env var). The dispatch loop identifies all steps whose dependencies have completed, launches them as `asyncio.Task` instances, and waits for at least one to finish before checking again. Steps are launched in sorted ID order for deterministic behavior.
 
-**每步 ReAct 智能体。** 每个步骤作为由 `_resolve_agent()` 创建的独立 ReAct 智能体运行。如果步骤有一个 `model_hint` 与 `ModelRegistry` 中的角色匹配，则会创建一个具有相应 LLM 的临时智能体。否则，使用注册表的默认（通用）模型。这些每步智能体**没有内存** — 它们从头开始，仅包含任务描述、原始目标、任何工具提示和已完成依赖项的结果。这种隔离是有意的：DAG 步骤应该是自包含的工作单元，不会在图中泄漏状态。由于每个步骤都是标准的 `ReActAgent` 实例，它会自动继承所有工具的功能：[循环检测](/architecture/react-engine#cycle-detection)防止步骤在相同的失败工具上循环，[完成检查清单](/architecture/react-engine#completion-checklist)在步骤完成其结果前验证结论。
+**Per-step ReAct agent.** Each step runs as an independent ReAct agent created by `_resolve_agent()`. If the step has a `model_hint` that matches a role in the `ModelRegistry`, a temporary agent is created with the corresponding LLM. With no hint the `general` role is used; if the requested role is not registered, the step falls back to the executor's base agent. These per-step agents have **no memory** — they start fresh with only their task description, the original goal, any tool hints, and the results of completed dependencies. This isolation is deliberate: DAG steps should be self-contained units of work that do not leak state across the graph. Because each step is a standard `ReActAgent` instance, it automatically inherits all harness features: [cycle detection](/architecture/react-engine#cycle-detection) prevents a step from looping on the same failing tool, and the [completion checklist](/architecture/react-engine#completion-checklist) verifies conclusions before a step finalizes its result.
 
-**依赖上下文注入。** `_build_step_context()` 将所有已完成依赖步骤的结果格式化为文本块：每个依赖项的 ID、状态、任务描述和结果。如果配置了 `ContextGuard` 且组合上下文超过 `max_message_chars`，则会硬截断并添加 `[Dependency context truncated]` 后缀。这可防止依赖于多个冗长前置步骤的步骤超出其自身的上下文窗口。
+**Dependency context injection.** `_build_step_context()` formats the results of all completed dependency steps into a text block: each dependency's ID, status, task description, and result. If a `ContextGuard` is configured and the combined context exceeds `max_message_chars`, it is hard-truncated with a `[Dependency context truncated]` suffix. This prevents a step that depends on multiple verbose predecessors from blowing out its own context window.
 
-**结构化内容乘数。** 当依赖结果包含结构化内容 — 法律引用、markdown 表格或代码块时，`_build_step_context()` 对截断预算应用乘数（默认 `3.0`，可通过 `DAG_STRUCTURED_CONTEXT_MULTIPLIER` 配置）。这确保引用、表格数据和其他结构化工件在步骤边界间被保留，而不是被截断在参考中间。
+**Structured content multiplier.** When dependency results contain structured content — legal citations, markdown tables, or code blocks — `_build_step_context()` applies a multiplier to the truncation budget (default `3.0`, configurable via `DAG_STRUCTURED_CONTEXT_MULTIPLIER`). This ensures that citations, tabular data, and other structured artifacts are preserved across step boundaries rather than being truncated mid-reference.
 
-**步骤超时。** 每个步骤都用 `asyncio.wait_for` 包装，默认超时为 600 秒（10 分钟）。如果步骤超过此时间，它会被取消并标记为 `"failed"`，并显示超时消息。超时是按步骤的，而不是按计划的 — 一个 5 步计划如果步骤按顺序执行，理论上可以运行 50 分钟。
+**Step timeout.** Each step is wrapped in `asyncio.wait_for` with a default timeout of 600 seconds (10 minutes). If a step exceeds this, it is cancelled and marked as `"failed"` with a timeout message. The timeout is per-step, not per-plan — a 5-step plan can theoretically run for 50 minutes if steps execute sequentially.
 
-**中断和取消。** 执行器有两条不同的取消路径，各由不同的事件触发：
+**Interruption and cancellation.** The executor has two distinct cancellation paths, each triggered by a different event:
 
 ```mermaid
 flowchart LR
@@ -111,15 +111,15 @@ flowchart LR
     C["HTTP client disconnects"] -->|"run_task.cancel()"| D["Running step tasks cancelled\nasyncio.gather awaits cleanup"]
 ```
 
-*优雅跳过 — 停止事件。* 当用户在执行期间发送后续消息时，`chat.py` 中的编排器设置 `exec_stop_event`。执行器在每个调度循环的顶部检查此标志：如果设置，所有剩余的 `pending` 步骤立即标记为 `"skipped"`，原因为 `"Skipped — user changed requirements"`，循环退出。已运行的步骤可以完成 — 仅未启动的步骤被放弃。这种快速退出让管道能够围绕用户的更新意图重新规划，而无需等待完整的原始计划完成。
+*Graceful skip — stop event.* When a user sends a follow-up message during execution, the orchestrator in `chat.py` sets `exec_stop_event`. The executor checks this flag at the top of each dispatch cycle: if set, all remaining `pending` steps are immediately marked `"skipped"` with the reason `"Skipped — user changed requirements"`, and the loop exits. Steps already running are allowed to complete — only unstarted steps are abandoned. This fast-exit lets the pipeline re-plan around the user's updated intent without waiting for the full original plan to finish.
 
-*立即中止 — asyncio 取消。* 当 HTTP 客户端断开连接时，`chat.py` 通过 `asyncio.Task.cancel()` 取消顶级 `run_task`。执行器捕获 `asyncio.CancelledError`，取消所有当前运行的步骤任务，通过 `asyncio.gather(..., return_exceptions=True)` 等待它们确认，然后重新抛出。客户端断开连接通过在 SSE 事件循环内每 0.5 秒轮询 `await request.is_disconnected()` 来检测。
+*Immediate abort — asyncio cancellation.* When the HTTP client disconnects, `chat.py` cancels the top-level `run_task` via `asyncio.Task.cancel()`. The executor catches `asyncio.CancelledError`, cancels all currently-running step tasks, waits for them to acknowledge via `asyncio.gather(..., return_exceptions=True)`, then re-raises. Client disconnect is detected by polling `await request.is_disconnected()` every 0.5 seconds inside the SSE event loop.
 
-语义差异很重要：**停止事件**意味着"跳过尚未启动的内容，但保留已运行的内容" — 已完成的步骤结果保持可用以通知重新规划。**CancelledError** 意味着"立即中止所有内容" — 所有进行中的工作被丢弃，无法恢复结果。
+The semantic difference matters: **stop event** means "skip what hasn't started yet, but preserve what's already running" — completed step results remain available to inform re-planning. **CancelledError** means "abort everything immediately" — all in-flight work is dropped with no result recovery.
 
-**死锁检测。** 如果调度循环发现没有任务运行且没有步骤准备启动（因为它们的依赖项失败），所有剩余的待处理步骤都标记为 `"failed"`，并显示说明其依赖项从未完成的消息。这可防止执行器无限期挂起。
+**Deadlock detection.** If the dispatch loop finds no tasks running and no steps ready to launch (because their dependencies failed), all remaining pending steps are marked `"failed"` with a message explaining that their dependencies never completed. This prevents the executor from hanging indefinitely.
 
-**进度回调。** 执行器为三种事件类型触发 `(step_id, event, data)` 回调：`"started"`（步骤已启动）、`"iteration"`（步骤内的工具调用）和 `"completed"`（步骤已完成）。`chat.py` 中的 SSE 层将这些回调桥接到 `step_progress` 事件，前端使用这些事件来呈现实时 DAG 可视化。
+**Progress callbacks.** The executor fires `(step_id, event, data)` callbacks for three core event types: `"started"` (step launched), `"iteration"` (tool call within a step), and `"completed"` (step finished), plus verification events (`"verifying"`, `"verification"`, `"re_verification"`, `"citation_verification"`) and `"thinking_delta"`. The SSE layer in `chat.py` bridges these callbacks to `step_progress` events that the frontend uses to render real-time DAG visualization.
 
 ## 引用验证
 
@@ -133,88 +133,88 @@ flowchart LR
 
 引用验证会增加包含引用的步骤的延迟，但不影响不包含引用的步骤。如果您的用例不涉及引用敏感领域，可通过设置 `DAG_CITATION_VERIFICATION=false` 来禁用它。
 
-## 领域感知路由
+## Domain-aware routing
 
-自动路由器现在使用 **`domain_hint`** 对查询进行分类，同时保留现有的模式选择。识别的领域包括 `legal`、`medical` 和 `financial`；这些领域之外的查询接收 `null`。
+Before execution, the ReAct and DAG endpoints each classify the query with `classify_domain()` on the fast LLM, producing a **`domain_hint`**; the auto-router only chooses the mode. Recognized domains default to `legal`, `medical`, `financial`, `tax`, `compliance`, and `patent` (`ESCALATION_DOMAINS`); queries outside these domains receive `null`.
 
-领域分类以两种方式影响管道：
+Domain classification influences the pipeline in two ways:
 
-**DAG 模式。** 当路由器选择 DAG 并提供非空 `domain_hint` 时，领域上下文被注入到规划器提示中。这引导规划器为需要专家级准确性的步骤分配 `model_hint="reasoning"`，并为与可用领域技能匹配的步骤建议 `tool_hint="read_skill"`。
+**DAG mode.** When a DAG request has a non-null `domain_hint`, the domain context is injected into the planner prompt. This guides the planner toward assigning `model_hint="reasoning"` for steps that require specialist accuracy and suggesting `tool_hint="read_skill"` for steps that match available domain skills.
 
-**ReAct 模式。** 当路由器为领域特定查询选择 ReAct 时，系统通过 `registry.get_by_role("reasoning")` 从通用模型升级到**推理模型**。此外，会注入强制性指令，要求智能体在编写任何领域特定内容之前使用 `web_search`，并通过搜索验证引文。`read_skill` 工具在工具选择中被固定（不被过滤），确保领域知识始终可访问。
+**ReAct mode.** For a domain-specific ReAct request, the system escalates from the general model to the **reasoning model** via `registry.get_by_role("reasoning")`. Additionally, instructions are injected telling the agent to verify any cited laws, regulations, or precedents with `web_search` before writing, and to answer directly when the provided context is sufficient. The `read_skill` tool is pinned in tool selection (not filtered out), ensuring domain knowledge is always accessible.
 
-路由偏差也会改变：紧密耦合的领域分析（其中多个子任务共享上下文和引文）倾向于 ReAct 模式，以避免在 DAG 步骤边界之间丢失上下文。
+In DAG mode the planner is also told to keep tightly-coupled domain analysis (where multiple sub-tasks share context and citations) together in fewer, deeper steps, to avoid losing context across step boundaries.
 
 ## PlanAnalyzer
 
-分析器评估执行的计划是否达成了原始目标。它生成一个结构化的 `AnalysisResult`，包含四个字段：
+The analyzer evaluates whether the executed plan achieved the original goal. It produces a structured `AnalysisResult` with five fields (the four below plus `unrecoverable`, a boolean set when another round could not reach the goal):
 
-- **`achieved`** (布尔值) — 仅当目标完全实现时为 `true`。
-- **`confidence`** (浮点数，0.0-1.0) — 分析器对其评估的确定程度。相互矛盾的来源会降低此分数。
-- **`final_answer`** (字符串或 null) — 当达成目标时的综合答案，否则为 `null`。
-- **`reasoning`** (字符串) — LLM 的思维链推理过程。
+- **`achieved`** (boolean) — `true` only if the goal was fully accomplished.
+- **`confidence`** (float, 0.0-1.0) — how certain the analyzer is in its assessment. Sources that contradict each other lower this score.
+- **`final_answer`** (string or null) — a synthesized answer when achieved, `null` otherwise.
+- **`reasoning`** (string) — the LLM's chain-of-thought justification.
 
-**结构化提取。** 分析器使用 `structured_llm_call` 配合 `_ANALYSIS_SCHEMA`、处理类型强制转换和置信度限制的 `parse_fn`，以及用于格式错误 JSON 的 `regex_fallback`。正则表达式回退 (`_regex_extract_analysis`) 使用模式匹配从部分有效的 JSON 中提取 `achieved`、`confidence`、`final_answer` 和 `reasoning` 字段。这很重要，因为分析响应往往比规划响应更长更复杂，使得 JSON 格式错误更容易发生。
+**Structured extraction.** The analyzer uses `structured_llm_call` with `_ANALYSIS_SCHEMA`, a `parse_fn` that handles type coercion and confidence clamping, and a `regex_fallback` for malformed JSON. The regex fallback (`_regex_extract_analysis`) extracts `achieved`, `confidence`, `final_answer`, and `reasoning` fields from partially valid JSON using pattern matching. This matters because analysis responses tend to be longer and more complex than planning responses, making JSON formatting errors more likely.
 
-**安全默认值。** 如果所有提取级别都失败（原生 FC、JSON 模式、纯文本、正则表达式），分析器返回 `AnalysisResult(achieved=False, confidence=0.0, reasoning="Could not parse analysis response")`。这确保管道始终获得可用的结果——解析失败变成"未达成"的判决，触发重新规划而不是崩溃。
+**Safe default.** If all extraction levels fail (native FC, JSON mode, plain text, regex), the analyzer returns `AnalysisResult(achieved=False, confidence=0.0, reasoning="Could not parse analysis response")`. This ensures the pipeline always gets a usable result — a parse failure becomes a "not achieved" verdict, which triggers re-planning rather than crashing.
 
-**步骤结果格式化。** 每个步骤的结果在分析提示中被截断为 10K 字符。这可以防止单个步骤的冗长输出（例如大型网页抓取或文件转储）主导分析器的上下文窗口并挤占其他步骤结果的空间。
+**Step result formatting.** Each step's result is truncated to 10K characters in the analysis prompt. This prevents a single step's verbose output (e.g., a large web scrape or file dump) from dominating the analyzer's context window and crowding out other steps' results.
 
-**多源比较。** 分析提示包含一条指令，要求明确比较来自不同来源的结果。当网页搜索结果、知识库检索和文件操作都贡献数据时，分析器必须标记矛盾（不同的数字、日期、声明），并指出哪个来源可能更权威。矛盾会降低置信度分数，进而影响重新规划的决策。
+**Multi-source comparison.** The analysis prompt includes a directive to explicitly compare results from different sources. When web search results, knowledge base retrieval, and file operations all contribute data, the analyzer must flag contradictions (different numbers, dates, claims) and indicate which source is likely more authoritative. Contradictions lower the confidence score, which in turn influences the re-planning decision.
 
-## 重新规划
+## Re-planning
 
-重新规划循环是 DAG 引擎最独特的特性：它可以通过反思出了什么问题并尝试不同的方法来自主恢复部分故障。
+The re-planning loop is the DAG engine's most distinctive feature: it can autonomously recover from partial failures by reflecting on what went wrong and trying a different approach.
 
-**决策逻辑。** 在每一轮计划-执行-分析之后，`chat.py` 中的编排器评估分析结果：
+**Decision logic.** After each round of plan-execute-analyze, the orchestrator in `chat.py` evaluates the analysis result:
 
-1. **`achieved == True`** — 退出循环，继续进行流式合成。
-2. **此轮期间发生用户注入** — 始终重新规划，无论置信度或预算如何。用户后续消息被视为需求变更，需要重新尝试。这不会消耗自主重新规划预算。
-3. **自主重新规划预算已耗尽** — 退出循环。预算为 `max_replan_rounds - 1` 次自主重新规划（默认：从总共 3 轮中进行 2 次自主重新规划）。
-4. **`confidence >= replan_stop_confidence`** — 退出循环。即使目标未完全实现，高置信度分数（默认阈值：0.8，可通过 `DAG_REPLAN_STOP_CONFIDENCE` 配置）表明分析器对发生的情况相当确定 — 重新规划不太可能有帮助。
-5. **其他情况** — 重新规划。目标未实现，置信度低，预算仍有余额。
+1. **`achieved == True`** — exit the loop, proceed to streaming synthesis.
+2. **User inject occurred during this round** — always re-plan, regardless of confidence or budget. User follow-up messages are treated as requirement changes that demand a fresh attempt. This does not consume the autonomous replan budget.
+3. **Autonomous replan budget exhausted** — exit the loop. The budget is `max_replan_rounds - 1` autonomous replans (default: 2 autonomous replans from a budget of 3 total rounds).
+4. **`unrecoverable` and `confidence >= replan_stop_confidence`** — exit the loop. The analyzer judged that another round cannot reach the goal (impossible request, missing capability, dead resource) and is confident about it (default threshold: 0.8, configurable via `DAG_REPLAN_STOP_CONFIDENCE`). A confident "not achieved yet" still re-plans.
+5. **Otherwise** — re-plan. The goal was not achieved, confidence is low, and budget remains.
 
-**重新规划上下文。** 重新规划时，编排器调用 `_format_replan_context()` 来构建前一轮的摘要。这包括分析器的推理和每个步骤结果的截断预览（每个步骤最多 500 个字符）。激进的截断是有意的：规划器需要知道*发生了什么*和*哪里出错了*，而不是每个步骤输出的完整细节。此上下文与原始富化查询一起作为 `context` 参数传递给 `DAGPlanner.plan()`。
+**Replan context.** When re-planning, the orchestrator calls `_format_replan_context()` to build a summary of the previous round. This includes the analyzer's reasoning and a truncated preview of each step's result (500 characters per step for the latest round, 200 for older rounds; `DAG_REPLAN_RECENT_TRUNCATION` / `DAG_REPLAN_OLDER_TRUNCATION`). Steps that already completed carry over into the next plan with their results. The aggressive truncation is deliberate: the planner needs to know *what happened* and *what went wrong*, not the full detail of every step's output. This context is passed to `DAGPlanner.plan()` as the `context` parameter, alongside the original enriched query.
 
-**最大轮数。** `DAG_MAX_REPLAN_ROUNDS` 环境变量（默认 3）控制规划轮数的总数。使用默认设置，第一轮是初始规划，最多留下 2 次自主重新规划。用户触发的重新规划（通过消息注入）不计入此预算 — 用户可以无限期地引导管道。
+**Max rounds.** The `DAG_MAX_REPLAN_ROUNDS` environment variable (default 3) controls the total number of planning rounds. With default settings, the first round is the initial plan, leaving up to 2 autonomous re-plans. User-triggered re-plans (via message injection) do not count against this budget — a user can steer the pipeline indefinitely.
 
-**SSE 事件。** 当管道决定重新规划时，它会发出包含分析器推理的 `replanning` 阶段事件。前端使用此事件向用户显示管道重试的原因。
+**SSE event.** When the pipeline decides to re-plan, it emits a `replanning` phase event containing the analyzer's reasoning. The frontend uses this to show the user why the pipeline is retrying.
 
-**enriched_query 累积。** 用户后续消息在各轮中附加到富化查询：`enriched_query += "\n\n[User follow-up]: {content}"`。这意味着规划器在构建修订计划时看到用户意图的完整演变 — 原始请求加上所有后续澄清。
+**enriched\_query accumulation.** User follow-up messages are appended to the enriched query across rounds: `enriched_query += "\n\n[User follow-up]: {content}"`. This means the planner sees the full evolution of the user's intent — the original request plus all subsequent clarifications — when building a revised plan.
 
-## 流式合成
+## Streaming synthesis
 
-当分析器确认目标已实现（`analysis.achieved == True`）时，管道通过 `PlanAnalyzer.stream_synthesize()` 向用户流式传输合成的最终答案。
+When the analyzer confirms the goal was achieved (`analysis.achieved == True`), the pipeline streams a synthesized final answer to the user via `PlanAnalyzer.stream_synthesize()`.
 
-**输入。** 合成调用接收三个输入：原始目标、格式化的步骤结果（每个步骤最多 10K 字符）和分析器来自非流式分析调用的推理。推理提供了合成应涵盖内容的"路线图"。
+**Input.** The synthesis call receives three inputs: the original goal, the formatted step results (10K characters max per step), and the analyzer's reasoning from the non-streaming analysis call. The reasoning provides a "roadmap" for what the synthesis should cover.
 
-**系统提示。** 合成提示指示 LLM 直接回答，不包含元注释（"不要包含诸如'基于结果'之类的短语"），匹配原始目标的语言，并在适用时比较来自不同来源的结果。如果可用，将从用户偏好设置追加语言指令。
+**System prompt.** The synthesis prompt instructs the LLM to answer directly without meta-commentary ("do NOT include phrases like 'based on the results'"), match the language of the original goal, and compare results from different sources when applicable. A language directive from user preferences is appended if available.
 
-**流式传输。** 该方法使用 `stream_chat()` 逐步生成令牌。SSE 层将每个块包装在带有 `status: "delta"` 的 `answer` 事件中，为前端提供最终答案的实时渲染。
+**Streaming.** The method uses `stream_chat()` to yield tokens incrementally. The SSE layer wraps each chunk in an `answer` event with `status: "delta"`, giving the frontend real-time rendering of the final answer.
 
-**回退链。** 两个回退路径处理失败：
+**Fallback chain.** Two fallback paths handle failure:
 
-1. **stream_synthesize 引发异常** — 回退到非流式 `analyze()` 调用中的 `analysis.final_answer`。此答案已在分析期间生成，因此即使流式调用失败也可用。
+1. **stream\_synthesize raises an exception** — fall back to `analysis.final_answer` from the non-streaming `analyze()` call. This answer was already generated during analysis, so it is available even if the streaming call fails.
 
-2. **目标未实现（未尝试合成）** — 连接所有已完成的步骤结果，用水平线分隔。每个结果以其步骤 ID 为前缀。如果根本没有步骤完成，返回 `"(goal not achieved)"`。
+2. **Goal not achieved (no synthesis attempted)** — concatenate all completed step results, separated by horizontal rules. Each result is prefixed with its step ID. If no steps completed at all, return a short message saying the task could not be completed and suggesting the user rephrase or simplify the goal.
 
-回退设计确保用户始终获得答案 — 虽然可能降级但永远不会为空。
+The fallback design ensures the user always gets an answer — degraded but never empty.
 
-## 多LLM架构
+## Multi-LLM architecture
 
-DAG引擎的成本和延迟特性由其多模型设计决定。分工如下：
+The DAG engine's cost and latency profile is shaped by its multi-model design. The division of labor is:
 
-| 角色 | 用途 | 优化方向 |
+| Role | Used for | Optimized for |
 |------|----------|---------------|
-| **Smart LLM** | 规划、分析、答案合成 | 推理能力 |
-| **General LLM** | 步骤执行（默认）、ReAct智能体 | 能力和成本的平衡 |
-| **Fast LLM** | `model_hint="fast"`步骤、上下文压缩、历史摘要 | 成本和延迟 |
-| **Reasoning LLM** | `model_hint="reasoning"`步骤、领域升级的ReAct | 深度分析能力 |
+| **Smart LLM** | Planning, analysis, answer synthesis | Reasoning capability |
+| **General LLM** | Step execution (default), ReAct agent | Balance of capability and cost |
+| **Fast LLM** | `model_hint="fast"` steps, context compaction, history summary | Cost and latency |
+| **Reasoning LLM** | `model_hint="reasoning"` steps, domain-escalated ReAct | Deep analysis capability |
 
-Smart LLM处理三个需要最深层推理的调用：将目标分解为连贯的计划、判断计划是否达成目标，以及合成最终答案来连贯整合多个步骤结果。这些调用每轮发生一次（或仅在合成时发生一次），因此其较高的单位令牌成本被摊销。
+The smart LLM handles the three calls that require the deepest reasoning: decomposing a goal into a coherent plan, judging whether the plan achieved the goal, and synthesizing a final answer that coherently integrates multiple step results. These calls happen once per round (or once total for synthesis), so their higher per-token cost is amortized.
 
-General LLM默认处理步骤执行——每个DAG步骤的ReAct循环在General模型上运行，除非规划器明确分配不同的`model_hint`。Fast LLM保留用于标记为`model_hint="fast"`的步骤（简单查询、格式转换）和基础设施调用（上下文压缩、历史摘要）。Reasoning LLM用于标记为`model_hint="reasoning"`的步骤和领域升级的ReAct任务（参见[领域感知路由](#domain-aware-routing)）。
+The general LLM handles step execution by default — each DAG step's ReAct loop runs on the general model unless the planner explicitly assigns a different `model_hint`. The fast LLM is reserved for steps tagged `model_hint="fast"` (simple lookups, format conversions) and for infrastructure calls (context compaction, history summarization). The reasoning LLM is used for steps tagged `model_hint="reasoning"` and for domain-escalated ReAct tasks (see [Domain-aware routing](#domain-aware-routing)).
 
-**按步骤覆盖。** 每个`PlanStep`上的`model_hint`字段控制哪个LLM运行该步骤。当`model_hint`为`null`时，执行器使用General模型。当为`"fast"`时，执行器通过模型注册表使用Fast LLM。当为`"reasoning"`时，执行器使用Reasoning LLM。规划器被指示为确定性任务设置`"fast"`、为标准推理设置`null`、为深度分析设置`"reasoning"`——但也可以设置为在`ModelRegistry`中注册的任何自定义角色。模型解析在**每个步骤一次**通过`_resolve_agent()`进行，时间在该步骤的ReAct循环开始之前——步骤内的所有迭代（工具选择、ReAct循环、ContextGuard压缩）使用相同的已解析LLM。模型在步骤中途永远不会改变。
+**Per-step override.** The `model_hint` field on each `PlanStep` controls which LLM runs that step. When `model_hint` is `null`, the executor uses the general model. When it is `"fast"`, the executor uses the fast LLM via the model registry. When it is `"reasoning"`, the executor uses the reasoning LLM. The planner is instructed to set `"fast"` for deterministic tasks, `null` for standard reasoning, and `"reasoning"` for deep analysis — but it can also be set to any custom role registered in the `ModelRegistry`. Model resolution happens **once per step** via `_resolve_agent()` immediately before that step's ReAct loop begins — all iterations within the step (tool selection, the ReAct loop) use the same resolved LLM; ContextGuard compaction uses the fast LLM. The model never changes mid-step.
 
-**预算独立性。** 每个LLM角色都有独立的上下文预算，从其模型配置计算得出。DAG步骤执行使用已解析步骤模型的预算（默认为General）；规划和分析调用使用Smart LLM的预算。这很重要，因为操作者通常将大上下文模型（128K+）用于规划，而为步骤执行使用不同的模型。有关预算如何计算的详细信息，请参见[上下文管理——预算配置](/architecture/context-management#layer-5--budget-configuration)。
+**Budget independence.** Each LLM role has an independent context budget, computed from its model configuration. DAG step execution uses the resolved step model's budget (general by default); planning and analysis calls use the smart LLM's budget. This is important because operators often pair a large-context model (128K+) for planning with different models for step execution. For details on how budgets are computed, see [Context Management — Budget Configuration](/architecture/context-management#layer-5--budget-configuration).

@@ -14,23 +14,23 @@ Le vrai défi n'est pas « tenir dans la fenêtre ». C'est : **se dégrader gra
 
 FIM One résout ce problème avec une architecture de défense en profondeur à cinq couches. Chaque couche aborde une échelle différente du problème, et elles se composent proprement — aucune couche unique n'a besoin d'être parfaite car la suivante rattrape ce qu'elle manque.
 
-## Cinq couches de défense
+## Five layers of defense
 
-La gestion du contexte n'est pas un mécanisme unique. C'est une pile, où chaque couche gère une préoccupation spécifique à une granularité spécifique :
+Context management is not a single mechanism. It is a stack, where each layer handles a specific concern at a specific granularity:
 
-| Couche | Composant | Ce qu'il fait | Quand il agit |
+| Layer | Component | What it does | When it acts |
 |-------|-----------|-------------|-------------|
-| **5** | Budget Configuration | Calcule le budget de jetons d'entrée utilisable à partir des spécifications du modèle | Au démarrage / par requête |
-| **4** | DbMemory | Charge l'historique persisté, compacte au chargement | Une fois par requête |
-| **3** | ContextGuard | Application du budget par itération | À chaque itération ReAct |
-| **2** | CompactUtils | Estimation des jetons, troncature intelligente, compaction LLM | Appelé par les couches 3 et 4 |
-| **1** | Memory Implementations | Interface abstraite + stratégies concrètes | Niveau du framework |
+| **5** | Budget Configuration | Computes usable input token budget from model specs | At startup / per-request |
+| **4** | DbMemory | Loads persisted history, compacts on load | Once per request |
+| **3** | ContextGuard | Per-iteration budget enforcement | Every ReAct iteration |
+| **2** | CompactUtils | Token estimation, smart truncation, LLM compaction | Called by layers 3 and 4 |
+| **1** | Memory Implementations | Abstract interface + concrete strategies | Framework-level |
 
-Les couches sont numérotées de bas en haut car les couches supérieures dépendent des couches inférieures. La couche 5 définit le budget. La couche 4 effectue la compaction initiale au moment du chargement. La couche 3 applique le budget à chaque itération. Les couches 2 et 1 fournissent les primitives que les couches 3 et 4 utilisent.
+The layers are numbered bottom-up because higher layers depend on lower ones. Layer 5 sets the budget. Layer 4 does the initial load-time compaction. Layer 3 enforces the budget on every iteration. Layers 2 and 1 provide the primitives that layers 3 and 4 use.
 
 ```mermaid
 flowchart TD
-    L5["Layer 5: Budget Configuration<br/><i>context_size - max_output</i>"]
+    L5["Layer 5: Budget Configuration<br/><i>(context_size - max_output) × 0.92</i>"]
     L4["Layer 4: DbMemory<br/><i>Load history, compact on load</i>"]
     L3["Layer 3: ContextGuard<br/><i>Per-iteration enforcement</i>"]
     L2["Layer 2: CompactUtils<br/><i>Estimation, truncation, LLM compact</i>"]
@@ -43,82 +43,102 @@ flowchart TD
     L4 -.->|"implements"| L1
 ```
 
-### Couche 5 — Configuration du budget
+### Layer 5 — Budget Configuration
 
-Le budget est calculé à partir de deux valeurs :
+The budget is computed from two values of the model in use:
 
 ```
-usable_input_tokens = context_size - max_output_tokens
+usable_input_tokens = (context_size - max_output_tokens) × 0.92
 ```
 
-Avec les valeurs par défaut : `128 000 - 64 000 = 64 000 tokens`.
+With defaults: `(128,000 - 64,000) × 0.92 = 58,880 tokens`. The 8% margin absorbs the error of heuristic token estimation, so compaction triggers before the provider's hard limit.
 
-Aucune réserve de message système statique n'est soustraite. Le message système (instructions de l'agent, descriptions des outils, surcharge de formatage) est inclus dans la liste des messages que ContextGuard estime dynamiquement — soustraire une réserve fixe en plus créerait un double comptage et gaspillerait le budget. Un message système typique consomme 3K-5K tokens ; les agents avec de nombreux outils ou des instructions longues peuvent en utiliser davantage. ContextGuard tient compte de la taille réelle automatiquement.
+No static system prompt reserve is subtracted. The system prompt (agent instructions, tool descriptions, formatting overhead) is included in the message list that ContextGuard estimates dynamically — subtracting a fixed reserve on top would double-count it and waste budget. A typical system prompt consumes 3K-5K tokens; agents with many tools or long instructions may use more. ContextGuard accounts for the actual size automatically.
 
-Les valeurs de budget peuvent provenir de trois sources, résolues par ordre de priorité :
+The values come from the models a chat turn resolved: the agent's own model and fast model when it sets them, otherwise the active model group, otherwise the system default. Each resolved model reports its own `context_size` and `max_output_tokens`, so two agents on different models get different budgets in the same deployment.
 
-1. **ModelConfig de la base de données** — `context_size` et `max_output_tokens` par modèle définis par l'administrateur.
-2. **Variables d'environnement** — `LLM_CONTEXT_SIZE` et `LLM_MAX_OUTPUT_TOKENS`.
-3. **Valeurs par défaut codées en dur** — contexte 128K, sortie 64K.
+A model with no context size configured (the field left empty in its model configuration) falls back to the system budget for its role, resolved in priority order:
 
-Le LLM principal et le LLM rapide ont des budgets indépendants. L'exécution des étapes du DAG utilise le budget du LLM rapide ; le mode ReAct utilise le budget du LLM principal. Cela importe car les opérateurs associent souvent un modèle à grand contexte pour ReAct (où l'historique s'accumule) avec un modèle plus petit et plus rapide pour les étapes du DAG (où chaque étape recommence à zéro).
+1. **System ModelConfig for the role** — `context_size` and `max_output_tokens` of the system `general` or `fast` model set by the admin.
+2. **Environment variables** — `LLM_CONTEXT_SIZE` / `FAST_LLM_CONTEXT_SIZE` and `LLM_MAX_OUTPUT_TOKENS`.
+3. **Hardcoded defaults** — 128K context, 64K output.
 
-Un plancher de 4 000 tokens est appliqué — si les valeurs mal configurées produisaient un budget plus petit, le système se limite à 4K plutôt que d'échouer silencieusement.
+The main LLM and fast LLM have independent budgets, and which one applies depends on who reads the message list:
 
-### Couche 4 — DbMemory
+- **ReAct mode** sends one message list to both models: the fast model decides tool calls, the main model writes the final answer (and the fast model stands in when the main model is unavailable). The list is budgeted against the **smaller** of the two budgets, so any mix of windows stays within both. When a legal, medical or similar domain query escalates the turn to the reasoning model, that model's window replaces the main model's in the comparison.
+- **DAG mode** budgets history loading and planning against the main model, and each step against the model that runs it (the general model by default, or the one the step's `model_hint` selects).
 
-`DbMemory` est l'implémentation de mémoire en production. Elle charge l'historique de conversation persisté depuis la base de données et le compacte pour tenir dans le budget de tokens avant que l'agent ne le voie.
+At startup the backend logs a warning when the system fast model's window is smaller than the general model's budget: nothing overflows, but conversations compact earlier than the general model alone would need.
 
-La conception est **intentionnellement en lecture seule**. La persistance est gérée par `chat.py` — la couche API qui possède le cycle de vie complet des messages (y compris les métadonnées, le suivi d'utilisation et les pièces jointes d'images). `DbMemory` ne fait que lire. Ses méthodes `add_message()` et `clear()` sont des no-ops. Cette séparation prévient les écritures doubles et garde la logique de persistance au même endroit.
+A floor of 4,000 tokens is enforced — if misconfigured values would produce a smaller budget, the system clamps to 4K rather than failing silently. One misconfiguration is handled before the floor: when the output reserve is as large as the window itself (a small model whose max output tokens was left at the 64K default), half the window is reserved instead. Set the model's max output tokens to get an exact budget.
 
-Au chargement, `DbMemory` :
+### Layer 4 — DbMemory
 
-1. Interroge tous les messages `user` et `assistant` pour la conversation, ordonnés par heure de création.
-2. Supprime le dernier message utilisateur (la requête actuelle, que l'agent réajoutera).
-3. Reconstruit les pièces jointes d'images — les messages utilisateur qui incluaient des images stockent les métadonnées (`file_id`, `mime_type`) dans la base de données, et `DbMemory` reconstruit les data-URLs en base64 à partir du disque pour que le LLM puisse « voir » les images des tours précédents.
-4. Compacte : si un `compact_llm` a été fourni, utilise `CompactUtils.llm_compact()`. Sinon, revient à `CompactUtils.smart_truncate()`.
+`DbMemory` is the production memory implementation. It loads persisted conversation history from the database and compacts it to fit the token budget before the agent sees it.
 
-Après compaction, `DbMemory` définit les drapeaux de suivi (`was_compacted`, `_original_count`, `_compacted_count`) que la couche SSE utilise pour émettre un événement `compact` au frontend.
+The design is **read-only by intention**. Persistence is handled by `chat.py` — the API layer that owns the full message lifecycle (including metadata, usage tracking, and image attachments). `DbMemory` does not persist conversation turns: its `add_message()` and `clear()` methods are no-ops, and its only write is a synthetic `tool` result row for a tool call left dangling by an interrupted turn. This separation prevents double-writes and keeps the persistence logic in one place.
 
-### Couche 3 — ContextGuard
+On load, `DbMemory`:
 
-`ContextGuard` est l'applicateur de budget par itération. Il est appelé au début de chaque itération ReAct — à la fois en mode ReAct autonome et à l'intérieur de l'agent de chaque étape DAG. C'est la dernière ligne de défense avant que les messages ne frappent l'API LLM.
+1. Queries all `user`, `assistant` and `tool` messages for the conversation, ordered by creation time.
+2. Drops the trailing user message (the current query, which the agent will re-append).
+3. Reconstructs image attachments — user messages that included images store metadata (`file_id`, `mime_type`) in the database, and `DbMemory` rebuilds the base64 data-URLs from disk so the LLM can "see" images from earlier turns.
+4. Compacts: if a `compact_llm` was provided, uses `CompactUtils.llm_compact()`. Otherwise, falls back to `CompactUtils.smart_truncate()`. The whole stored conversation is the input here, so this is where the history most often exceeds the summarising model's window; it is then summarised in parts (see [Chunked compaction input](#chunked-compaction-input)).
 
-L'application suit un processus en trois étapes :
+After compaction, `DbMemory` sets tracking flags (`was_compacted`, `_original_count`, `_compacted_count`) that the SSE layer uses to emit a `compact` event to the frontend.
 
-1. **Tronquer les messages surdimensionnés.** Tout message unique dépassant 50 000 caractères est tronqué brutalement avec un suffixe `[Truncated]`. Cela capture les sorties d'outils qui s'échappent — un scraping web qui retourne une page entière, une lecture de fichier qui déverse un grand ensemble de données.
+### Layer 3 — ContextGuard
 
-2. **Estimer les jetons totaux.** Si le total s'inscrit dans le budget, retourner immédiatement. La plupart des itérations passent ici — la compaction est l'exception, pas la norme.
+`ContextGuard` is the per-iteration budget enforcer. It is called at the top of every ReAct iteration — both in standalone ReAct mode and inside each DAG step's agent. This is the last line of defense before the messages hit the LLM API.
 
-3. **Compacter si dépassement du budget.** Si un `compact_llm` est disponible, utiliser la compaction alimentée par LLM avec un prompt spécifique à l'indice. Sinon, revenir à `smart_truncate`.
+The enforcement follows a three-step process:
 
-Le **système d'indice** est ce qui rend ContextGuard conscient du contexte plutôt que générique. Différentes situations nécessitent différentes stratégies de compaction :
+1. **Truncate oversized individual messages.** Any single message exceeding 50K characters is hard-truncated with a `[Truncated]` suffix. This catches runaway tool outputs — a web scrape that returns an entire webpage, a file read that dumps a large dataset.
 
-| Indice | Utilisé par | Préserve | Supprime |
-|--------|-------------|----------|----------|
-| `react_iteration` | Boucle d'agent ReAct | Chaîne de raisonnement récente, objectif actuel, données critiques | Étapes anciennes redondantes, tentatives échouées, sorties d'outils verbeux |
-| `planner_input` | Requête enrichie DAG | Évolution de l'intention utilisateur, décisions clés, contraintes | Détails de dialogue, salutations, mécaniques d'appel d'outils |
-| `step_dependency` | Contexte d'étape DAG | Données clés, nombres, conclusions | Processus de raisonnement, tentatives échouées, formatage verbeux |
-| `general` | Repli par défaut | Faits clés, décisions, résultats d'outils | Salutations, remplissage, allers-retours redondants |
+2. **Estimate total tokens.** If the total fits within budget, return immediately. Most iterations pass here — compaction is the exception, not the norm.
 
-Chaque indice correspond à un prompt système soigneusement formulé qui indique au LLM de compaction ce qu'il faut conserver et ce qu'il faut supprimer. Les prompts se terminent par « Écrivez dans la même langue que la conversation » — un détail qui importe pour les utilisateurs CJK dont les résumés seraient autrement par défaut en anglais.
+3. **Compact if over budget.** If a `compact_llm` is available, use LLM-powered compaction with a hint-specific prompt. Otherwise, fall back to `smart_truncate`.
 
-Si la compaction LLM échoue (erreur réseau, réponse vide, toute exception), ContextGuard revient silencieusement à `smart_truncate`. L'agent ne voit jamais l'échec. C'est un choix de fiabilité délibéré : il est préférable de perdre un peu de contexte via une troncature heuristique que de faire échouer l'itération.
+The **hint system** is what makes ContextGuard context-aware rather than one-size-fits-all. Different situations need different compaction strategies:
 
-### Couche 2 — CompactUtils
+| Hint | Used by | Preserves | Drops |
+|------|---------|-----------|-------|
+| `react_iteration` | ReAct agent loop | Recent reasoning chain, current goal, critical data | Old redundant steps, failed retries, verbose tool outputs |
+| `planner_input` | DAG enriched query | User intent evolution, key decisions, constraints | Dialogue details, greetings, tool call mechanics |
+| `step_dependency` | Defined, no caller today | Key data, numbers, conclusions | Reasoning process, failed attempts, verbose formatting |
+| `general` | Default fallback | Key facts, decisions, tool results | Greetings, filler, redundant back-and-forth |
 
-`CompactUtils` est une classe utilitaire sans état — pas d'instances, pas d'état, juste des fonctions pures. Elle fournit trois capacités sur lesquelles les couches 3 et 4 s'appuient.
+Each hint maps to a carefully worded system prompt that tells the compaction LLM what to keep and what to discard. Each prompt instructs the LLM to write in the same language as the conversation — a detail that matters for CJK users whose summaries would otherwise default to English.
 
-**L'estimation de jetons** convertit le texte en un nombre de jetons approximatif sans importer de bibliothèque de tokeniseur. L'heuristique :
+If LLM compaction fails (network error, empty response, any exception), ContextGuard falls back to `smart_truncate` silently. The agent never sees the failure. This is a deliberate reliability choice: better to lose some context via heuristic truncation than to crash the iteration.
 
-- Caractères ASCII : ~4 caractères par jeton
-- Caractères CJK / non-ASCII : ~1,5 caractères par jeton
-- Images : 765 jetons par image (coût fixe)
-- Surcharge par message : 4 jetons (marqueur de rôle, délimiteurs)
+#### Chunked compaction input
 
-**`smart_truncate`** est le recours heuristique. Il conserve les messages épinglés sans condition, puis parcourt les messages non épinglés en arrière, en accumulant jusqu'à épuisement du budget. Le résultat est un suffixe de la conversation qui s'adapte. Il garantit également que le résultat ne commence jamais par un message d'assistant — un tour d'assistant orphelin sans message utilisateur précédent confond les LLM.
+The summariser is the fast model, and its window can be smaller than the history it is asked to condense: a large main model paired with a small fast one, or a long stored conversation loaded by `DbMemory`. Sending that history as one request overflows the summariser, and compaction degrades to truncation exactly when it is needed.
 
-**`llm_compact`** est le chemin alimenté par LLM. Il divise les messages en trois groupes — messages système (toujours conservés), messages épinglés (toujours conservés) et messages compactables. Les messages compactables les plus anciens sont résumés en un seul message système `[Conversation summary]` ; les 4 messages les plus récents sont conservés textuellement. Si le résultat compacté est toujours trop long, il revient à `smart_truncate` sur la sortie compactée — double sécurité.
+`CompactUtils.summarize_history()` is the single summarising step behind `ContextGuard`, `DbMemory` and the DAG planner-input summary. It takes the summariser's own input budget (from the window that model declares) and guarantees no request exceeds it:
+
+1. History that fits goes out as one request, as before.
+2. Longer history is cut into consecutive parts. A tool call and its results always land in the same part; only a single exchange larger than a whole part is split, and an over-long message is cut rather than dropped.
+3. The parts are folded in order: the first is summarised on its own, and each later request carries the summary so far (capped at 10K tokens, or a quarter of the summariser's budget if smaller) plus the next part, and asks for one updated summary in the same format.
+4. `CONTEXT_GUARD_MAX_COMPACT_CHUNKS` (default 8) bounds the number of requests. History needing more parts keeps the first part and the most recent ones, and the summariser is told there is a gap.
+
+If the compact prompt alone leaves no room for history in the summariser's window, or any part fails, the result is the same `smart_truncate` fallback. The split only concerns the text the summariser reads: the message list kept for the main model still never starts with tool results whose tool call was summarised away.
+
+### Layer 2 — CompactUtils
+
+`CompactUtils` is a stateless utility class — no instances, no state, just pure functions. It provides three capabilities that layers 3 and 4 build on.
+
+**Token estimation** converts text to an approximate token count without importing a tokenizer library. The heuristic:
+
+- ASCII characters: ~4 characters per token
+- CJK / non-ASCII characters: ~1.5 characters per token
+- Images: 765 tokens per image (flat cost)
+- Per-message overhead: 4 tokens (role marker, delimiters)
+
+**`smart_truncate`** is the heuristic fallback. It keeps pinned messages unconditionally, then walks backward through non-pinned messages, accumulating until the budget is exhausted. The result is a suffix of the conversation that fits. It also ensures the result never starts with an assistant message — an orphaned assistant turn with no preceding user message confuses LLMs.
+
+**`llm_compact`** is the LLM-powered path. It splits messages into three groups — system messages (always kept), pinned messages (always kept), and compactable messages. The oldest compactable messages are summarized into a single `[Conversation summary]` system message (in parts when they exceed the summariser's window); the most recent 4 messages are kept verbatim, more when the cut would otherwise separate a tool call from its results. If the compacted result is still too long, it falls back to `smart_truncate` on the compacted output — belt and suspenders.
 
 ### Couche 1 — Implémentations de mémoire
 
@@ -132,9 +152,9 @@ La couche de mémoire définit l'interface `BaseMemory` : `add_message()`, `get_
 
 WindowMemory et SummaryMemory restent dans la base de code car elles servent de primitives utiles pour les tests et pour les utilisateurs qui intègrent la bibliothèque principale de FIM One sans la couche web. Ce ne sont pas du code mort — ce sont les cas simples dont l'architecture est issue.
 
-## Comment le contexte circule dans ReAct
+## How context flows through ReAct
 
-L'agent ReAct utilise la gestion du contexte à deux phases distinctes : le temps de chargement et le temps d'itération.
+The ReAct agent uses context management at two distinct phases: load time and iteration time.
 
 ```mermaid
 sequenceDiagram
@@ -151,7 +171,7 @@ sequenceDiagram
     Chat->>Agent: run(query)
     Agent->>Agent: Assemble: system + history + pinned query
 
-    loop Each iteration (non-streaming)
+    loop Each iteration
         Agent->>CG: check_and_compact(messages, hint="react_iteration")
         CG->>CG: Truncate oversized, estimate, compact if needed
         CG-->>Agent: messages (within budget)
@@ -178,15 +198,15 @@ sequenceDiagram
     Chat->>Chat: Persist, emit compact SSE if compacted
 ```
 
-Les itérations d'outils utilisent `chat()` sans streaming pour la rapidité ; la synthèse de réponse utilise `stream_chat()` via `stream_answer()` avec streaming. Cette division en deux phases — boucle d'outils rapide suivie d'une synthèse en streaming — optimise à la fois la latence et l'expérience utilisateur. Pour l'architecture complète du moteur ReAct incluant l'exécution en mode dual et la sélection d'outils, voir [Moteur ReAct](/architecture/react-engine).
+Tool iterations run on the fast model when one is configured (non-streaming `chat()` in JSON mode, `stream_chat()` in native mode); the answer is streamed through `stream_answer()`. This two-phase split — tool loop followed by a streamed answer — optimizes both latency and user experience. For full ReAct engine architecture including dual-mode execution and tool selection, see [ReAct Engine](/architecture/react-engine).
 
-L'insight clé : **DbMemory gère le problème du contexte historique (tours des requêtes précédentes), tandis que ContextGuard gère le problème de croissance intra-requête (résultats d'outils s'accumulant pendant une boucle d'agent).** Ils opèrent à des échelles de temps différentes et capturent des modes de défaillance différents.
+The key insight: **DbMemory handles the historical context problem (turns from previous requests), while ContextGuard handles the within-request growth problem (tool results accumulating during an agent loop).** They operate at different timescales and catch different failure modes.
 
-La requête actuelle de l'utilisateur est toujours marquée comme `pinned=True`. Cela garantit qu'elle survit à toute compaction — à la fois `smart_truncate` et `llm_compact` préservent les messages épinglés sans condition. Peu importe la compression agressive de l'historique, la question réelle de l'utilisateur n'est jamais perdue.
+The user's current query is always marked as `pinned=True`. This ensures it survives all compaction — both `smart_truncate` and `llm_compact` preserve pinned messages unconditionally. No matter how aggressively the history is compressed, the user's actual question is never lost.
 
-## Comment le contexte circule dans le DAG
+## How context flows through DAG
 
-Le mode DAG a une forme de contexte fondamentalement différente de ReAct. Au lieu d'un long fil de conversation unique, il a une arborescence : une phase de planification, plusieurs étapes d'exécution parallèles et une phase d'analyse. Chaque phase a sa propre stratégie de gestion du contexte.
+DAG mode has a fundamentally different context shape than ReAct. Instead of one long conversation thread, it has a tree: a planning phase, multiple parallel execution steps, and an analysis phase. Each phase has its own context management strategy.
 
 ```mermaid
 flowchart TD
@@ -204,24 +224,24 @@ flowchart TD
     I --> K
     J --> K
     K --> L{"Achieved?"}
-    L -->|No, low confidence| M["6. Replan: 500-char step summaries"]
+    L -->|No, recoverable| M["6. Replan: 500-char step summaries"]
     M --> F
     L -->|Yes| N["stream_synthesize → Final answer"]
 ```
 
-**Phase 1 — Chargement de l'historique.** DbMemory charge et compacte l'historique de conversation, comme dans ReAct. L'historique compacté est formaté dans un bloc de texte préfixé par `"Previous conversation:"`.
+**Phase 1 — History loading.** DbMemory loads and compacts conversation history, same as ReAct. The compacted history is formatted into a text block prefixed with `"Previous conversation:"`.
 
-**Phase 2 — Construction de requête enrichie.** L'historique et la requête actuelle sont combinés dans une `enriched_query`. Si cela dépasse 16K tokens, il est résumé par LLM en utilisant l'invite `planner_input`. Le seuil de 16K est choisi parce que le planificateur doit lire l'intégralité de la requête en une seule passe — contrairement à ReAct, il n'y a pas de compaction itérative pendant la planification.
+**Phase 2 — Enriched query construction.** The history text and current query are combined into an `enriched_query`. If this exceeds 16K tokens, it is LLM-summarized using the `planner_input` hint prompt, in parts when the history exceeds the fast model's window. The 16K threshold is chosen because the planner needs to read the entire query in a single pass — unlike ReAct, there is no iterative compaction during planning.
 
-**Phase 3 — Planification.** Le planificateur reçoit une invite à 2 messages : invite système plus requête enrichie. Pas de ContextGuard ici — la requête enrichie est déjà contrôlée en taille par la vérification de 16K.
+**Phase 3 — Planning.** The planner receives a 2-message prompt: system prompt plus enriched query. No ContextGuard here — the enriched query is already size-controlled by the 16K check.
 
-**Phase 4 — Exécution des étapes.** Chaque étape DAG s'exécute comme un agent ReAct indépendant avec son propre ContextGuard. De manière critique, ces agents d'étape n'ont **pas de mémoire** — ils commencent à zéro avec seulement leur description de tâche et le contexte de dépendance. C'est intentionnel : les étapes DAG doivent être des unités de travail autonomes. Les résultats de dépendance sont injectés via `_build_step_context`, qui tronque les caractères à 50K (la limite `max_message_chars` du ContextGuard).
+**Phase 4 — Step execution.** Each DAG step runs as an independent ReAct agent with its own ContextGuard. Critically, these step agents have **no memory** — they start fresh with only their task description and dependency context. This is by design: DAG steps should be self-contained units of work. Dependency results are injected via `_build_step_context`, which character-truncates at 50K (the ContextGuard's `max_message_chars` limit).
 
-**Phase 5 — Analyse.** Les résultats des étapes sont formatés pour l'LLM analyseur avec troncature par étape à 10K caractères. Cela empêche la sortie détaillée d'une seule étape de dominer le contexte d'analyse.
+**Phase 5 — Analysis.** Step results are formatted for the analyzer LLM with per-step truncation at 10K characters. This prevents a single step's verbose output from dominating the analysis context.
 
-**Phase 6 — Replanification.** Quand l'analyseur détermine que l'objectif n'a pas été atteint et que la confiance est en dessous du seuil, les résultats des étapes sont tronqués à seulement 500 caractères chacun pour le contexte de replanification. La replanification doit savoir *ce qui s'est passé* et *ce qui a mal tourné*, pas le détail complet de la sortie de chaque étape. Cette troncature agressive garde l'invite de replan suffisamment compacte pour que le planificateur la traite efficacement.
+**Phase 6 — Replanning.** When the analyzer determines the goal was not achieved and does not judge it unreachable, step results are truncated to 500 characters each for the latest round (200 for older rounds) in the replanning context. Replanning needs to know *what happened* and *what went wrong*, not the full detail of every step's output. This aggressive truncation keeps the replan prompt compact enough for the planner to process efficiently.
 
-Pour l'architecture complète du pipeline DAG incluant la Carte des Appels LLM et la logique de replanification, voir [Moteur DAG](/architecture/dag-engine).
+For the full DAG pipeline architecture including the LLM Call Map and re-planning logic, see [DAG Engine](/architecture/dag-engine).
 
 ## Messages épinglées
 
@@ -235,37 +255,37 @@ Le risque avec l'épinglage est l'accumulation. Dans une longue session avec de 
 
 C'est un compromis. Désépingler les anciens messages injectés signifie qu'ils pourraient être résumés ou tronqués. Mais l'alternative — laisser les messages épinglés évincer tout autre contexte — est pire. Le système privilégie la préservation du contexte le plus récent, qui est presque toujours plus pertinent que les injections plus anciennes.
 
-## Estimation des jetons
+## Token estimation
 
-FIM One utilise une estimation heuristique des jetons plutôt qu'un vrai tokeniseur. C'est un choix délibéré avec des compromis clairs.
+FIM One uses heuristic token estimation rather than a real tokenizer. This is a deliberate choice with clear trade-offs.
 
-**Pourquoi pas un vrai tokeniseur ?** Trois raisons :
+**Why not a real tokenizer?** Three reasons:
 
-1. **Coût de dépendance.** `tiktoken` (le tokeniseur d'OpenAI) représente 15 Mo de liaisons Rust compilées. `sentencepiece` (utilisé par certains modèles open-source) a ses propres exigences de compilation. Pour un framework qui cible plusieurs fournisseurs de LLM, il n'existe pas de tokeniseur unique correct — chaque famille de modèles en utilise un différent.
+1. **Dependency cost.** `tiktoken` (OpenAI's tokenizer) is 15MB of compiled Rust bindings. `sentencepiece` (used by some open-source models) has its own build requirements. For a framework that targets multiple LLM providers, there is no single correct tokenizer — each model family uses a different one.
 
-2. **Vitesse.** L'estimation heuristique est un seul passage sur la chaîne. La vrai tokenisation implique une recherche dans le vocabulaire, des opérations de fusion BPE et la gestion des jetons spéciaux. ContextGuard appelle l'estimation à chaque itération, parfois plusieurs fois — la différence de vitesse compte.
+2. **Speed.** Heuristic estimation is a single pass over the string. Real tokenization involves vocabulary lookup, BPE merge operations, and special token handling. ContextGuard calls estimation on every iteration, sometimes multiple times — the speed difference matters.
 
-3. **Suffisant.** L'heuristique est ajustée pour le texte multilingue (la division ASCII/CJK couvre les deux cas majeurs). Elle peut être 1,5 à 2 fois décalée pour les cas limites (code fortement ponctué, Unicode inhabituel), mais la gestion du contexte est intrinsèquement approximative. Être décalé de 30 % sur un budget de 64 K laisse encore une marge confortable.
+3. **Good enough.** The heuristic is tuned for mixed-language text (the ASCII/CJK split covers the two major cases). It can be 1.5-2x off for edge cases (heavily punctuated code, unusual Unicode), but context management is inherently approximate. Being 30% off on a ~59K budget still leaves a comfortable margin.
 
-Les heuristiques concrètes :
+The concrete heuristics:
 
-| Type de contenu | Ratio | Justification |
+| Content type | Ratio | Rationale |
 |-------------|-------|-----------|
-| Texte ASCII | ~4 caractères/jeton | La prose anglaise et le code font en moyenne 3,5-4,5 caractères/jeton sur les tokeniseurs GPT/Claude |
-| CJK / non-ASCII | ~1,5 caractères/jeton | Chaque caractère CJK représente généralement 1-2 jetons ; 1,5 est la moyenne géométrique |
-| Images | 765 jetons/image | Coût approximatif d'une image encodée en base64 dans l'API de vision |
-| Surcharge par message | 4 jetons | Marqueur de rôle, délimiteurs, formatage |
+| ASCII text | ~4 chars/token | English prose and code average 3.5-4.5 chars/token across GPT/Claude tokenizers |
+| CJK / non-ASCII | ~1.5 chars/token | Each CJK character is typically 1-2 tokens; 1.5 is the geometric mean |
+| Images | 765 tokens/image | Approximate cost of a base64-encoded image in the vision API |
+| Per-message overhead | 4 tokens | Role marker, delimiters, formatting |
 
-L'estimation retourne toujours au moins 1 jeton pour un contenu non vide. Cela évite les cas limites de division par zéro dans l'arithmétique du budget.
+The estimation always returns at least 1 token for non-empty content. This prevents division-by-zero edge cases in budget arithmetic.
 
-## Ce que l'utilisateur voit
+## What the user sees
 
-La gestion du contexte est conçue pour être invisible dans les cas courants et minimalement intrusive lorsqu'elle s'active. Les signaux visibles pour l'utilisateur sont :
+Context management is designed to be invisible in the common case and minimally intrusive when it activates. The user-facing signals are:
 
-**CompactDivider.** Quand `DbMemory` compacte l'historique au chargement, l'interface affiche un séparateur pointillé avec le texte « Earlier context (N messages) was summarized by AI. » Cela apparaît entre le résumé et les messages récents conservés, donnant à l'utilisateur un indice visuel que le contexte ancien a été compressé sans interrompre le flux de la conversation.
+**CompactDivider.** When `DbMemory` compacts history on load, the frontend renders a dashed divider with the text "Earlier context (N messages) was summarized by AI." This appears between the summary and the preserved recent messages, giving the user a visual cue that older context has been compressed without interrupting the conversation flow.
 
-**Affichage de l'utilisation des tokens.** La carte `done` à la fin de chaque réponse affiche « X.Xk in / X.Xk out » — le total des tokens d'entrée et de sortie consommés. Cela inclut les tokens dépensés pour la compaction (les appels LLM rapides pour la résumé). Les utilisateurs qui surveillent la consommation de tokens peuvent voir quand la compaction ajoute une surcharge.
+**Token usage display.** The `done` card at the end of each response shows "X.Xk in / X.Xk out" — the total input and output tokens consumed. Tokens the fast LLM spends on compaction are not included in this figure.
 
-**Gestion gracieuse des erreurs.** Si la gestion du contexte échoue complètement — un scénario qui ne devrait pas se produire compte tenu de la chaîne de secours, mais pourrait théoriquement — l'erreur s'affiche sous forme de texte d'erreur d'agent dans la réponse, et non comme un plantage système. La conversation continue ; l'utilisateur peut réessayer ou reformuler.
+**Graceful error handling.** If context management fails entirely — a scenario that should not happen given the fallback chain, but could in theory — the error surfaces as agent error text in the response, not as a system crash. The conversation continues; the user can retry or rephrase.
 
-L'objectif est que la plupart des utilisateurs ne pensent jamais à la gestion du contexte. Ils ont de longues conversations, le système gère le budget de manière transparente, et le seul artefact visible est un séparateur de compaction occasionnel. Pour les utilisateurs avancés et les opérateurs qui se soucient de l'efficacité des tokens, l'affichage de l'utilisation et les paramètres de budget configurables leur fournissent le contrôle dont ils ont besoin.
+The goal is that most users never think about context management. They have long conversations, the system handles the budget transparently, and the only visible artifact is an occasional compact divider. For power users and operators who care about token efficiency, the usage display and the configurable budget parameters provide the control they need.

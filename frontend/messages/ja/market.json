@@ -55,5 +55,7 @@
   "credentialSetupRequired": "以下の依存関係には認証情報の設定が必要です:",
   "credentialSetupWarning": "認証情報がないと、このリソースは正常に機能できません。",
   "configureDep": "設定",
-  "yours": "あなたのもの"
+  "yours": "あなたのもの",
+  "ownerOnlyDeps": "Only their owner can use the following MCP servers, so this resource runs without them. Their address or launch arguments may contain a credential and the owner has kept credential fallback off; keys of your own do not change that.",
+  "ownerOnlyServer": "Only its owner can use this MCP server at present: its address or launch arguments may contain a credential and the owner has kept credential fallback off. Subscribing and saving keys of your own does not change that."
 }

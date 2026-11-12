@@ -103,12 +103,12 @@ curl -X POST https://your-domain.com/api/me/api-keys \
   }'
 ```
 
-## JWTトークン
+## JWT Tokens
 
-JWTトークンは短命で、ログイン時に発行されます。以下の用途に使用されます:
+JWT tokens are short-lived and issued at login. They're used for:
 
-- **SSEストリーミングエンドポイント**: `/api/react`と`/api/dag`のリクエストボディにトークンを渡す
-- **ポータルセッション**: フロントエンド認証
+- **SSE Streaming Endpoints**: Pass tokens in the request body for `/api/react`, `/api/dag` and `/api/auto`
+- **Portal Session**: Frontend authentication
 
 ### JWTトークンの取得
 
@@ -135,9 +135,33 @@ curl -X POST https://your-domain.com/api/auth/login \
 }
 ```
 
-### ストリーミング用のJWTの使用
+### Two-factor authentication
 
-SSEエンドポイントの場合、リクエストボディにトークンを含めます：
+When the account has two-factor authentication enabled, sign-in does not return tokens. `POST /api/auth/login` and `POST /api/auth/login-with-code` answer with a short-lived temporary token instead:
+
+```json
+{
+  "requires_2fa": true,
+  "temp_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+Send it with the TOTP code (or a backup code) to finish signing in. The response is the same token payload as a normal login:
+
+```bash
+curl -X POST https://your-domain.com/api/auth/login/verify-2fa \
+  -H "Content-Type: application/json" \
+  -d '{
+    "temp_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "code": "123456"
+  }'
+```
+
+The temporary token is valid for 5 minutes. Signing in through an OAuth provider (GitHub, Google, Discord, Feishu) stops at the same step: the callback hands the browser a 2FA challenge instead of tokens. After 5 incorrect codes within 15 minutes for the same account, the endpoint answers `429` with `error_code` `2fa_too_many_attempts`; starting a new sign-in does not reset the count.
+
+### Using JWT for Streaming
+
+For SSE endpoints, include the token in the request body. The field accepts a JWT access token or an API key (a scoped key needs the `chat` scope):
 
 ```bash
 curl -X POST https://your-domain.com/api/react \
@@ -148,7 +172,7 @@ curl -X POST https://your-domain.com/api/react \
   }'
 ```
 
-またはJavaScriptから`fetch`を使用して読み取り可能なストリーム（エンドポイントはPOSTのみであるため、GETのみをサポートするネイティブ`EventSource`は使用できません）：
+Or from JavaScript using `fetch` with a readable stream (the endpoint is POST-only, so native `EventSource` which only supports GET cannot be used):
 
 ```javascript
 const response = await fetch("https://your-domain.com/api/react", {
@@ -234,69 +258,91 @@ curl -X POST https://your-domain.com/api/auth/refresh \
 
 キーごとのレート制限は将来のリリースで予定されています。現在のところ、キーごとのリクエスト制限は実施されていません。
 
-## トラブルシューティング
+## Troubleshooting
 
-### 無効なトークンエラー
+Every error response has the shape `{"detail", "error_code", "error_args"}`. Errors raised while checking the `Authorization` header carry `error_code: null`; tell them apart by the status code and `detail`.
 
-```json
-{
-  "error": "invalid_token",
-  "message": "The provided token is invalid or expired"
-}
-```
-
-**原因**:
-- APIキープレフィックスが間違っている（`fim_`で始まる必要があります）
-- JWTトークンの有効期限が切れている（更新してください）
-- トークンが不正な形式または破損している
-- APIキーが削除されている
-
-**解決策**: トークン形式を確認し、必要に応じて再生成してください
-
-### 認可されていないエラー
+### Invalid Token Error
 
 ```json
 {
-  "error": "unauthorized",
-  "message": "Authentication required"
+  "detail": "Invalid token",
+  "error_code": null,
+  "error_args": {}
 }
 ```
 
-**原因**:
-- Authorization ヘッダーが提供されていない
-- リクエストボディにトークンがない（SSE エンドポイントの場合）
-- API キーが無効になっている
+**Causes** (`401`; `detail` is `Invalid token`, `Invalid API key`, `API key is disabled` or `API key has expired`):
+- API key prefix is wrong (must start with `fim_`)
+- Token is malformed or corrupted
+- API key has been deleted, disabled, or is past its expiration date
 
-**解決策**: すべてのリクエストに有効なトークンを含める
+**Solution**: Verify your token format and re-generate if necessary
 
-### Forbidden エラー
+### Unauthorized Error
 
 ```json
 {
-  "error": "forbidden",
-  "message": "Your API key does not have permission to access this resource"
+  "detail": "Authentication required",
+  "error_code": "authentication_required",
+  "error_args": {}
 }
 ```
 
-**原因**:
-- API キーがスコープ付きアクセスを持っており、必要なスコープが不足している
-- ユーザーアカウントが制限されたアクセス権限を持っている
+**Causes** (`401`):
+- Token is missing from the request body (SSE endpoints return the body above)
+- No `Authorization` header provided (other endpoints answer `Not authenticated` with `error_code: null`)
 
-**解決策**: 適切なスコープを持つキーを使用するか、キーの権限を増やしてください
+**Solution**: Include a valid token in every request
 
-### 有効期限切れのトークン
+### Forbidden Error
 
 ```json
 {
-  "error": "token_expired",
-  "message": "Your token has expired. Please refresh your authentication."
+  "detail": "This API key's scopes do not allow this request",
+  "error_code": "api_key_scope_denied",
+  "error_args": {}
 }
 ```
 
-**解決策**: リフレッシュトークンを使用して新しいアクセストークンを取得します:
+**Causes** (`403`):
+- API key has scoped access and lacks the required scope (`api_key_scope_denied`)
+- The client address is refused by the instance's IP rules (`ip_not_allowed`, see below)
+- The account is disabled (`detail`: `Account disabled`) or lacks the role the endpoint needs
+
+**Solution**: Use a key with the appropriate scope or increase key privileges
+
+### IP Rules
+
+Administrators can restrict API access by client address under admin **Security → IP Rules**. A request from an address that matches a deny rule, or that matches no allow rule when allow rules exist, is refused before authentication:
+
+```json
+{
+  "detail": "Access from this IP address is not allowed.",
+  "error_code": "ip_not_allowed",
+  "error_args": {}
+}
+```
+
+`/api/version`, `/api/webhooks/` and CORS preflight requests are exempt. Behind a reverse proxy the instance must be told which proxy to trust (`FORWARDED_ALLOW_IPS`), otherwise every request appears to come from the proxy; see [Environment Variables](/configuration/environment-variables#platform).
+
+### Expired Token
+
+```json
+{
+  "detail": "Token has expired",
+  "error_code": null,
+  "error_args": {}
+}
+```
+
+On the SSE endpoints, which read the token from the request body, the same condition returns `error_code` `token_expired`.
+
+**Solution**: Use the refresh token to get a new access token:
 
 ```bash
 curl -X POST https://your-domain.com/api/auth/refresh \
+  -H "Content-Type: application/json" \
   -d '{"refresh_token": "your_refresh_token"}'
 ```
 
@@ -350,10 +396,10 @@ curl -H "Authorization: Bearer $FIM_API_KEY" \
   "$FIM_API_BASE_URL/agents"
 ```
 
-## サポート
+## Support
 
-認証の問題については:
+For authentication issues:
 
-- レスポンス形式の詳細については[API概要](/api/overview)を確認してください
-- `GET /api/auth/verify`でトークンの有効期限を確認してください
-- キーが侵害されたと思われる場合はサポートにお問い合わせください
+- Check the [API Overview](/api/overview) for response format details
+- Check that a token is still accepted with `GET /api/auth/me`
+- Contact support if you believe a key has been compromised

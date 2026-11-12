@@ -24,24 +24,26 @@ FIM One unterstützt Social Login über GitHub, Google, Discord und Feishu (Lark
 
 ## GitHub
 
-**Entwicklerkonsole:** https://github.com/settings/developers
+**Developer console:** https://github.com/settings/developers
 
-1. Klicken Sie auf **OAuth Apps** → **New OAuth App**.
-2. Füllen Sie folgende Felder aus:
-   - **Application name** — beliebiger Name (z. B. `FIM One`)
-   - **Homepage URL** — Ihre Frontend-URL (z. B. `https://yourdomain.com`)
+1. Click **OAuth Apps** → **New OAuth App**.
+2. Fill in:
+   - **Application name** — any name (e.g. `FIM One`)
+   - **Homepage URL** — your frontend URL (e.g. `https://yourdomain.com`)
    - **Authorization callback URL** — `https://yourdomain.com/api/auth/oauth/github/callback`
-3. Klicken Sie auf **Register application**, dann auf **Generate a new client secret**.
-4. Kopieren Sie die **Client ID** und das generierte **Client Secret** in Ihre `.env`.
+3. Click **Register application**, then click **Generate a new client secret**.
+4. Copy the **Client ID** and the generated **Client Secret** into your `.env`.
 
-**Automatisch angeforderte Scopes:** `read:user`, `user:email`
+**Scopes requested automatically:** `read:user`, `user:email`
 
-GitHub-Konten mit einer privaten primären E-Mail werden korrekt verarbeitet — FIM One ruft immer die primäre verifizierte E-Mail von `/user/emails` ab, nicht die öffentliche Profil-E-Mail.
+GitHub accounts with a private primary email are handled correctly — FIM One fetches the primary email from `/user/emails` (not the public profile email) and records whether GitHub marks it verified.
 
 ```env
 GITHUB_CLIENT_ID=Ov23li...
 GITHUB_CLIENT_SECRET=...
 ```
+
+---
 
 ## Google
 
@@ -116,15 +118,15 @@ FEISHU_APP_ID=cli_a1b2c3d4e5f6...
 FEISHU_APP_SECRET=...
 ```
 
-### Wichtig: Feishu-E-Mail-Verhalten
+### Important: Feishu Email Behavior
 
-Die Feishu-Benutzerinformations-API (`authen/v1/user_info`) gibt die **Unternehmenskontakt-E-Mail** (联系邮箱) des Benutzers zurück — die Adresse, die vom Organisationsadministrator in der Feishu-Verwaltungskonsole konfiguriert wurde. Dies ist **nicht** die persönliche Feishu-Login-E-Mail des Benutzers.
+The Feishu user info API (`authen/v1/user_info`) returns an `email` and an **enterprise contact email** (联系邮箱, `enterprise_email`) — the address configured by the organization admin in the Feishu admin console. FIM One reads `email` first, then `enterprise_email`. The address counts as verified only when it is the enterprise email of a tenant listed in `FEISHU_TRUSTED_TENANT_KEYS`.
 
-Konsequenzen:
-- Benutzer, deren Organisationsadministrator keine Kontakt-E-Mail konfiguriert hat, erhalten ein leeres E-Mail-Feld von der API, obwohl sie ein gültiges Feishu-Konto haben.
-- Benutzer mit persönlichen Feishu-Konten (nicht Teil eines Unternehmens) erhalten immer ein leeres E-Mail-Feld.
+Consequences:
+- Users whose org admin has not configured a contact email will get an empty email field from the API, even though they have a valid Feishu account.
+- Users on personal Feishu accounts (not part of an enterprise) will always get an empty email.
 
-FIM One behandelt dies elegant: siehe [Account Binding Rules](#account-binding-rules) unten.
+FIM One handles this gracefully: see [Account Binding Rules](#account-binding-rules) below.
 
 ---
 
@@ -132,43 +134,44 @@ FIM One behandelt dies elegant: siehe [Account Binding Rules](#account-binding-r
 
 Registrierte Benutzer können zusätzliche OAuth-Anbieter über **Einstellungen → Konto** verknüpfen. Die folgenden Regeln gelten, wenn ein Benutzer eine Bindung initiiert:
 
-### Allgemeine Regel (GitHub, Google, Discord)
+### Linking from Settings (all providers)
 
-Die vom OAuth-Anbieter zurückgegebene E-Mail muss mit der registrierten E-Mail des FIM-Kontos übereinstimmen. Dies verhindert, dass versehentlich das Social-Media-Konto einer anderen Person mit Ihrem FIM-Konto verknüpft wird.
+Linking needs a full sign-in: a session that has passed two-factor authentication where it is enabled. API keys and the temporary 2FA token cannot link a provider.
 
-Wenn die E-Mails nicht übereinstimmen, wird die Bindung mit einem `email_mismatch`-Fehler abgelehnt.
+- **Both sides have an email** → the email returned by the provider must match the FIM account's email. This prevents accidentally linking another person's social account to your FIM account. A mismatch is rejected with an `email_mismatch` error.
+- **Either side has no email** (the provider returned none, or the FIM account has no email) → binding succeeds on the signed-in session alone. In practice this affects Feishu accounts without an enterprise email and some Discord accounts.
 
-### Feishu-Ausnahme
+### First sign-in with a provider (no binding yet)
 
-Da die API von Feishu die E-Mail-Adresse des Unternehmenskontakts anstelle der Anmelde-E-Mail zurückgibt und dieses Feld für persönliche Konten oder Konten in Organisationen, in denen der Administrator es nicht konfiguriert hat, häufig leer ist, folgt die E-Mail-Abgleichsprüfung für Feishu einer lockereren Regel:
+When a user signs in through a provider that is not linked to any account yet:
 
-- **Beide Seiten haben eine E-Mail** → die E-Mails müssen übereinstimmen (gleiche Prüfung wie bei anderen Anbietern).
-- **Eine Seite hat keine E-Mail** (Feishu hat leer zurückgegeben oder das FIM-Konto hat keine E-Mail) → die Bindung erfolgt allein auf Basis der ticketgestützten Authentifizierung.
+1. FIM One looks for an existing account with the same email. The match is used only when the address is verified on both sides: the provider reports it as verified, and the existing account's email is verified. For Feishu, "verified" means the enterprise email of a tenant listed in `FEISHU_TRUSTED_TENANT_KEYS`.
+2. If a match is found, the provider is linked to that existing FIM account and the user is logged in.
+3. Otherwise a new FIM account is created with whatever email the provider returned (none, if it returned none). This is refused with `registration_disabled` when registration is disabled or invite-only.
 
-### Feishu-Anmeldung (noch nicht gebunden)
+**When is an account's email verified?** When it was registered with the emailed verification code (`email_verification_enabled` on and SMTP configured), when an administrator created it, when it is the first account of the installation, or when it was created by a provider sign-in whose provider reported the address as verified. An account registered with an email and a password on a deployment that does not send verification codes holds an **unverified** address: a provider sign-in for that address is not linked to it and creates a separate account instead, so two accounts can then hold the same address. A password signs in to the account it was set on; an emailed sign-in or reset code goes to the account whose address is verified. To use one account with both, sign in with the password first and link the provider under Settings → Account, instead of using the provider's button on the sign-in page.
 
-Wenn sich ein Benutzer zum ersten Mal über Feishu anmeldet (keine vorhandene Bindung):
+If the matched or linked account has two-factor authentication enabled, the sign-in stops at the 2FA step before a session is issued.
 
-1. FIM One sucht nach einem vorhandenen Konto, dessen E-Mail mit der Feishu-Unternehmenskontakt-E-Mail übereinstimmt.
-2. Wenn eine Übereinstimmung gefunden wird, wird das Feishu-Konto automatisch an dieses vorhandene FIM-Konto gebunden und der Benutzer wird angemeldet.
-3. Wenn keine Übereinstimmung vorhanden ist (auch wenn die E-Mail leer ist), wird ein neues FIM-Konto erstellt, das durch die Feishu `open_id` identifiziert wird. Das Konto hat eine leere E-Mail, die der Benutzer später in den Einstellungen ausfüllen kann.
+---
 
-## Umgebungsvariablen – Kurzreferenz
+## Environment Variables Quick Reference
 
-| Variable | Anbieter | Erforderlich | Beschreibung |
+| Variable | Provider | Required | Description |
 |---|---|---|---|
-| `GITHUB_CLIENT_ID` | GitHub | Beide | GitHub OAuth App Client-ID |
-| `GITHUB_CLIENT_SECRET` | GitHub | Beide | GitHub OAuth App Client-Secret |
-| `GOOGLE_CLIENT_ID` | Google | Beide | Google OAuth 2.0 Client-ID |
-| `GOOGLE_CLIENT_SECRET` | Google | Beide | Google OAuth 2.0 Client-Secret |
-| `DISCORD_CLIENT_ID` | Discord | Beide | Discord OAuth2 Anwendungs-Client-ID |
-| `DISCORD_CLIENT_SECRET` | Discord | Beide | Discord OAuth2 Anwendungs-Client-Secret |
-| `FEISHU_APP_ID` | Feishu | Beide | Feishu In-House App-ID (Hinweis: nicht `CLIENT_ID`) |
-| `FEISHU_APP_SECRET` | Feishu | Beide | Feishu In-House App-Secret |
-| `FRONTEND_URL` | Alle | Prod | Wohin der Browser nach Abschluss von OAuth umgeleitet wird (z. B. `https://yourdomain.com`) |
-| `API_BASE_URL` | Alle | Prod | Extern erreichbare Backend-URL, wird zum Erstellen von Callback-URLs verwendet |
-| `NEXT_PUBLIC_API_URL` | Alle | Prod | Browser-seitige API-URL für OAuth-Umleitungen – wird zur Build-Zeit eingebettet |
+| `GITHUB_CLIENT_ID` | GitHub | Both | GitHub OAuth App client ID |
+| `GITHUB_CLIENT_SECRET` | GitHub | Both | GitHub OAuth App client secret |
+| `GOOGLE_CLIENT_ID` | Google | Both | Google OAuth 2.0 client ID |
+| `GOOGLE_CLIENT_SECRET` | Google | Both | Google OAuth 2.0 client secret |
+| `DISCORD_CLIENT_ID` | Discord | Both | Discord OAuth2 application client ID |
+| `DISCORD_CLIENT_SECRET` | Discord | Both | Discord OAuth2 application client secret |
+| `FEISHU_APP_ID` | Feishu | Both | Feishu in-house app ID (note: not `CLIENT_ID`) |
+| `FEISHU_APP_SECRET` | Feishu | Both | Feishu in-house app secret |
+| `FEISHU_TRUSTED_TENANT_KEYS` | Feishu | No | Comma-separated `tenant_key` values whose enterprise email may match an existing account by email |
+| `FRONTEND_URL` | All | Prod | Where the browser is redirected after OAuth completes (e.g. `https://yourdomain.com`) |
+| `API_BASE_URL` | All | Prod | Externally reachable backend URL, used to build callback URLs |
+| `NEXT_PUBLIC_API_URL` | All | Prod | Browser-side API URL for OAuth redirects — baked in at build time |
 
-„Erforderlich: Beide" bedeutet, dass sowohl `_ID` als auch `_SECRET` (oder `_APP_ID` und `_APP_SECRET` für Feishu) zusammen gesetzt werden müssen; das Setzen von nur einem hat keine Auswirkung.
+"Required: Both" means both the `_ID` and `_SECRET` (or `_APP_ID` and `_APP_SECRET` for Feishu) must be set together; setting only one has no effect.
 
-> Siehe [Umgebungsvariablen](/configuration/environment-variables) für die vollständige Dokumentation von `FRONTEND_URL`, `API_BASE_URL` und `NEXT_PUBLIC_API_URL`.
+> See [Environment Variables](/configuration/environment-variables) for full documentation of `FRONTEND_URL`, `API_BASE_URL`, and `NEXT_PUBLIC_API_URL`.

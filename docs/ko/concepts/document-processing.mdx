@@ -12,21 +12,21 @@ FIM One은 업로드된 문서를 자동으로 처리하여 AI 에이전트가 �
 비전 모드는 기본적으로 자동입니다. 구성한 모델에 비전 지원이 활성화되어 있으면, 업로드된 문서는 해당 형식에 사용 가능한 가장 풍부한 처리 파이프라인을 사용합니다.
 </Info>
 
-## 형식 지원 매트릭스
+## Format Support Matrix
 
-각 문서 형식에는 전용 처리 파이프라인이 있습니다. 모델이 비전을 지원하는지 여부에 따라 동작이 변경됩니다.
+Each document format has a dedicated processing pipeline. The behavior changes depending on whether the model supports vision.
 
-| 형식 | 텍스트 추출 | 비전 모드 (`supports_vision=ON`) | 폴백 (`supports_vision=OFF`) |
+| Format | Text Extraction | Vision Mode (`supports_vision=ON`) | Fallback (`supports_vision=OFF`) |
 |--------|----------------|--------------------------------------|-----------------------------------|
-| **PDF** | pdfplumber (페이지별 텍스트) | 스마트 처리: 텍스트가 풍부한 페이지는 텍스트 + 임베드된 이미지 추출 (토큰 효율적); 스캔/이미지 전용 페이지는 PyMuPDF를 통해 전체 페이지 PNG로 렌더링 | 텍스트 추출만 수행; 에이전트가 `read_uploaded_file` 도구를 통해 읽음 |
-| **DOCX / DOC** | markitdown (마크다운 변환) | python-docx를 통해 `[Figure N]` 위치 마커로 임베드된 이미지 추출 | 텍스트 추출만 수행; 이미지 손실 |
-| **PPTX / PPT** | markitdown (각 슬라이드의 텍스트) | python-pptx를 통해 `[Figure N]` 마커 및 슬라이드 구분자로 임베드된 이미지 추출 | 텍스트 추출만 수행; 슬라이드 시각 자료 손실 |
-| **XLSX / XLS** | markitdown (테이블 구조 보존) | 텍스트 모드와 동일 (테이블은 비전의 이점을 얻지 못함) | 동일 |
-| **이미지** (JPG, PNG, GIF, WebP) | 해당 없음 | `image_url` 비전 콘텐츠 블록으로 전송 | `[Attached image: filename]`으로 주석 처리됨 — 모델이 인식하지만 콘텐츠를 볼 수 없음 |
-| **텍스트 파일** (TXT, MD, PY, JS, HTML, CSV, JSON) | 직접 읽기 / 파싱 | 해당 없음 (텍스트는 텍스트) | 동일 |
+| **PDF** | pdfplumber (page-by-page text) | Smart processing: text-rich pages extract text + embedded images (token-efficient); scanned/image-only pages render as full-page PNG via PyMuPDF | Text extraction only; agent reads via `read_uploaded_file` tool |
+| **DOCX / DOC** | markitdown (Markdown conversion) | Embedded images extracted with `[Figure N]` positional markers via python-docx | Text extraction only; images lost |
+| **PPTX / PPT** | markitdown (text from each slide) | Embedded images extracted with `[Figure N]` markers and slide separators via python-pptx | Text extraction only; slide visuals lost |
+| **XLSX / XLS** | markitdown (table structure preserved) | Same as text mode (tables do not benefit from vision) | Same |
+| **Images** (JPG, PNG, GIF, WebP) | N/A | Sent as `image_url` vision content blocks | Annotated as `[Attached images (text-only model, not displayed): filename (file_id: ...)]` — model is aware but cannot see the content |
+| **Text files** (TXT, MD, PY, JS, HTML, CSV, JSON) | Direct read / parse | N/A (text is text) | Same |
 
 <Tip>
-**최대 시각적 충실도를 위해**, DOCX 또는 PPTX 파일을 업로드하기 전에 PDF로 내보내세요. PDF 비전 모드는 전체 페이지 레이아웃 — 텍스트, 이미지, 차트 및 서식 — 을 모두 하나의 이미지로 렌더링합니다.
+**For maximum visual fidelity**, export DOCX or PPTX files to PDF before uploading. PDF vision mode renders the full page layout — text, images, charts, and formatting — all in one image.
 </Tip>
 
 ## 작동 방식
@@ -77,20 +77,20 @@ DOCUMENT_PROCESSING_MODE=vision
 DOCUMENT_PROCESSING_MODE=text
 ```
 
-### 3. 요청별 매개변수
+### 3. Per-Request Parameter
 
-채팅 API에서 `doc_mode` 매개변수를 전달하여 단일 요청에 대한 처리를 제어합니다:
+Pass the `doc_mode` parameter in the chat API to control processing for a single request:
 
 ```json
 {
-  "message": "Analyze this financial report",
+  "q": "Analyze this financial report",
   "doc_mode": "vision",
-  "attachments": [...]
+  "image_ids": "<file_id>,<file_id>"
 }
 ```
 
 <Note>
-`auto` 모드(기본값)는 모델이 `supports_vision=true`를 **가지고 있고** 문서가 비전 처리의 이점을 얻는 유형일 때 비전을 사용합니다. 이것은 대부분의 배포에 권장되는 설정입니다.
+The `auto` mode (default) uses vision when the model has `supports_vision=true` **and** the document is a type that benefits from vision processing. This is the recommended setting for most deployments.
 </Note>
 
 ## 환경 변수
@@ -177,13 +177,13 @@ LibreOffice는 DOCX 및 PPTX 파일의 픽셀 완벽한 페이지 렌더링을 �
 
 ## 모범 사례
 
-### 관리자용
+### For Administrators
 
-- **선택적으로 비전 활성화.** `supports_vision`을 실제로 이미지 입력을 지원하는 모델에만 활성화하세요. 잘못된 구성은 폴백 재시도 사이클에서 토큰을 낭비합니다.
-- **`auto` 모드로 시작.** 기본 동작은 대부분의 배포에 적합합니다 — 비전은 유용하고 사용 가능할 때 사용됩니다.
-- **토큰 사용량 모니터링.** 비전을 활성화한 후 토큰 소비 대시보드를 확인하세요. 비용이 예상치 않게 급증하면 `DOCUMENT_VISION_MAX_PAGES` 또는 `DOCUMENT_VISION_DPI`를 조정하세요.
+- **Enable vision selectively.** Only enable `supports_vision` on models that genuinely support image input. Misconfiguration wastes tokens on the fallback retry cycle.
+- **Start with `auto` mode.** The default behavior is correct for most deployments — vision is used when beneficial and available.
+- **Monitor token usage.** After enabling vision, watch the token consumption dashboard. If costs spike unexpectedly, adjust `DOCUMENT_VISION_MAX_PAGES` or `DOCUMENT_VISION_DPI`.
 
-- **미리 빌드된 샌드박스 이미지 사용.** `Dockerfile.sandbox`는 문서에 대한 AI 코드 실행에 필요한 일반적인 데이터 과학 패키지(pdfplumber, Pillow, pandas 등)를 포함합니다. `docker compose`를 통해 또는 `docker build -f Dockerfile.sandbox -t fim-sandbox .`로 수동으로 빌드하여 `--network=none` 컨테이너에서 코드 실행이 작동하는지 확인하세요.
+- **Use the pre-built sandbox image.** The `Dockerfile.sandbox` includes common data-science packages (pdfplumber, Pillow, pandas, etc.) needed for AI code execution against documents. Build it via `docker compose` or manually with `docker build -f Dockerfile.sandbox -t fim-sandbox:python .` to ensure code execution works in `--network=none` containers.
 
 ### 최종 사용자용
 

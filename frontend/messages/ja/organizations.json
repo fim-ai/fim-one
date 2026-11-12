@@ -190,5 +190,10 @@
   "cannotLeaveMarketOrg": "マーケットプレイス組織から退出することはできません",
   "cannotAddMemberToMarketOrg": "マーケットプレイスにはメンバーを追加できません",
   "marketplaceReviewLocked": "マーケットプレイスは常にレビューが必要です",
-  "reviewBypassExplanation": "組織のメンバーと管理者がこの組織に公開する際にレビューをバイパスします。その他すべてのユーザーは、リソースが表示される前に管理者の承認が必要です。"
+  "reviewBypassExplanation": "組織のメンバーと管理者がこの組織に公開する際にレビューをバイパスします。その他すべてのユーザーは、リソースが表示される前に管理者の承認が必要です。",
+  "auditLog": "Audit Log",
+  "auditLogTitle": "Audit Log: {name}",
+  "auditLogDescription": "Events that belong to this organization and the calls made through its agents and workflows. IP addresses and browsers are not shown here.",
+  "auditEvents": "Events",
+  "auditNoEvents": "No events recorded for this organization yet."
 }

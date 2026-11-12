@@ -21,17 +21,17 @@ LLMの進歩との関係性に基づいてすべての機能を分類し、そ�
 
 # 分析
 
-### Connector Platform が完全に直交している理由
+### Why Connector Platform is fully orthogonal
 
-モデルは決してネイティブに以下を行いません：
-- API 認証情報を保存・暗号化する (AES-GCM)
-- OAuth フローを管理する (認可ページ → コールバック → リフレッシュトークン)
-- クライアントの Kingdee/金蝶 ERP データベースに接続する
-- Lark/飞书 または WeCom/企微 に通知をプッシュする
-- どのコネクタを使用できるかについて RBAC を実施する
-- コンプライアンス監査のためにすべてのツール呼び出しをログに記録する
+Models will never natively:
+- Store and encrypt API credentials (Fernet)
+- Manage OAuth flows (authorization page → callback → refresh token)
+- Connect to a client's Kingdee/金蝶 ERP database
+- Push notifications to Lark/飞书 or WeCom/企微
+- Enforce RBAC on who can use which connector
+- Log every tool call for compliance auditing
 
-これらはインテリジェンスの問題ではなく、エンジニアリングの問題です。10倍スマートなモデルでも、インフラストラクチャなしではこれらのことを行うことはできません。
+These are engineering problems, not intelligence problems. A model 10x smarter still can't do these things without infrastructure.
 
 ### AI コネクタビルダーが「順調」である理由は「吸収されている」のではなく
 
@@ -68,29 +68,29 @@ LLM プロバイダーがオーケストレーションをネイティブに構�
 
 ## 機能レベルの分類
 
-### 直交性 (v0.6+)
+### Orthogonal (v0.6+)
 
-| 機能 | バージョン | 直交性の理由 |
+| Feature | Version | Why orthogonal |
 |---------|---------|---------------|
-| コネクタエンティティ + CRUD | v0.6.1 | エンタープライズ統合、純粋なエンジニアリング |
-| ユーザーごとの認証情報 (AES-GCM) | v0.6.2 | セキュリティインフラストラクチャ |
-| 確認ゲート | v0.6.2 | 書き込み操作の安全メカニズム |
-| コネクタのエクスポート/インポート/フォーク | v0.7 | 配布メカニズム |
-| OAuth 2.0 | v0.7 | プロトコル実装 |
-| MCP サーバーエクスポート | v0.7 | 相互運用性 (MCP採用に依存) |
-| データベースコネクタ | v0.8 | 直接DB アクセス、接続プール |
-| メッセージプッシュ | v0.8 | 通知チャネル |
-| RBAC | v0.8 | アクセス制御、ガバナンス |
-| 操作監査ログ | v0.8 | コンプライアンス |
-| サンドボックス強化 | v0.9 | セキュリティ分離 |
-| 可観測性 (OTel、サーキットブレーカー) | v0.9 | 本番運用 |
-| コネクタ分析 | v0.9 | 使用状況追跡 |
-| Docker Compose | v0.9 | デプロイメント |
-| 管理ダッシュボード | v1.0 | 管理UI |
-| スケジュール済みジョブ / Webhook | v1.0 | 自動化トリガー |
-| バッチ実行 | v1.0 | エンタープライズスケール処理 |
-| 埋め込み可能なウィジェット / iframe | v1.0 | 配信モード |
-| エンタープライズセキュリティ | v1.0 | コンプライアンス (暗号化、IP ホワイトリスト) |
+| Connector entity + CRUD | v0.6.1 | Enterprise integration, pure engineering |
+| Per-user credentials (Fernet) | v0.6.2 | Security infrastructure |
+| Confirmation Gate | v0.6.2 | Safety mechanism for write operations |
+| Connector Export/Import/Fork | v0.7 | Distribution mechanism |
+| OAuth 2.0 | v0.7 | Protocol implementation |
+| MCP Server Export | not implemented | Interoperability (depends on MCP adoption) |
+| Database Connector | v0.8 | Direct DB access, connection pools |
+| Message Push | v0.8 | Notification channels |
+| RBAC | v0.8 | Access control, governance |
+| Operation Audit Log | v0.8 | Compliance |
+| Sandbox Hardening | v0.9 | Security isolation |
+| Observability (circuit breaker shipped; OTel not implemented) | v0.9 | Production operations |
+| Connector Analytics | v0.9 | Usage tracking |
+| Docker Compose | v0.9 | Deployment |
+| Admin Dashboard | v1.0 | Management UI |
+| Scheduled Jobs / Webhooks | v1.0 | Automation triggers |
+| Batch Execution | v1.0 | Enterprise-scale processing |
+| Embeddable Widget / iframe | v1.0 | Delivery mode |
+| Enterprise Security | v1.0 | Compliance (encryption, IP whitelisting) |
 
 ### Tailwind
 

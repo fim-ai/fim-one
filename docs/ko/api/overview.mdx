@@ -29,9 +29,9 @@ curl -H "Authorization: Bearer fim_your_api_key_here" \
   https://your-domain.com/api/agents
 ```
 
-### JWT 토큰 사용
+### Using JWT Token
 
-SSE 스트리밍 엔드포인트(`/api/react` 및 `/api/dag`)의 경우, 요청 본문에 토큰을 전달할 수 있습니다:
+The SSE streaming endpoints (`/api/react`, `/api/dag` and `/api/auto`) read the token from the request body, not from the `Authorization` header. The value can be a JWT access token or an API key:
 
 ```json
 {
@@ -40,13 +40,13 @@ SSE 스트리밍 엔드포인트(`/api/react` 및 `/api/dag`)의 경우, 요청 
 }
 ```
 
-자세한 설정 지침은 [인증](/api/authentication)을 참조하세요.
+See [Authentication](/api/authentication) for detailed setup instructions.
 
 ## 응답 형식
 
-### 성공 응답
+### Success Response
 
-모든 성공적인 API 응답은 다음 구조를 따릅니다:
+Most endpoints that return a single resource or an acknowledgement wrap it in this structure (list endpoints and the sign-in endpoints return their payload directly):
 
 ```json
 {
@@ -59,15 +59,15 @@ SSE 스트리밍 엔드포인트(`/api/react` 및 `/api/dag`)의 경우, 요청 
 }
 ```
 
-### 오류 응답
+### Error Response
 
-오류 응답에는 오류 코드와 사람이 읽을 수 있는 메시지가 포함됩니다:
+Error responses carry a human-readable `detail`, a machine-readable `error_code` (`null` for a few generic errors), and `error_args` with values for the message:
 
 ```json
 {
-  "success": false,
-  "error": "conversation_not_found",
-  "message": "The conversation does not exist or has been deleted"
+  "detail": "Conversation not found",
+  "error_code": "conversation_not_found",
+  "error_args": {}
 }
 ```
 
@@ -88,47 +88,52 @@ SSE 스트리밍 엔드포인트(`/api/react` 및 `/api/dag`)의 경우, 요청 
 }
 ```
 
-## 스트리밍 (Server-Sent Events)
+## Streaming (Server-Sent Events)
 
-채팅 엔드포인트 (`POST /api/react` 및 `POST /api/dag`)는 실시간 스트리밍을 위해 Server-Sent Events를 반환합니다. 각 이벤트는 콘텐츠를 나타내는 `type` 필드를 가집니다:
+Chat endpoints (`POST /api/react`, `POST /api/dag` and `POST /api/auto`) return Server-Sent Events for real-time streaming. Each event has a `type` field indicating its content:
 
-| 이벤트 타입 | 설명 |
+| Event Type | Description |
 |-----------|-------------|
-| `step` | ReAct 추론 단계 (도구 호출, 사고). 확장 사고 기능이 있는 모델(Claude, o-series, DeepSeek-R1)의 경우 도구 결정 단계 중 실시간 `thinking_delta` 콘텐츠 포함 |
-| `step_progress` | DAG 단계 진행 상황 (시작됨/반복/완료됨). 기본 에이전트가 추론 토큰을 스트리밍할 때 `thinking_delta` 콘텐츠 포함 가능 |
-| `phase` | 파이프라인 단계 전환 (계획/실행/분석) |
-| `compact` | 컨텍스트 압축 발생 |
-| `answer` | 스트리밍된 답변 텍스트 (시작/델타/완료) |
-| `done` | 최종 결과 페이로드 |
-| `suggestions` | 제안된 후속 질문 |
-| `title` | 자동 생성된 대화 제목 |
-| `end` | 스트림 종료자 (항상 마지막) |
+| `step` | ReAct reasoning step (tool calls, thinking). For models with extended thinking (Claude, o-series, DeepSeek-R1), includes real-time `thinking_delta` content during tool-decision phases |
+| `step_title` | Short generated label for a ReAct iteration (`iteration`, `title`) |
+| `step_progress` | DAG step progress (started/iteration/completed). May include `thinking_delta` content when the underlying agent streams reasoning tokens |
+| `phase` | Pipeline phase transition (selecting_tools/planning/executing/analyzing) |
+| `compact` | Context compaction occurred |
+| `answer` | Streamed answer text (start/delta/done) |
+| `error` | Structured terminator, sent when the monthly token quota runs out mid-answer (`code: "QUOTA_EXCEEDED"`) or the run fails. Followed by `end` |
+| `guardrail_tripwired` | A content guardrail blocked the turn (`kind`, `guardrail_name`, `reason`) |
+| `done` | Final result payload |
+| `post_processing` | Marker between `done` and `end` while follow-up suggestions are generated |
+| `suggestions` | Suggested follow-up questions (`{"items": [...]}`) |
+| `end` | Stream terminator (always last) |
 
-### SSE 스트림 예제
+The conversation title is generated in the background after `end`; read it from `GET /api/conversations/{id}`.
+
+### Example SSE Stream
 
 ```
 event: step
-data: {"type": "tool_call", "tool": "search", "input": "Paris weather"}
+data: {"cursor": 0, "data": {"type": "iteration", "status": "start", "iteration": 1, "tool_name": "web_search", "tool_args": {"query": "Paris weather"}}}
 
 event: answer
-data: {"type": "delta", "text": "Based on current data, "}
+data: {"cursor": 3, "data": {"status": "delta", "content": "Based on current data, "}}
 
 event: answer
-data: {"type": "delta", "text": "Paris has pleasant weather."}
+data: {"cursor": 4, "data": {"status": "delta", "content": "Paris has pleasant weather."}}
 
 event: done
-data: {"answer": "Based on current data, Paris has pleasant weather.", "tokens": 128}
+data: {"cursor": 6, "data": {"answer": "Based on current data, Paris has pleasant weather.", "iterations": 2, "elapsed": 4.2, "usage": {"prompt_tokens": 96, "completion_tokens": 32, "total_tokens": 128}}}
 
 event: suggestions
-data: ["What about tomorrow's forecast?", "Compare with other European cities"]
+data: {"cursor": 8, "data": {"items": ["What about tomorrow's forecast?", "Compare with other European cities"]}}
 
 event: end
 data: {}
 ```
 
-### 커서 기반 재개
+### Cursor-based resume
 
-모든 SSE 이벤트는 대화에 범위가 지정된 단조 `cursor` 정수를 전달합니다. 클라이언트는 가장 높은 커서를 추적해야 합니다. 연결이 턴 중간에 끊어지면(네트워크 오류, 프록시 타임아웃, 서버 재시작), 클라이언트는 에이전트를 다시 실행하지 않고 다시 구독할 수 있습니다:
+Every persisted SSE event is sent as `{"cursor": <int>, "data": {...}}`; the cursor increases monotonically within the assistant turn. Clients should track the highest cursor seen. When the connection drops mid-turn (network error, proxy timeout, server restart), the client can re-subscribe without re-running the agent:
 
 ```http
 POST /api/chat/resume
@@ -141,18 +146,50 @@ Authorization: Bearer <jwt>
 }
 ```
 
-응답은 `cursor > 42`인 캐시된 이벤트를 재생하고 터미널 `event: resume_done` 프레임으로 끝나는 SSE 스트림입니다. `cursor: -1`을 전달하여 처음부터 전체 재생을 요청합니다.
+The response is an SSE stream that replays cached events with `cursor > 42` and ends with a terminal `event: resume_done` frame. Pass `cursor: -1` to request a full replay from the beginning.
 
-오류 응답:
-- `404 conversation_not_found` — 대화 ID가 유효하지 않거나 인증된 사용자가 소유하지 않음
-- `404 no_recent_assistant_message` — 대화에 재개할 지속된 어시스턴트 턴이 없음(예: 사용자 메시지가 없는 새로운 대화)
-- `400 invalid_cursor` — 커서가 음이 아닌 정수 또는 `-1`이 아님
+Error responses:
+- `404 conversation_not_found` — conversation id is invalid or not owned by the authenticated user
+- `404 no_recent_assistant_message` — conversation has no persisted assistant turn to resume from (e.g., a brand-new conversation with no user messages yet)
+- `400 invalid_cursor` — cursor is not a non-negative integer or `-1`
 
-참조 프론트엔드 구현(플레이그라운드의 `useSseResume` 훅)은 지수 백오프(300ms → 1s → 3s, 최대 3회 시도)로 네트워크 연결 끊김을 자동으로 재시도하고 의도하지 않은 재연결을 피하기 위해 사용자 시작 중단과 네트워크 오류를 구분합니다. 전체 패턴은 `playground-page.tsx` 통합을 참조하세요.
+The reference frontend implementation (`useSseResume` hook in the playground) auto-retries network disconnects with exponential backoff (300ms → 1s → 3s, max 3 attempts) and distinguishes user-initiated abort from network error to avoid unintended reconnects. See the `playground-page.tsx` integration for the full pattern.
 
 <Note>
-재개는 상태 비저장입니다 — 어시스턴트 메시지의 저장된 `sse_events` 배열에서 재생합니다. 에이전트의 턴이 어시스턴트 메시지가 지속되기 전에 중단된 경우(예: `done` 전에 충돌), 매달린 `tool_use` 블록은 다음 턴에 `DbMemory._repair_dangling_tool_calls`에 의해 자동으로 복구됩니다. 합성 `tool_result` 행은 `metadata_.synthetic=true` 및 `metadata_.reason="interrupted"`로 감사를 위해 지속됩니다.
+Resume is stateless — it replays from the assistant message's stored `sse_events` array. If the agent's turn was interrupted before any assistant message was persisted (e.g., a crash before `done`), the dangling `tool_use` block is auto-repaired by `DbMemory._repair_dangling_tool_calls` on the next turn. Synthetic `tool_result` rows are persisted with `metadata_.synthetic=true` and `metadata_.reason="interrupted"` for audit.
 </Note>
+
+## Business References
+
+A system that embeds FIM One can tag each conversation with the id of the business object it is about, such as a contract number or a ticket id, and later reopen the latest conversation for that object.
+
+- `business_ref` is optional text. It is normalized to Unicode NFC, then surrounding whitespace is trimmed; an empty value means no reference. A value longer than 200 characters after normalization, or one containing control characters (C0 or C1), zero-width or other format characters, or the line and paragraph separators U+2028 and U+2029, is refused with `422` (`invalid_business_ref` for query parameters). The value is otherwise stored as given: it is not unique, not interpreted, and never passed to the model.
+- Filters and lookups match exactly and case-sensitively, after the same NFC normalization: `HT-1` does not find `ht-1`, while a reference sent in decomposed form finds the one stored in composed form.
+- A reference belongs to the conversation's owner. Filters and lookups only ever consider the caller's own conversations, and administrator lists and exports do not show it. The administrators' full backup (`GET /api/admin/export/full-backup`) leaves it out, so anything rebuilt from that backup has no references. The owner's data export (`GET /api/auth/me/export`) includes it.
+
+```bash
+# Start a conversation for contract HT-2026-0042
+curl -X POST "https://your-domain.com/api/conversations" \
+  -H "Authorization: Bearer fim_your_api_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{"mode": "react", "title": "Contract review", "business_ref": "HT-2026-0042"}'
+
+# The caller's most recently active conversation for it (data is null if none)
+curl "https://your-domain.com/api/conversations/latest?business_ref=HT-2026-0042" \
+  -H "Authorization: Bearer fim_your_api_key_here"
+
+# All of the caller's conversations for it; combines with status, q, page and size
+curl "https://your-domain.com/api/conversations?business_ref=HT-2026-0042" \
+  -H "Authorization: Bearer fim_your_api_key_here"
+
+# Change it, or clear it with null or ""
+curl -X PATCH "https://your-domain.com/api/conversations/<id>" \
+  -H "Authorization: Bearer fim_your_api_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{"business_ref": null}'
+```
+
+`GET /api/conversations/latest` orders by the newest message, falling back to the creation time, and considers active conversations unless `status=archived` is given. The list keeps its own order (starred first, then newest created).
 
 ## 속도 제한
 
@@ -182,18 +219,22 @@ curl "https://your-domain.com/api/conversations?page=2&size=50" \
 }
 ```
 
-## 오류 코드
+## Error Codes
 
-일반적인 오류 코드 및 그 의미:
+Common error codes and their meanings:
 
-| 오류 코드 | HTTP 상태 | 의미 |
+| `error_code` | HTTP Status | Meaning |
 |-----------|-------------|---------|
-| `unauthorized` | 401 | 잘못되었거나 누락된 인증 |
-| `forbidden` | 403 | 사용자가 이 리소스에 대한 권한이 없음 |
-| `not_found` | 404 | 리소스가 존재하지 않음 |
-| `bad_request` | 400 | 잘못된 요청 매개변수 |
-| `rate_limit_exceeded` | 429 | 너무 많은 요청 (계획됨) |
-| `internal_error` | 500 | 서버 오류 |
+| `authentication_required` | 401 | A streaming endpoint was called without a token in the body |
+| `token_expired` / `invalid_token` | 401 | The JWT in a streaming request has expired or is malformed |
+| `invalid_credentials` | 401 | Wrong email or password at sign-in |
+| `api_key_scope_denied` | 403 | The API key's scopes do not allow this request |
+| `ip_not_allowed` | 403 | The client address is refused by the instance's IP rules |
+| `subscription_required` | 402 | The instance is paid-only and the user has no plan |
+| `token_quota_exceeded` | 429 | The user's monthly token quota is used up |
+| `2fa_too_many_attempts` | 429 | Five incorrect two-factor codes within 15 minutes |
+
+Errors raised by the authentication layer for a bad `Authorization` header (`Invalid token`, `Token has expired`, `Invalid API key`, `API key is disabled`) return `401` with `error_code: null`; rely on the status code and `detail` for those. Request validation failures return `422`.
 
 ## API 플레이그라운드
 
@@ -216,9 +257,9 @@ FIM One API는 완전히 REST 기반이지만, 인기 있는 언어로 SDK를 �
 - **JavaScript/TypeScript**: 곧 출시 예정
 - **Go**: 곧 출시 예정
 
-## 버전 관리
+## Versioning
 
-현재 API 버전은 `v0.8.0`입니다. 버전은 URL 경로에 포함되지 않으며, 주요 변경 사항은 메이저 버전 업그레이드와 마이그레이션 기간을 통해 알려집니다.
+The API carries the application version, reported by `GET /api/version`. Version is not included in the URL path; breaking changes will be signaled through major version bumps and a migration period.
 
 ## 지원
 

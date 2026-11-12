@@ -122,5 +122,13 @@
   "kbDisabled": "知识库已禁用",
   "kbToggleFailed": "更新知识库状态失败",
   "emptyTitle": "还没有知识库",
-  "emptyDescription": "创建您的第一个知识库来组织和检索信息。"
+  "emptyDescription": "创建您的第一个知识库来组织和检索信息。",
+  "retryWithImageRecognition": "Read again with image recognition",
+  "visionNoticeLabel": "Read as text only",
+  "visionNotice": {
+    "token_quota_exceeded": "Read as text only. Images and scanned pages were not recognised because your token quota was used up. Retry after your quota resets.",
+    "subscription_required": "Read as text only. Images and scanned pages were not recognised because your account has no plan that includes model use. Retry after you subscribe.",
+    "quota_unavailable": "Read as text only. Images and scanned pages were not recognised because your plan and token quota could not be checked. Retry shortly.",
+    "other": "Read as text only. Images and scanned pages were not recognised. Retry later."
+  }
 }

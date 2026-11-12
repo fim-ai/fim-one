@@ -39,21 +39,21 @@ sequenceDiagram
 
 Die Schlüsseleinsicht: **Vollständige Werkzeug-Schemas sind gesprächsbezogen, nicht prompt-bezogen.** Sie erscheinen als Werkzeug-Ergebnis-Nachrichten, die das Kontextverwaltungssystem in späteren Runden zusammenfassen oder kürzen kann. Im Gegensatz dazu bleibt der Inhalt des System-Prompts über das gesamte Gespräch hinweg in voller Größe erhalten.
 
-## Fünf Offenlegungsmechanismen
+## Five disclosure mechanisms
 
-FIM One wendet progressive Offenlegung einheitlich auf fünf Ressourcentypen an. Jeder verwendet das gleiche zweistufige Muster, aber mit einem Meta-Tool, das auf seine Semantik zugeschnitten ist.
+FIM One applies progressive disclosure uniformly across five resource types. Each uses the same two-tier pattern but with a meta-tool tailored to its semantics.
 
-| Ressource | Meta-Tool | Stubs zeigen | On-Demand-Rückgabe | Config-Variable | Standard |
+| Resource | Meta-Tool | Stubs Show | On-Demand Returns | Config Var | Default |
 |---|---|---|---|---|---|
-| Skills | `read_skill` | Name + Beschreibung (120 Zeichen) | Vollständiger SOP-Inhalt + eingebettetes Skript | `SKILL_TOOL_MODE` | `progressive` |
-| API-Konnektoren | `connector` | Konnektorname + Aktionsliste | Vollständige Aktionsschemas mit Parametern | `CONNECTOR_TOOL_MODE` | `progressive` |
-| Datenbank-Konnektoren | `database` | DB-Name + Tabellennamen + Anzahl | Spaltenschemas, SQL-Abfrageausführung | `DATABASE_TOOL_MODE` | `progressive` |
-| MCP-Server | `mcp` | Servername + Tool-Liste | Vollständige Tool-Schemas + Aufruf | `MCP_TOOL_MODE` | `progressive` |
-| Integrierte Tools | `request_tools` | Kompakter Katalog (Name + 80-Zeichen-Beschreibung) | Vollständiges Tool-Schema in Sitzung injiziert | _(auto)_ | Auto bei >12 Tools |
+| Skills (when the module is enabled; off by default) | `read_skill` | Name + description (120 chars) | Full SOP content + embedded script | `SKILL_TOOL_MODE` | `progressive` |
+| API Connectors | `connector` | Connector name + action list | Full action schemas with parameters | `CONNECTOR_TOOL_MODE` | `progressive` |
+| Database Connectors | `database` | DB name + table names + counts | Column schemas, SQL query execution | `DATABASE_TOOL_MODE` | `progressive` |
+| MCP Servers | `mcp` | Server name + tool list | Full tool schemas + invocation | `MCP_TOOL_MODE` | `progressive` |
+| Built-in Tools | `request_tools` | Compact catalog (name + 80-char desc) | Full tool schema injected into session | _(auto)_ | Auto when >12 tools |
 
-### Fähigkeiten -- `read_skill`
+### Skills -- `read_skill`
 
-**Was das LLM anfangs sieht:**
+**What the LLM sees initially:**
 
 ```
 ## Available Skills
@@ -62,13 +62,13 @@ Call read_skill(name) to load full content before executing any of these:
 - Refund Processing: Step-by-step refund workflow with approval gates...
 ```
 
-Jeder Stub umfasst etwa 30 Token -- einen Namen plus eine auf 120 Zeichen gekürzte Beschreibung aus dem vollständigen Fähigkeitsinhalt.
+Each stub is roughly 30 tokens -- a name plus the Skill's description, truncated to 120 characters (`SKILL_STUB_DESC_LENGTH`).
 
-**Was bei Bedarf geschieht:** Das LLM ruft `read_skill("Customer Complaint SOP")` auf und erhält den vollständigen SOP-Text -- möglicherweise tausende Token mit Schritt-für-Schritt-Anweisungen, Entscheidungsbäumen und eingebetteten Skripten. Dieser Inhalt wird als Toolergebnis eingegeben, nicht als Systemaufforderungstext, daher unterliegt er der normalen Kontextverwaltung (Zusammenfassung, Kürzung) in späteren Durchläufen.
+**What happens on demand:** The LLM calls `read_skill("Customer Complaint SOP")` and receives the complete SOP text -- potentially thousands of tokens of step-by-step instructions, decision trees, and embedded scripts. This content enters as a tool result, not as system prompt text, so it is subject to normal context management (summarization, truncation) in later turns.
 
-**Legacy-Modus:** `SKILL_TOOL_MODE=inline` bettet den vollständigen Fähigkeitsinhalt direkt in die Systemaufforderung ein. Geeignet, wenn Sie wenige, kleine Fähigkeiten haben -- skaliert aber schlecht.
+**Legacy mode:** `SKILL_TOOL_MODE=inline` embeds the full Skill content directly in the system prompt. Suitable when you have few, small Skills -- but scales poorly.
 
-**Kontexteinsparungen:** Eine Bereitstellung mit 10 Fähigkeiten mit durchschnittlich 2.000 Token verbraucht ~300 Token im progressiven Modus (nur Stubs) gegenüber ~20.000 Token im Inline-Modus. Das ist eine 98%ige Reduktion der persistenten Kontextkosten.
+**Context savings:** A deployment with 10 Skills averaging 2,000 tokens each consumes ~300 tokens in progressive mode (stubs only) vs. ~20,000 tokens in inline mode. That is a 98% reduction in persistent context cost.
 
 ### API-Konnektoren -- `connector`
 
@@ -143,17 +143,17 @@ MCP-Server sind der extremste Fall für progressive Offenlegung. Ein GitHub-MCP-
 
 **Kontexteinsparungen:** Die Einsparungen hier sind extrem. Die 35 Tools eines GitHub-MCP-Servers könnten 10.000+ Token des Schemas verbrauchen. Im Progressive-Modus kostet der Stub ~100 Token. Wenn der Benutzer GitHub in diesem Gespräch nie benötigt, werden diese 10.000 Token nie ausgegeben.
 
-### Integrierte Tools -- `request_tools`
+### Built-in Tools -- `request_tools`
 
-Der fünfte Mechanismus unterscheidet sich architektonisch von den anderen vier. Er konsolidiert keinen Ressourcentyp hinter einem Meta-Tool. Stattdessen adressiert er den **Engpass bei der Tool-Auswahl** -- was passiert, wenn der Agent mehr als 12 Tools verfügbar hat.
+The fifth mechanism is architecturally different from the other four. It does not consolidate a resource type behind a meta-tool. Instead, it addresses the **tool selection bottleneck** -- what happens when the agent has more than 12 tools available.
 
-**Funktionsweise:** Wenn die Gesamtzahl der Tools `REACT_TOOL_SELECTION_THRESHOLD` (Standard: 12) überschreitet, führt die ReAct-Engine einen leichtgewichtigen LLM-Aufruf durch, um die 6 relevantesten Tools für die aktuelle Abfrage auszuwählen. Die verbleibenden Tools werden in einer vollständigen Registry gespeichert. Ein `request_tools` Meta-Tool wird automatisch registriert und listet alle nicht geladenen Tools als kompakten Katalog auf (Name + 80-Zeichen-Beschreibung).
+**How it works:** When the total tool count exceeds `REACT_TOOL_SELECTION_THRESHOLD` (default: 12), the ReAct engine selects up to 6 relevant tools for the current query (a keyword match first, a lightweight fast-LLM call otherwise) and adds pinned tools such as `read_skill` and `update_plan` on top. The remaining tools are stored in a full registry. A `request_tools` meta-tool is automatically registered, listing all unloaded tools as a compact catalog (name + 80-character description).
 
 ```mermaid
 flowchart TD
     A["30 tools available"] --> B{"Count > 12?"}
-    B -->|Yes| C["LLM selects top 6"]
-    C --> D["6 active tools +<br/>request_tools meta-tool"]
+    B -->|Yes| C["Select top 6<br/>(keyword match or LLM)"]
+    C --> D["6 active tools + pinned tools +<br/>request_tools meta-tool"]
     D --> E["LLM uses active tools"]
     E --> F{"Needs a tool<br/>not in active set?"}
     F -->|Yes| G["request_tools(['web_search', 'email_send'])"]
@@ -162,7 +162,7 @@ flowchart TD
     F -->|No| J["Continue normally"]
 ```
 
-**Was das LLM anfangs sieht:**
+**What the LLM sees initially:**
 
 ```
 Load additional tools into the current session.
@@ -172,28 +172,28 @@ Available tools not yet loaded:
 - python_exec: Execute Python code in a sandboxed environment and return the output...
 ```
 
-**Was bei Bedarf passiert:** `request_tools(tool_names=["web_search", "email_send"])` kopiert diese Tools aus der vollständigen Registry in die aktive Registry. Der System-Prompt wird in der nächsten Iteration neu erstellt, damit das LLM die vollständigen Schemas sieht. Dies ist ein Nebeneffekt -- das Tool mutiert die aktive Tool-Menge während des Gesprächs.
+**What happens on demand:** `request_tools(tool_names=["web_search", "email_send"])` copies those tools from the full registry into the active registry. The system prompt is rebuilt on the next iteration so the LLM sees the full schemas. This is a side-effect -- the tool mutates the active tool set mid-conversation.
 
-**Keine Umgebungsvariable:** Dieser Mechanismus aktiviert sich automatisch, wenn die Tool-Auswahl die Menge filtert. Es gibt keine `REQUEST_TOOLS_MODE` Umgebungsvariable. Wenn Sie die Tool-Auswahl vollständig deaktivieren möchten, setzen Sie `REACT_TOOL_SELECTION_THRESHOLD` auf eine sehr hohe Zahl.
+**No env var:** This mechanism activates automatically when tool selection filters the set. There is no `REQUEST_TOOLS_MODE` environment variable. If you want to disable tool selection entirely, set `REACT_TOOL_SELECTION_THRESHOLD` to a very high number.
 
-**Kontexteinsparungen:** Die Einsparungen hängen davon ab, wie viele Tools verfügbar sind und wie viele die Auswahl auswählt. Ein Agent mit 30 Tools, der nur 6 aktive Schemas + den `request_tools` Katalog sieht, spart ungefähr 60--70% des Tool-Schema-Kontexts.
+**Context savings:** The savings depend on how many tools are available and how many the selection picks. An agent with 30 tools seeing only 6 active schemas + the `request_tools` catalog saves roughly 60--70% of the tool schema context.
 
-## Wie es sich in die Werkzeugmontage-Pipeline einfügt
+## How it fits into the tool assembly pipeline
 
-Die [Systemübersicht](/architecture/system-overview) beschreibt eine 8-Schritte-pro-Anfrage-Werkzeugmontage-Pipeline. Progressive Offenlegung wirkt sich an mehreren Punkten aus:
+The [System Overview](/architecture/system-overview) describes an 8-step per-request tool assembly pipeline. Progressive disclosure acts at multiple points:
 
-| Pipeline-Schritt | Rolle der progressiven Offenlegung |
+| Pipeline Step | Progressive Disclosure Role |
 |---|---|
-| **1. Basis-Erkennung** | Keine Auswirkung -- integrierte Werkzeuge werden normal geladen |
-| **2. Agent-Kategorie-Filter** | Keine Auswirkung -- Kategoriefilterung wird unabhängig vom Modus angewendet |
-| **3. KB-Injektion** | Keine Auswirkung -- KB-Werkzeuge sind natürlicherweise leichtgewichtig (1--2 Werkzeuge) |
-| **4. Connector-Laden** | `ConnectorMetaTool` konsolidiert alle API-Connectoren; `DatabaseMetaTool` konsolidiert alle DB-Connectoren |
-| **5. MCP-Laden** | `MCPServerMetaTool` konsolidiert alle MCP-Server in ein Werkzeug |
-| **6. Skills-Injektion** | `ReadSkillTool` ersetzt vollständigen Inhalt durch kompakte Stubs in System-Prompt |
-| **7. CallAgent-Registrierung** | Keine Auswirkung -- `call_agent` ist bereits ein einzelnes Werkzeug mit einem Katalog |
-| **8. Laufzeit-Auswahl** | `request_tools` Meta-Werkzeug registriert, wenn die Auswahl die Menge filtert |
+| **1. Base discovery** | No effect -- built-in tools are loaded normally |
+| **2. Agent category filter** | No effect -- category filtering applies regardless of mode |
+| **3. KB injection** | No effect -- KB tools are naturally lightweight (1--2 tools) |
+| **4. Connector loading** | `ConnectorMetaTool` consolidates all API connectors; `DatabaseMetaTool` consolidates all DB connectors |
+| **5. MCP loading** | `MCPServerMetaTool` consolidates all MCP servers into one tool |
+| **6. Skills injection** | `ReadSkillTool` replaces full content with compact stubs in system prompt |
+| **7. CallAgent registration** | No effect -- `call_agent` is already a single tool with a catalog |
+| **8. Runtime selection** | `request_tools` meta-tool registered when selection filters the set |
 
-Der Nettoeffekt: Die Schritte 4--6 reduzieren jeweils ihre Werkzeuganzahl auf 1 (oder eine kleine Konstante), und Schritt 8 fügt ein Sicherheitsnetz zum dynamischen Laden hinzu, falls die Auswahlphase etwas verpasst hat. Ein Hub-Agent, der im Legacy-Modus 50+ Werkzeuge hätte, könnte im Progressive-Modus 8--10 präsentieren -- deutlich unter der Auswahlschwelle.
+The net effect: steps 4--6 each reduce their tool count to 1 (or a small constant), and step 8 adds a safety net for dynamically loading anything the selection phase missed. An agent that would have 50+ tools in legacy mode might present 8--10 in progressive mode -- well below the selection threshold.
 
 ## Konfiguration
 
@@ -237,13 +237,13 @@ Ein alternatives Design würde das Framework automatisch Tool-Schemas basierend 
 
 3. **Kontexteffizienz.** Das Framework kann nicht wissen, welche Aktionen innerhalb eines Connectors das LLM benötigt. Das Erweitern aller Aktionen eines Connectors verschwendet Token für irrelevante. Das LLM sieht zunächst die Aktionsnamen (über den Stub), fordert dann nur das Schema der spezifischen Aktion an -- zweistufige Offenlegung in ihrer reinsten Form.
 
-### Warum Pro-Ressourcen-Meta-Tools statt eines universellen Tools?
+### Why per-resource meta-tools rather than one universal tool?
 
-Ein einzelnes `discover_resource(type, name)`-Tool wäre einfacher zu implementieren, aber schlechter für das LLM. Pro-Ressourcen-Meta-Tools bieten:
+A single `discover_resource(type, name)` tool would be simpler to implement but worse for the LLM. Per-resource meta-tools provide:
 
-- **Typisierte Parameter.** `connector` hat `subcommand`, `connector`, `action`, `parameters`. `database` hat `subcommand`, `database`, `table`, `sql`. Die Parameterschemas teilen dem LLM genau mit, was erwartet wird.
-- **Enum-Einschränkungen.** Jedes Meta-Tool listet seine gültigen Namen (Connector-Namen, Datenbanknamen, Servernamen) als Enum-Werte im Schema auf. Das LLM kann einen Connector-Namen nicht halluzinieren.
-- **Kategorie-Semantik.** Das `connector`-Tool hat die Kategorie `connector`, `database` hat die Kategorie `database`, `mcp` hat die Kategorie `mcp`. Dies fließt in die Agent-Kategoriefilterung ein – ein Agent, der nur mit der Kategorie `connector` konfiguriert ist, sieht die Meta-Tools `database` oder `mcp` nicht.
+- **Typed parameters.** `connector` has `subcommand`, `connector`, `action`, `parameters`. `database` has `subcommand`, `database`, `table`, `sql`. The parameter schemas tell the LLM exactly what is expected.
+- **Enum constraints.** Each meta-tool lists its valid names (connector names, database names, server names) as enum values in the schema. The LLM cannot hallucinate a connector name.
+- **Category semantics.** The `connector` tool has category `connector`, `database` has category `database`, `mcp` has category `mcp`. An agent's `tool_categories` filter applies to built-in tools only; which meta-tools appear is decided by the agent's bound connectors and MCP servers.
 
 ### Warum sowohl Progressive als auch Legacy-Modi?
 

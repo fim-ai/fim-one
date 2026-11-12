@@ -343,14 +343,23 @@ darum, das, was bereits in der Codebasis vorhanden ist, fertigzustellen und korr
 nicht darum, neue Funktionsbereiche zu eröffnen. Alles, was unten nicht aufgeführt ist, ist nicht
 geplant; siehe den abschließenden Hinweis.
 
-### v0.9.5 — Die letzten offenen Punkte abschließen
+### v0.9.5 — Finishing What Is In
 
-**Ziel**: Die bereits im Code vorhandenen, halb fertigen Pfade abschließen.
+**Goal**: close out the half-finished paths already in the tree.
 
-- [ ] Chunk-basierte Komprimierung der Eingaben und modellabhängige Budgets im Haupt-Chat-Pfad, damit jede Modellkombination innerhalb des Kontextfensters bleibt
-- [ ] Beim nächsten LiteLLM-Upgrade die Streaming-Nutzungszahlen der Responses-Bridge überprüfen (eine fehlerhafte Zuordnung im Upstream wird vermutet)
-- [ ] Die LiteLLM-Bridge von Chat zu Responses außer Betrieb nehmen, sobald der native GPT-5.x-Pfad einen vollständigen Release-Zyklus durchlaufen hat
-- [ ] Stripe-Abrechnung live schalten — nächtlicher Abgleich mit Stripe auf verpasste Webhooks, vollständige Regressionstests über den gesamten Stack und Live-Preis-ID
+- [x] Chunked compaction input and model-aware budgets on the main chat path, so any model mix stays within window
+- [x] One credential rule and one call record for chat, delegated agents and workflow steps; MCP calls recorded
+- [x] A shared MCP server with a credential in its URL or launch arguments is owner-only while fallback is off
+- [x] Read-only database connectors enforced by a read-only transaction (PostgreSQL family, MySQL), not by keyword check alone
+- [x] Workflow database steps bind `{{variable}}` values as query parameters; trigger responses carry an error code, not step details
+- [x] Workflow approvals suspend the run and resume it on decision, across restarts; approval inbox; crash recovery for interrupted runs
+- [x] Workflow Start step input types checked before a run starts; connector actions that require confirmation usable in workflows
+- [x] One audit record for account, organization, credential, resource and approval actions, with IP address and outcome; OAuth sign-ins logged
+- [x] Usage read from an append-only ledger: deleting does not lower "used"; stopped and failed turns and the AI helpers count
+- [x] Audit retention with a daily sweep; organization admins and users read their own audit; deleted users de-identified in kept records
+- [ ] Verify Responses-bridge streaming usage numbers on the next LiteLLM upgrade (upstream mis-mapping suspected)
+- [ ] Retire the LiteLLM chat→responses bridge once the native GPT-5.x path has run a full release
+- [ ] Stripe billing go-live — nightly reconcile against Stripe for missed webhooks, full-stack regression tests, live price ID
 
 ### Aus dem Pre-Replan-Plan v0.9 ausgeliefert
 

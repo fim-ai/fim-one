@@ -190,5 +190,10 @@
   "cannotLeaveMarketOrg": "L'organisation Marketplace ne peut pas être quittée",
   "cannotAddMemberToMarketOrg": "Les membres ne peuvent pas être ajoutés à la Marketplace",
   "marketplaceReviewLocked": "La Marketplace nécessite toujours un examen",
-  "reviewBypassExplanation": "Les membres de l'organisation et les administrateurs contournent l'examen lors de la publication dans cette organisation. Tous les autres utilisateurs nécessitent l'approbation d'un administrateur avant que leurs ressources deviennent visibles."
+  "reviewBypassExplanation": "Les membres de l'organisation et les administrateurs contournent l'examen lors de la publication dans cette organisation. Tous les autres utilisateurs nécessitent l'approbation d'un administrateur avant que leurs ressources deviennent visibles.",
+  "auditLog": "Audit Log",
+  "auditLogTitle": "Audit Log: {name}",
+  "auditLogDescription": "Events that belong to this organization and the calls made through its agents and workflows. IP addresses and browsers are not shown here.",
+  "auditEvents": "Events",
+  "auditNoEvents": "No events recorded for this organization yet."
 }

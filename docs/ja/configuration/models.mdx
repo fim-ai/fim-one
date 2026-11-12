@@ -6,19 +6,21 @@ description: "FIM One デプロイメントに適切な LLM を選択します�
 
 FIM One は**プロバイダーに依存しない** — OpenAI 互換のエンドポイントであれば動作します。このページでは、ユースケースに最適なモデルの組み合わせを選択するのに役立ちます。設定の詳細については、[環境変数](/configuration/environment-variables)を参照してください。
 
-## FIM One がモデルを使用する方法
+## How FIM One Uses Models
 
-FIM One には 3 つのモデルロールがあります:
+FIM One has three model roles:
 
-| ロール | 環境変数 | 用途 |
+| Role | Env Variable | Used For |
 |---|---|---|
-| **General** | `LLM_MODEL` | 計画、分析、ReAct エージェント、複雑な推論 |
-| **Fast** | `FAST_LLM_MODEL` | DAG ステップ実行、コンテキスト圧縮（より安価で高速） |
-| **Reasoning** | `REASONING_LLM_MODEL` | 深い分析、複雑な計画、数学的証明 |
+| **General** | `LLM_MODEL` | Planning, analysis, ReAct agent, complex reasoning |
+| **Fast** | `FAST_LLM_MODEL` | DAG steps the planner marks `fast`, ReAct tool-decision iterations, context compaction (cheaper, faster) |
+| **Reasoning** | `REASONING_LLM_MODEL` | Deep analysis, complex planning, mathematical proofs |
 
-Fast と Reasoning が設定されていない場合は General にフォールバックします。本番環境のデプロイメントでは、少なくとも 2 つのモデル（General + Fast）に分割することで、最適なコスト/品質のバランスが得られます。
+Fast and Reasoning fall back to General if not configured. For production deployments, splitting into at least two models (General + Fast) gives the best cost/quality balance.
 
-これらのロールは環境変数を通じて、または admin UI の **Model Groups** 機能を通じて設定できます。この機能により、モデルセット間のワンクリック切り替えが可能になります。詳細な admin UI ガイドについては [Model Management](/configuration/model-management) を参照してください。
+These roles can be configured via ENV variables or through the admin UI's **Model Groups** feature, which allows one-click switching between model sets. See [Model Management](/configuration/model-management) for the full admin UI guide.
+
+---
 
 ## クイック選択マトリックス
 
@@ -119,19 +121,19 @@ Main LLM として常に思考するモデル（MiniMax M2.7、`deepseek-reasone
 
 ### OpenAI
 
-最も実績のあるオプションです。OpenAIモデルは最高のネイティブ関数呼び出し（ツール呼び出し）サポートを備えており、これはエージェントの信頼性に直接影響します。GPT-5ファミリー（2025年8月以降）はGPT-4に対する大きな世代的飛躍です。
+The most battle-tested option. OpenAI models have the best native function calling (tool-calling) support, which directly impacts agent reliability. The GPT-5 family (August 2025+) is a major generational leap over GPT-4.
 
-**推奨モデル：**
-- メイン：`gpt-5.4`（最新フラグシップ、2026年3月——1M以上のコンテキスト、コンピュータ使用）または`o3`（最高の推論精度）
-- 高速：`gpt-5.4-mini`（$0.75/$4.50 per MTok）または`gpt-5.4-nano`（最安値 $0.20/$1.25 per MTok）
-- 予算重視高速：`gpt-5-mini`（$0.25/$2.00）および`gpt-5-nano`（$0.05/$0.40）はより低い価格で利用可能
-- レガシー：`gpt-4.1`（API内に存在、1Mコンテキスト、コーディングに適している）
+**Recommended models:**
+- Main: `gpt-5.4` (latest flagship, Mar 2026 — 1M+ context, computer use) or `o3` (best reasoning accuracy)
+- Fast: `gpt-5.4-mini` ($0.75/$4.50 per MTok) or `gpt-5.4-nano` (cheapest at $0.20/$1.25 per MTok)
+- Budget Fast: `gpt-5-mini` ($0.25/$2.00) and `gpt-5-nano` ($0.05/$0.40) remain available at lower prices
+- Legacy: `gpt-4.1` (still in API, 1M context, good for coding)
 
-**推論：** `LLM_REASONING_EFFORT=medium`を設定します——o-seriesおよびGPT-5.xモデルでネイティブに動作します。GPT-5.4は`reasoning_effort`を`none`、`low`、`medium`、`high`、`xhigh`のレベルでサポートしています。o-seriesは`max_tokens`の代わりに`max_completion_tokens`を必要とし、LiteLLMが自動的に処理します。注意：`/v1/chat/completions`はツールと推論を組み合わせたGPT-5.xリクエストを拒否するため、FIM OneはGPT-5.xの場合、両方が一緒に動作するResponses APIを直接使用します。そのパスは各ターンの暗号化された推論を次のターンに持ち込むため、エージェントが複数ステップの回答を構築する際に、すべてのツール呼び出しで再導出する代わりに、既に導き出したものを保持します。`/v1/responses`ルートのないエンドポイントはチャット補完にフォールバックし、エージェントツール使用ステップ中に明示的な`reasoning_effort: "none"`を使用し、`FIM_GPT5_RESPONSES_MODE`で手動でいずれかのフォールバックを強制できます。OpenAI互換エンドポイント上の他のモデルファミリーはチャット補完に留まります：Responsesから何も得られず、それのプロキシシムは悪くストリーミングをバッファリングできます。GPT-5.4は`temperature=1`を必要とし、FIM OneはLiteLLMのパラメータフィルタリング（`drop_params`）を介して自動的に処理します。
+**Reasoning:** Set `LLM_REASONING_EFFORT=medium` — works natively with o-series and GPT-5.x models. GPT-5.4 supports `reasoning_effort` with levels `none`, `low`, `medium`, `high`, `xhigh`. The o-series requires `max_completion_tokens` instead of `max_tokens`, which LiteLLM handles automatically. Note: `/v1/chat/completions` rejects GPT-5.x requests that combine tools with reasoning, so FIM One talks the Responses API directly for GPT-5.x, where both work together. That path also carries each turn's encrypted reasoning into the next one, so an agent building a multi-step answer keeps what it already worked out instead of re-deriving it at every tool call. Endpoints without a `/v1/responses` route fall back to chat completions with an explicit `reasoning_effort: "none"` during agent tool-use steps, and `FIM_GPT5_RESPONSES_MODE` can force either fallback by hand. Other model families on OpenAI-compatible endpoints stay on chat completions: they gain nothing from Responses, and proxy shims for it can badly buffer streaming. GPT-5 and later accept only the default temperature; FIM One removes any other value from the request and sends `max_completion_tokens` instead of `max_tokens`.
 
-| モデル | 入力 $/MTok | 出力 $/MTok | コンテキスト |
+| Model | Input $/MTok | Output $/MTok | Context |
 |---|---|---|---|
-| `gpt-5.4` | $2.50 | $15.00 | 1,050K (272K超過時に追加料金) |
+| `gpt-5.4` | $2.50 | $15.00 | 1,050K (surcharge >272K) |
 | `gpt-5.4-mini` | $0.75 | $4.50 | 400K |
 | `gpt-5.4-nano` | $0.20 | $1.25 | 400K |
 | `o3` | $2.00 | $8.00 | 200K |
@@ -161,18 +163,18 @@ LLM_REASONING_EFFORT=medium
 
 ### Anthropic (Claude)
 
-Claudeは微妙な推論と複雑なマルチステップタスクに優れています。FIM Oneは[LiteLLM](https://github.com/BerriAI/litellm)経由で接続し、Anthropicモデルをネイティブ API を通じて自動的にルーティングします。現在の世代はClaude 4.6（2026年2月）です。
+Claude excels at nuanced reasoning and complex multi-step tasks. FIM One connects via [LiteLLM](https://github.com/BerriAI/litellm), which routes Anthropic models through their native API automatically. The current generation is Claude 4.6 (February 2026).
 
-**推奨モデル:**
-- メイン: `claude-sonnet-4-6`（機能とコストのベストバランス — $3/$15 per MTok）
-- 高速: `claude-haiku-4-5`（高速で安価 — $1/$5 per MTok）
-- プレミアム: `claude-opus-4-6`（最も高機能、最大出力128K — $5/$25 per MTok）
+**Recommended models:**
+- Main: `claude-sonnet-4-6` (best balance of capability and cost — $3/$15 per MTok)
+- Fast: `claude-haiku-4-5` (fast and cheap — $1/$5 per MTok)
+- Premium: `claude-opus-4-6` (most capable, 128K max output — $5/$25 per MTok)
 
-**ベース URL:** `https://api.anthropic.com/v1/`
+**Base URL:** `https://api.anthropic.com/v1/`
 
-Opus 4.6とSonnet 4.6は1Mのコンテキストウィンドウを備えています（2026年3月13日以降GA — ベータヘッダーは不要）。Haiku 4.5は200Kのコンテキストウィンドウを備えています。
+Opus 4.6 and Sonnet 4.6 have a 1M context window (GA since March 13, 2026 — no beta header needed). Haiku 4.5 has a 200K context window.
 
-**推論:** `LLM_REASONING_EFFORT=medium`を設定します。LiteLLMはAnthropicモデルをネイティブ API を通じてルーティングするため、`reasoning_content`（拡張思考）は完全に返され、UI の「thinking」ステップで表示されます。Claude 4.6以降は、手動の`budget_tokens`の代わりにAdaptive Thinking（`thinking: {type: "adaptive"}`と`output_config.effort`）を使用します。これはFIM Oneが直接発行するもので、LiteLLMのマッピングに依存しません。Anthropicは思考がアクティブな間は`temperature=1`を要求し、システムはそれを強制します。リクエストビルダーはAnthropicルートで値をピンし、サンプリングパラメータを完全に拒否するモデルでは`temperature`を削除します。`LLM_TEMPERATURE=1`を手動で設定しないでください。詳細は[Extended Thinking](/configuration/environment-variables#extended-thinking-reasoning)を参照してください。
+**Reasoning:** Set `LLM_REASONING_EFFORT=medium`. LiteLLM routes Anthropic models through the native API, so `reasoning_content` (extended thinking) is fully returned and visible in the UI "thinking" step. Claude 4.6 and newer use Adaptive Thinking (`thinking: {type: "adaptive"}` plus `output_config.effort`) in place of a manual `budget_tokens`, which FIM One emits directly rather than relying on LiteLLM's mapping. Anthropic requires `temperature=1` while thinking is active, and the system enforces that for you: with thinking on, Claude 4.5 and older are sent `temperature=1.0`, and adaptive-thinking models (4.6 and newer) have `temperature` removed from the request; models that reject sampling parameters outright have it removed whether or not thinking is on. Do not set `LLM_TEMPERATURE=1` by hand. See [Extended Thinking](/configuration/environment-variables#extended-thinking-reasoning) for details.
 
 ```bash
 # .env — Anthropic Claude
@@ -494,28 +496,30 @@ LLM_REASONING_EFFORT=medium
 同じリレー URL が `https://my-relay.example.com/v1` だった場合、`/claude` ヒントが欠落するため、FIM One は OpenAI 互換プロトコルにフォールバックし、Claude ネイティブエンドポイントに `/v1/chat/completions` リクエストを送信することになり、失敗します。**URL パスが重要です。**
 </Warning>
 
-### このことが重要な理由
+### Why This Matters
 
-- **Anthropic ネイティブエンドポイント**は、適切な `reasoning_content` サポート（UI に表示される拡張思考）、正しいツール呼び出し形式、および `x-api-key` 認証を提供します。これらは OpenAI 互換変換を使用する場合に失われる機能です。
-- **Google ネイティブエンドポイント**は、ネイティブ Gemini パラメータと `x-goog-api-key` 認証を提供します。
-- **OpenAI 互換**は汎用フォールバックであり、任意のリレーで機能しますが、プロバイダー固有の機能（拡張思考出力など）は利用できない場合があります。
-
-<Note>
-リレープラットフォームが非標準パス規則を使用している場合（例：URL に `/claude` または `/anthropic` がない）、FIM One は OpenAI 互換プロトコルにフォールバックします。これはほとんどのユースケースで機能します。完全なネイティブプロトコルサポートの場合、管理者モデル設定 UI から `provider` フィールドを明示的に設定できます。
-</Note>
-
-リレーは直接プロバイダーとは異なる方法で失敗し、そのほとんどは無音です：ドロップされたパラメータ、削除されたキャッシュブレークポイント、エラーが発生しないバッファリングされたストリーム。症状別リストは [リレー/プロキシの落とし穴](/architecture/llm-provider-guide#relayproxy-gotchas)にあります。
+- **Anthropic native endpoint** gives you proper `reasoning_content` support (extended thinking visible in the UI), correct tool-calling format, and `x-api-key` authentication — features lost when using OpenAI-compatible translation.
+- **Google native endpoint** gives you native Gemini parameters and `x-goog-api-key` authentication.
+- **OpenAI compatible** is the universal fallback and works with any relay, but provider-specific features (like extended thinking output) may be unavailable.
 
 <Note>
-**リレーはベストエフォート型です。** FIM One の文書化された動作は、OpenAI、Anthropic、Google、およびモデルを直接提供する他のベンダーを含む、ファーストパーティエンドポイントに対して保証されます。リレーは機能し、その方法でのみ到達可能なモデルを含めて広く使用されていますが、リレーがリクエストに対して行うことは当社の制御外にあるため、そのような保証はありません。ホスト名によってブロックされるものはありません。機能はエンドポイントごとにプローブされ、サポートされていない動作は独自にフォールバックします。モデルレイヤーのバグを報告する前に、ファーストパーティエンドポイントに対して再現してください。
+If your relay platform uses non-standard path conventions (e.g., no `/claude` or `/anthropic` in the URL), FIM One falls back to OpenAI compatible protocol — which works for most use cases. For full native protocol support, use a base URL whose host or path identifies the protocol (`/claude`, `/anthropic`, `/gemini`); the admin model UI has no protocol selector.
 </Note>
+
+Relays also fail in ways a direct provider does not, and most of those failures are silent: a dropped parameter, a stripped cache breakpoint, a buffered stream that never errors. The symptom-by-symptom list is in [Relay/proxy gotchas](/architecture/llm-provider-guide#relayproxy-gotchas).
+
+<Note>
+**Relays are best-effort.** FIM One's documented behaviour is guaranteed for first-party endpoints, meaning OpenAI, Anthropic, Google, and other vendors serving their own models directly. Relays work and are widely used, including for models that are only reachable that way, but what a relay does to a request is outside our control, so they carry no such guarantee. Nothing is blocked by hostname: capability is probed per endpoint, and unsupported behaviour falls back on its own. Before reporting a model-layer bug, reproduce it against the first-party endpoint.
+</Note>
+
+---
 
 ## 設定戦略
 
-### Main vs Fast: 分割するタイミング
+### Main vs Fast: When to Split
 
-- **分割する** メインモデルが高価または遅い場合（例：`gpt-5.4` + `gpt-5.4-nano`）。DAG モードは多くの並列ステップを実行します — より安価な高速モデルを使用することで大幅なコスト削減が実現します。
-- **同じモデル** モデルが既に安価な場合（例：両方に `deepseek-chat`）。2つのモデルを管理するオーバーヘッドは価値がありません。
+- **Split** when your main model is expensive or slow (e.g., `gpt-5.4` + `gpt-5.4-nano`). Tool-decision iterations, compaction, and the DAG steps the planner marks `fast` run on the fast model — using a cheaper one saves significant cost.
+- **Same model** when your model is already cheap (e.g., `deepseek-chat` for both). The overhead of managing two models isn't worth it.
 
 ### 推論を有効にする時期
 

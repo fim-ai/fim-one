@@ -1,10 +1,10 @@
 ---
-title: "数据库"
+title: "Database"
 icon: "database"
-description: "为您的部署选择并配置正确的数据库后端"
+description: "Choose and configure the right database backend for your deployment"
 ---
 
-FIM One 支持两个数据库后端：**SQLite**（默认，零配置）和 **PostgreSQL**（推荐用于生产环境）。后端由 `DATABASE_URL` 环境变量决定。
+FIM One supports two database backends: **SQLite** (default, zero-config) and **PostgreSQL** (recommended for production). The backend is determined by the `DATABASE_URL` environment variable.
 
 ```bash
 # SQLite (default — no configuration needed)
@@ -14,7 +14,7 @@ DATABASE_URL=sqlite+aiosqlite:///./data/fim_one.db
 DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/fim_one
 ```
 
-表会在首次启动时自动创建 — 无需手动迁移步骤。
+`start.sh` and the Docker entrypoint run the Alembic migrations on every start, so tables are created automatically — no manual migration step is required.
 
 ---
 
@@ -37,40 +37,40 @@ DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/fim_one
 
 ---
 
-## 已知限制：SQLite 并发流式传输
+## Known Limitation: SQLite Concurrent Streaming
 
 <Warning>
-**SQLite 在并发负载下可能成为瓶颈。**
+**SQLite can become a bottleneck under concurrent load.**
 
-FIM One 使用服务器发送事件 (SSE) 来流式传输 AI 响应。在流式传输期间，每个活跃的 SSE 连接在流式传输期间会占用连接池中的一个数据库连接。SQLite 强制执行全局写入锁，这意味着一次只能进行一个写入操作——所有其他写入操作都排队等待。
+FIM One uses Server-Sent Events (SSE) for streaming AI responses. During streaming, each active SSE connection holds a database connection from the pool for the duration of the stream. SQLite enforces a global write lock, meaning only one write operation can proceed at a time — all other writes queue behind it.
 
-尽管连接池支持最多 30 个并发连接（`pool_size=20` + `max_overflow=10`），但瓶颈是锁本身，而不是连接池。当多个用户同时聊天时，他们的写入操作（保存消息、更新令牌计数）会相互序列化。
+Even though the connection pool supports up to 15 simultaneous connections (`pool_size=10` + `max_overflow=5`), the bottleneck is the lock itself, not the pool. When multiple users are chatting simultaneously, their write operations (saving messages, updating token counts) serialize against each other.
 
-**您可能观察到的症状：**
-- 当另一个用户正在流式传输时，对话列表加载缓慢
-- 在活跃聊天会话期间，设置页面感觉反应迟缓
-- 当多个流处于活跃状态时，API 响应延迟
+**Symptoms you may observe:**
+- Conversation list loads slowly while another user is streaming
+- Settings pages feel sluggish during active chat sessions
+- API responses are delayed when multiple streams are active
 
-**建议：** 如果您有 2-3 个以上的并发用户，请切换到 PostgreSQL。PostgreSQL 使用 MVCC（多版本并发控制）和行级锁定，因此并发读取和写入可以独立进行，不会相互阻塞。
+**Recommendation:** If you have more than 2-3 concurrent users, switch to PostgreSQL. PostgreSQL uses MVCC (Multi-Version Concurrency Control) with row-level locking, so concurrent reads and writes proceed independently without blocking each other.
 </Warning>
 
 ---
 
-## 连接池配置
+## Connection Pool Configuration
 
-FIM One 为每个后端内部配置 SQLAlchemy 连接池设置。这些是经过调整的默认值，不需要环境变量 — 它们会根据 `DATABASE_URL` 方案自动应用。了解它们有助于解释运行时行为。
+FIM One configures SQLAlchemy connection pool settings internally for each backend. These are tuned defaults that do not require environment variables (the SQLite pool can be resized with `SQLITE_POOL_SIZE` / `SQLITE_MAX_OVERFLOW`) — they are applied automatically based on the `DATABASE_URL` scheme. Understanding them helps explain runtime behavior.
 
-### SQLite 连接池设置
+### SQLite Pool Settings
 
-| 设置 | 值 | 描述 |
+| Setting | Value | Description |
 |---|---|---|
-| `pool_size` | `20` | 连接池中的基础持久连接数 |
-| `max_overflow` | `10` | 在负载下创建的额外连接（总计最多 30 个） |
-| WAL 日志模式 | 已启用 | 预写日志允许在写入进行时进行并发读取，显著降低锁争用 |
-| `busy_timeout` | `30s` | 当写入锁被持有时，其他写入者最多等待 30 秒后才会抛出错误，而不是立即失败 |
-| `synchronous` | `NORMAL` | 与 WAL 模式兼容；提供比默认 `FULL` 更好的写入吞吐量 |
+| `pool_size` | `10` | Base number of persistent connections in the pool |
+| `max_overflow` | `5` | Additional connections created under load (up to 15 total) |
+| WAL journal mode | Enabled | Write-Ahead Logging allows concurrent reads while a write is in progress, significantly reducing lock contention |
+| `busy_timeout` | `30s` | When the write lock is held, other writers wait up to 30 seconds before raising an error, instead of failing immediately |
+| `synchronous` | `NORMAL` | Safe with WAL mode; provides better write throughput than the default `FULL` |
 
-WAL 模式和 30 秒忙碌超时通过 SQLite PRAGMA 在每个新连接上设置。这种组合确保短期读取（加载对话列表、获取设置）不会被长时间运行的写入事务阻止，并且并发写入会优雅地排队而不是失败。
+WAL mode and the 30-second busy timeout are set via SQLite PRAGMAs on every new connection. This combination ensures that short-lived reads (loading a conversation list, fetching settings) are not blocked by long-running write transactions, and that concurrent writes queue gracefully instead of failing.
 
 ### PostgreSQL 连接池设置
 
@@ -123,16 +123,16 @@ DATABASE_URL=postgresql+asyncpg://postgres:secret@localhost:5432/fim_one
 **现有 SQLite 数据不会自动迁移。** 将 `DATABASE_URL` 从 SQLite 切换到 PostgreSQL 会使用全新数据库启动。如果您在 SQLite 中有需要保留的现有对话、智能体或连接器，请参阅下面的[数据迁移](#data-migration)部分。
 </Note>
 
-### Docker Compose（推荐用于生产环境）
+### Docker Compose (Recommended for Production)
 
-如果使用 Docker Compose 部署，**PostgreSQL 和 Redis 已包含并自动配置** — 无需额外设置。`docker-compose.yml` 在内部设置 `DATABASE_URL` — 你的 `.env` 值会被覆盖：
+If you deploy with Docker Compose, **PostgreSQL and Redis are already included and auto-configured** — there is nothing extra to set up. The `docker-compose.yml` sets `DATABASE_URL` internally — your `.env` value is overridden:
 
 ```yaml
 environment:
-  DATABASE_URL: postgresql+asyncpg://fim:fim@postgres:5432/fim_one
+  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-fim}:${POSTGRES_PASSWORD:-fim}@postgres:5432/${POSTGRES_DB:-fim_one}
 ```
 
-使用 Docker Compose 时无需额外的数据库设置。
+No additional database setup is needed when using Docker Compose.
 
 ---
 

@@ -5,32 +5,32 @@ description: "Comment FIM One achemine les appels LLM, l'architecture tool_choic
 mode: "wide"
 ---
 
-## Détection du fournisseur
+## Provider detection
 
-FIM One utilise LiteLLM comme adaptateur universel. La fonction `_resolve_litellm_model()` dans `core/model/openai_compatible.py` mappe l'`LLM_BASE_URL` + `LLM_MODEL` de l'utilisateur à un identifiant de modèle LiteLLM avec un préfixe de fournisseur. Le préfixe détermine comment LiteLLM achemine la requête — protocole API natif (Anthropic Messages API, Gemini, etc.) ou générique OpenAI-compatible `/v1/chat/completions`.
+FIM One uses LiteLLM as a universal adapter. The `_resolve_litellm_model()` function in `core/model/openai_compatible.py` maps the user's `LLM_BASE_URL` + `LLM_MODEL` to a LiteLLM model identifier with a provider prefix. The prefix determines how LiteLLM routes the request — native API protocol (Anthropic Messages API, Gemini, etc.) or generic OpenAI-compatible `/v1/chat/completions`.
 
-Ordre de résolution :
+Resolution order:
 
-1. **Fournisseur explicite** (champ DB `ModelConfig.provider`) — priorité la plus élevée. Si le fournisseur correspond à un domaine connu dans l'URL, aucun `api_base` n'est renvoyé (LiteLLM achemine nativement). Sinon, `api_base` est défini sur l'URL de relais.
-2. **Correspondance de domaine** par rapport à `KNOWN_DOMAINS` — les points de terminaison API officiels sont reconnus par nom d'hôte.
-3. **Indice de chemin d'URL** par rapport à `PATH_PROVIDER_HINTS` — courant sur les plateformes de relais comme UniAPI où `/claude` ou `/anthropic` dans le chemin indique le protocole en amont.
-4. **Secours** — préfixe `openai/` (générique OpenAI-compatible).
+1. **Explicit provider** (from the `provider` field of a legacy `ModelConfig` row or an agent's inline model config; models added under Admin → Models have no provider field, so for them resolution starts at step 2) — highest priority. If the provider matches a known domain in the URL, no `api_base` is returned (LiteLLM routes natively). Otherwise, `api_base` is set to the relay URL.
+2. **Domain match** against `KNOWN_DOMAINS` — official API endpoints are recognized by hostname.
+3. **URL path hint** against `PATH_PROVIDER_HINTS` — common on relay platforms like UniAPI where `/claude` or `/anthropic` in the path indicates the upstream protocol.
+4. **Fallback** — `openai/` prefix (generic OpenAI-compatible).
 
-| Domaine / Chemin | Préfixe du fournisseur | Protocole |
+| Domain / Path | Provider prefix | Protocol |
 |---|---|---|
 | `api.openai.com` | `openai/` | OpenAI Chat Completions |
 | `anthropic.com` | `anthropic/` | Anthropic Messages API |
 | `generativelanguage.googleapis.com` | `gemini/` | Google Gemini |
 | `api.deepseek.com` | `deepseek/` | DeepSeek (OpenAI-compatible) |
 | `api.mistral.ai` | `mistral/` | Mistral |
-| Le chemin contient `/claude` ou `/anthropic` | `anthropic/` | Anthropic Messages API (via relais) |
-| Le chemin contient `/gemini` | `gemini/` | Google Gemini (via relais) |
-| Tout le reste | `openai/` | Générique OpenAI-compatible |
+| Path contains `/claude` or `/anthropic` | `anthropic/` | Anthropic Messages API (via relay) |
+| Path contains `/gemini` | `gemini/` | Google Gemini (via relay) |
+| Anything else | `openai/` | Generic OpenAI-compatible |
 
-Lorsque le préfixe du fournisseur est un protocole natif (anthropic, gemini, etc.) et que l'URL n'est pas le point de terminaison officiel, LiteLLM utilise le protocole natif mais envoie les requêtes à l'`api_base` du relais. Cela signifie que les comportements spécifiques au fournisseur — y compris le problème de prefill Bedrock décrit ci-dessous — s'appliquent indépendamment du fait que la requête aille à l'API officielle ou via un relais.
+When the provider prefix is a native protocol (anthropic, gemini, etc.) and the URL is not the official endpoint, LiteLLM uses the native protocol but sends requests to the relay's `api_base`. This means provider-specific behaviors — including the Bedrock prefill issue described below — apply regardless of whether the request goes to the official API or through a relay.
 
 <Warning>
-Si votre URL de relais contient `/claude` dans le chemin, FIM One achemine automatiquement via le protocole natif d'Anthropic. C'est généralement correct (meilleur streaming, support de la réflexion), mais cela signifie que les comportements spécifiques au fournisseur s'appliquent — y compris le problème de prefill Bedrock décrit ci-dessous.
+If your relay URL contains `/claude` in the path, FIM One automatically routes via Anthropic's native protocol. This is usually correct (better streaming, thinking support), but means provider-specific behaviors apply — including the Bedrock prefill issue described below.
 </Warning>
 
 ## tool_choice — les quatre modes
@@ -340,29 +340,29 @@ FIM One émet trois des quatre états `tool_choice` : `auto` à partir de la bou
 
 ### Relay/proxy gotchas
 
-Les passerelles tierces échouent de manière différente d'un fournisseur direct, et la plupart de ces défaillances sont silencieuses. Chaque ligne ci-dessous associe le symptôme à son mécanisme et à ce que FIM One fait déjà à ce sujet.
+Third-party gateways fail in ways a direct provider does not, and most of those failures are silent. Each row below pairs the symptom with its mechanism and with what FIM One already does about it.
 
 <Note>
-**Limite du support.** FIM One garantit le comportement documenté sur cette page pour les points de terminaison propriétaires : l'API propre d'OpenAI, Anthropic, Google, et tout fournisseur servant directement ses propres modèles. Les relais tiers sont supportés au mieux et ne sont pas couverts par cette garantie, car ce qu'un relais fait à une requête échappe à notre contrôle et fréquemment à sa propre documentation. Un relais peut supprimer un paramètre, réécrire l'historique, retirer un point de rupture de cache, ou répondre à un protocole qu'il n'implémente que partiellement, et dans la plupart de ces cas il retourne un `200` au lieu d'une erreur.
+**Support boundary.** FIM One guarantees the behaviour documented on this page for first-party endpoints: OpenAI's own API, Anthropic, Google, and any vendor serving its own models directly. Third-party relays are supported on a best-effort basis and are not covered by that guarantee, because what a relay does to a request is outside our control and frequently outside its own documentation. A relay can drop a parameter, rewrite history, strip a cache breakpoint, or answer a protocol it only partially implements, and in most of those cases it returns a `200` rather than an error.
 
-C'est une déclaration sur ce que nous promettons, pas une restriction sur ce qui s'exécute. FIM One ne maintient pas de liste blanche d'hôtes approuvés, et rien ici n'est conditionné par un domaine. La capacité est décidée par ce qu'un point de terminaison fait réellement : une route manquante répond `404` et est mémorisée, un `include` ignoré produit des éléments de raisonnement vides et la relecture devient une non-opération, et une requête rejetée bascule pour cet appel. Sonder le point de terminaison est plus précis que déduire ses capacités de son nom d'hôte, et c'est la seule approche qui continue de fonctionner pour Azure OpenAI, les passerelles d'entreprise, et les proxies auto-hébergés qui implémentent correctement le protocole.
+This is a statement about what we promise, not a restriction on what runs. FIM One does not maintain an allowlist of approved hosts, and nothing here is gated on a domain. Capability is decided by what an endpoint actually does: a missing route answers `404` and is remembered, an ignored `include` yields empty reasoning items and the replay becomes a no-op, and a rejected request falls back for that call. Probing the endpoint is more accurate than inferring its capabilities from its hostname, and it is the only approach that keeps working for Azure OpenAI, enterprise gateways, and self-hosted proxies that implement the protocol correctly.
 
-Si un relais se comporte mal d'une manière que les basculements ne détectent pas, épinglez le protocole vous-même avec `FIM_GPT5_RESPONSES_MODE` (`bridge` ou `off`) ou les bascules par modèle `tool_choice_enabled` et `json_mode_enabled`, et reproduisez contre le point de terminaison propriétaire avant de le signaler comme un bug FIM One.
+If a relay misbehaves in a way the fallbacks do not catch, pin the protocol yourself with `FIM_GPT5_RESPONSES_MODE` (`bridge` or `off`) or the per-model `tool_choice_enabled` and `json_mode_enabled` toggles, and reproduce against the first-party endpoint before filing it as a FIM One bug.
 </Note>
 
-| Symptôme | Mécanisme | Ce que FIM One fait |
+| Symptom | Mechanism | What FIM One does |
 |---|---|---|
-| La réflexion est configurée mais n'apparaît jamais | Le chemin du relais n'a pas d'indice `/claude`, donc le modèle se résout en `openai/`. Le schéma Chat Completions n'a pas de concept de réflexion, donc le paramètre est supprimé avant que la requête ne quitte le processus | Enregistre un avertissement à la construction nommant le modèle et le préfixe résolu, et vous indiquant de définir `provider` ou d'utiliser une URL de base Anthropic (`OpenAICompatibleLLM.__init__`) |
-| Un paramètre semble être accepté et n'a aucun effet | `litellm.drop_params=True` supprime tout ce que le fournisseur résolu ne déclare pas, silencieusement et par paramètre | Intentionnel. Cela maintient un générateur de requête fonctionnant sur chaque fournisseur. Le coût est que « pas d'erreur » n'est pas une preuve que le paramètre est arrivé |
-| Le premier jeton prend des minutes sur un modèle non-OpenAI, ou l'agent retourne du texte et ne fait aucun appel d'outil | Le relais annonce `/v1/responses` pour un modèle qui n'est pas celui d'OpenAI, accepte la requête, puis met en mémoire tampon la réponse entière avant de la relire. Observé sur Uniapi avec Claude à environ quatre minutes jusqu'au premier jeton, et dans une deuxième reproduction l'appel s'est déroulé normalement mais l'agent a ensuite fait zéro appel d'outil. Rien n'erreur, donc un basculement déclenché par erreur ne se déclenche jamais | Le pont est limité par avantage à GPT-5.x, la seule famille qui gagne en capacité avec Responses. Tout le reste va directement aux complétions de chat et ne sonde jamais (`_dispatch_acompletion`, commit `137ede4c`) |
-| `ValidationException: This model does not support assistant message prefill` | json_mode sur un relais Bedrock routé en `anthropic/`. LiteLLM simule `response_format` en pré-remplissant une accolade ouvrante comme message d'assistant, et les versions plus récentes de Bedrock rejettent une conversation se terminant par un tour d'assistant | Définissez `json_mode_enabled=false` pour ce modèle, ou routez via une passerelle compatible OpenAI où aucun pré-remplissage n'est injecté |
-| `404` sur chaque appel à un point de terminaison Zhipu | Le client ajoute un `/v1` de style OpenAI à une URL de base qui se termine déjà par `/v4` | Configurez l'URL de base exactement comme le fournisseur la documente. FIM One transmet `api_base` inchangé |
-| `APIConnectionError: Connection error` après une période silencieuse | Un intermédiaire a récolté une connexion mise en pool inactive sans envoyer FIN ou RST, et httpx a restitué la socket à moitié morte à la prochaine écriture | L'expiration du keep-alive par défaut est de 5 secondes donc les connexions inactives entre tours sont rejetées plutôt que réutilisées. Définissez `LLM_HTTP_MAX_KEEPALIVE=0` pour désactiver complètement la réutilisation (`_get_shared_http_client`) |
-| `Cannot send a request, as the client has been closed` | LiteLLM a expulsé un client SDK mis en cache sur son TTL inactif, et le SDK OpenAI a fermé la session httpx partagée que ce client tenait | Le pool est revalidé avant chaque tentative et reconstruit quand fermé, et le cache client obsolète de LiteLLM est vidé en même temps (`_get_shared_http_client`, `_flush_litellm_client_cache`) |
-| Les jetons d'entrée facturés ne correspondent pas aux lectures de cache signalées | Le relais supprime `cache_control` avant de transférer, donc vous payez le prix fort tandis que la réponse signale toujours des compteurs de cache | `TurnProfiler` enregistre `read_tokens` et `create_tokens` par tour, ce qui double comme sonde d'honnêteté du relais. Comparez-le avec la facture |
-| `Function tools with reasoning_effort are not supported ... Please use /v1/responses instead` | Le relais protège les complétions de chat sur la présence du champ `reasoning_effort`, pas sur sa valeur, donc le `none` explicite que FIM One envoie pour désactiver la réflexion déclenche aussi la garde. Observé sur Uniapi avec `gpt-5.6-luna` | Rien, et rien n'est nécessaire tant que le chemin Responses fonctionne : ce modèle n'atteint les complétions de chat qu'après qu'une requête Responses ait déjà échoué. Lisez-le comme un signe que le relais veut Responses, pas comme une raison de définir `FIM_GPT5_RESPONSES_MODE=off` |
-| GPT-5.x reste sur les complétions de chat sur un point de terminaison qui supporte Responses | Un `404` a été mis en cache comme un verdict négatif pour ce point de terminaison et ce modèle | Seul un `404` est mis en cache, car une route manquante est structurelle. Un `400` bascule pour cet appel unique et n'est délibérément pas mis en cache, donc un élément de raisonnement obsolète unique ne peut pas mettre le point de terminaison sur liste noire de manière permanente (`_remember_native_failure`). Le cache est par processus, donc un redémarrage re-sonde de toute façon |
-| Les blocs de réflexion sont rejetés ou le cache de préfixe ne frappe jamais | Le relais réécrit ou réordonne l'historique, donc la `signature` relue ne correspond plus | La relecture est décidée centralement par `reasoning_replay_policy`, et seuls les ids de famille Anthropic relisent du tout. Si un modèle Claude derrière un relais porte un id non reconnaissable, ajoutez son fragment à la table de politique |
+| Thinking is configured but never appears | The relay path has no `/claude` hint, so the model resolves as `openai/`. The Chat Completions schema has no thinking concept, so the parameter is dropped before the request leaves the process | Logs a warning at construction naming the model and the resolved prefix, and telling you to use an Anthropic base URL (a `/claude` or `/anthropic` path) (`OpenAICompatibleLLM.__init__`) |
+| A parameter appears to be accepted and has no effect | `litellm.drop_params=True` removes anything the resolved provider does not declare, silently and per-parameter | Deliberate. It keeps one request builder working across every provider. The cost is that "no error" is not evidence the parameter arrived |
+| First token takes minutes on a non-OpenAI model, or the agent returns text and makes no tool calls | The relay advertises `/v1/responses` for a model that is not OpenAI's, accepts the request, then buffers the whole answer before replaying it. Observed on Uniapi with Claude at roughly four minutes to first token, and in a second reproduction the call returned normally but the agent then made zero tool calls. Nothing errors, so an error-triggered fallback never fires | The bridge is benefit-gated to GPT-5.x, the one family that gains capability from Responses. Everything else goes straight to chat completions and never probes (`_dispatch_acompletion`, commit `137ede4c`) |
+| `ValidationException: This model does not support assistant message prefill` | json_mode on an `anthropic/`-routed Bedrock relay. LiteLLM simulates `response_format` by prefilling an opening brace as an assistant message, and newer Bedrock versions reject a conversation ending in an assistant turn | Set `json_mode_enabled=false` for that model, or route through an OpenAI-compatible gateway where no prefill is injected |
+| `404` on every call to a Zhipu endpoint | The client appends an OpenAI-style `/v1` to a base URL that already ends in `/v4` | Configure the base URL exactly as the provider documents it. FIM One passes `api_base` through unchanged |
+| `APIConnectionError: Connection error` after a quiet period | An intermediary reaped an idle pooled connection without sending FIN or RST, and httpx handed back the half-dead socket on the next write | Keep-alive expiry defaults to 5 seconds so cross-turn idle connections are discarded rather than reused. Set `LLM_HTTP_MAX_KEEPALIVE=0` to disable reuse entirely (`_get_shared_http_client`) |
+| `Cannot send a request, as the client has been closed` | LiteLLM evicted a cached SDK client on its idle TTL, and the OpenAI SDK closed the shared httpx session that client was holding | The pool is re-validated before every attempt and rebuilt when closed, and LiteLLM's stale client cache is flushed alongside it (`_get_shared_http_client`, `_flush_litellm_client_cache`) |
+| Billed input tokens do not match the reported cache reads | The relay strips `cache_control` before forwarding, so you pay full price while the response still reports cache counters | `TurnProfiler` logs `read_tokens` and `create_tokens` per turn, which doubles as a relay honesty probe. Compare it against the invoice |
+| `Function tools with reasoning_effort are not supported ... Please use /v1/responses instead` | The relay guards chat completions on the presence of the `reasoning_effort` field, not on its value, so the explicit `none` FIM One sends to disable reasoning trips the guard too. Observed on Uniapi with `gpt-5.6-luna` | Nothing, and nothing is needed while the Responses path is working: that model only reaches chat completions after a Responses request has already failed. Read it as a sign the relay wants Responses, not as a reason to set `FIM_GPT5_RESPONSES_MODE=off` |
+| GPT-5.x stays on chat completions on an endpoint that does support Responses | A `404` was cached as a negative verdict for that endpoint and model | Only a `404` is cached, because a missing route is structural. A `400` falls back for that one call and is deliberately not cached, so a single stale reasoning item cannot blacklist the endpoint permanently (`_remember_native_failure`). The cache is per process, so a restart re-probes either way |
+| Thinking blocks are rejected or the prefix cache never hits | The relay rewrites or reorders history, so the replayed `signature` no longer matches | Replay is decided centrally by `reasoning_replay_policy`, and only Anthropic-family ids replay at all. If a Claude model behind a relay carries an unrecognisable id, add its fragment to the policy table |
 
 ## Configuration recommandée par modèle
 
@@ -382,19 +382,19 @@ LLM_TOOL_CHOICE_ENABLED=false
 LLM_JSON_MODE_ENABLED=false
 ```
 
-## Configuration de l'effort de raisonnement et de la réflexion
+## Reasoning effort and thinking configuration
 
-FIM One expose deux variables d'environnement pour contrôler la réflexion étendue / le raisonnement :
+FIM One exposes two env vars for controlling extended thinking / reasoning (the reasoning tier has its own pair, `REASONING_LLM_EFFORT` and `REASONING_LLM_BUDGET`, falling back to these). They apply to the ENV-configured General model and to the Reasoning slot; the Fast model never gets reasoning, and General and Fast models from an active Model Group run without it:
 
-| Variable | Valeurs | Effet |
+| Variable | Values | Effect |
 |---|---|---|
-| `LLM_REASONING_EFFORT` | `low`, `medium`, `high` | Active la réflexion. Toute valeur en dehors de cet ensemble est lue comme non définie (`deps.py::_reasoning_effort`). La façon dont le niveau est traduit et les valeurs que le fournisseur lui-même accepte dépend du fournisseur : voir le tableau C dans la [Matrice de capacités des fournisseurs](#provider-capability-matrix). |
-| `LLM_REASONING_BUDGET_TOKENS` | entier (par ex. `10000`) | Chemin hérité Anthropic uniquement : définit un plafond explicite `thinking.budget_tokens` sur les modèles qui acceptent encore la forme `enabled`, en contournant le mappage automatique de LiteLLM. Les modèles de réflexion adaptative l'ignorent au profit de `output_config.effort`. |
+| `LLM_REASONING_EFFORT` | `low`, `medium`, `high` | Turns thinking on. Anything outside this set is read as unset (`deps.py::_reasoning_effort`). How the level is translated, and which values the provider itself accepts, is per-provider: see Table C in the [Provider Capability Matrix](#provider-capability-matrix). |
+| `LLM_REASONING_BUDGET_TOKENS` | integer (e.g. `10000`) | Anthropic legacy path only: sets an explicit `thinking.budget_tokens` cap on models that still take the `enabled` form, bypassing LiteLLM's auto-mapping. Adaptive-thinking models ignore it in favour of `output_config.effort`. |
 
-Deux comportements suivent automatiquement une fois que la réflexion est activée, et aucun ne nécessite de configuration utilisateur :
+Two behaviours follow automatically once thinking is on, and neither needs user configuration:
 
-1. **La température est gérée pour vous.** Sur une route `anthropic/` avec réflexion active, `_build_request_kwargs` épingle `temperature` à 1.0, ce que Bedrock exige. Les modèles qui rejettent complètement les paramètres d'échantillonnage (Opus 4.7 et 4.8, Fable 5, Mythos 5) ont `temperature` supprimé de la requête entièrement, réflexion ou non. Ne définissez pas `LLM_TEMPERATURE=1` manuellement pour cela.
-2. **GPT-5.x maintient les outils et le raisonnement ensemble autant que possible.** FIM One sonde d'abord le pont Responses pour GPT-5.x, car c'est la seule surface où les deux se combinent. Un endpoint sans route `/v1/responses` utilisable bascule vers les complétions de chat, le verdict est mis en cache par endpoint, et sur ce chemin une requête portant `tools` envoie un `reasoning_effort` explicite de `none`. Omettre le champ n'est pas équivalent, car la valeur par défaut du serveur n'est pas `none`.
+1. **Temperature is handled for you.** On an `anthropic/` route with thinking active, `_build_request_kwargs` sends `temperature` 1.0 for Claude 4.5 and older, which is what Bedrock demands, and removes `temperature` for adaptive-thinking models (4.6 and newer). Models that reject sampling parameters outright (Opus 4.7 and 4.8, Fable 5, Mythos 5) have `temperature` removed from the request entirely, thinking or not. Do not set `LLM_TEMPERATURE=1` by hand for this.
+2. **GPT-5.x keeps tools and reasoning together where it can.** FIM One talks `/v1/responses` directly for GPT-5.x, because that is the only surface where the two combine. An endpoint with no `/v1/responses` route (404) falls back to chat completions and the verdict is cached per endpoint and model; a 400 falls back for that call only. On that path a request carrying `tools` sends an explicit `reasoning_effort` of `none`. Omitting the field is not equivalent, since the server default is not `none`.
 
 ## Analyse défensive pour la sortie structurée
 
@@ -455,9 +455,9 @@ Tous les autres fournisseurs reçoivent un **seul** message système concaténé
 
 Le `PromptRegistry` profite gratuitement à tous les fournisseurs qui utilisent la mise en cache automatique des préfixes : en conservant la partie statique identique au niveau des octets d’un appel à l’autre (la date et l’heure actuelles se trouvent dans le suffixe dynamique, et non dans le préfixe), le hash correspond pour chaque fournisseur doté de cette mise en cache et une entrée en cache est trouvée. C’est pourquoi le Registry constitue un avantage fondamental indépendant du modèle, même avant de tenir compte de `cache_control`, spécifique à Anthropic.
 
-### Observabilité
+### Observability
 
-Chaque réponse `chat/*` inclut maintenant dans sa `done_payload` :
+Every `chat/*` response's `done_payload` now includes:
 
 ```json
 "cache": {
@@ -466,9 +466,9 @@ Chaque réponse `chat/*` inclut maintenant dans sa `done_payload` :
 }
 ```
 
-`TurnProfiler` émet une ligne de journal structurée par tour : `turn_cache summary | model=claude-sonnet-4-6 | read_tokens=1067 | create_tokens=0 | saved_input_tokens=961 (~90%)`. Cela fonctionne également comme une **sonde d'honnêteté de relais** — si vous routez via un relais API, comparez les entrées réellement facturées par rapport à `read_tokens` pour détecter si le relais supprime `cache_control` ou conserve la réduction de 0,10×.
+`TurnProfiler` emits a structured log line per turn: `turn_cache conv=<id> turn=<n> model=claude-sonnet-4-6 read_tokens=1067 create_tokens=0 saved_input_tokens=961 (~90%)`. This also functions as a **relay honesty probe** — if you route through an API relay, compare actual billed input vs `read_tokens` to detect whether the relay strips `cache_control` or keeps the 0.10× discount.
 
-Aucune estimation en dollars n'est retournée au niveau du LLM — la tarification et la majoration du relais sont appliquées au-dessus, donc la couche LLM retourne uniquement les comptages de tokens objectifs.
+No dollar estimate is returned at the LLM layer — pricing and relay markup are applied above, so the LLM layer only returns objective token counts.
 
 ### ROI du cache multi-tour
 
@@ -486,16 +486,16 @@ Une exécution ReAct de 10 itérations avec 10 outils économise ~8 640 tokens d
 
 Les blocs de réflexion étendue / raisonnement se comportent différemment selon les fournisseurs. Une politique de sérialisation uniforme rompt à la fois les contrats de protocole et les caches de préfixe automatiques. `fim_one.core.prompt.reasoning.reasoning_replay_policy(model_id)` retourne l'une de quatre valeurs et contrôle `ChatMessage.to_openai_dict(replay_policy=...)` dans `OpenAICompatibleLLM._build_request_kwargs()`.
 
-### Quatre politiques
+### Four policies
 
-- **`anthropic_thinking`** — Famille Claude (y compris `anthropic/`, `bedrock/anthropic`, `vertex_ai/claude`). Les blocs de réflexion DOIVENT être relus avec `signature` attachée ; Anthropic rejette les tours suivants si la signature est manquante ou modifiée.
-- **`informational_only`** — modèles qui émettent CoT mais n'ATTENDENT PAS de relecture : mode raisonnement DeepSeek (`deepseek-reasoner` sur V3.2, et les anciens ids `deepseek-r1` et R1-Distill que la table de fragments correspond toujours), Qwen QwQ, Gemini flash-thinking, OpenAI o1 / o3 / o4. Leur documentation dit explicitement « n'envoyez pas `reasoning_content` dans l'historique des messages ». L'envoyer quand même :
-  - Viole le contrat du fournisseur (peut commencer à rejeter dans les versions futures)
-  - **Invalide silencieusement leur cache de préfixe automatique** — les octets du message mutent à chaque tour, cassant le hash
-- **`openai_responses`** — GPT-5.x, appariés sur le fragment `gpt-5`. Son état de raisonnement n'est pas du texte mais une séquence d'éléments opaques portant des charges utiles chiffrées, et seul `/v1/responses` dispose d'un emplacement pour eux. Sur ce protocole, les éléments sont relus verbatim, ce qui maintient la chaîne de pensée du modèle vivante entre les tours d'outils. Le résumé lisible est toujours supprimé des requêtes sortantes, donc sur le fallback chat-completions, cela se comporte exactement comme `informational_only`. Vérifié avant les fragments informationnels, dont l'entrée générique `reasoning` engloutirait autrement les ids GPT-5 avec proxy-tag.
-- **`unsupported`** — le fourre-tout : modèles sans capacité de raisonnement (GPT-4o, Gemini 1.5, Mistral, Llama), et modèles de raisonnement dont l'id ne correspond à aucun fragment (GLM, MiniMax, Kimi, Doubao). Aucun champ ne doit être relu dans les deux sens, donc cette politique place les mêmes octets sur le fil que `informational_only`. C'est aussi le défaut sûr pour les ids de modèle inconnus.
+- **`anthropic_thinking`** — Claude family (including `anthropic/`, `bedrock/anthropic`, `vertex_ai/claude`). Thinking blocks MUST be replayed with `signature` attached; Anthropic rejects subsequent turns if the signature is missing or altered.
+- **`informational_only`** — models that emit CoT but do NOT expect replay: DeepSeek reasoning mode (`deepseek-reasoner` on V3.2, and the older `deepseek-r1` and R1-Distill ids the fragment table still matches), Qwen QwQ, Gemini flash-thinking, OpenAI o1 / o3 / o4. Their documentation explicitly says "do not send `reasoning_content` back in message history". Sending it anyway:
+  - Violates the provider contract (may start rejecting in future versions)
+  - **Silently invalidates their automatic prefix cache** — message bytes mutate on every turn, breaking the hash
+- **`openai_responses`** — GPT-5.x and later, matched on the `gpt-5` and `gpt-6` fragments. Its reasoning state is not text but a sequence of opaque items carrying encrypted payloads, and only `/v1/responses` has a slot for them. On that protocol the items are replayed verbatim, which is what keeps the model's chain of thought alive across tool rounds. The readable summary is still dropped from outgoing requests, so on the chat-completions fallback this behaves exactly like `informational_only`. Checked before the informational fragments, whose generic `reasoning` entry would otherwise swallow proxy-tagged GPT-5 ids.
+- **`unsupported`** — the catch-all: models with no reasoning capability (GPT-4o, Gemini 1.5, Mistral, Llama), and reasoning models whose id matches no fragment (GLM, MiniMax, Kimi, Doubao). No field should be replayed either way, so this policy puts the same bytes on the wire as `informational_only`. It is also the safe default for unknown model ids.
 
-Le `reasoning_content` lisible et les `reasoning_items` opaques sont des champs indépendants sur `ChatMessage`. `to_openai_dict()` ne sérialise jamais les éléments du tout, donc ils sont structurellement incapables de fuir sur une requête chat-completions, quelle que soit la politique.
+The readable `reasoning_content` and the opaque `reasoning_items` are independent fields on `ChatMessage`. `to_openai_dict()` never serialises the items at all, so they are structurally incapable of leaking onto a chat-completions request, whatever the policy says.
 
 ### Application
 
@@ -508,19 +508,19 @@ Le comportement des fonctionnalités et des bugs est automatique — vous n'avez
 - **Si vous basculez entre les agents Claude et DeepSeek dans la même conversation**, l'historique est stocké avec les blocs de réflexion intacts ; au tour suivant, la forme du message sortant s'adapte selon le modèle actuel.
 - **Si vous utilisez un proxy / une sous-classe `BaseLLM` personnalisée**, assurez-vous que son identifiant de modèle est reconnaissable (contient l'un des fragments) ou la politique `unsupported` par défaut s'appliquera — ce qui est sûr mais signifie que Claude derrière un proxy inhabituel pourrait perdre la relecture de la réflexion. Ajoutez le fragment d'identifiant de modèle à `_CACHE_CAPABLE_MODEL_FRAGMENTS` (dans `core/prompt/caching.py`) et/ou à la recherche de politique de réflexion.
 
-## Dépannage
+## Troubleshooting
 
-**« Ce modèle ne supporte pas le préfixage des messages d'assistant »**
-Bedrock + json_mode. Deux solutions : (1) définir `LLM_JSON_MODE_ENABLED=false` ou désactiver le mode JSON dans les paramètres du modèle admin ; ou (2) si votre fournisseur Bedrock propose un point de terminaison compatible OpenAI `/v1/chat/completions`, basculer vers celui-ci — FIM One le résout en tant que `openai/` et l'injection de préfixage ne se produit jamais.
+**"This model does not support assistant message prefill"**
+Bedrock + json_mode. Two fixes: (1) set `LLM_JSON_MODE_ENABLED=false` or disable JSON Mode in the admin model settings; or (2) if your Bedrock provider offers an OpenAI-compatible `/v1/chat/completions` endpoint, switch to that — FIM One resolves it as `openai/` and the prefill injection never occurs.
 
-**« La réflexion peut ne pas être activée lorsque tool_choice force l'utilisation d'outils »** / **« tool_choice 'specified' est incompatible avec la réflexion activée »**
-Pour les modèles Anthropic, `structured_llm_call` désactive automatiquement la réflexion pour les appels native_fc. Lorsque la réflexion ne peut pas être désactivée via l'API, comme avec `kimi-k2.5` et `kimi-k2-thinking` ou `deepseek-reasoner`, désactiver « Native Function Calling » dans les paramètres avancés du modèle, ou définir `LLM_TOOL_CHOICE_ENABLED=false` globalement. La chaîne de dégradation ignorera native_fc et extraira la sortie structurée via json_mode ou plain_text à la place. Consultez le tableau B de la [Matrice de capacités des fournisseurs](#provider-capability-matrix) avant de supposer qu'un modèle de réflexion a ce problème ; MiniMax ne l'a pas.
+**"Thinking may not be enabled when tool_choice forces tool use"** / **"tool_choice 'specified' is incompatible with thinking enabled"**
+For Anthropic models, `structured_llm_call` disables thinking for native_fc calls automatically. Where thinking cannot be turned off through the API, such as `kimi-k2.5` and `kimi-k2-thinking` or `deepseek-reasoner`, disable "Native Function Calling" in the model's Advanced settings, or set `LLM_TOOL_CHOICE_ENABLED=false` globally. The degradation chain will skip native_fc and extract structured output via json_mode or plain_text instead. Check Table B of the [Provider Capability Matrix](#provider-capability-matrix) before assuming a thinking model has this problem; MiniMax does not.
 
-**« Échec du pipeline DAG : le champ 'steps' du LLM n'est pas un tableau »**
-Le LLM a renvoyé le champ `steps` sous forme de chaîne ou d'objet unique au lieu d'un tableau. Cela signifie généralement que la sortie structurée est tombée en json_mode (qui manque d'application de schéma). Vérifiez le journal pour `structured_llm_call: level=xxx` — s'il affiche `json_mode` au lieu de `native_fc`, native_fc échoue silencieusement. Si vous utilisez une sous-classe `BaseLLM` personnalisée, vérifiez qu'elle accepte l'argument `reasoning_effort`.
+**"DAG pipeline failed: LLM 'steps' is not an array"**
+The LLM returned the `steps` field as a string or single object instead of an array. This typically means structured output fell through to json_mode (which lacks schema enforcement). Check the log for `structured_llm_call: level=xxx` — if it shows `json_mode` instead of `native_fc`, native_fc is failing silently. If using a custom `BaseLLM` subclass, verify it accepts the `reasoning_effort` kwarg.
 
-**ReAct bascule vers le mode JSON de manière inattendue**
-Vérifier que `abilities["tool_call"]` du modèle est `True`. C'est toujours `True` pour `OpenAICompatibleLLM`, mais une sous-classe `BaseLLM` personnalisée pourrait l'ignorer. Vérifier avec le point de terminaison de détail du modèle dans l'API admin.
+**ReAct falls back to JSON mode unexpectedly**
+Check that the model's `abilities["tool_call"]` is `True`. This is always `True` for `OpenAICompatibleLLM`, but a custom `BaseLLM` subclass might override it.
 
-**structured_llm_call épuise tous les niveaux et lève StructuredOutputError**
-Le modèle n'a pas pu produire de JSON analysable à aucun niveau. C'est rare avec les modèles modernes. Vérifier : (1) le schéma est un JSON Schema valide, (2) le modèle dispose de suffisamment de `max_tokens` pour produire la réponse complète, (3) le message système ne contredit pas les instructions du schéma. Le planificateur DAG et l'analyseur fournissent tous deux des solutions de secours `default_value`, donc cette erreur ne se propage que depuis les sites d'appel qui omettent explicitement les valeurs par défaut.
+**structured_llm_call exhausts all levels and raises StructuredOutputError**
+The model failed to produce parseable JSON at any level. This is rare with modern models. Check: (1) the schema is valid JSON Schema, (2) the model has enough `max_tokens` to produce the full response, (3) the system prompt is not contradicting the schema instructions. The DAG planner and analyzer both provide `default_value` fallbacks, so this error only propagates from call sites that explicitly omit defaults.

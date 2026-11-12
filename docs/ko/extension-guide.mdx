@@ -24,15 +24,15 @@ FIM One은 교체 가능한 각 구성 요소마다 하나씩 얇은 추상 기�
 
 ---
 
-## 사용자 정의 LLM 제공자
+## Custom LLM provider
 
-`BaseLLM`에는 두 가지 필수 메서드인 `chat`과 `stream_chat`, 그리고 모델이 수행할 수 있는 작업을 시스템의 나머지 부분에 알려주는 선택적 `abilities` 속성이 있습니다.
+`BaseLLM` has two required methods — `chat` and `stream_chat` — plus an optional `abilities` property that tells the rest of the system what the model can do.
 
 ```python
 from collections.abc import AsyncIterator
 from typing import Any
 
-from fim_one.core.model.base import BaseLLM
+from fim_one.core.model.base import REASONING_INHERIT, BaseLLM
 from fim_one.core.model.types import ChatMessage, LLMResult, StreamChunk
 
 
@@ -52,6 +52,8 @@ class MyLLM(BaseLLM):
             "json_mode": True,   # supports response_format JSON mode
             "vision":   False,
             "streaming": True,
+            "thinking": False,   # emits reasoning tokens
+            "tool_choice": True, # accepts a forced tool_choice (read by structured output)
         }
 
     async def chat(
@@ -63,6 +65,7 @@ class MyLLM(BaseLLM):
         temperature: float | None = None,
         max_tokens: int | None = None,
         response_format: dict[str, Any] | None = None,
+        reasoning_effort: str | object | None = REASONING_INHERIT,
     ) -> LLMResult:
         # Call your provider, return LLMResult(message=..., usage=...)
         ...
@@ -81,16 +84,16 @@ class MyLLM(BaseLLM):
         yield  # make type-checker happy
 ```
 
-### ModelRegistry를 통한 등록
+### Registration via ModelRegistry
 
-`ModelRegistry`는 이름을 `BaseLLM` 인스턴스에 매핑하고 역할별로 해결합니다. 시스템은 네 가지 기본 제공 역할을 사용합니다: `general`, `fast`, `compact`, 및 `vision`. 자신만의 역할을 추가할 수 있습니다.
+`ModelRegistry` maps names to `BaseLLM` instances and resolves by role. The system looks up three roles: `general`, `fast`, and `reasoning`. You can add your own.
 
 ```python
 from fim_one.core.model.registry import ModelRegistry
 
 registry = ModelRegistry()
 registry.register("my-llm", MyLLM(api_key="...", model="my-v1"), roles=["general"])
-registry.register("my-fast", MyLLM(api_key="...", model="my-mini"), roles=["fast", "compact"])
+registry.register("my-fast", MyLLM(api_key="...", model="my-mini"), roles=["fast"])
 
 # Retrieve later
 llm = registry.get_default()           # first "general" model, or first registered
@@ -98,7 +101,7 @@ llm = registry.get_by_role("fast")     # first model with the "fast" role
 llm = registry.get("my-llm")           # by exact name
 ```
 
-`abilities` 딕셔너리는 LLM과 ReAct 엔진 간의 계약입니다. `tool_call=True`이고 에이전트가 `use_native_tools=True`로 생성된 경우, 엔진은 네이티브 함수 호출을 사용합니다. 그렇지 않으면 자동으로 JSON 모드로 폴백됩니다.
+The `abilities` dict is the contract between the LLM and the ReAct engine. When `tool_call=True` and the agent was created with `use_native_tools=True`, the engine will use native function calling. Otherwise it falls back to JSON mode automatically.
 
 ---
 
@@ -191,9 +194,9 @@ async def run(self, **kwargs: Any) -> ToolResult:
 
 ---
 
-## 사용자 정의 메모리
+## Custom memory
 
-`BaseMemory`는 대화 기록의 지속성 계층입니다. 세 가지 메서드: `add_message`, `get_messages`, `clear`.
+`BaseMemory` is the persistence layer for conversation history. Three methods: `add_message`, `get_messages`, `clear`.
 
 ```python
 import redis.asyncio as redis
@@ -219,7 +222,7 @@ class RedisMemory(BaseMemory):
         await self._redis.delete(self._key)
 ```
 
-에이전트 생성자를 통해 주입: `ReActAgent(llm=llm, memory=RedisMemory(conv_id, url))`.
+Inject via the agent constructor: `ReActAgent(llm=llm, tools=registry, memory=RedisMemory(conv_id, url))`.
 
 ---
 

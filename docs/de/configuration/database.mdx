@@ -1,10 +1,10 @@
 ---
-title: "Datenbank"
+title: "Database"
 icon: "database"
-description: "Wählen und konfigurieren Sie das richtige Datenbank-Backend für Ihre Bereitstellung"
+description: "Choose and configure the right database backend for your deployment"
 ---
 
-FIM One unterstützt zwei Datenbank-Backends: **SQLite** (Standard, keine Konfiguration erforderlich) und **PostgreSQL** (empfohlen für Produktionsumgebungen). Das Backend wird durch die Umgebungsvariable `DATABASE_URL` bestimmt.
+FIM One supports two database backends: **SQLite** (default, zero-config) and **PostgreSQL** (recommended for production). The backend is determined by the `DATABASE_URL` environment variable.
 
 ```bash
 # SQLite (default — no configuration needed)
@@ -14,7 +14,7 @@ DATABASE_URL=sqlite+aiosqlite:///./data/fim_one.db
 DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/fim_one
 ```
 
-Tabellen werden beim ersten Start automatisch erstellt – kein manueller Migrationschritt ist erforderlich.
+`start.sh` and the Docker entrypoint run the Alembic migrations on every start, so tables are created automatically — no manual migration step is required.
 
 ---
 
@@ -37,40 +37,40 @@ Tabellen werden beim ersten Start automatisch erstellt – kein manueller Migrat
 
 ---
 
-## Bekannte Einschränkung: SQLite Concurrent Streaming
+## Known Limitation: SQLite Concurrent Streaming
 
 <Warning>
-**SQLite kann unter gleichzeitiger Last zum Engpass werden.**
+**SQLite can become a bottleneck under concurrent load.**
 
-FIM One verwendet Server-Sent Events (SSE) zum Streaming von KI-Antworten. Während des Streaming hält jede aktive SSE-Verbindung eine Datenbankverbindung aus dem Pool für die Dauer des Streams. SQLite erzwingt eine globale Schreibsperre, was bedeutet, dass nur eine Schreiboperation gleichzeitig ausgeführt werden kann – alle anderen Schreibvorgänge warten dahinter in der Warteschlange.
+FIM One uses Server-Sent Events (SSE) for streaming AI responses. During streaming, each active SSE connection holds a database connection from the pool for the duration of the stream. SQLite enforces a global write lock, meaning only one write operation can proceed at a time — all other writes queue behind it.
 
-Obwohl der Verbindungspool bis zu 30 gleichzeitige Verbindungen unterstützt (`pool_size=20` + `max_overflow=10`), ist der Engpass die Sperre selbst, nicht der Pool. Wenn mehrere Benutzer gleichzeitig chatten, werden ihre Schreibvorgänge (Speichern von Nachrichten, Aktualisieren von Token-Zählern) nacheinander gegen einander serialisiert.
+Even though the connection pool supports up to 15 simultaneous connections (`pool_size=10` + `max_overflow=5`), the bottleneck is the lock itself, not the pool. When multiple users are chatting simultaneously, their write operations (saving messages, updating token counts) serialize against each other.
 
-**Symptome, die Sie möglicherweise beobachten:**
-- Gesprächsliste lädt langsam, während ein anderer Benutzer streamt
-- Einstellungsseiten fühlen sich träge während aktiver Chat-Sitzungen an
-- API-Antworten verzögern sich, wenn mehrere Streams aktiv sind
+**Symptoms you may observe:**
+- Conversation list loads slowly while another user is streaming
+- Settings pages feel sluggish during active chat sessions
+- API responses are delayed when multiple streams are active
 
-**Empfehlung:** Wenn Sie mehr als 2-3 gleichzeitige Benutzer haben, wechseln Sie zu PostgreSQL. PostgreSQL verwendet MVCC (Multi-Version Concurrency Control) mit Sperren auf Zeilenebene, sodass gleichzeitige Lese- und Schreibvorgänge unabhängig voneinander ablaufen, ohne sich gegenseitig zu blockieren.
+**Recommendation:** If you have more than 2-3 concurrent users, switch to PostgreSQL. PostgreSQL uses MVCC (Multi-Version Concurrency Control) with row-level locking, so concurrent reads and writes proceed independently without blocking each other.
 </Warning>
 
 ---
 
-## Verbindungspoolkonfiguration
+## Connection Pool Configuration
 
-FIM One konfiguriert SQLAlchemy-Verbindungspooleinstellungen intern für jedes Backend. Dies sind optimierte Standardwerte, die keine Umgebungsvariablen erfordern – sie werden automatisch basierend auf dem `DATABASE_URL`-Schema angewendet. Das Verständnis dieser Einstellungen hilft, das Laufzeitverhalten zu erklären.
+FIM One configures SQLAlchemy connection pool settings internally for each backend. These are tuned defaults that do not require environment variables (the SQLite pool can be resized with `SQLITE_POOL_SIZE` / `SQLITE_MAX_OVERFLOW`) — they are applied automatically based on the `DATABASE_URL` scheme. Understanding them helps explain runtime behavior.
 
-### SQLite Pool-Einstellungen
+### SQLite Pool Settings
 
-| Einstellung | Wert | Beschreibung |
+| Setting | Value | Description |
 |---|---|---|
-| `pool_size` | `20` | Basis-Anzahl persistenter Verbindungen im Pool |
-| `max_overflow` | `10` | Zusätzliche Verbindungen, die unter Last erstellt werden (bis zu 30 insgesamt) |
-| WAL Journal-Modus | Aktiviert | Write-Ahead Logging ermöglicht gleichzeitige Lesevorgänge während ein Schreibvorgang läuft, wodurch die Sperrkontention erheblich reduziert wird |
-| `busy_timeout` | `30s` | Wenn die Schreibsperre gehalten wird, warten andere Schreiber bis zu 30 Sekunden, bevor ein Fehler ausgelöst wird, anstatt sofort fehlzuschlagen |
-| `synchronous` | `NORMAL` | Sicher mit WAL-Modus; bietet besseren Schreibdurchsatz als der Standard `FULL` |
+| `pool_size` | `10` | Base number of persistent connections in the pool |
+| `max_overflow` | `5` | Additional connections created under load (up to 15 total) |
+| WAL journal mode | Enabled | Write-Ahead Logging allows concurrent reads while a write is in progress, significantly reducing lock contention |
+| `busy_timeout` | `30s` | When the write lock is held, other writers wait up to 30 seconds before raising an error, instead of failing immediately |
+| `synchronous` | `NORMAL` | Safe with WAL mode; provides better write throughput than the default `FULL` |
 
-Der WAL-Modus und das 30-Sekunden-Timeout werden über SQLite PRAGMAs bei jeder neuen Verbindung gesetzt. Diese Kombination stellt sicher, dass kurzlebige Lesevorgänge (Laden einer Gesprächsliste, Abrufen von Einstellungen) nicht durch langfristige Schreibtransaktionen blockiert werden, und dass gleichzeitige Schreibvorgänge elegant in die Warteschlange eingereiht werden, anstatt fehlzuschlagen.
+WAL mode and the 30-second busy timeout are set via SQLite PRAGMAs on every new connection. This combination ensures that short-lived reads (loading a conversation list, fetching settings) are not blocked by long-running write transactions, and that concurrent writes queue gracefully instead of failing.
 
 ### PostgreSQL-Pool-Einstellungen
 
@@ -123,16 +123,16 @@ Tabellen werden beim ersten Start automatisch erstellt. Es ist keine manuelle Sc
 **Vorhandene SQLite-Daten werden nicht automatisch migriert.** Das Wechseln von `DATABASE_URL` von SQLite zu PostgreSQL beginnt mit einer frischen Datenbank. Wenn Sie vorhandene Gespräche, Agenten oder Konnektoren in SQLite haben, die Sie beibehalten möchten, siehe den Abschnitt [Datenmigration](#data-migration) unten.
 </Note>
 
-### Docker Compose (Empfohlen für Produktion)
+### Docker Compose (Recommended for Production)
 
-Wenn Sie mit Docker Compose bereitstellen, **sind PostgreSQL und Redis bereits enthalten und automatisch konfiguriert** — es gibt nichts Zusätzliches zu konfigurieren. Die `docker-compose.yml` setzt `DATABASE_URL` intern — Ihr `.env`-Wert wird überschrieben:
+If you deploy with Docker Compose, **PostgreSQL and Redis are already included and auto-configured** — there is nothing extra to set up. The `docker-compose.yml` sets `DATABASE_URL` internally — your `.env` value is overridden:
 
 ```yaml
 environment:
-  DATABASE_URL: postgresql+asyncpg://fim:fim@postgres:5432/fim_one
+  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-fim}:${POSTGRES_PASSWORD:-fim}@postgres:5432/${POSTGRES_DB:-fim_one}
 ```
 
-Es ist keine zusätzliche Datenbankeinrichtung erforderlich, wenn Sie Docker Compose verwenden.
+No additional database setup is needed when using Docker Compose.
 
 ---
 

@@ -46,7 +46,6 @@
     "usernamePlaceholder": "ユーザー名を入力してください",
     "usernameMinLength": "ユーザー名は最低2文字である必要があります",
     "usernameSaved": "ユーザー名が保存されました",
-    "usernameSaveFailed": "ユーザー名の保存に失敗しました",
     "usernameTaken": "このユーザー名は既に使用されています",
     "usernameCooldown": "ユーザー名は7日ごとに1回のみ変更できます。{days}日後にもう一度お試しください。",
     "usernameChangeConfirmTitle": "ユーザー名を変更しますか？",
@@ -279,7 +278,14 @@
     "dataExportDownloading": "エクスポートを準備中...",
     "dataExportSuccess": "データエクスポートが開始されました",
     "dataExportFailed": "データのエクスポートに失敗しました",
-    "bindErrorTimeout": "プロバイダーの応答に時間がかかりすぎました。もう一度お試しください。"
+    "bindErrorTimeout": "プロバイダーの応答に時間がかかりすぎました。もう一度お試しください。",
+    "sessionsPendingSecondFactor": "Awaiting second factor",
+    "securityEventsTitle": "Security Events",
+    "securityEventsDescription": "Changes to your password, two-factor authentication, sign-in providers, API keys and sessions, with where each was made from.",
+    "securityEventsEvent": "Event",
+    "securityEventsByAdministrator": "By an administrator",
+    "securityEventsNoData": "No security events yet",
+    "securityEventsLoadFailed": "Failed to load security events"
   },
   "appearance": {
     "title": "外観",
@@ -370,7 +376,14 @@
     "tokens": "トークン",
     "noQuota": "クォータ制限が設定されていません",
     "unentitled": "続けるにはサブスクライブしてください",
-    "unentitledHint": "このインスタンスでモデルを使用するには、有料プランへの加入が必要です。"
+    "unentitledHint": "このインスタンスでモデルを使用するには、有料プランへの加入が必要です。",
+    "origins": {
+      "direct_chat": "Direct Chat",
+      "workflows": "Workflows",
+      "evaluations": "Evaluations",
+      "ai_assist": "AI assist",
+      "deleted_agents": "Deleted agents"
+    }
   },
   "notifications": {
     "title": "通知",

@@ -4,27 +4,27 @@ icon: "magnifying-glass"
 description: "FIM One 如何发现和组装资源 — 智能体约束和全局自动发现的双模式架构。"
 ---
 
-## 两种模式
+## The two modes
 
-FIM One 中的每个聊天请求都从一个问题开始：**是否选择了智能体？** 答案决定了资源（连接器、知识库、技能和 MCP 服务器）如何被发现和组装成 LLM 可以使用的工具集。
+Every chat request in FIM One starts with a question: **is an Agent selected?** The answer determines how resources — Connectors, Knowledge Bases, Skills, and MCP servers — are discovered and assembled into the tool set the LLM can use.
 
-**智能体约束模式**在用户选择特定智能体时激活。系统仅加载该智能体明确配置的资源：
+**Agent-Constrained Mode** activates when the user picks a specific Agent. The system loads only the resources that Agent has been explicitly configured with:
 
-- **连接器**：仅加载智能体绑定的 `connector_ids` 作为工具。
-- **知识库**：仅注入智能体绑定的 `kb_ids` 作为检索工具。
-- **技能**：全局可用 — 用户可见的所有活跃技能都被注入，因为技能是组织 SOP，而非智能体特定的知识。（参见下方 [技能作为全局 SOP](#skills-as-global-sops)。）
-- **MCP 服务器**：始终用户作用域 — 用户可见的所有活跃 MCP 服务器在两种模式下都被加载。
-- **指令**：智能体的 `instructions` 字段定义了注入到系统提示中的角色和行为准则。
+- **Connectors**: only the Agent's bound `connector_ids` are loaded as tools.
+- **Knowledge Bases**: only the Agent's bound `kb_ids` are injected as retrieval tools.
+- **Skills**: globally available when the Skills module is enabled (it is off by default) — all active Skills visible to the user are injected, because Skills are organizational SOPs, not Agent-specific knowledge. (See [Skills as Global SOPs](#skills-as-global-sops) below.)
+- **MCP Servers**: only the Agent's bound `mcp_server_ids` are loaded; an Agent with none bound gets no MCP tools.
+- **Instructions**: the Agent's `instructions` field defines the persona and behavioral guidelines injected into the system prompt.
 
-**全局自动发现模式**在未选择智能体时激活（例如，新聊天）。系统自动发现用户可访问的所有内容：
+**Global Auto-Discovery Mode** activates when no Agent is selected (e.g., a new chat). The system auto-discovers everything accessible to the user:
 
-- **连接器**：加载用户可见的所有连接器（自有 + 组织共享 + 市场订阅）。
-- **知识库**：所有可访问的知识库都可通过 `kb_retrieve` 进行检索。
-- **技能**：用户可见的所有活跃技能都作为 SOP 存根被注入。
-- **MCP 服务器**：与智能体约束模式相同 — 用户可见的所有活跃服务器。
-- **指令**：使用通用助手角色。
+- **Connectors**: all Connectors visible to the user (own + subscribed from an organization or the Market) are loaded.
+- **Knowledge Bases**: the user's own KBs are available for retrieval via `kb_retrieve` (knowledge bases cannot be shared).
+- **Skills**: all active Skills visible to the user are injected as SOP stubs.
+- **MCP Servers**: all active servers visible to the user.
+- **Instructions**: a generic assistant persona is used.
 
-分支发生在 `_resolve_tools()` 内部，该函数在每个聊天请求上被调用：
+The branching happens inside `_resolve_tools()`, which is called on every chat request:
 
 ```mermaid
 flowchart TD
@@ -35,41 +35,41 @@ flowchart TD
     AC --> SK["Inject Global Skills<br/>(both modes)"]
     AD --> SK
 
-    SK --> MCP["Load User MCP Servers<br/>(both modes)"]
+    SK --> MCP["Load MCP Servers<br/>(agent-bound, or all visible)"]
     MCP --> TR["<b>ToolRegistry</b>"]
     TR --> EE["Execution Engine<br/>(ReAct or DAG)"]
 ```
 
-实际效果：用户可以立即开始聊天，无需配置智能体。系统发现可用资源并将其公开为工具。选择智能体会缩小范围 — 它不会解锁新功能，而是聚焦现有功能。
+The practical effect: users can start chatting immediately without configuring an Agent. The system discovers available resources and exposes them as tools. Selecting an Agent narrows the scope — it does not unlock new capabilities, it focuses existing ones.
 
-### 每种模式发现的内容
+### What each mode discovers
 
-两种模式在**范围**上有所不同，但在类型上相同。两者都会生成一个 `ToolRegistry` — 只是填充方式不同。
+The two modes differ in **scope**, not in kind. Both produce a `ToolRegistry` — they just fill it differently.
 
-**自动发现模式（未选择智能体）：**
+**Auto-Discovery Mode (no Agent selected):**
 
-| 资源 | 发现 | 工具形式 |
+| Resource | Discovery | Tool Form |
 |---|---|---|
-| 连接器（API） | `resolve_visibility()` — 对用户可见的全部 | `ConnectorMetaTool`（渐进式） |
-| 连接器（DB） | `resolve_visibility()` — 对用户可见的全部 | `DatabaseMetaTool`（渐进式） |
-| 知识库 | 所有可访问的知识库 | `kb_retrieve` |
-| 技能 | `resolve_visibility()` — 所有活跃的 | `read_skill`（渐进式存根） |
-| MCP 服务器 | `resolve_visibility()` — 所有用户可见的 | `MCPServerMetaTool`（渐进式） |
-| 智能体 | `resolve_visibility()` — 所有活跃的、非构建器的 | `call_agent`（委托目录） |
-| 内置工具 | `discover_builtin_tools()` — 完整集合 | 不应用类别筛选 |
+| Connectors (API) | `resolve_visibility()` — all visible to user | `ConnectorMetaTool` (progressive) |
+| Connectors (DB) | `resolve_visibility()` — all visible to user | `DatabaseMetaTool` (progressive) |
+| Knowledge Bases | The user's own KBs | `kb_retrieve` |
+| Skills | `resolve_visibility()` — all active | `read_skill` (progressive stubs) |
+| MCP Servers | `resolve_visibility()` — all user-visible | `MCPServerMetaTool` (progressive) |
+| Agents | `resolve_visibility()` — all active, non-builder | `call_agent` (delegation catalog) |
+| Built-in Tools | `discover_builtin_tools()` — full set | No category filter applied |
 
-**智能体约束模式（已选择智能体）：**
+**Agent-Constrained Mode (Agent selected):**
 
-| 资源 | 发现 | 工具形式 |
+| Resource | Discovery | Tool Form |
 |---|---|---|
-| 连接器 | 仅 `agent.connector_ids` | `ConnectorMetaTool` 或按操作的旧版 |
-| 知识库 | 仅 `agent.kb_ids` | `GroundedRetrieveTool` / `KBRetrieveTool` |
-| 技能 | 全局 — **不受智能体约束** | `read_skill` |
-| MCP 服务器 | 用户范围 — **不受智能体约束** | `MCPServerMetaTool`（渐进式） |
-| 智能体委托 | 不可用 — 智能体是专门化的 | _（已禁用）_ |
-| 内置工具 | `agent.tool_categories` 筛选 | 按类别的子集 |
+| Connectors | Only `agent.connector_ids` | `ConnectorMetaTool` or legacy per-action |
+| Knowledge Bases | Only `agent.kb_ids` | `GroundedRetrieveTool` / `KBRetrieveTool` |
+| Skills | Global — **not constrained by Agent** | `read_skill` |
+| MCP Servers | Only `agent.mcp_server_ids` | `MCPServerMetaTool` (progressive) |
+| Agent Delegation | Not available — agents are specialized | _(disabled)_ |
+| Built-in Tools | `agent.tool_categories` filter | Subset by category |
 
-关键的不对称性：连接器和知识库由智能体确定范围，但技能和 MCP 服务器在两种模式中都保持全局。`CallAgentTool`（智能体委托）仅在自动发现模式中可用 — 选择特定智能体时**不会**注册。这是一项安全措施：市场智能体可能会使用 `call_agent` 来调用其他智能体并访问它们的私有提示。技能是组织规则（每个人都遵循相同的 SOP），而连接器和知识库是能力绑定（不同的智能体连接到不同的系统）。
+The key asymmetry: Connectors, Knowledge Bases and MCP Servers are scoped by the Agent, but Skills remain global in both modes. `CallAgentTool` (agent delegation) is only available in Auto-Discovery mode — it is **not** registered when a specific Agent is selected. This is a security measure: a marketplace agent could otherwise use `call_agent` to invoke other agents and access their private prompts. Skills are organizational rules (everyone follows the same SOPs), while Connectors and KBs are capability bindings (different agents connect to different systems).
 
 ## 一切皆工具
 
@@ -106,13 +106,13 @@ flowchart TD
 
 技能支持两种注入模式 -- **渐进式**（默认）和**内联式** -- 由 `SKILL_TOOL_MODE` 或智能体的 `model_config_json.skill_tool_mode` 控制。在渐进式模式下，系统提示中仅显示紧凑的存根；LLM 按需调用 `read_skill(name)` 来加载完整内容。这是 FIM One 更广泛的[渐进式披露](/architecture/progressive-disclosure)架构的一部分，该架构可最小化所有资源类型的上下文消耗。
 
-## 智能体作为角色，而非容器
+## Agent as persona, not container
 
-FIM One 的架构反映了从以智能体为中心的模型向以资源为中心的模型的刻意转变。
+FIM One's architecture reflects a deliberate shift from an Agent-centric model to a Resource-centric model.
 
-**之前的模型：** 智能体是一个容器，控制对所有资源的访问。未选择智能体意味着没有连接器、没有技能、没有专门的知识库。智能体是任何功能的强制入口点。
+**Previous model:** the Agent was a container that gated access to all resources. No Agent selected meant no Connectors, no Skills, no specialized KB. The Agent was the mandatory entry point for any capability.
 
-**当前模型：** 智能体是一个角色 — 一组指令和行为准则 — 结合可选的资源约束。资源独立于智能体而存在。选择智能体会缩小范围；不选择则完全开放。
+**Current model:** the Agent is a persona — a set of instructions and behavioral guidelines — combined with an optional resource constraint. Resources exist independently of Agents. Selecting an Agent narrows the scope; not selecting one opens it fully.
 
 ```mermaid
 flowchart LR
@@ -134,27 +134,27 @@ flowchart LR
     end
 ```
 
-这意味着：
+This means:
 
-- **用户可以立即开始聊天**，无需配置智能体。
-- **系统自动发现可用资源**并将其公开为工具。
-- **智能体成为轻量级角色**，可以快速创建 — 只需编写指令并可选地绑定特定的连接器和知识库。
-- **资源管理与智能体管理解耦**。将连接器发布到组织后，它在任何地方都可用 — 在自动发现模式中、在智能体绑定下拉菜单中，以及在智能体委派解析中。
+- **Users can start chatting immediately** without configuring an Agent.
+- **The system auto-discovers available resources** and exposes them as tools.
+- **Agents become lightweight personas** that can be created quickly — just write instructions and optionally bind specific Connectors and KBs.
+- **Resource management is decoupled** from Agent management. Publishing a Connector to an organization makes it available to every member who subscribes to it — in auto-discovery mode, in Agent binding dropdowns, and in agent delegation resolution.
 
 ## 智能体委派
 
 FIM One 支持通过 `CallAgentTool` 将任务委派给专家智能体 — 但仅在**自动模式**下（未选择智能体）。当用户选择特定智能体时，委派被禁用，该智能体专注于其自身工具。
 
-### 两种模式：自动模式 vs 智能体选择模式
+### Two modes: Auto vs Agent-selected
 
-| 方面 | 自动模式（未选择智能体） | 智能体选择模式 |
+| Aspect | Auto Mode (no agent selected) | Agent-Selected Mode |
 |---|---|---|
-| `call_agent` | 已启用 — 委托给任何可见的智能体 | **已禁用** — 未注册 |
-| 工具范围 | 所有可见的连接器、知识库、技能、MCP | 仅智能体绑定的资源 + 全局技能/MCP |
-| 编排 | 系统 LLM 每次迭代动态选择最佳智能体 | 智能体直接使用其自身工具 |
-| 用例 | 通用查询、跨域任务 | 专注的专家任务 |
+| `call_agent` | Enabled — delegates to any visible agent | **Disabled** — not registered |
+| Tool scope | All visible Connectors, KB, Skills, MCP | Only the Agent's bound resources + global Skills |
+| Orchestration | System LLM dynamically picks the best agent per iteration | Agent uses its own tools directly |
+| Use case | General queries, cross-domain tasks | Focused specialist tasks |
 
-**为什么在智能体选择模式中禁用委托：** 安全性。市场中的智能体可能会使用 `call_agent` 调用其他智能体并读取其私有系统提示。通过将委托限制在自动模式中 — 其中系统 LLM（而非任何单个智能体的提示）控制流程 — 私有智能体提示永远不会暴露给不受信任的智能体配置。
+**Why delegation is disabled in Agent-selected mode:** Security. A marketplace agent could use `call_agent` to invoke other agents and read their private system prompts. By restricting delegation to Auto mode — where the system LLM (not any individual agent's prompt) controls the flow — private agent prompts are never exposed to untrusted agent configurations.
 
 ### 自动模式作为编排层
 
@@ -164,9 +164,9 @@ FIM One 支持通过 `CallAgentTool` 将任务委派给专家智能体 — 但�
 
 在运行时，所有对用户可见的活跃非构建器智能体都被组装到一个目录中。每个智能体的名称和描述都列在 `call_agent` 工具的参数模式中，允许 LLM 根据语义选择合适的专家 — 无需硬编码路由。
 
-### 完整工具继承
+### Full tool inheritance
 
-当通过 `call_agent(agent_id, task)` 调用委托的智能体时，它会收到一个完整的 `ToolRegistry`，该注册表由其自身配置构建而成——包括其绑定的连接器、知识库和内置工具。委托的智能体是完整的执行单元，而不仅仅是文本顾问。
+When a delegated agent is invoked via `call_agent(agent_id, task)`, it is assembled the way a chat with that agent is: a complete `ToolRegistry` built from its own configuration — its bound Connectors, Knowledge Bases and MCP servers (connected for the duration of the call) and its built-in tool categories — together with its own approval gate. Delegated agents are full execution units, not text-only advisors. An agent that has been switched off or is no longer visible to the user when it is called is reported as unavailable instead of being run.
 
 ### 一级委托
 
@@ -194,42 +194,40 @@ flowchart TD
     SYN --> ANS["Final Answer"]
 ```
 
-## 可见性模型
+## Visibility model
 
-所有资源发现 — 在两种模式中 — 都由统一的可见性模型管理，该模型有三个层级：
+All resource discovery — in both modes — is governed by a unified visibility model with two tiers:
 
-| 层级 | 描述 | 示例 |
+| Tier | Description | Example |
 |---|---|---|
-| **自有** | 由用户创建。始终可见。 | 为团队 API 构建的连接器 |
-| **组织共享** | 来自用户所在组织的 `visibility: "org"` 资源。对所有已批准的组织成员可见。 | IT 部门发布的公司范围内的 ERP 连接器 |
-| **市场订阅** | 从 FIM One 市场安装的资源。对订阅者可见。 | 你安装的社区构建的 Slack 连接器 |
+| **Own** | Created by the user. Always visible. | A Connector you built for your team's API |
+| **Subscribed** | Resources published to one of the user's organizations or to the Market that the user has subscribed to. Visible while the resource is still shared and approved. Org membership alone grants nothing. | A company-wide ERP Connector published by IT, or a community-built Slack Connector you installed |
 
-`web/visibility.py` 中的 `resolve_visibility()` 函数构建一个 SQL 过滤器，在单个查询中包含所有三个层级：
+The `resolve_visibility()` function in `web/visibility.py` builds a SQL filter that covers both tiers in a single query:
 
 ```python
 conditions = [
     model.user_id == user_id,                    # own resources
-    and_(model.visibility == "org",              # org-shared
-         model.org_id.in_(user_org_ids),
-         or_(model.publish_status == None,
+    and_(model.id.in_(subscribed_ids),           # subscribed, and still shared
+         model.visibility == "org",
+         or_(model.publish_status.is_(None),
              model.publish_status == "approved")),
-    model.id.in_(subscribed_ids),                # Market-subscribed
 ]
 ```
 
-同样的过滤器在所有地方使用：
+This same filter is used everywhere:
 
-- 在无智能体模式下自动发现连接器
-- 为 `CallAgentTool` 构建智能体目录
-- 加载可见的技能以进行系统提示注入
-- MCP 服务器解析
-- 智能体配置查找（确保用户只能选择对他们可见的智能体）
+- Auto-discovering Connectors in no-agent mode
+- Building the Agent catalog for `CallAgentTool`
+- Loading visible Skills for system prompt injection
+- MCP server resolution
+- Agent configuration lookup (ensuring a user can only select Agents visible to them)
 
-这种一致性意味着 **将连接器发布到组织会自动使其在自动发现模式、智能体绑定下拉菜单和智能体委派解析中可用** — 无需特殊配置。可见性模型是"此用户可以访问什么"的唯一真实来源。
+The uniformity means that **a Connector published to an organization becomes available to its subscribers** in auto-discovery mode, in Agent binding dropdowns, and in agent delegation resolution — no special wiring required. The visibility model is the single source of truth for "what can this user access."
 
-## 关系图
+## Relationship map
 
-FIM One 有两个并行执行范式——**聊天（智能体驱动）** 和**工作流（DAG 驱动）**——它们共享相同的底层资源，但以不同的方式编排它们。
+FIM One has two parallel execution paradigms — **Chat (Agent-driven)** and **Workflow (DAG-driven)** — that share the same underlying resources but orchestrate them differently.
 
 ```mermaid
 flowchart TD
@@ -242,6 +240,7 @@ flowchart TD
         TR --> BUILT["Built-in Tools"]
         TR --> CALL["call_agent<br/>→ Delegate Agent"]
         TR --> READ["read_skill<br/>→ SOP text"]
+        TR --> RUNWF["run_workflow<br/>→ Workflow run"]
     end
 
     subgraph WF_EXEC["Workflow Execution (fixed DAG)"]
@@ -249,37 +248,35 @@ flowchart TD
         WF --> WF_AGENT["AGENT Node"]
         WF --> WF_LLM["LLM Node"]
         WF --> WF_CONN["CONNECTOR Node"]
-        WF --> WF_KB["KB_RETRIEVAL Node"]
+        WF --> WF_KB["KNOWLEDGE_RETRIEVAL Node"]
         WF --> WF_MCP["MCP Node"]
-        WF --> WF_HTTP["HTTP Node"]
-        WF --> WF_CODE["CODE Node"]
-        WF --> WF_HUMAN["HUMAN Node"]
-        WF --> WF_SUB["SUB_WORKFLOW Node"]
+        WF --> WF_COND["CONDITION_BRANCH Node"]
+        WF --> WF_HUMAN["HUMAN_INTERVENTION Node"]
     end
 
     SKILLS["Skills<br/>(Global SOPs)"] -.->|"injected into<br/>system prompt"| AGENT
     WF_AGENT -->|"invokes"| AGENT
 ```
 
-图表的关键要点：
+Key takeaways from the diagram:
 
-- **智能体和工作流是并行范式。** 两者都可以使用连接器、知识库和 MCP 服务器——但通过不同的机制。智能体将它们用作 `ToolRegistry` 中的工具；工作流将它们用作类型化的 DAG 节点。
-- **工作流可以通过 `AGENT` 节点编排智能体**——工作流步骤可以调用具有自己的 ReAct/DAG 循环的完整智能体。反向不成立：智能体无法直接调用工作流（仅通过 API/webhook 触发间接调用）。
-- **技能仅注入到智能体中。** 技能是系统提示文本——它们指导智能体行为。工作流不消费技能，因为工作流节点执行确定性逻辑，而不是 LLM 引导的推理。
-- **共享资源，不同的访问模式。** 连接器可以由智能体调用（通过 `ConnectorToolAdapter`）、由工作流调用（通过 `CONNECTOR` 节点），或在同一业务流程中由两者调用——例如，工作流触发智能体查询同一连接器，工作流在后续步骤中也使用该连接器。
+- **Agent and Workflow are parallel paradigms.** Both can use Connectors, Knowledge Bases, and MCP Servers — but through different mechanisms. Agents use them as tools in a `ToolRegistry`; Workflows use them as typed DAG nodes.
+- **Workflow can orchestrate Agents** via the `AGENT` node — a Workflow step can invoke a full Agent with its own ReAct/DAG loop. The reverse also works: an Agent can run a Workflow through the `run_workflow` tool when the Workflows module is enabled, except workflows that contain a Human Intervention step.
+- **Skills are injected into Agents only.** Skills are system prompt text — they guide Agent behavior. Workflows don't consume Skills because Workflow nodes execute deterministic logic, not LLM-guided reasoning.
+- **Shared resources, different access patterns.** A Connector can be called by an Agent (via `ConnectorToolAdapter`), by a Workflow (via `CONNECTOR` node), or by both in the same business process — e.g., a Workflow triggers an Agent that queries the same Connector the Workflow also uses in a later step.
 
-## 工作流引擎 — 另一种执行范式
+## Workflow Engine — the other execution paradigm
 
-虽然本文档重点关注智能体驱动的聊天执行，但 FIM One 包含一个完整的**工作流引擎** — 一个具有 26 种节点类型的可视化 DAG 编辑器，用于固定流程自动化。
+While this document focuses on Agent-driven chat execution, FIM One includes a full **Workflow Engine** — a visual DAG editor with 9 node types for fixed-process automation. It is an optional module, off by default.
 
-| 方面 | 智能体（聊天） | 工作流 |
+| Aspect | Agent (Chat) | Workflow |
 |---|---|---|
-| 编排 | LLM 动态决定下一步 | 在设计时定义的固定 DAG |
-| 最适用于 | 探索性任务、对话、灵活推理 | 审批链、定时 ETL、多步自动化 |
-| 可调用 | 连接器、知识库、MCP、内置工具、委托智能体、技能 | 智能体、连接器、知识库、MCP、LLM、HTTP、代码、人工审批、子工作流 |
-| 触发方式 | 聊天中的用户消息 | 手动、cron 计划或 API/webhook |
-| 嵌套 | 单级委托（自动模式 → 委托智能体） | 通过 SUB_WORKFLOW 节点的任意 DAG 深度 |
+| Orchestration | LLM decides next step dynamically | Fixed DAG defined at design time |
+| Best for | Exploratory tasks, conversations, flexible reasoning | Approval chains, scheduled ETL, multi-step automations |
+| Can call | Connectors, KB, MCP, Built-in Tools, Delegated Agents, Skills, Workflows (`run_workflow`) | Agents, Connectors, KB, MCP, LLM, Human approval |
+| Trigger | User message in chat | Manual, cron schedule, or API/webhook |
+| Nesting | One-level delegation (Auto mode → delegated Agent) | No sub-workflow nesting |
 
-这两种范式是互补的。当任务是开放式的时（"分析本季度的销售数据并推荐行动"），使用智能体。当流程已知时（"每周一，从 ERP 拉取新发票，运行合规检查，并将异常路由给人工审核员"），使用工作流。工作流可以在任何需要灵活推理的步骤中调用智能体，同时保持整个管道的固定性。
+The two paradigms are complementary. Use Agents when the task is open-ended ("analyze this quarter's sales data and recommend actions"). Use Workflows when the process is known ("every Monday, pull new invoices from ERP, run compliance checks, and route exceptions to a human reviewer"). A Workflow can invoke an Agent for any step that needs flexible reasoning within an otherwise fixed pipeline.
 
-有关智能体执行模式和工作流节点类型的详细信息，请参阅[执行模式](/concepts/execution-modes)。
+For details on Agent execution modes and Workflow node types, see [Execution Modes](/concepts/execution-modes).

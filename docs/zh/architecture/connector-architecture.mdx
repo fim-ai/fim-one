@@ -1,18 +1,18 @@
 ---
-title: "连接器架构"
+title: "Connector Architecture"
 icon: "link"
-description: "FIM One 如何通过 AI 连接遗留系统 — 从 Copilot 到 Hub。"
+description: "How FIM One connects existing systems to agents: API connectors, database connectors, and MCP servers."
 ---
 
 ## Copilot vs Hub
 
-该架构支持两种集成规模：
+The architecture supports two integration scales:
 
 ```mermaid
 flowchart TD
     subgraph Copilot["Copilot (embedded)"]
         subgraph Host["Host System (ERP)"]
-            C["FIM One Copilot<br/>(iframe / widget)"]
+            C["FIM One Copilot<br/>(host UI + API)"]
         end
         C --> DB1["DB"]
         C --> API1["API"]
@@ -29,59 +29,60 @@ flowchart TD
     end
 ```
 
-**Copilot** 嵌入到宿主系统的 UI 中。用户可以在熟悉的界面中与 AI 交互，无需离开。它可以使用多个连接器（宿主 DB + 通知服务等）。
+**Copilot** puts the agent inside a host system's UI, today by having the host page call the FIM One API (a drop-in iframe / widget embed is planned). Users interact with AI without leaving their familiar interface. It can use multiple connectors (host DB + notification service, etc.).
 
-**Hub** 是一个独立的门户，连接所有系统。它不嵌入任何单一系统 -- 它是系统与 AI 相遇的中央智能层。
+**Hub** is a standalone portal that connects all systems. It's not embedded in any single system -- it's the central intelligence layer where systems meet AI.
 
-相同的连接器架构，不同的交付方式。Copilot 使用与 Hub 相同的 `ConnectorToolAdapter`。
+Same connector architecture, different delivery. A Copilot uses the same `ConnectorToolAdapter` as a Hub.
 
 ## 核心原则
 
 **客户端零代码改动。** FIM One 主动集成到他们的系统中——读取他们的数据库、调用他们的 API、推送到他们的消息总线。客户端仅需提供凭证和网络访问权限。
 
-## 三层架构
+## Three-Layer Architecture
 
 ```mermaid
 flowchart TB
-    A["<b>FIM One Platform</b><br/>ReAct / DAG / Portal UI<br/><i>Multi-tenant, scheduling, conversation persistence</i>"]
-    B["<b>Connector Governance Layer</b><br/>audit log, auth passthrough, operation classification<br/><i>read_only enforcement, confirmation gate, circuit breaker</i>"]
-    C["<b>MCP Protocol (Transport)</b><br/>stdio / HTTP transport<br/><i>Standard tool description, process isolation</i>"]
-    D["<b>Legacy System</b><br/>DB / API / MQ<br/><i>Client's existing systems</i>"]
+    A["<b>FIM One Platform</b><br/>ReAct / DAG / Portal UI<br/><i>Multi-tenant, conversation persistence</i>"]
+    B["<b>Connector Governance Layer</b><br/>call log, per-user credentials, confirmation gate<br/><i>read-only SQL, column masking, circuit breaker</i>"]
+    C["<b>Integration adapters</b><br/>API connector (HTTP) · Database connector (SQL drivers) · MCP server (stdio / HTTP)"]
+    D["<b>Existing System</b><br/>API / DB<br/><i>Client's existing systems</i>"]
 
     A --> B --> C --> D
 ```
 
-每一层都有不同的职责：
+Each layer has a distinct responsibility:
 
-| 层 | 负责 | 变化时机... |
+| Layer | Owns | Changes when... |
 |---|---|---|
-| **平台** | 编排、多租户、UI | 新平台功能发布时 |
-| **连接器治理层** | 企业治理策略 | 安全/合规要求变化时 |
-| **MCP 协议** | 传输、工具接口标准 | 永不变化（开放标准） |
-| **遗留系统** | 业务数据和逻辑 | 永不变化（这就是重点） |
+| **Platform** | Orchestration, multi-tenant, UI | New platform features ship |
+| **Connector Governance Layer** | Enterprise governance policies | Security/compliance requirements change |
+| **Integration adapters** | Talking to one kind of system | A new protocol or database driver is added |
+| **Existing System** | Business data and logic | Never (that's the whole point) |
 
-## 为什么选择 MCP 作为传输层
+## Three Integration Types
 
-适配器被实现为 **MCP 服务器**。这是一个深思熟虑的架构选择：
+In the portal these live under **Integrations**, with one tab each:
 
-- **重用**：FIM One 已经附带 MCP 客户端（v0.3）。添加遗留系统适配器与添加任何 MCP 工具使用相同的基础设施。
-- **标准协议**：MCP 是开放标准。无需发明或维护专有协议。
-- **生态系统**：第三方 MCP 服务器（数据库、API、SaaS 工具）开箱即用。
-- **进程隔离**：每个 MCP 服务器作为单独的进程运行。行为不当的适配器无法导致平台崩溃。
-
-### MCP 单独无法提供的功能
-
-**连接器治理层**为原生 MCP 添加了企业级治理能力：
-
-| 关注点 | MCP | 连接器治理层 |
+| Type | What it is | Runs as |
 |---|---|---|
-| 只读强制执行 | 否 | 操作使用 `read_only` 标志；默认阻止写入 |
-| 审计日志 | 否 | 记录每次工具调用（时间戳、用户、工具、参数、结果） |
-| 身份验证透传 | 否 | 代理主机系统的身份验证；智能体代表已登录用户执行操作 |
-| 确认闸门 | 否 | 写入操作需要人工审批（SSE `confirmation_required`） |
-| 熔断器 | 否 | 连接失败会触发优雅降级 |
-| 操作分类 | 否 | 将操作标记为读取、写入或管理员操作，并针对每个级别应用策略 |
-| 列级掩码 | 否 | 标记为个人数据的数据库列会返回掩码，而不是其值 |
+| **API connector** | A base URL, an auth method (none, bearer, API key, basic) and a list of actions (method, path, parameter schema). Created by hand, by importing an OpenAPI spec, or with the AI builder | `ConnectorToolAdapter`, an in-process HTTP client that injects the caller's credential |
+| **Database connector** | A connection to PostgreSQL, MySQL, DM, KingbaseES or HighGo, with an introspected and annotatable schema | `DatabaseToolAdapter` over the matching driver; SQL is validated and read-only by default |
+| **MCP server** | Any server speaking the Model Context Protocol, over stdio or HTTP | A separate process (stdio) or remote endpoint, adapted into the same `Tool` protocol |
+
+API and database connectors are records in the database. A connector that is created or edited in the portal is picked up by the next chat request; nothing is redeployed or restarted. MCP is the route for third-party tool servers and for adapters that need their own process.
+
+### What the governance layer adds
+
+| Concern | What FIM One does |
+|---|---|
+| Read-only SQL | Database connectors reject anything but `SELECT` unless the owner switches `read_only` off. The SQL is checked first, and on PostgreSQL, KingbaseES, HighGo and MySQL the query then runs in a read-only transaction, so the database itself refuses a write (MySQL's does not cover `CREATE`/`DROP`/`ALTER`, which the check refuses; DM8 has the check only). The check also refuses functions that act outside the query (`dblink*`, `pg_read_*`, `pg_ls_*`, `lo_import`/`lo_export`, `pg_terminate_backend`, `pg_reload_conf`, `pg_sleep*` and the like). It is a list of known names, not a sandbox: the real fence is the database account. Give the connector an account that can only `SELECT` the tables it should see, with no superuser, file or replication rights |
+| Call log | Every connector, database and MCP call is recorded: time, user, where it came from (chat, a delegated agent, a workflow step), the connector or MCP server, the action or tool, status, duration, and whose credential it used |
+| Per-user credentials | Each user stores their own credential; the owner's is used only when the owner allows fallback (see [Sharing and credentials](/architecture/sharing-and-credentials)) |
+| Confirmation gate | Actions marked `requires_confirmation` (or every tool call, when the agent is set to confirm all) pause for human approval, in chat (`awaiting_confirmation` SSE event) or in a Feishu approval card |
+| Circuit breaker | Repeated failures against a connector stop further calls for a cool-down period |
+| Column-level masking | Database columns marked as personal data return a mask instead of their values |
+| Sharing limits | API connectors and MCP servers can be published to an organization or the Market; database connectors cannot, and their SQL tool is offered only to the owner |
 
 ### 数据库列脱敏
 
@@ -95,61 +96,55 @@ flowchart TB
 
 所有者自己的查询演练场不会进行脱敏。脱敏控制的是到达智能体和对话记录的内容，而不是配置连接的人员能够查看的内容。
 
-### 为什么不发明自定义协议
+### Values bound into a workflow step's SQL
 
-协议是商品化的。技术价值在于适配器本身（领域知识、模式映射、边界情况处理）和治理层（审计、身份验证、安全性）。发明传输协议会增加维护成本，而不会增加功能。Stripe 使用 HTTPS；Docker 使用 cgroups；FIM One 使用 MCP。
+A `{{variable}}` in the SQL of a workflow database step is sent to the database as a value, never as SQL text. How it is compared is then up to the database:
 
-## 部署模型
+- **PostgreSQL, KingbaseES, HighGo, DM8**: a parameter of the type the query expects. Text that is not a number fails the step where a number is expected.
+- **MySQL, MariaDB**: every value is sent as text. Compared with a text column it is compared as text. Compared with a numeric column, MySQL converts the text by its own lenient rule: `'5abc'` counts as 5 and text with no leading digits as 0, with a warning and no error, so `WHERE id = {{v}}` with `abc` matches the row whose id is 0. `CAST({{v}} AS SIGNED)` follows the same rule and does not help. If an input must be a number, check it before the query, in a Condition step ahead of the database step; the Start step records the inputs it is given and does not check their type.
 
-所有内容都在单个 Docker Compose 部署中运行。客户端无需安装任何内容。
+## Deployment Model
+
+Everything runs in a single Docker Compose deployment. The client installs nothing.
 
 ```mermaid
 flowchart TD
-    subgraph Docker["FIM One 部署 (Docker Compose)"]
-        subgraph Core["FIM One 核心"]
+    subgraph Docker["FIM One Deployment (Docker Compose)"]
+        subgraph Core["FIM One Core"]
             R["ReAct / DAG"]
-            P["平台 API"]
-            U["门户 UI"]
-            G["连接器治理"]
+            P["Platform API"]
+            U["Portal UI"]
+            G["Connector Governance"]
         end
 
-        subgraph MCP1["MCP 服务器：财务数据库"]
-            M1["SQL 查询（只读）"]
-        end
+        A1["Database connector<br/>SQL queries (read-only)"]
+        A2["API connector<br/>REST calls"]
+        A3["MCP server<br/>third-party tools"]
 
-        subgraph MCP2["MCP 服务器：OA 系统"]
-            M2["REST API 调用"]
-        end
-
-        subgraph MCP3["MCP 服务器：Lark"]
-            M3["Webhook 通知"]
-        end
-
-        Core --> MCP1
-        Core --> MCP2
-        Core --> MCP3
+        Core --> A1
+        Core --> A2
+        Core --> A3
     end
 
-    MCP1 --> Oracle["客户端的 Oracle 数据库"]
-    MCP2 --> Seeyon["客户端的 Seeyon OA"]
-    MCP3 --> Lark["Lark API"]
+    A1 --> PG["Client's finance database"]
+    A2 --> Seeyon["Client's Seeyon OA"]
+    A3 --> Ext["External tool service"]
 ```
 
 <Note>
-全部由 FIM One 提供。客户端仅需提供：
-- 数据库凭证（建议使用只读账户）
-- API 端点和密钥（如果可用）
-- 网络白名单访问权限
+All provided by FIM One. Client provides only:
+- Database credentials (read-only account recommended)
+- API endpoints and keys (if available)
+- Network whitelist access
 </Note>
 
-**访问层级**：FIM One 适配客户端能够提供的任何访问权限：
+**Access hierarchy**: FIM One adapts to whatever access the client can provide:
 
-| 客户端拥有的 | FIM One 连接方式 |
+| What client has | How FIM One connects |
 |---|---|
-| 有文档的 API | HTTP API 适配器（最佳情况） |
-| 无文档的 API | HTTP API 适配器 + 手动模式映射 |
-| 仅数据库访问 | 数据库适配器（直接 SQL，默认只读） |
-| 数据库 + 消息总线 | 数据库适配器 + 消息推送适配器 |
+| API with an OpenAPI spec | API connector, actions imported from the spec (best case) |
+| API without documentation | API connector with actions defined by hand or with the AI builder |
+| Database access only | Database connector (direct SQL, read-only by default) |
 
 ## 智能体-连接器解耦
 
@@ -180,54 +175,47 @@ flowchart TB
 - **移除**连接器 = 移除配置。无需代码更改。
 - 同一个智能体可以在单个任务中同时使用内置工具和连接器。
 
-## 热插拔演进
+## Adding a Connector
 
-| 版本 | 如何添加新连接器 | 需要重启？ |
+No code and no restart are involved. A connector is created in the portal in one of three ways:
+
+| Way | What you provide | Who does it |
 |---|---|---|
-| **v0.6** | 编写 Python MCP Server 并配置连接器治理层，添加到 docker-compose | 重新部署 |
-| **v0.8** | 编写 YAML/JSON 配置，平台生成 MCP Server | 重启 |
-| **v1.0** | 上传 OpenAPI 规范，AI 自动生成配置 | **无需重启（热插拔）** |
+| **Import an OpenAPI spec** | A YAML / JSON spec or its URL; actions are generated from it | Implementation engineer |
+| **AI builder** | A description of the API in natural language; the builder writes and tests the actions | Implementation engineer, with review |
+| **Manual** | Base URL, auth method, and each action's method, path and parameters | Implementation engineer |
 
-企业部署是"一次实现，运行数月"——热插拔是 v1.0 的便利功能，而非 v0.6 的必需功能。
+Database connectors take connection details instead and introspect the schema. Systems that need custom code are wrapped as an MCP server and added under the MCP tab.
 
-## 数据流示例
+## Data Flow Example
 
-用户："检查财务系统中所有逾期合同，并将摘要推送到 Lark。"
+User: "Check all overdue contracts from the finance system and push a summary to Lark."
 
 ```
-1. 用户通过 Portal / API 发送消息
+1. User sends message via Portal / API
 
-2. FIM One (ReAct 模式):
-   Think: 我需要查询财务数据库中的逾期合同，然后推送到 Lark。
+2. FIM One (ReAct mode):
+   Think: I need to query the finance DB for overdue contracts, then push to Lark.
 
-3. Act: contract_query(status="overdue", days_past_due=">30")
-   → Connector Governance: 审计日志、只读检查（通过）
-   → MCP Server: 转换为 SQL
-   → Client DB: SELECT * FROM contracts WHERE status='overdue' AND ...
-   ← 返回 7 份逾期合同
+3. Act: database("query", "finance_db", sql="SELECT ... FROM contracts WHERE status='overdue' AND ...")
+   → Connector Governance: SQL validated as read-only, call logged
+   → Database connector: runs the query on the client DB
+   ← Returns 7 overdue contracts
 
-4. Think: 找到 7 份逾期合同。我将进行总结并推送。
+4. Think: Found 7 overdue contracts. I'll summarize and push.
 
 5. Act: lark_push(message="7 overdue contracts found: ...")
-   → Connector Governance: 审计日志、写入操作 → 确认门控
-   → 用户通过 Portal 批准
-   → MCP Server: POST 到 Lark webhook
-   ← 推送成功
+   → Connector Governance: call logged, action requires confirmation → confirmation gate
+   → User approves via Portal
+   → API connector: POST to Lark webhook
+   ← Push successful
 
 6. Answer: "Found 7 overdue contracts. Summary pushed to Lark group."
 ```
 
-## 连接器标准化级别
+## Relationship to Existing MCP Ecosystem
 
-| 级别 | 版本 | 方法 | 构建者 |
-|---|---|---|---|
-| **级别 1** | v0.6 | Python MCP Server with Connector Governance | FIM One 开发者 |
-| **级别 2** | v0.8 | YAML/JSON 配置，平台自动生成 MCP Server | 实施工程师（无需 Python） |
-| **级别 3** | v1.0 | 上传 OpenAPI/Swagger 规范，AI 生成配置 | AI（需人工审核） |
-
-## 与现有 MCP 生态系统的关系
-
-FIM One 的 MCP 客户端（v0.3 版本中提供）已经支持第三方 MCP 服务器。遗留系统适配器只是**使用连接器治理层构建的特定领域 MCP 服务器**，用于企业治理。
+FIM One's MCP client supports third-party MCP servers alongside its own API and database connectors. All three end up in the same `ToolRegistry`, so the agent treats them alike.
 
 ```mermaid
 flowchart TB
@@ -238,10 +226,10 @@ flowchart TB
         M4["any community MCP server"]
     end
 
-    subgraph CG["Connector Governance (FIM One)"]
-        C1["read_only enforcement"]
-        C2["audit logging"]
-        C3["auth passthrough"]
+    subgraph CG["API and database connectors (FIM One)"]
+        C1["read-only SQL"]
+        C2["call log"]
+        C3["per-user credentials"]
         C4["confirmation gate"]
     end
 
@@ -250,4 +238,4 @@ flowchart TB
     TR --> Agent["Agent sees all as tools"]
 ```
 
-连接器治理层不是替代 MCP，而是为企业遗留系统集成所需的治理功能扩展 MCP。
+Connectors do not replace MCP. They cover the common cases (a REST API, a SQL database) with governance built in; MCP covers everything that ships as a tool server. MCP servers carry per-user credentials and the same fallback switch as connectors.

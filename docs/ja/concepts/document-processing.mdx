@@ -12,21 +12,21 @@ FIM Oneは自動的にアップロードされたドキュメントを処理し�
 ビジョンモードはデフォルトで自動です。設定したモデルがビジョンサポートを有効にしている場合、アップロードされたドキュメントはそのフォーマットで利用可能な最も豊富な処理パイプラインを使用します。
 </Info>
 
-## フォーマットサポートマトリックス
+## Format Support Matrix
 
-各ドキュメントフォーマットには専用の処理パイプラインがあります。動作はモデルがビジョンをサポートしているかどうかによって変わります。
+Each document format has a dedicated processing pipeline. The behavior changes depending on whether the model supports vision.
 
-| フォーマット | テキスト抽出 | ビジョンモード (`supports_vision=ON`) | フォールバック (`supports_vision=OFF`) |
+| Format | Text Extraction | Vision Mode (`supports_vision=ON`) | Fallback (`supports_vision=OFF`) |
 |--------|----------------|--------------------------------------|-----------------------------------|
-| **PDF** | pdfplumber (ページごとのテキスト) | スマート処理: テキストリッチなページはテキスト + 埋め込み画像を抽出 (トークン効率的); スキャン/画像のみのページは PyMuPDF 経由で全ページ PNG としてレンダリング | テキスト抽出のみ; エージェントは `read_uploaded_file` ツール経由で読み込み |
-| **DOCX / DOC** | markitdown (Markdown 変換) | 埋め込み画像を python-docx 経由で `[Figure N]` 位置マーカー付きで抽出 | テキスト抽出のみ; 画像は失われる |
-| **PPTX / PPT** | markitdown (各スライドのテキスト) | 埋め込み画像を python-pptx 経由で `[Figure N]` マーカーとスライド区切り付きで抽出 | テキスト抽出のみ; スライドビジュアルは失われる |
-| **XLSX / XLS** | markitdown (テーブル構造を保持) | テキストモードと同じ (テーブルはビジョンの恩恵を受けない) | 同じ |
-| **画像** (JPG, PNG, GIF, WebP) | N/A | `image_url` ビジョンコンテンツブロックとして送信 | `[Attached image: filename]` として注釈付け — モデルは認識していますがコンテンツを見ることはできません |
-| **テキストファイル** (TXT, MD, PY, JS, HTML, CSV, JSON) | 直接読み込み / 解析 | N/A (テキストはテキスト) | 同じ |
+| **PDF** | pdfplumber (page-by-page text) | Smart processing: text-rich pages extract text + embedded images (token-efficient); scanned/image-only pages render as full-page PNG via PyMuPDF | Text extraction only; agent reads via `read_uploaded_file` tool |
+| **DOCX / DOC** | markitdown (Markdown conversion) | Embedded images extracted with `[Figure N]` positional markers via python-docx | Text extraction only; images lost |
+| **PPTX / PPT** | markitdown (text from each slide) | Embedded images extracted with `[Figure N]` markers and slide separators via python-pptx | Text extraction only; slide visuals lost |
+| **XLSX / XLS** | markitdown (table structure preserved) | Same as text mode (tables do not benefit from vision) | Same |
+| **Images** (JPG, PNG, GIF, WebP) | N/A | Sent as `image_url` vision content blocks | Annotated as `[Attached images (text-only model, not displayed): filename (file_id: ...)]` — model is aware but cannot see the content |
+| **Text files** (TXT, MD, PY, JS, HTML, CSV, JSON) | Direct read / parse | N/A (text is text) | Same |
 
 <Tip>
-**最大限の視覚的忠実度のために**、アップロード前に DOCX または PPTX ファイルを PDF にエクスポートしてください。PDF ビジョンモードは、テキスト、画像、グラフ、フォーマットのすべてを 1 つの画像でレンダリングします。
+**For maximum visual fidelity**, export DOCX or PPTX files to PDF before uploading. PDF vision mode renders the full page layout — text, images, charts, and formatting — all in one image.
 </Tip>
 
 ## 仕組み
@@ -77,20 +77,20 @@ DOCUMENT_PROCESSING_MODE=vision
 DOCUMENT_PROCESSING_MODE=text
 ```
 
-### 3. リクエストごとのパラメータ
+### 3. Per-Request Parameter
 
-チャット API で `doc_mode` パラメータを渡して、単一リクエストの処理を制御します:
+Pass the `doc_mode` parameter in the chat API to control processing for a single request:
 
 ```json
 {
-  "message": "Analyze this financial report",
+  "q": "Analyze this financial report",
   "doc_mode": "vision",
-  "attachments": [...]
+  "image_ids": "<file_id>,<file_id>"
 }
 ```
 
 <Note>
-`auto` モード（デフォルト）は、モデルが `supports_vision=true` を持つ **かつ** ドキュメントがビジョン処理から利益を得るタイプである場合にビジョンを使用します。これはほとんどのデプロイメントに推奨される設定です。
+The `auto` mode (default) uses vision when the model has `supports_vision=true` **and** the document is a type that benefits from vision processing. This is the recommended setting for most deployments.
 </Note>
 
 ## 環境変数
@@ -177,13 +177,13 @@ LibreOfficeはDOCXおよびPPTXファイルのピクセルパーフェクトな�
 
 ## ベストプラクティス
 
-### 管理者向け
+### For Administrators
 
-- **ビジョン機能を選別して有効化する。** `supports_vision` は、画像入力を実際にサポートするモデルにのみ有効化してください。設定ミスはフォールバック再試行サイクルでトークンを浪費します。
-- **`auto` モードから始める。** デフォルトの動作はほとんどのデプロイメントに適しています — ビジョンは有益で利用可能な場合に使用されます。
-- **トークン使用量を監視する。** ビジョン機能を有効化した後、トークン消費ダッシュボードを確認してください。コストが予期せず急増する場合は、`DOCUMENT_VISION_MAX_PAGES` または `DOCUMENT_VISION_DPI` を調整してください。
+- **Enable vision selectively.** Only enable `supports_vision` on models that genuinely support image input. Misconfiguration wastes tokens on the fallback retry cycle.
+- **Start with `auto` mode.** The default behavior is correct for most deployments — vision is used when beneficial and available.
+- **Monitor token usage.** After enabling vision, watch the token consumption dashboard. If costs spike unexpectedly, adjust `DOCUMENT_VISION_MAX_PAGES` or `DOCUMENT_VISION_DPI`.
 
-- **事前構築されたサンドボックスイメージを使用する。** `Dockerfile.sandbox` には、ドキュメントに対する AI コード実行に必要な一般的なデータサイエンスパッケージ（pdfplumber、Pillow、pandas など）が含まれています。`docker compose` 経由で、または `docker build -f Dockerfile.sandbox -t fim-sandbox .` で手動でビルドして、`--network=none` コンテナでコード実行が機能することを確認してください。
+- **Use the pre-built sandbox image.** The `Dockerfile.sandbox` includes common data-science packages (pdfplumber, Pillow, pandas, etc.) needed for AI code execution against documents. Build it via `docker compose` or manually with `docker build -f Dockerfile.sandbox -t fim-sandbox:python .` to ensure code execution works in `--network=none` containers.
 
 ### エンドユーザー向け
 

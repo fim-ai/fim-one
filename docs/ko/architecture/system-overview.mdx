@@ -4,11 +4,11 @@ icon: "table-columns"
 description: "Agent, Knowledge Base, Connector, Built-in Tools, MCP, Skills, 및 Workflows가 통합 아키텍처로 구성되는 방식."
 ---
 
-## 통합 도구 추상화
+## The unified tool abstraction
 
-FIM One의 핵심 설계 통찰력은 **에이전트가 할 수 있는 모든 것이 도구**라는 것입니다. 계산기, 지식 기반 쿼리, ERP API 호출, 그리고 타사 MCP 서버 모두 동일한 `Tool` 프로토콜을 구현합니다: `name`, `description`, `parameters_schema`, `category`, 그리고 `run()`. 에이전트는 로컬 Python 함수를 호출하는지, 벡터 데이터베이스를 쿼리하는지, 레거시 시스템으로 프록시하는지, 또는 커뮤니티 MCP 서버를 호출하는지 알거나 신경 쓰지 않습니다. 이는 `ToolRegistry`에서 호출 가능한 도구의 평면 목록을 봅니다.
+The central design insight in FIM One is that **everything the agent can do is a tool**. A calculator, a knowledge base query, an ERP API call, and a third-party MCP server all implement the same `Tool` protocol: `name`, `description`, `parameters_schema`, `category`, and `run()`. The agent does not know or care whether it is calling a local Python function, querying a vector database, proxying into a legacy system, or invoking a community MCP server. It sees a flat list of callable tools in a `ToolRegistry`.
 
-이는 의도적인 아키텍처 선택이며, 우연한 단순화가 아닙니다. 이는 새로운 기능 소스를 추가할 때 에이전트, 실행 엔진, 또는 컨텍스트 관리 계층을 변경할 필요가 없다는 의미입니다. 도구를 등록하면 에이전트가 이를 사용합니다.
+This is a deliberate architectural choice, not an accidental simplification. It means adding a new capability source never requires changing the agent, the execution engines, or the context management layer. You register tools; the agent uses them.
 
 ```mermaid
 flowchart TD
@@ -24,7 +24,7 @@ flowchart TD
     TR --- WF["<b>Workflows</b><br/>static recipe (DAG),<br/>run_workflow on demand"]
 ```
 
-6개의 기능 소스가 하나의 레지스트리로 수렴됩니다. 에이전트는 모두에서 동등하게 가져옵니다. 마지막 두 개는 일치하는 쌍입니다: **Skill**은 *동적 레시피*(LLM이 단계별로 해석하는 SOP)이고, **Workflow**는 *정적 레시피*(매번 동일하게 실행되는 결정론적 그래프)입니다. 둘 다 도구(`read_skill` 및 `run_workflow` 각각)를 통해 끌어오며, 어느 것도 다른 것을 포함하지 않습니다. 이들은 동일한 런타임에서 소비되는 동료입니다.
+Six capability sources converge into one registry. The agent draws from all of them equally. Skills and Workflows are optional modules, off by default: until an administrator enables them under Admin → Settings → Modules, agents see neither. The last two are a matched pair: a **Skill** is a *dynamic recipe* (an SOP the LLM interprets step by step), and a **Workflow** is a *static recipe* (a deterministic graph that runs the same way every time). Both are pulled through a tool — `read_skill` and `run_workflow` respectively — and neither contains the other; they are peers consumed by the same runtime.
 
 ## 여섯 가지 기능 소스
 
@@ -36,13 +36,13 @@ flowchart TD
 
 조건부. 에이전트가 `kb_ids`를 바인딩했을 때, 일반 `kb_retrieve` 도구는 특화된 검색 도구로 교체됩니다. **단순 모드**에서 `KBRetrieveTool`은 기본 RAG 검색을 수행합니다. **근거 모드**에서 `GroundedRetrieveTool`은 5단계 파이프라인을 실행합니다: 다중-KB 검색, 인용 추출, 정렬 점수 계산, 충돌 감지, 신뢰도 계산. 지식 기반은 에이전트 옆에 있는 별도의 하위 시스템이 아닙니다. 에이전트에 특화된 도구로 진입하며, 다른 모든 것과 동일한 `Tool` 프로토콜의 적용을 받습니다.
 
-### 커넥터
+### Connector
 
-`ConnectorToolAdapter`는 엔터프라이즈 시스템 작업을 도구로 래핑합니다. 각 작업은 `{connector}__{action}` 형식으로 명명된 도구가 되며, `connector` 카테고리로 분류됩니다. 어댑터는 인증 주입(bearer, API 키, 기본)이 포함된 HTTP 프록시, 작업 수준 액세스 제어(읽기/쓰기/관리자), 응답 잘라내기 및 감사 로깅을 추가합니다. 직접 데이터베이스 액세스의 경우, `DatabaseToolAdapter`는 선택적 읽기 전용 적용과 함께 스키마 인식 SQL 실행을 제공합니다. 커넥터는 AI와 레거시 시스템 간의 다리입니다 -- 핵심 차별화 요소입니다. 전체 설계는 [커넥터 아키텍처](/architecture/connector-architecture)를 참조하세요.
+`ConnectorToolAdapter` wraps enterprise system actions as tools. Each action becomes a tool named `{connector}__{action}`, categorized as `connector`. The adapter adds HTTP proxy with auth injection (bearer, API key, basic), a per-action confirmation flag, response truncation, and audit logging. For direct database access, `DatabaseToolAdapter` provides schema-aware SQL execution, read-only by default. Connectors are the bridge between AI and legacy systems -- the core differentiator. See [Connector Architecture](/architecture/connector-architecture) for the full design.
 
 ### MCP
 
-외부 MCP 서버는 표준 프로토콜을 통해 제3자 도구를 제공합니다. 각 서버는 자체 프로세스(stdio 또는 HTTP 전송)에서 실행되며 플랫폼으로부터 완전히 격리됩니다. 도구는 `Tool` 프로토콜로 적응되고 `mcp` 카테고리 아래에 등록됩니다. 관리자는 모든 사용자에 대해 자동으로 로드되는 **전역 MCP 서버**를 프로비저닝할 수 있습니다. MCP는 생태계 전략입니다 -- 모든 MCP 호환 서버는 사용자 정의 통합 없이 작동합니다.
+External MCP servers provide third-party tools via the standard protocol. An HTTP server is a remote endpoint; a stdio server is a process the platform starts inside its own container, which is why only system administrators can configure one. Tools are adapted into the `Tool` protocol and registered under category `mcp`. Admins can provision **global MCP servers** that load for all users automatically. MCP is the ecosystem play -- any MCP-compatible server works without custom integration.
 
 ### 스킬
 
@@ -54,13 +54,13 @@ flowchart TD
 
 ### Workflows
 
-Workflow는 Skill의 **정적 레시피**입니다: 에이전트가 서브태스크를 매번 동일하게 실행하고 감사 추적을 남겨야 할 때 도달하는 결정론적 DAG입니다(예약된 조정, 다단계 승인 불필요 파이프라인). Skill과 마찬가지로 실행 가능한 Workflow는 가시성에 따라 사용자별로 전역적으로 로드되며 — 에이전트 선택과 무관하게 — 단일 `run_workflow(name, inputs)` 도구를 통해 노출됩니다. 각 workflow의 입력 필드는 컴팩트한 시스템 프롬프트 스텁으로 광고되며, LLM은 태스크가 이에 매핑될 때 이름으로 하나를 가져옵니다.
+A Workflow is the **static recipe** to a Skill's dynamic one: a deterministic DAG an agent reaches for when a sub-task must run identically every time and leave an audit trail (scheduled reconciliations, multi-step approval-free pipelines). Like Skills, runnable Workflows are loaded globally per user by visibility — independent of agent selection — and exposed through a single `run_workflow(name, inputs)` tool, with each workflow's input fields advertised as a compact system-prompt stub. The LLM pulls one by name when a task maps onto it.
 
-**활성** 상태이고 인간 승인(`HUMAN_INTERVENTION`) 노드가 **없는** Workflow만 인라인 실행 가능합니다 — 수 분 또는 수 시간 동안 차단되는 게이트는 에이전트 턴 내부에 있을 수 없으므로 이러한 Workflow는 Workflows 페이지에서만 트리거됩니다. 인라인 실행은 workflow 소유자로 실행되며(구독된 Workflow는 게시자의 바인딩된 자격증명 사용), 감사 추적을 위해 `WorkflowRun`을 유지하고, 재진입 가드 및 중첩 깊이 상한선으로 보호되어 Workflow의 `AGENT` 노드가 무한 호출 사이클을 시작할 수 없습니다.
+Only Workflows that are **active** and **free of human-approval (`HUMAN_INTERVENTION`) nodes** are inline-runnable — a gate that blocks for minutes or hours cannot sit inside an agent turn, so those Workflows remain trigger-only from the Workflows page. Inline runs execute as the user chatting with the agent: their connector and MCP credentials, their token quota, and the author's environment variables only when they are the author. Each run persists a `WorkflowRun` for the audit trail and is protected by a re-entrancy guard plus a nesting-depth cap so a Workflow's `AGENT` node can never start an unbounded call cycle.
 
-## 요청별 도구 어셈블리
+## Per-request tool assembly
 
-모든 채팅 요청은 `_resolve_tools()`의 필터링 파이프라인을 통해 신선한 도구 세트를 어셈블합니다. 이는 정적 구성이 아니라 에이전트의 설정, 사용자의 신원, 그리고 사용 가능한 커넥터와 MCP 서버를 기반으로 요청별로 계산됩니다.
+Every chat request assembles a fresh tool set through a filtering pipeline in `_resolve_tools()`. This is not a static configuration -- it is computed per request based on the agent's settings, the user's identity, and the available connectors and MCP servers.
 
 ```mermaid
 flowchart LR
@@ -79,47 +79,47 @@ flowchart LR
     I --> HK["<b>HookRegistry</b><br/>PreToolUse / PostToolUse hooks<br/>wrap every tool call"]
 ```
 
-8가지 단계:
+The eight steps:
 
-1. **기본 검색.** `discover_builtin_tools()`는 모든 기본 제공 도구를 로드하며, 대화의 샌드박스로 범위가 지정됩니다.
-2. **에이전트 카테고리 필터.** `filter_by_category(*agent.tool_categories)`는 에이전트가 사용할 수 있는 카테고리만으로 제한합니다.
-3. **KB 주입.** 에이전트가 `kb_ids`를 가지고 있으면, 일반 검색 도구는 검색 모드에 따라 `KBRetrieveTool` 또는 `GroundedRetrieveTool`로 대체됩니다.
-4. **커넥터 로딩.** 에이전트 제약 모드에서는 에이전트의 바인딩된 커넥터만 로드됩니다. 자동 검색 모드(에이전트 미선택)에서는 사용자에게 표시되는 모든 커넥터가 로드됩니다. API 커넥터(`ConnectorMetaTool`)와 데이터베이스 커넥터(`DatabaseMetaTool`) 모두 기본적으로 [점진적 공개](/architecture/progressive-disclosure)를 사용합니다 — 시스템 프롬프트의 경량 스텁, 필요 시 전체 스키마 로드.
-5. **MCP 로딩.** 사용자의 개인 MCP 서버와 관리자가 프로비저닝한 글로벌 MCP 서버가 로드되고 연결됩니다. 점진적 모드(기본값)에서는 단일 `MCPServerMetaTool`이 모든 서버를 통합합니다. LLM은 필요에 따라 `discover` 및 `call` 서브명령을 호출합니다. [점진적 공개](/architecture/progressive-disclosure)를 참조하세요.
-6. **Skills + Workflows 주입.** 사용자에게 표시되는 모든 활성 Skills는 에이전트 선택과 관계없이 로드됩니다. 점진적 모드에서는 `ReadSkillTool`이 시스템 프롬프트의 컴팩트 스텁으로 등록됩니다. 인라인 모드에서는 전체 Skill 콘텐츠가 직접 임베딩됩니다. 같은 단계에서 모든 활성이고 인라인 실행 가능한 Workflows를 로드하고 `RunWorkflowTool`을 워크플로우당 하나의 스텁(이름, 설명, 입력 필드)으로 등록합니다. 인간 승인 노드를 포함하는 Workflows는 여기서 건너뜁니다.
-7. **CallAgent 등록(자동 모드만).** 특정 에이전트가 선택되지 않으면, 모든 활성이고 표시되는 에이전트가 카탈로그로 어셈블되고 `CallAgentTool`을 통해 노출되어 LLM이 전문 에이전트에게 작업을 위임할 수 있도록 합니다. 위임된 에이전트는 자신의 구성에서 빌드된 전체 `ToolRegistry`를 받지만 무한 재귀를 방지하기 위해 `call_agent`는 제외합니다. 특정 에이전트가 선택되면 `CallAgentTool`은 등록되지 않습니다 — 에이전트는 특화되어 있으며 다른 에이전트에게 위임하지 않습니다. 이는 마켓플레이스 에이전트가 다른 에이전트의 개인 프롬프트에 접근하는 것을 방지합니다.
-8. **런타임 선택.** 총 도구 수가 12를 초과하면, 경량 LLM 호출이 이 특정 쿼리에 가장 관련성 높은 부분 집합(최대 6개)을 선택합니다. `request_tools` 메타 도구가 자동으로 등록되어 LLM이 초기 선택에서 필요한 도구를 놓친 경우 대화 중에 추가 도구를 동적으로 로드할 수 있도록 합니다. 선택 실패는 치명적이지 않습니다 — 에이전트는 전체 세트로 폴백합니다. [점진적 공개](/architecture/progressive-disclosure)를 참조하세요.
-9. **훅 등록.** 에이전트의 선언된 훅(`model_config_json.hooks`에서)이 인스턴스화되고 `HookRegistry`에 연결됩니다. 선택된 각 도구 호출은 래핑됩니다: `PreToolUse` 훅은 실행 전에 인자를 차단하거나 다시 쓸 수 있습니다. `PostToolUse` 훅은 관찰을 LLM으로 반환하기 전에 다시 쓸 수 있습니다. 훅은 **LLM 루프 외부에서** 실행되며 에이전트 지시사항으로 우회할 수 없습니다 — [훅 시스템](/architecture/hook-system)을 참조하세요.
+1. **Base discovery.** `discover_builtin_tools()` loads all built-in tools, scoped to the conversation's sandbox.
+2. **Agent category filter.** `filter_by_category(*agent.tool_categories)` restricts to only the categories the agent is allowed to use.
+3. **KB injection.** If the agent has `kb_ids`, the generic retrieval tool is replaced with `KBRetrieveTool` or `GroundedRetrieveTool` based on retrieval mode.
+4. **Connector loading.** In agent-constrained mode, only the agent's bound connectors are loaded. In auto-discovery mode (no agent selected), all connectors visible to the user are loaded. Both API connectors (`ConnectorMetaTool`) and database connectors (`DatabaseMetaTool`) use [progressive disclosure](/architecture/progressive-disclosure) by default -- lightweight stubs in the system prompt, full schemas loaded on demand.
+5. **MCP loading.** The user's personal MCP servers plus admin-provisioned global MCP servers are loaded and connected. In progressive mode (default), a single `MCPServerMetaTool` consolidates all servers; the LLM calls `discover` and `call` subcommands on demand. See [Progressive Disclosure](/architecture/progressive-disclosure).
+6. **Skills + Workflows injection.** All active Skills visible to the user are loaded -- regardless of agent selection. In progressive mode, `ReadSkillTool` is registered with compact stubs in the system prompt; in inline mode, full Skill content is embedded directly. The same step loads all active, inline-runnable Workflows and registers `RunWorkflowTool` with one stub per workflow (name, description, input fields). Workflows carrying a human-approval node are skipped here.
+7. **CallAgent registration (Auto mode only).** When no specific Agent is selected, all active, visible Agents are assembled into a catalog and exposed via `CallAgentTool`, enabling the LLM to delegate tasks to specialist agents. Delegated agents receive a full `ToolRegistry` built from their own configuration but exclude `call_agent` to prevent infinite recursion. When a specific Agent is selected, `CallAgentTool` is not registered — agents are specialized and do not delegate to other agents. This prevents marketplace agents from accessing other agents' private prompts.
+8. **Runtime selection.** If the total tool count exceeds 12, a lightweight LLM call picks the most relevant subset (up to 6) for this specific query. A `request_tools` meta-tool is automatically registered, allowing the LLM to dynamically load additional tools mid-conversation if the initial selection missed a needed tool. Selection failure is non-fatal -- the agent falls back to the full set. See [Progressive Disclosure](/architecture/progressive-disclosure).
+9. **Hook registration.** The agent's declared hooks (from `model_config_json.hooks`) are instantiated and attached to a `HookRegistry`. Each chosen tool call will be wrapped: `PreToolUse` hooks can block or rewrite args before execution; `PostToolUse` hooks can rewrite the observation before it returns to the LLM. Hooks run **outside the LLM loop** and cannot be bypassed by agent instructions — see [Hook System](/architecture/hook-system).
 
-결과: 에이전트는 정확히 필요한 도구만 봅니다. 커넥터가 없고 KB가 없는 간단한 에이전트는 5개의 도구를 볼 수 있습니다. 3개의 엔터프라이즈 시스템에 연결되고 기반이 있는 지식 기반과 2개의 MCP 서버를 가진 Hub 에이전트는 30개를 볼 수 있습니다 — 하지만 선택 후에는 가장 관련성 높은 6개만 컨텍스트에 들어갑니다.
+The result: the agent sees exactly the tools it needs, no more. A simple agent with no connectors and no KB might see 5 tools. An agent connected to 3 enterprise systems with a grounded knowledge base and 2 MCP servers might see 30 -- but after selection, only the 6 most relevant make it into the context.
 
-## 언제 무엇을 사용할지
+## When to use what
 
-| 필요 사항 | 사용 대상 | 이유 |
+| Need | Use | Why |
 |------|-----|-----|
-| 일반 계산, 코드 실행, 텍스트 변환 | Built-in Tool | 항상 사용 가능, 설정 불필요 |
-| 엔터프라이즈 시스템 통합 (ERP, CRM, OA) | Connector | 인증 거버넌스, 감사 추적, 작업 수준 접근 제어 |
-| 인용 및 증거를 포함한 지식 검색 | Knowledge Base | RAG 파이프라인, 근거 기반 생성, 신뢰도 점수 |
-| 타사 도구 생태계 | MCP | 표준 프로토콜, 프로세스 격리, 커뮤니티 서버 |
-| 조직 정책, SOP, 처리 절차 | Skill (동적 레시피) | 기본적으로 전역, 점진적 로딩, 가시성 범위 지정 |
-| 대화 중 호출되는 결정론적이고 반복 가능한 다단계 프로세스 | Workflow (정적 레시피) | 매번 동일한 출력, 감사 추적, 소유자로 실행; 사람이 승인하는 것은 트리거 전용 |
-| 전문 에이전트에 작업 위임 | CallAgent | 의미론적 에이전트 라우팅, 전체 도구 상속, 병렬 실행 |
-| 직접 데이터베이스 접근 | Database Connector | 스키마 인식 SQL, 선택적 읽기 전용 적용 |
-| 사용자 정의 내부 도구 | MCP 또는 Built-in | MCP는 프로세스 격리용; built-in은 긴밀한 통합용 |
+| General computation, code execution, text transforms | Built-in Tool | Always available, no config needed |
+| Enterprise system integration (ERP, CRM, OA) | Connector | Auth governance, audit trail, per-action confirmation |
+| Knowledge retrieval with citations and evidence | Knowledge Base | RAG pipeline, grounded generation, confidence scoring |
+| Third-party tool ecosystem | MCP | Standard protocol, process isolation, community servers |
+| Organizational policies, SOPs, handling procedures | Skill (dynamic recipe) | Global by default, progressive loading, visibility-scoped |
+| A deterministic, repeatable multi-step process invoked mid-conversation | Workflow (static recipe) | Same output every run, audit trail, runs as the chatting user; human-gated ones stay trigger-only |
+| Delegating tasks to specialist agents | CallAgent | Semantic agent routing, full tool inheritance, parallel execution |
+| Direct database access | Database Connector | Schema-aware SQL, read-only by default |
+| Custom internal tooling | MCP or Built-in | MCP for process isolation; built-in for tight integration |
 
-이 범주들은 상호 배타적이지 않습니다. 단일 에이전트는 한 번의 대화에서 다섯 가지 기능 소스를 모두 사용할 수 있습니다 — 불만 처리 SOP를 위해 Skill을 로드하고, 정책 문서를 위해 지식 베이스를 쿼리하고, ERP를 확인하기 위해 커넥터를 호출하고, 전문 에이전트에 분석을 위임하고 (자동 모드), built-in 도구를 사용하여 결과를 포맷합니다.
+The categories are not mutually exclusive. A single agent can use all five capability sources in one conversation -- loading a Skill for the complaint handling SOP, querying a knowledge base for policy documents, calling a connector to check the ERP, delegating analysis to a specialist agent (in Auto mode), and using a built-in tool to format the results.
 
-## 실행 엔진은 직교한다
+## Execution engines are orthogonal
 
-도구 시스템과 실행 엔진은 독립적인 관심사이다. LLM 기반 엔진(ReAct 및 DAG)은 동일한 `ToolRegistry`에서 도구를 사용한다. 엔진의 선택은 도구가 어떻게 조율되는지에 영향을 미치며, 사용 가능한 도구에는 영향을 미치지 않는다.
+The tool system and execution engines are independent concerns. The LLM-driven engines (ReAct and DAG) consume tools from the same `ToolRegistry`. The choice of engine affects how tools are orchestrated, not which tools are available.
 
-**ReAct**는 반복적인 도구 루프이다. 에이전트가 추론하고, 도구를 선택하고, 결과를 관찰하고, 완료될 때까지 반복한다. 다음 단계가 이전 결과에 따라 달라지는 탐색적이고 대화형인 작업에 탁월하다. 루프는 최대 50회 반복 실행되며 ContextGuard를 통한 반복별 컨텍스트 관리가 이루어진다. 구현 세부 사항은 [ReAct 엔진](/architecture/react-engine)을 참조하라.
+**ReAct** is an iterative tool loop. The agent reasons, picks a tool, observes the result, and repeats until done. It excels at exploratory, conversational tasks where the next step depends on the previous result. The loop runs up to 20 iterations by default (`REACT_MAX_ITERATIONS`) with per-iteration context management via ContextGuard. See [ReAct Engine](/architecture/react-engine) for implementation details.
 
-**DAG**는 목표를 2-6개의 병렬 단계로 분해한다. 각 단계는 독립적인 ReAct 에이전트를 실행한다. PlanAnalyzer는 목표가 달성되었는지 평가하고, 그렇지 않으면 파이프라인이 자동으로 재계획한다(최대 3라운드). DAG는 동시에 실행할 수 있는 명확한 하위 작업이 있는 작업에 탁월하다 -- "세 가지 소스를 검색하고 결과를 비교"하는 작업이 세 번의 검색 시간이 아닌 한 번의 검색 시간에 완료된다. 전체 파이프라인은 [DAG 엔진](/architecture/dag-engine)을 참조하라.
+**DAG** decomposes a goal into 2-6 parallel steps. Each step runs an independent ReAct agent. A PlanAnalyzer evaluates whether the goal was achieved; if not, the pipeline re-plans autonomously (up to 3 rounds in total: the first plan plus 2 re-plans). DAG excels at tasks with clear subtasks that can run concurrently -- "search three sources and compare results" finishes in the time of one search, not three. See [DAG Engine](/architecture/dag-engine) for the full pipeline.
 
-두 엔진은 인프라를 공유한다: 신뢰할 수 있는 구조화된 출력을 위한 `structured_llm_call`, 토큰 예산 강제를 위한 `ContextGuard`, 도구 해석을 위한 `ToolRegistry`. 새로운 도구를 추가하려면 두 엔진 모두에 대한 변경이 필요 없다. 새로운 엔진을 추가하려면(필요한 경우) 도구 시스템에 대한 변경이 필요 없다.
+The two engines share infrastructure: `structured_llm_call` for reliable structured output, `ContextGuard` for token budget enforcement, and the `ToolRegistry` for tool resolution. Adding a new tool requires zero changes to either engine. Adding a new engine (should one ever be needed) requires zero changes to the tool system.
 
-두 엔진은 또한 자동 모드(에이전트 미선택)에서 `CallAgentTool`을 통한 **에이전트 위임**을 지원한다. 기본 함수 호출 모드에서 LLM은 단일 턴에서 여러 `call_agent` 호출을 호출할 수 있으며, 이는 `asyncio.gather`를 통해 동시에 실행된다. 각 위임된 에이전트는 자신의 `ToolRegistry`를 받고 완전한 실행 단위로 실행된다. 에이전트 발견, 글로벌 SOP로서의 스킬, 에이전트 위임의 상세한 설계는 [에이전트 및 리소스 발견](/architecture/agent-discovery)을 참조하라.
+Both engines also support **agent delegation** via `CallAgentTool` when in Auto mode (no agent selected). In native function-calling mode, the LLM can invoke multiple `call_agent` calls in a single turn, which execute concurrently via `asyncio.gather`. Each delegated agent receives its own `ToolRegistry` and runs as a full execution unit. For the detailed design of agent discovery, Skills as global SOPs, and agent delegation, see [Agent & Resource Discovery](/architecture/agent-discovery).
 
 ### Workflow Engine — 세 번째 패러다임
 
@@ -153,12 +153,12 @@ flowchart TD
 
 같은 그림의 두 가지 해석: **도구는 푸시되지 않고 풀링됩니다**(LLM이 선택하지 않은 Skill이나 Workflow는 절대 실행되지 않습니다. 이것이 동적 기능이 쿼리가 하나와 일치할 때까지 보이지 않는 것처럼 느껴질 수 있는 이유입니다), 그리고 **Skills와 Workflows는 피어**로서 서로 중첩되지 않고 하나의 런타임을 통해 라우팅됩니다.
 
-## 라이프사이클 개요
+## Lifecycle overview
 
-**시작.** `start.sh`는 Alembic 마이그레이션을 실행하고, FastAPI 서버를 시작하며, 내장 도구를 발견하고, 사전 구성된 글로벌 서버에 대한 MCP 서버 연결을 설정합니다.
+**Startup.** `start.sh` runs Alembic migrations, launches the FastAPI server, discovers built-in tools, and establishes MCP server connections for any pre-configured global servers.
 
-**요청별.** JWT 인증, 에이전트 구성 조회, 도구 조립(위의 8단계 파이프라인), 엔진 선택(에이전트 구성에 따른 ReAct 또는 DAG), SSE 스트리밍을 통한 실행 및 결과 지속성.
+**Per-request.** JWT authentication, agent configuration lookup, tool assembly (the 9-step pipeline above), engine selection (ReAct or DAG based on agent config), execution with SSE streaming, and result persistence.
 
-**횡단 관심사.** [컨텍스트 관리](/architecture/context-management)(5계층 토큰 예산)는 모든 LLM 호출을 오버플로우로부터 보호합니다. [Hook 시스템](/architecture/hook-system)은 모든 도구 호출을 플랫폼 제어 `PreToolUse` / `PostToolUse` 로직으로 래핑합니다 — 인간 개입 승인(`FeishuGateHook`), 감사 로깅 및 읽기 전용 모드 적용 뒤의 메커니즘입니다. 감사 로깅은 모든 커넥터 도구 호출을 추적합니다. 샌드박스 격리는 코드 실행 도구를 포함합니다. 2-LLM 아키텍처(스마트 + 빠름)는 계획, 실행 및 합성 전반에서 비용을 최적화합니다.
+**Cross-cutting concerns.** [Context management](/architecture/context-management) (5-layer token budget) protects every LLM call from overflow. The [Hook System](/architecture/hook-system) wraps every tool call with platform-controlled `PreToolUse` / `PostToolUse` logic — the mechanism behind human-in-the-loop approval (`ApprovalGateHook`), audit logging, and read-only-mode enforcement. Audit logging tracks every connector tool invocation. Sandbox isolation contains code execution tools. The two-LLM architecture (smart + fast) optimizes cost across planning, execution, and synthesis.
 
-아키텍처는 각 관심사 — 도구 등록, 실행 오케스트레이션, 컨텍스트 관리, 보안 — 이 독립적으로 진화할 수 있도록 설계되었습니다. 새로운 커넥터 유형, 새로운 실행 엔진 또는 새로운 컨텍스트 전략을 시스템 전체에 걸친 연쇄 변경 없이 추가할 수 있습니다.
+The architecture is designed so that each concern -- tool registration, execution orchestration, context management, security -- can evolve independently. A new connector type, a new execution engine, or a new context strategy can be added without cascading changes across the system.

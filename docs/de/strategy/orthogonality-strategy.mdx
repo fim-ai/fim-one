@@ -21,17 +21,17 @@ Wir klassifizieren jede Funktion nach ihrer Beziehung zum LLM-Fortschritt und or
 
 # Analyse
 
-### Warum die Connector-Plattform vollständig orthogonal ist
+### Why Connector Platform is fully orthogonal
 
-Modelle werden niemals nativ:
-- API-Anmeldedaten speichern und verschlüsseln (AES-GCM)
-- OAuth-Flows verwalten (Autorisierungsseite → Callback → Refresh-Token)
-- Sich mit einer Kingdee/金蝶 ERP-Datenbank eines Kunden verbinden
-- Benachrichtigungen an Lark/飞书 oder WeCom/企微 senden
-- RBAC für die Kontrolle durchsetzen, wer welchen Connector nutzen kann
-- Jeden Tool-Aufruf für Compliance-Audits protokollieren
+Models will never natively:
+- Store and encrypt API credentials (Fernet)
+- Manage OAuth flows (authorization page → callback → refresh token)
+- Connect to a client's Kingdee/金蝶 ERP database
+- Push notifications to Lark/飞书 or WeCom/企微
+- Enforce RBAC on who can use which connector
+- Log every tool call for compliance auditing
 
-Dies sind Engineering-Probleme, keine Intelligenzprobleme. Ein 10x intelligenteres Modell kann diese Dinge ohne Infrastruktur immer noch nicht tun.
+These are engineering problems, not intelligence problems. A model 10x smarter still can't do these things without infrastructure.
 
 ### Warum AI Connector Builder "tailwind" ist und nicht "absorbiert" wird
 
@@ -72,25 +72,25 @@ Der Aufbau einer konkurrierenden Orchestrierungsschicht würde bedeuten, gegen F
 
 | Feature | Version | Why orthogonal |
 |---------|---------|---------------|
-| Connector-Entität + CRUD | v0.6.1 | Enterprise-Integration, reine Technik |
-| Benutzer-spezifische Anmeldedaten (AES-GCM) | v0.6.2 | Sicherheitsinfrastruktur |
-| Confirmation Gate | v0.6.2 | Sicherheitsmechanismus für Schreibvorgänge |
-| Connector Export/Import/Fork | v0.7 | Verteilungsmechanismus |
-| OAuth 2.0 | v0.7 | Protokollimplementierung |
-| MCP Server Export | v0.7 | Interoperabilität (abhängig von MCP-Adoption) |
-| Datenbank-Connector | v0.8 | Direkter DB-Zugriff, Connection Pools |
-| Message Push | v0.8 | Benachrichtigungskanäle |
-| RBAC | v0.8 | Zugriffskontrolle, Governance |
+| Connector entity + CRUD | v0.6.1 | Enterprise integration, pure engineering |
+| Per-user credentials (Fernet) | v0.6.2 | Security infrastructure |
+| Confirmation Gate | v0.6.2 | Safety mechanism for write operations |
+| Connector Export/Import/Fork | v0.7 | Distribution mechanism |
+| OAuth 2.0 | v0.7 | Protocol implementation |
+| MCP Server Export | not implemented | Interoperability (depends on MCP adoption) |
+| Database Connector | v0.8 | Direct DB access, connection pools |
+| Message Push | v0.8 | Notification channels |
+| RBAC | v0.8 | Access control, governance |
 | Operation Audit Log | v0.8 | Compliance |
-| Sandbox Hardening | v0.9 | Sicherheitsisolation |
-| Observability (OTel, Circuit Breaker) | v0.9 | Produktionsbetrieb |
-| Connector Analytics | v0.9 | Nutzungsverfolgung |
-| Docker Compose | v0.9 | Bereitstellung |
-| Admin Dashboard | v1.0 | Management-UI |
-| Scheduled Jobs / Webhooks | v1.0 | Automatisierungs-Trigger |
-| Batch Execution | v1.0 | Enterprise-Scale-Verarbeitung |
-| Embeddable Widget / iframe | v1.0 | Liefermodus |
-| Enterprise Security | v1.0 | Compliance (Verschlüsselung, IP-Whitelisting) |
+| Sandbox Hardening | v0.9 | Security isolation |
+| Observability (circuit breaker shipped; OTel not implemented) | v0.9 | Production operations |
+| Connector Analytics | v0.9 | Usage tracking |
+| Docker Compose | v0.9 | Deployment |
+| Admin Dashboard | v1.0 | Management UI |
+| Scheduled Jobs / Webhooks | v1.0 | Automation triggers |
+| Batch Execution | v1.0 | Enterprise-scale processing |
+| Embeddable Widget / iframe | v1.0 | Delivery mode |
+| Enterprise Security | v1.0 | Compliance (encryption, IP whitelisting) |
 
 ### Tailwind
 

@@ -36,56 +36,56 @@ Group: "Production"
 
 ---
 
-## 添加提供商
+## Adding a Provider
 
 <Steps>
-  <Step title="打开模型页面">
-    导航到**管理员**（侧边栏）并选择**模型**选项卡。
+  <Step title="Open the Models page">
+    Open **Admin Panel** from the user menu and select the **Models** tab.
   </Step>
-  <Step title="点击添加提供商">
-    在提供商部分的右上方区域点击**添加提供商**按钮。
+  <Step title="Click Add Provider">
+    Click the **Add Provider** button in the top-right area of the Providers section.
   </Step>
-  <Step title="选择预设或使用自定义端点">
-    对话框显示常见提供商的预设按钮：**OpenAI**、**Anthropic (Claude)**、**Google Gemini**、**DeepSeek**、**Mistral AI** 和 **OpenAI Compatible**（自定义端点）。点击预设会自动填充提供商名称和基础 URL。
+  <Step title="Select a preset or use a custom endpoint">
+    The dialog offers presets for 16 providers — **OpenAI**, **Anthropic (Claude)**, **Google Gemini**, **DeepSeek**, **Mistral AI**, **xAI (Grok)**, **OpenRouter**, **Ollama**, and the China and Global endpoints of **Qwen**, **GLM**, **Moonshot** and **MiniMax** — plus **OpenAI Compatible** (custom endpoint). Clicking a preset auto-fills the provider name and base URL.
 
-    如果您的提供商未列出（例如第三方中继、Ollama 或任何其他 OpenAI 兼容端点），请选择 **OpenAI Compatible**。
+    Choose **OpenAI Compatible** if your provider is not listed (e.g., a third-party relay or any other OpenAI-compatible endpoint).
   </Step>
-  <Step title="输入凭证">
-    填写必需字段：
-    - **提供商名称** -- 友好标签（例如"我的 OpenAI 账户"）。这仅供您参考。
-    - **基础 URL** -- API 端点。预设会自动填充此字段。对于自定义端点，输入完整 URL（例如 Ollama 的 `http://localhost:11434/v1`）。
-    - **API 密钥** -- 您的提供商的 API 密钥。对于本地模型（Ollama），输入任何非空字符串（例如 `ollama`）。
+  <Step title="Enter credentials">
+    Fill in the required fields:
+    - **Provider Name** -- A friendly label (e.g., "My OpenAI Account"). This is for your reference only.
+    - **Base URL** -- The API endpoint. Presets fill this automatically. For custom endpoints, enter the full URL (e.g., `http://localhost:11434/v1` for Ollama).
+    - **API Key** -- Your provider's API key. With the Ollama preset the API key can be left empty.
   </Step>
-  <Step title="保存">
-    点击**创建**。提供商出现在列表中，您可以在其下添加模型。
+  <Step title="Save">
+    Click **Create**. The provider appears in the list, ready for you to add models under it.
   </Step>
 </Steps>
 
 <Tip>
-您可以为同一服务创建多个提供商。例如，两个具有不同 API 密钥的"OpenAI"提供商用于单独的计费账户，或"Anthropic (Direct)"和"Anthropic (via Bedrock)"具有不同的基础 URL。
+You can create multiple providers for the same service. For example, two "OpenAI" providers with different API keys for separate billing accounts, or an "Anthropic (Direct)" and "Anthropic (via Bedrock)" with different base URLs.
 </Tip>
 
 ---
 
-## 添加模型
+## Adding a Model
 
 <Steps>
-  <Step title="展开提供商">
-    在"模型"页面上，单击现有提供商旁边的 chevron 以展开它并查看其模型。
+  <Step title="Expand a provider">
+    On the Models page, click the chevron next to an existing provider to expand it and see its models.
   </Step>
-  <Step title="单击添加模型">
-    单击展开的提供商下方显示的**添加模型**按钮。
+  <Step title="Click Add Model">
+    Click the **Add Model** button that appears under the expanded provider.
   </Step>
-  <Step title="输入模型详情">
-    填写两个必填字段：
-    - **显示名称** -- 在 UI 中显示的人类可读名称（例如"GPT-4o"、"Claude Sonnet"）。可以是任何你喜欢的名称。
-    - **模型名称 (API)** -- 发送到 API 的确切模型标识符（例如 `gpt-4o`、`claude-sonnet-4-6`、`deepseek-chat`）。这必须与你的提供商期望的内容相匹配。
+  <Step title="Enter model details">
+    Fill in the two required fields:
+    - **Display Name** -- A human-readable name shown in the UI (e.g., "GPT-4o", "Claude Sonnet"). Can be anything you like.
+    - **Model ID** -- The exact model identifier sent to the API (e.g., `gpt-4o`, `claude-sonnet-4-6`, `deepseek-chat`). This must match what your provider expects.
   </Step>
-  <Step title="配置高级设置（可选）">
-    单击**高级**切换以显示其他设置：最大输出令牌、上下文大小、温度、原生函数调用和 JSON 模式。有关每个设置的详细信息，请参阅下面的[高级设置](#advanced-settings)部分。
+  <Step title="Configure advanced settings (optional)">
+    Click the **Advanced** toggle to reveal additional settings: Max Output Tokens, Context Size, Temperature, Native Function Calling, JSON Mode, and Vision Support (whether the model accepts images; see [Document Processing](/concepts/document-processing)). See the [Advanced Settings](#advanced-settings) section below for details on each.
   </Step>
-  <Step title="保存">
-    单击**创建**。该模型出现在其提供商下方，现在可用于分配给模型组。
+  <Step title="Save">
+    Click **Create**. The model appears under its provider and is now available for assignment to model groups.
   </Step>
 </Steps>
 
@@ -132,12 +132,12 @@ Group: "Production"
 
 ### Temperature
 
-**默认值：** 0.7（如果未设置，则继承自全局设置）
+**Default:** 0.7 (inherited from the global setting if left unset)
 
-控制模型输出的随机性。范围：0（确定性）到 2（高度创意）。
+Controls the randomness of model output. Range: 0 (deterministic) to 2 (highly creative).
 
 <Note>
-当为 Anthropic 模型启用推理/扩展思考时，系统会自动将温度强制设置为 1.0。您无需手动设置此项。
+When reasoning/extended thinking is enabled for Anthropic models, the system handles temperature: Claude 4.5 and older are sent 1.0, and Claude 4.6 and newer have the parameter removed. You do not need to set this manually.
 </Note>
 
 ### 最大输出令牌数
@@ -272,15 +272,15 @@ Group: "Production"
 
 模型组允许您将模型分配给特定角色，并通过单击切换配置。
 
-### 角色
+### Roles
 
-FIM One 使用三个模型角色。每个角色在执行管道中服务于不同的目的：
+FIM One uses three model roles. Each role serves a different purpose in the execution pipeline:
 
-| 角色 | 用途 | 建议 |
+| Role | Used for | Recommendation |
 |---|---|---|
-| **General** | 规划、分析、ReAct 智能体、DAG 步骤执行（默认） | 您最强大的模型（例如，`gpt-4o`、`claude-sonnet-4-6`） |
-| **Fast** | `model_hint="fast"` DAG 步骤、上下文压缩、历史摘要 | 针对速度和成本优化（例如，`gpt-5-nano`、`deepseek-chat`）。如果未分配，则回退到 General。 |
-| **Reasoning** | `model_hint="reasoning"` DAG 步骤、领域升级的 ReAct（法律/医疗/金融） | 强大的推理模型（例如，`o3`、`deepseek-reasoner`）。如果未分配，则回退到 General。 |
+| **General** | Planning, analysis, ReAct agent, DAG step execution (default) | Your most capable model (e.g., `gpt-4o`, `claude-sonnet-4-6`) |
+| **Fast** | `model_hint="fast"` DAG steps, context compaction, history summary | Optimized for speed and cost (e.g., `gpt-5-nano`, `deepseek-chat`). Falls back to General if not assigned. |
+| **Reasoning** | `model_hint="reasoning"` DAG steps, domain-escalated ReAct (legal, medical, financial, tax, compliance, patent by default) | A strong reasoning model (e.g., `o3`, `deepseek-reasoner`). Falls back to General if not assigned. |
 
 ### 创建模型组
 
@@ -302,37 +302,39 @@ FIM One 使用三个模型角色。每个角色在执行管道中服务于不同
   </Step>
 </Steps>
 
-### 激活一个组
+### Activating a Group
 
-要激活一个模型组，请使用"模型"页面上的下拉菜单或激活控制。一次只能激活一个组。激活一个组会立即将其模型分配应用到所有新对话。
+To activate a model group, use the dropdown or activation control on the Models page. Only one group can be active at a time. Activating a group applies its model assignments to the next message in every conversation.
 
-要停用当前组（回退到 ENV 配置的模型），请选择停用选项。
+To deactivate the current group (falling back to ENV-configured models), select the deactivate option.
 
 <Warning>
-切换活跃的模型组会影响**所有新对话**系统范围内。正在进行的现有对话将继续使用启动时处于活跃状态的模型。
+Switching the active model group takes effect system-wide on the next message in every conversation, new or existing. A response that is already streaming finishes on the previous model.
 </Warning>
 
 ---
 
-## 领域感知模型升级
+## Domain-Aware Model Escalation
 
-当自动路由器检测到专业领域 — **法律**、**医疗** 或 **财务** — 系统会自动将模型选择升级到超出常规角色分配的范围：
+When the domain classifier detects a specialist domain — by default **legal**, **medical**, **financial**, **tax**, **compliance**, or **patent** (`ESCALATION_DOMAINS`) — the system automatically escalates model selection beyond the normal role assignments:
 
-- **ReAct 模式：** 通用模型被替换为**推理模型**（`registry.get_by_role("reasoning")`）。这意味着模型组中的推理槽不仅用于 DAG `model_hint="reasoning"` 步骤 — 它还充当领域特定 ReAct 任务的升级目标。
-- **DAG 模式：** 领域上下文被注入到规划器提示中，指导它为需要专家级准确性的步骤分配 `model_hint="reasoning"`。
+- **ReAct mode:** The general model is replaced by the **reasoning model** (`registry.get_by_role("reasoning")`). This means the Reasoning slot in your Model Group is not only used for DAG `model_hint="reasoning"` steps — it also serves as the escalation target for domain-specific ReAct tasks.
+- **DAG mode:** Domain context is injected into the planner prompt, guiding it to assign `model_hint="reasoning"` to steps requiring specialist accuracy.
 
-此升级是自动的，除了在活跃模型组中分配推理模型（或通过 `REASONING_LLM_MODEL` 环境变量）外，不需要任何配置。
+This escalation is automatic and requires no configuration beyond having a Reasoning model assigned in your active Model Group (or via the `REASONING_LLM_MODEL` env var).
 
-**相关环境变量：**
+**Related environment variables:**
 
-| 变量 | 默认值 | 描述 |
+| Variable | Default | Description |
 |---|---|---|
-| `DAG_CITATION_VERIFICATION` | `true` | 为法律/医疗/财务内容启用步骤后引用验证。通过正则表达式提取引用，并通过 LLM 判断验证准确性。 |
-| `DAG_STRUCTURED_CONTEXT_MULTIPLIER` | `3.0` | DAG 依赖上下文中结构化内容（引用、表格、代码块）的截断预算乘数。较高的值可保留步骤间更多的结构化数据。 |
+| `DAG_CITATION_VERIFICATION` | `true` | Enable post-step citation verification for specialist-domain content. Extracts citations via regex and verifies accuracy via LLM judgment. |
+| `DAG_STRUCTURED_CONTEXT_MULTIPLIER` | `3.0` | Truncation budget multiplier for structured content (citations, tables, code blocks) in DAG dependency context. Higher values preserve more structured data between steps. |
 
 <Tip>
-如果您的工作负载涉及法律、医疗或财务查询，请确保您的推理模型是强大的推理器（例如 `o3`、`claude-opus-4-6`、`deepseek-reasoner`）。自动升级依赖于此槽位由能够处理领域关键准确性要求的模型填充。
+If your workload involves legal, medical, or financial queries, ensure your Reasoning model is a strong reasoner (e.g., `o3`, `claude-opus-4-6`, `deepseek-reasoner`). The automatic escalation relies on this slot being populated with a model that can handle domain-critical accuracy requirements.
 </Tip>
+
+---
 
 ## ENV 回退
 
@@ -348,14 +350,14 @@ FIM One 使用三个模型角色。每个角色在执行管道中服务于不同
 
 有关完整的 ENV 参考，请参阅[环境变量](/configuration/environment-variables#llm-required)。
 
-## 导出和导入
+## Export and Import
 
-模型页面支持将整个提供商和模型配置（提供商、模型和组）导出为 JSON 文件，并在另一个实例上导入。这对以下情况很有用：
+The Models page supports exporting your entire provider and model configuration (providers, models, and groups) as a JSON file, and importing it on another instance. This is useful for:
 
-- 在开发、测试和生产环境之间迁移配置
-- 与团队成员共享已知的良好模型设置
-- 在进行更改前备份配置
+- Migrating configuration between development, staging, and production environments
+- Sharing a known-good model setup with team members
+- Backing up your configuration before making changes
 
 <Warning>
-导出的配置**不**包括 API 密钥。导入后，您必须编辑每个提供商以输入相应的 API 密钥。
+Exported configuration does **not** include API keys. The import dialog asks for a key for each new provider; providers that already exist keep theirs.
 </Warning>

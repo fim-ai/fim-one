@@ -4,11 +4,11 @@ icon: "building"
 description: "Ressourcenteilung auf Teamebene mit rollenbasiertem Zugriff, optionaler Überprüfung und Credential-Fallback."
 ---
 
-## Übersicht
+## Overview
 
-Organisationen sind FIM Ones Einheit für Teamzusammenarbeit. Sie ermöglichen es Benutzergruppen, Ressourcen — Agents, Connectors, MCP Servers, Workflows und Skills — innerhalb eines vertrauenswürdigen Bereichs zu teilen. Knowledge Bases sind die eine Ausnahme: Sie sind niemals teilbar und erreichen andere Mitglieder nur als interne Abhängigkeit eines freigegebenen Agents (siehe [Sharing and credentials](/architecture/sharing-and-credentials)).
+Organizations are FIM One's unit for team collaboration. They let groups of users share resources — Agents, API Connectors, and MCP Servers, plus Skills and Workflows when an administrator has enabled those modules — within a trusted scope. Knowledge Bases and database connectors are the exceptions: database connectors cannot be published, and Knowledge Bases are never shareable, and reach other members only as an internal dependency of a shared Agent (see [Sharing and credentials](/architecture/sharing-and-credentials)).
 
-Jede Ressource in FIM One beginnt als **persönlich** (nur für ihren Ersteller sichtbar). Wenn Sie eine Ressource in einer Organisation veröffentlichen, wird sie **auffindbar** für andere Organisationsmitglieder über den Marktplatz im Organisationsbereich. Mitglieder durchsuchen die freigegebenen Ressourcen der Organisation und abonnieren die, die sie benötigen.
+Every resource in FIM One starts as **personal** (visible only to its creator). When you publish a resource to an organization, it becomes **discoverable** by other org members through the Market's organization scope. Members browse the org's shared resources and subscribe to the ones they need.
 
 ```mermaid
 flowchart TD
@@ -27,7 +27,7 @@ flowchart TD
     O -.->|"visible but not subscribed"| M3
 ```
 
-Organisationen und der globale Marktplatz nutzen das gleiche abonnementbasierte Zugriffsmodell. Der Hauptunterschied ist Vertrauen: Organisationen stellen ein Team oder Unternehmen dar, in dem sich Mitglieder kennen und vertrauen, daher ist eine Überprüfung optional und die Anmeldedatenverwaltung ist unkompliziert.
+Organizations and the global Market share the same subscription-based access model. The key difference is trust: organizations represent a team or company where members know and trust each other, so review is optional and credential sharing is straightforward.
 
 ## Erstellen und Verwalten von Organisationen
 
@@ -70,28 +70,27 @@ sequenceDiagram
     P-->>M: Agent appears in workspace
 ```
 
-### Überprüfungssystem
+### Review System
 
-Die Überprüfung ist **optional** und wird pro Ressourcentyp konfiguriert. Jede Organisation hat unabhängige Umschalter:
+Review is **optional** and configured per resource type. Each organization has independent toggle flags:
 
 - `review_agents`
 - `review_connectors`
-- `review_kbs`
 - `review_mcp_servers`
 - `review_workflows`
 - `review_skills`
 
-Wenn die Überprüfung für einen Ressourcentyp deaktiviert ist, sind veröffentlichte Ressourcen sofort für Mitglieder auffindbar — keine Admin-Aktion erforderlich. Wenn die Überprüfung aktiviert ist, treten Ressourcen in einen `pending_review`-Status ein und erfordern eine Admin-Genehmigung, bevor sie sichtbar werden.
+When review is disabled for a resource type, published resources are immediately discoverable by members — no admin action needed. When review is enabled, resources enter a `pending_review` state and require admin approval before they become visible.
 
 <Tip>
-Organisationseigentümer umgehen die Überprüfung automatisch. Ihre veröffentlichten Ressourcen sind immer sofort auffindbar.
+Organization owners bypass review automatically. Their published resources are always immediately discoverable.
 </Tip>
 
-Diese Flexibilität ermöglicht es Organisationen, ihre Governance-Anforderungen zu erfüllen. Ein kleines Startup könnte alle Überprüfungs-Umschalter deaktivieren, um reibungsloses Teilen zu ermöglichen, während ein compliance-fokussiertes Unternehmen die Überprüfung für Agenten und Konnektoren aktiviert, um die Kontrolle zu behalten.
+This flexibility lets organizations match their governance needs. A small startup might disable all review toggles for frictionless sharing, while a compliance-focused enterprise enables review on Agents and Connectors to maintain oversight.
 
 ## Credential Fallback
 
-Konnektoren und MCP Server erfordern häufig Anmeldedaten (API-Schlüssel, Datenbankpasswörter, OAuth-Token). FIM One bietet einen **Fallback-Mechanismus**, damit Mitglieder nicht jede Anmeldedaten selbst konfigurieren müssen.
+Connectors and MCP Servers often require credentials (API keys, database passwords, OAuth tokens). FIM One provides a **fallback mechanism** so that members don't have to configure every credential themselves.
 
 ```mermaid
 flowchart TD
@@ -109,15 +108,51 @@ flowchart TD
     C2 -->|No| ERR2["Error: credential required"]
 ```
 
-Es gibt zwei Modi:
+There are two modes:
 
-- **Fallback aktiviert** (`allow_fallback=true`, Standard): Mitglieder, die ihre eigenen Anmeldedaten nicht bereitstellen, verwenden automatisch die Standard-Anmeldedaten des Eigentümers. Dies funktioniert gut für von Teams gemeinsam genutzte API-Schlüssel oder interne Services, bei denen ein einzelner Schlüssel das ganze Team abdeckt.
-- **Fallback deaktiviert** (`allow_fallback=false`): Jedes Mitglied muss seine eigenen Anmeldedaten konfigurieren. Dies ist angemessen, wenn jeder Benutzer einen persönlichen API-Schlüssel benötigt (z. B. für benutzerbasierte SaaS-Lizenzen).
+- **Fallback disabled** (`allow_fallback=false`, the default): Every member must configure their own credentials; until they do, the tool is hidden from their agents. This is appropriate when each user needs a personal API key (for example, per-seat SaaS licenses).
+- **Fallback enabled** (`allow_fallback=true`, set by the owner): Members who don't provide their own credentials automatically use the owner's default credentials. This works well for team-shared API keys or internal services where a single key covers the whole team.
 
-Ressourcen, die keine Anmeldedaten erfordern – wie ein schreibgeschützter öffentlicher API-Konnektor oder ein Agent ohne Authentifizierung – funktionieren sofort nach dem Abonnement. Keine Konfiguration erforderlich.
+Resources that don't require credentials — such as a read-only public API connector or an Agent with no authentication — work immediately after subscription. No configuration needed.
+
+### MCP servers: the address is the owner's
+
+A member's own credential for an MCP server is a set of environment variables (stdio servers) or request headers (SSE and HTTP servers). The server's URL and its launch arguments have no per-member counterpart: whoever connects, connects to what the owner configured. If the owner put a credential there, a member's own credential does not replace it.
+
+So with fallback disabled, an MCP server whose address looks like it carries a credential can be used by its owner only. Other members are refused with `mcp_server_address_private`, whether or not they saved credentials of their own, and the server's card tells them so instead of asking for keys. The owner sees a warning on the card and in the editor once the server is shared, or once one of the owner's shared agents or workflows uses it (the people who run those are refused the server the same way) (the save and publish responses carry `warning: "mcp_server_address_private"` and, in `warning_reasons`, which part of the address counted: the query string, the user-info, a path segment, an argument name and so on, never the value), and has two ways out:
+
+- move the credential into a header or an environment variable, so that each member brings their own; or
+- enable fallback, which lends the server as configured: the address, and with it the headers and environment variables saved on the server. Members without credentials of their own then act under the owner's.
+
+What counts as "carries a credential" is decided by shape:
+
+| Where | Counts | Example |
+| --- | --- | --- |
+| URL | user-info, any query string, a fragment | `https://user:pass@host/mcp`, `https://host/mcp?token=…` |
+| URL | a path segment shaped like a token: a UUID, 16 or more hex digits, 20 or more characters mixing letters and digits, or a known token prefix; a `;name=value` path parameter | `https://mcp.zapier.com/api/mcp/s/<secret>/mcp`, `https://host/<32 hex>/sse`, `https://host/mcp;token=…` |
+| Launch arguments | a flag, assignment or header with `token`, `key`, `secret`, `password`, `passwd`, `pwd`, `auth`, `authorization`, `credential(s)`, `bearer`, `pat`, `dsn`, `connection`, `cookie` or `session` as a whole word of its name, given a value | `--api-key VALUE`, `--token=VALUE`, `API_KEY=VALUE`, `apiKey=VALUE`, `X-Api-Key: VALUE` |
+| Launch arguments | a URL that counts by the URL rows above | `--endpoint=https://host/?key=…`, `mcp-remote https://host/<32 hex>/sse` |
+| Launch arguments | a known token shape | `sk-…`, `ghp_…`, `gho_…`, `github_pat_…`, `xoxb-…`, `xoxp-…`, `AKIA…`, `glpat-…`, `ntn_…`, `hf_…`, `AIza…`, a JWT, `Bearer <token>`; any UUID or value of 32 or more characters mixing letters and digits |
+| Launch arguments | Docker's `-e NAME=VALUE` / `--env NAME=VALUE`, whatever the name | `docker run -e NOTION_API=…` (`-e NAME` alone passes the variable through and does not count) |
+| Launch arguments | a connection string with `Password=` / `Pwd=`, or a DSN starting `user:pass@` | `Server=db;Password=…`, `user:pass@tcp(db:3306)/app` |
+
+Names are read word by word (split at `-`, `_`, `.` and camelCase), so `--keyboard-layout`, `--tokenizer`, `--author` and `--hotkey` do not count; neither do plurals (`--max-tokens 100`), a name that negates (`--no-auth true`), a name that describes where or how (`--key-file /path`, `--auth-type basic`), or a switch for a value (`--auth none`). Any query string counts, `?v=2` included: nothing tells a version from a token. The path rule is a heuristic, which is why the warning says the address *may* contain a credential: an opaque id in the path that is no secret counts, and a short or worded secret segment (`https://host/mcp/hunter2/sse`) does not. The fixed addresses of the well-known remote servers (GitHub, Linear, Notion, Sentry, Atlassian, Context7, Cloudflare, Asana, Hugging Face) are not flagged. The check also does not recognise a short secret passed as a bare positional argument or after a flag whose name says nothing (`-k hunter2`, `--id abc123`); a long opaque one is recognised wherever it stands. Keep credentials in headers and environment variables, where they are encrypted at rest and never shown to other members.
+
+Other members never see a shared server's URL, command or launch arguments, with fallback on or off.
+
+### Agents with a custom model endpoint are the owner's
+
+An agent normally selects a model an administrator configured under Admin → Models. Its inline model settings (`model_config_json`, set through the API) may instead name an endpoint of their own: a `base_url` with the `api_key` that goes with it. Every turn of a conversation with such an agent, the user's messages and files included, is sent to that address. Selecting a model configuration the agent's owner created with a `base_url` of its own (`model_config_id` or `fast_model_config_id`) counts the same. An agent uses only model configurations an administrator created or its owner created; one that names another user's configuration falls back to the default model.
+
+By default such an agent is used by its owner only:
+
+- it cannot be published or resubmitted for review, and a shared agent cannot be given a `base_url` (`agent_model_endpoint_not_shareable`, 400);
+- an agent that was shared before it had to follow this rule stays published, but everyone except its owner is refused with `agent_model_endpoint_private` (403), in chat, when another agent delegates to it and in a workflow Agent step, and it is not offered for delegation. Its owner can remove the `base_url` and select a configured model, which makes it usable by subscribers again.
+
+A platform administrator who accepts that members' conversations go to the endpoints authors choose sets `shared_custom_model_endpoints` to `true` with `PATCH /api/admin/settings`; publishing such agents is then allowed and subscribers use them as before. The setting is off unless it has been set.
 
 <Info>
-Der Credential Fallback gilt nur nach dem Abonnement einer Ressource durch ein Mitglied. Der Fallback-Mechanismus bestimmt, wie Anmeldedaten zur Laufzeit aufgelöst werden, nicht ob die Ressource zugänglich ist.
+Credential fallback only applies after a member subscribes to the resource. The fallback mechanism determines how credentials are resolved at runtime, not whether the resource is accessible.
 </Info>
 
 ## Ressourcensichtbarkeit
@@ -141,15 +176,15 @@ A resource is available in your workspace if:
 Das Veröffentlichen einer Ressource in einer Organisation gewährt keinen automatischen Zugriff. Mitglieder müssen sich über den Markt im Org-Geltungsbereich anmelden, um die Ressource zu ihrem Arbeitsbereich hinzuzufügen.
 </Warning>
 
-## Infrastructure-Ressourcen (organisationsweit, kein Abonnement)
+## Infrastructure Resources (org-wide, no subscription)
 
-Eine zweite Klasse von organisationsweit geltenden Ressourcen folgt **nicht** dem oben beschriebenen Lebenszyklus „persönlich → veröffentlichen → abonnieren". Diese werden **einmalig von einem Org-Eigentümer oder Admin konfiguriert** und sind dann transparent für jeden Agenten in der Organisation verfügbar:
+A second class of org-scoped resource does **not** follow the personal → publish → subscribe lifecycle above. These are **configured once by an Org Owner or Admin** and then transparently available to every agent in the org:
 
-| Ressource | Zweck | Konfiguriert von | Verwendet von |
+| Resource | Purpose | Configured by | Consumed by |
 |---|---|---|---|
-| **Channels** | Ausgehende Verbindung zu einer IM-Plattform (derzeit Feishu; Slack / WeCom / Teams geplant) | Org-Eigentümer / Admin | [Hook-System](/architecture/hook-system) jedes Agenten und proaktive Benachrichtigungswerkzeuge |
-| **OAuth-Anbieter** | Social-Login-Anmeldedaten (GitHub, Google, Feishu, Discord) | Systemadministrator (Umgebungsvariablen) | Anmeldeseite |
-| **API-Schlüssel** | Programmatische Zugriffstokens für Headless-Clients | Jeder Benutzer, organisationsweit | Externe Integrationen |
+| **Channels** | Outbound bridge to an IM platform (Feishu today; Slack / WeCom / Teams planned) | Org Owner / Admin | Every agent's [Hook System](/architecture/hook-system) and proactive-notification tools |
+| **OAuth Providers** | Social-login credentials (GitHub, Google, Feishu, Discord) | System admin (env vars) | Sign-in page |
+| **API Keys** | Programmatic access tokens for headless clients | Each user, for their own account | External integrations |
 
 ```mermaid
 flowchart LR
@@ -161,25 +196,27 @@ flowchart LR
         A3["Agent C"]
     end
     Admin -->|"configure once"| Ch
-    A1 -. "uses via feishu_gate hook" .-> Ch
+    A1 -. "uses via approval_gate hook" .-> Ch
     A2 -. "uses for notifications" .-> Ch
     A3 -. "uses for approval cards" .-> Ch
 ```
 
-Der Schlüsseunterschied: **veröffentlichbare Ressourcen** (Agenten, Connectoren, Skills, …) sind benutzerbasierte Artefakte, die ein explizites Mitgliederabonnement erfordern; **Infrastruktur-Ressourcen** (Channels, OAuth, API-Schlüssel) sind Plattform-Level-Verkabelung, die alle Agenten implizit gemeinsam nutzen. Channels sind speziell die IM-Hotline für die gesamte Organisation — ein gut gepflegter Feishu-Channel unterstützt jedes Approval Gate eines Agenten, jeden geplanten Bericht, jedes Eskalationsereignis.
+The key distinction: **publishable resources** (Agents, Connectors, Skills, …) are per-user artifacts that need explicit member subscription; **infrastructure resources** (Channels, OAuth, API keys) are platform-level wiring that all agents share implicitly. Channels specifically are the IM hotline for the whole org — one well-maintained Feishu channel backs every agent's approval gate, every scheduled report, every escalation event.
 
-Siehe [Channels-Übersicht](/configuration/channels/overview) für den Channel-Lebenszyklus und unterstützte Plattformen.
+See [Channels overview](/configuration/channels/overview) for the channel lifecycle and supported platforms.
 
 ## Praktische Szenarien
 
-### Team-Datenbankverbindung teilen
+### Team Sharing an API Connector
 
-1. Alice erstellt einen Connector zur PostgreSQL-Datenbank des Teams
-2. Alice veröffentlicht ihn im Org-Bereich ihres Teams (die Überprüfung ist für Connectors deaktiviert)
-3. Der Connector wird im Org-Bereich des Marktes auffindbar
-4. Bob durchsucht die gemeinsamen Ressourcen der Org, findet den Connector und abonniert ihn
-5. Der Connector erscheint in Bobs Workspace und verwendet Alices Datenbankzugriffsdaten als Fallback
-6. Carol abonniert ebenfalls. Dave (ein externer Auftragnehmer) abonniert und konfiguriert stattdessen seine eigenen Anmeldedaten mit Lesezugriff
+1. Alice creates a Connector to the team's internal order API and turns on **Allow fallback**
+2. Alice publishes it to her team's org (review is disabled for connectors)
+3. The Connector becomes discoverable in the org scope of the Market
+4. Bob browses the org's shared resources, finds the Connector, and subscribes
+5. The Connector appears in Bob's workspace, using Alice's API credentials as fallback
+6. Carol subscribes too. Dave (an external contractor) subscribes and configures his own read-only credentials instead
+
+Database connectors cannot be published to an organization or the Market; each user who needs one creates their own.
 
 ### Organisation mit strenger Überprüfung
 
@@ -189,12 +226,12 @@ Siehe [Channels-Übersicht](/configuration/channels/overview) für den Channel-L
 4. Der Agent wird auffindbar — andere Mitglieder können ihn jetzt finden und abonnieren
 5. Wenn der Herausgeber den genehmigten Agenten später bearbeitet, wird dieser automatisch zur erneuten Genehmigung in den Zustand `pending_review` zurückgesetzt
 
-### Selektive Abonnements in einer großen Organisation
+### Selective Subscription in a Large Organization
 
-1. Eine Organisation veröffentlicht 50+ Konnektoren, die interne APIs, Datenbanken und Services von Drittanbietern abdecken
-2. Das Datateam abonniert nur Datenbank-Konnektoren und Analytics-APIs
-3. Das Marketing-Team abonniert nur die CRM- und E-Mail-Plattform-Konnektoren
-4. Der Arbeitsbereich jedes Teammitglieds bleibt fokussiert und übersichtlich
+1. An organization publishes 50+ Connectors covering internal APIs and third-party services
+2. The data team subscribes only to the data-warehouse and analytics API Connectors
+3. The marketing team subscribes only to the CRM and email platform Connectors
+4. Each team member's workspace stays focused and uncluttered
 
 ## Siehe auch
 

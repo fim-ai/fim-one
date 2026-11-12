@@ -55,5 +55,7 @@
   "credentialSetupRequired": "Les dépendances suivantes nécessitent une configuration des identifiants :",
   "credentialSetupWarning": "Sans identifiants, cette ressource ne peut pas fonctionner correctement.",
   "configureDep": "Configurer",
-  "yours": "Le vôtre"
+  "yours": "Le vôtre",
+  "ownerOnlyDeps": "Only their owner can use the following MCP servers, so this resource runs without them. Their address or launch arguments may contain a credential and the owner has kept credential fallback off; keys of your own do not change that.",
+  "ownerOnlyServer": "Only its owner can use this MCP server at present: its address or launch arguments may contain a credential and the owner has kept credential fallback off. Subscribing and saving keys of your own does not change that."
 }

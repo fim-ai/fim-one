@@ -94,15 +94,15 @@ Le générateur lit les paramètres actuels, rédige un prompt système, attache
 
 ---
 
-## Fonctionnement
+## How it works
 
-Sous le capot, les deux générateurs partagent la même infrastructure que les agents réguliers :
+Under the hood, the builders share the same infrastructure as regular agents:
 
-| Mode du générateur | Mécanisme |
+| Builder mode | Mechanism |
 |-------------|-----------|
-| **Suggestions rapides** | Un seul appel d'inférence LLM génère la configuration complète en JSON structuré |
-| **Générateur avancé** | Une boucle d'agent ReAct : Raisonner → appeler un outil de générateur → observer le résultat → décider de l'étape suivante |
+| **Quick suggestions** | A single LLM inference call generates the full configuration as structured JSON |
+| **Advanced builder** | A ReAct agent loop: Reason → call a builder tool → observe the result → decide next step |
 
-Le générateur avancé est un agent ReAct complet qui dispose d'un ensemble d'outils restreint — uniquement les 9 outils de générateur de Connecteur ou les 6 outils de générateur d'Agent, pas d'outils web ou de calcul. Il lit l'état actuel de la ressource cible, planifie les modifications nécessaires, appelle les outils appropriés et vérifie le résultat avant de déclarer la tâche terminée.
+The advanced builder is a full ReAct agent that happens to have a restricted toolset — the 9 Connector or 6 Agent builder tools (the Connector builder also gets web search and fetch, to read API docs) and no code execution. A third builder with its own tool set configures database connectors: connection test, table listing, schema annotation and sample queries. It reads the current state of the target resource, plans what needs to change, calls the appropriate tools, and verifies the result before declaring it done.
 
-Cela signifie que le générateur avancé peut gérer l'ambiguïté : si l'import OpenAPI crée 30 actions mais que seulement 5 sont pertinentes, vous pouvez lui dire « conservez uniquement les points de terminaison liés aux commandes » et il supprimera le reste.
+This means the advanced builder can handle ambiguity: if the OpenAPI import creates 30 actions but only 5 are relevant, you can tell it "keep only the order-related endpoints" and it will delete the rest.

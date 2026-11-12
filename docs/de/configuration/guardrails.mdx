@@ -10,32 +10,34 @@ Sie sind bewusst orthogonal zum bestehenden Tool-Berechtigungsgate
 `core/security/*` — Schutzvorrichtungen inspizieren *was gesagt wird*, nicht *was
 ausgeführt wird*.
 
-## Die drei Schichten
+## The three layers
 
-| Schicht        | Besitzer                       | Was wird kontrolliert                      |
-| -------------- | ------------------------------ | ------------------------------------------ |
-| Permission     | `core/hooks/*`                 | Ob ein bestimmter Tool-Aufruf ausgeführt werden darf   |
-| Security       | `core/security/*`              | Credentials, SSRF, MCP-Authentifizierung      |
-| **Guardrail**  | `core/agent/guardrail.py`      | Inhalt der Benutzereingabe und Modellausgabe     |
+| Layer        | Owner                          | What it gates                              |
+| ------------ | ------------------------------ | ------------------------------------------ |
+| Permission   | `core/hooks/*`                 | Whether a specific tool call may execute   |
+| Security     | `core/security/*`              | Credentials, SSRF, MCP authentication      |
+| **Guardrail** | `core/agent/guardrail.py`     | Content of user input and model output     |
 
-Eine Runde durchläuft alle drei unabhängig voneinander:
+A turn passes through all three independently:
 
-* Input-Guardrails laufen **vor jedem LLM-Aufruf**, sodass ein Auslöser die
-  Runde abbricht, ohne Token auszugeben.
-* Das Permission-Gate läuft **nach** der Entscheidung des Modells, welches Tool aufgerufen werden soll.
-* Sicherheitsprüfungen laufen **innerhalb** jeder Connector- / Provider-Integration.
-* Output-Guardrails laufen **nach** der Erstellung der endgültigen Antwort durch den Agenten
-  und bevor sie an den Benutzer gestreamt wird.
+* Input guardrails run **before any LLM call**, so a tripwire aborts the
+  turn without spending tokens.
+* The permission gate runs **after** the model decides which tool to invoke.
+* Security checks run **inside** each connector / provider integration.
+* Output guardrails run **after** the agent has produced its final answer.
+  When the answer is streamed token by token, the check runs once the
+  stream completes, so text may already be on screen when the tripwire
+  fires.
 
-## Standard aktivierte Schutzvorrichtungen
+## Built-in guardrails
 
-| Name           | Seite    | Verhalten |
+| Name           | Side    | Behaviour |
 | -------------- | ------- | --------- |
-| `jailbreak`    | input   | Regex-basierter Detektor für bekannte Prompt-Override-Phrasen („ignore previous instructions", DAN, developer-mode, etc.). Standardmäßig aktiviert. |
-| `max_length`   | output  | Auslöser, wenn die Agent-Antwort `FIM_GUARDRAIL_MAX_OUTPUT_CHARS` überschreitet (Standard 50.000 Zeichen). Standardmäßig deaktiviert. |
+| `jailbreak`    | input   | Regex-based detector for known prompt-override phrases ("ignore previous instructions", DAN, developer-mode, etc.). Enabled by default. |
+| `max_length`   | output  | Tripwires when the agent answer exceeds `FIM_GUARDRAIL_MAX_OUTPUT_CHARS` (default 50 000 chars). Disabled by default. |
 
-Wenn ein Auslöser aktiviert wird, gibt der Chat-Stream ein strukturiertes
-`guardrail_tripwired` Server-Sent Event aus:
+When a tripwire fires, the chat stream emits a structured
+`guardrail_tripwired` Server-Sent Event:
 
 ```json
 {
@@ -50,7 +52,7 @@ Wenn ein Auslöser aktiviert wird, gibt der Chat-Stream ein strukturiertes
 }
 ```
 
-Das Frontend rendert dies als „blockiert"-Hinweis statt eines generischen Fehlers.
+The frontend renders this as a "blocked" notice instead of a generic error.
 
 ## Konfiguration
 

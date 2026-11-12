@@ -1,41 +1,41 @@
 ---
-title: "Artefacts"
+title: "Artifacts"
 icon: "file-export"
-description: "Parcourez, prévisualisez et téléchargez tous les fichiers générés par l'IA dans vos conversations."
+description: "Browse, preview, and download all AI-generated files across your conversations."
 ---
 
-Les artefacts sont les fichiers que les agents IA produisent lors des conversations — images, pages HTML, fichiers de code, documents et autres résultats. La page Artefacts est une galerie multi-conversations qui vous permet de trouver, prévisualiser et télécharger tout ce que vos agents ont créé.
+Artifacts are the files that AI agents produce during conversations — images, HTML pages, code files, documents, and other outputs. The Artifacts page is a cross-conversation gallery that lets you find, preview, and download the deliverables your agents have produced.
 
-## Comment les artefacts sont créés
+## How Artifacts Are Created
 
-Tout outil qui retourne un `ToolResult` avec une liste `artifacts` génère des fichiers téléchargeables. L'agent n'a pas besoin d'instructions spéciales — la création d'artefacts est un effet secondaire naturel de l'exécution d'outils.
+Any tool that returns a `ToolResult` with an `artifacts` list generates downloadable files. The agent doesn't need special instructions — artifact creation is a natural side effect of tool execution.
 
-Producteurs courants :
+Common producers:
 
-| Outil | Type d'artefact | Exemple |
+| Tool | Artifact Type | Example |
 |------|--------------|---------|
-| `python_exec` | Images, HTML, CSV, JSON | Un graphique matplotlib enregistré en PNG |
-| `template_render` | HTML | Un rapport formaté |
-| Outils d'exécution de code | Tout fichier | Code généré, données exportées |
-| Génération d'images | Images | Illustrations générées par IA |
+| `python_exec` | Images, HTML, CSV, JSON | A matplotlib chart saved as PNG |
+| `template_render` | HTML | A formatted report |
+| Code execution tools | Any file | Generated code, exported data |
+| Image generation | Images | AI-generated illustrations |
 
-Quand un outil produit un artefact, il apparaît en ligne dans la conversation en tant que pièce jointe téléchargeable. Tous les artefacts sont également collectés dans la galerie d'artefacts pour une navigation entre conversations.
+When a tool produces an artifact, it appears inline in the conversation as a downloadable attachment. Deliverables — the files an answer hands over as final output — are also collected in the Artifacts gallery for cross-conversation browsing; intermediate files stay in their conversation.
 
-## La Galerie
+## The Gallery
 
-La page Artefacts (`/artifacts`) fournit une vue unifiée de tous les fichiers que vous avez générés dans toutes les conversations.
+The Artifacts page (`/artifacts`) provides a unified view of the deliverables from all your conversations.
 
-### Filtrage
+### Filtering
 
-Quatre filtres de type réduisent la vue :
+Filter tabs narrow the view (All plus four types):
 
-| Filtre | Types de fichiers |
+| Filter | File Types |
 |--------|-----------|
-| **Tous** | Tout |
+| **All** | Everything |
 | **Images** | PNG, JPG, GIF, SVG, WebP |
-| **HTML** | Pages HTML et rapports |
-| **Code** | Python, JavaScript, TypeScript, JSON, YAML, XML, CSS, SQL, Markdown, scripts shell |
-| **Fichiers** | Tout le reste — CSV, PDF, texte brut, fichiers binaires |
+| **HTML** | HTML pages and reports |
+| **Code** | Any text file except HTML, plus JSON: source code, Markdown, CSV, plain text, YAML |
+| **Files** | Everything else — PDF, archives, binary files |
 
 ### Aperçu
 
@@ -56,6 +56,6 @@ Chaque artefact affiche :
 - Horodatage de création
 - Conversation source (cliquez pour revenir à la conversation où il a été généré)
 
-## Stockage
+## Storage
 
-Les artefacts sont stockés sur le système de fichiers du serveur, un répertoire par conversation. Chaque artefact reçoit un nom de fichier basé sur un UUID, rendant les URL impossibles à deviner sans accès à la conversation. Les fichiers sont servis directement — aucun enregistrement de base de données pour les artefacts individuels, ce qui maintient la couche de stockage simple et rapide.
+Artifacts are stored on the server filesystem, one directory per conversation. Each artifact is stored under a random 12-character id plus its original name; download URLs carry the conversation UUID. Files are served directly — no database records for individual artifacts, keeping the storage layer simple and fast.

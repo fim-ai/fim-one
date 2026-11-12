@@ -45,38 +45,44 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:9000' > frontend/.env.local
 
 > **ビルド時の注意**：`NEXT_PUBLIC_*` 変数は `pnpm build` 時に JS バンドルに埋め込まれます。実行時に変更する場合（例：ルート `.env` 経由）は効果がありません — これが、ローカル開発のみで `frontend/.env.local` に配置される理由です。
 
-## LLM（必須）
+## LLM (Required)
 
-| 変数 | 必須 | デフォルト | 説明 |
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| `LLM_API_KEY` | **はい** | — | LLM 提供元の API キー |
-| `LLM_BASE_URL` | いいえ | `https://api.openai.com/v1` | OpenAI 互換 API のベース URL |
-| `LLM_MODEL` | いいえ | `gpt-4o` | メインモデル — 計画、分析、ReAct エージェントに使用 |
-| `FAST_LLM_MODEL` | いいえ | *( `LLM_MODEL` にフォールバック)* | 高速モデル — DAG のステップ実行に使用（低コストで高速） |
-| `LLM_TEMPERATURE` | いいえ | `0.7` | デフォルトのサンプリング温度 |
-| `LLM_CONTEXT_SIZE` | いいえ | `128000` | メイン LLM のコンテキストウィンドウサイズ |
-| `LLM_MAX_OUTPUT_TOKENS` | いいえ | `64000` | メイン LLM の呼び出しあたりの最大出力 token 数 |
-| `FAST_LLM_API_KEY` | いいえ | *( `LLM_API_KEY` にフォールバック)* | 高速モデルの提供元の API キー。高速モデルがメインモデルとは異なる提供元でホストされている場合に使用 |
-| `FAST_LLM_BASE_URL` | いいえ | *( `LLM_BASE_URL` にフォールバック)* | 高速モデルの提供元のベース URL |
-| `FAST_LLM_TEMPERATURE` | いいえ | *( `LLM_TEMPERATURE` にフォールバック)* | 高速モデルのサンプリング温度 |
-| `FAST_LLM_CONTEXT_SIZE` | いいえ | *( `LLM_CONTEXT_SIZE` にフォールバック)* | 高速 LLM のコンテキストウィンドウサイズ |
-| `FAST_LLM_MAX_OUTPUT_TOKENS` | いいえ | *( `LLM_MAX_OUTPUT_TOKENS` にフォールバック)* | 高速 LLM の呼び出しあたりの最大出力 token 数 |
-| `LLM_REASONING_EFFORT` | いいえ | *(無効)* | 対応モデル（OpenAI o-series、Gemini 2.5 以降、Claude）の拡張思考レベル。値：`low`、`medium`、`high`。LiteLLM が各提供元のネイティブ形式に自動的に変換します。モデルの思考連鎖は UI の「thinking」ステップに表示されます。 |
-| `LLM_REASONING_BUDGET_TOKENS` | いいえ | *(effort から自動設定)* | Anthropic の思考に対する明示的な token 予算（最小 1024）。OpenAI/Gemini では effort レベルが直接使用されます。`LLM_REASONING_EFFORT` が設定されている場合にのみ有効です。 |
-| `FIM_GPT5_RESPONSES_MODE` | いいえ | `native` | GPT-5.x モデルが使用するプロトコル。`native` は OpenAI Responses API と直接通信し、各ターンの暗号化された推論を再送するため、モデルはツール呼び出しをまたいで思考連鎖を維持します。`bridge` は LiteLLM の chat-completions 変換を使用します。動作しますが、毎回のラウンドで推論を再導出します。`off` は通常の chat completions を強制し、ツールが存在する場合は推論が無効になります。デバッグ時以外は設定しないでください。`/v1/responses` ルートがないエンドポイントでは、それぞれ独自にフォールバックします。GPT-5.x 以降（GPT-6、GPT-6.1）に適用されます。`gpt-6.1-*` と `gpt-6-astra` は推論を無効にできず、chat completions ではどの effort レベルでも function tools が拒否されます。そのため、`native` または `bridge` と `/v1/responses` を提供するエンドポイントが必要です。そうでない場合、ツール呼び出しは失敗します。 |
-| `LLM_JSON_MODE_ENABLED` | いいえ | `true` | `response_format=json_object` のグローバル切り替え。提供元が LiteLLM の assistant prefill injection を拒否する場合（例：AWS Bedrock relay で、2 回目以降のエージェント反復時に `ValidationException` が発生する場合）は、`false` に設定してください。無効にすると、構造化呼び出しでは JSON mode をスキップし、通常のテキストに対する正規表現抽出にフォールバックします。品質への影響はありません。すべてのモデル（ENV で設定されたモデルと Admin で設定されたモデル）に適用されます。 |
-| `LLM_TOOL_CHOICE_ENABLED` | いいえ | `true` | 構造化出力の抽出（Level 1 — Native Function Calling）における強制 `tool_choice` のグローバル切り替え。モデルが強制ツール選択でエラーを返す場合（例：`tool_choice='specified'` を拒否する思考モードのモデル）は、`false` に設定してください。無効にすると、構造化呼び出しではネイティブ FC をスキップし、JSON Mode から開始します。Settings → Models → Advanced でモデルごとに上書きできます。 |
-| `REASONING_LLM_MODEL` | いいえ | *( `LLM_MODEL` にフォールバック)* | 推論用モデルの名前。深い分析が必要なタスク（例：DAG の計画、計画の分析）に使用 |
-| `REASONING_LLM_API_KEY` | いいえ | *( `LLM_API_KEY` にフォールバック)* | 推論用モデルの提供元の API キー |
-| `REASONING_LLM_BASE_URL` | いいえ | *( `LLM_BASE_URL` にフォールバック)* | 推論用モデルの提供元のベース URL |
-| `REASONING_LLM_TEMPERATURE` | いいえ | *( `LLM_TEMPERATURE` にフォールバック)* | 推論用モデルのサンプリング温度 |
-| `REASONING_LLM_CONTEXT_SIZE` | いいえ | *( `LLM_CONTEXT_SIZE` にフォールバック)* | 推論用モデルのコンテキストウィンドウサイズ |
-| `REASONING_LLM_MAX_OUTPUT_TOKENS` | いいえ | *( `LLM_MAX_OUTPUT_TOKENS` にフォールバック)* | 推論用モデルの呼び出しあたりの最大出力 token 数 |
-| `REASONING_LLM_EFFORT` | いいえ | *( `LLM_REASONING_EFFORT` にフォールバック)* | 推論用モデル層の推論 effort レベル。値：`low`、`medium`、`high` |
-| `REASONING_LLM_BUDGET` | いいえ | *( `LLM_REASONING_BUDGET_TOKENS` にフォールバック)* | 推論の token 予算（主に Anthropic 用）。推論用モデル層の自動計算された予算を上書きします |
-| `LLM_SUPPORTS_VISION` | いいえ | `true` *(楽観的)* | ENV モードでのドキュメント OCR（MarkItDown + `markitdown-ocr` 経由）を試行するかどうかを制御します。Admin → Models で有効なモデルグループが設定されていない場合（ENV のみのモード）に限り適用されます。デフォルトの `true` が有効な場合、`convert_to_markdown` と RAG の取り込み処理は `LLM_MODEL` が vision に対応しているとみなし、画像 OCR のために呼び出します。これは一般的な選択肢（`gpt-4o`、`claude-3-5-sonnet`、`gemini-1.5-pro/flash`）では正しい動作です。ENV で設定した `LLM_MODEL` が vision に対応していない場合（例：`deepseek-v3`、`qwen-chat`、`llama-3.1`、`gpt-3.5-turbo`、`o1-mini`）は、失敗する vision 呼び出しをスキップしてテキストのみの抽出に直接進むよう、`false` に設定してください。Admin → Models パネルに有効なモデルグループがある場合、このフラグは無視され、グループの `supports_vision` フラグが優先されます。DB モードでは、管理者が選定した設定が常に信頼できる唯一の情報源となります。 |
+| `LLM_API_KEY` | **Yes** | — | API key for the LLM provider |
+| `LLM_BASE_URL` | No | `https://api.openai.com/v1` | Base URL of any OpenAI-compatible API |
+| `LLM_MODEL` | No | `gpt-4o` | Main model — used for planning, analysis, and ReAct agent |
+| `FAST_LLM_MODEL` | No | *(falls back to `LLM_MODEL`)* | Fast model — used for DAG step execution (cheaper, faster) |
+| `LLM_TEMPERATURE` | No | `0.7` | Default sampling temperature |
+| `LLM_CONTEXT_SIZE` | No | `128000` | Context window size for the main LLM |
+| `LLM_MAX_OUTPUT_TOKENS` | No | `64000` | Max output tokens per call for the main LLM |
+| `FAST_LLM_API_KEY` | No | *(falls back to `LLM_API_KEY`)* | API key for the fast model provider. Use when the fast model is hosted by a different provider than the main model |
+| `FAST_LLM_BASE_URL` | No | *(falls back to `LLM_BASE_URL`)* | Base URL for the fast model provider |
+| `FAST_LLM_TEMPERATURE` | No | *(falls back to `LLM_TEMPERATURE`)* | Sampling temperature for the fast model |
+| `FAST_LLM_CONTEXT_SIZE` | No | *(falls back to `LLM_CONTEXT_SIZE`)* | Context window size for the fast LLM |
+| `FAST_LLM_MAX_OUTPUT_TOKENS` | No | *(falls back to `LLM_MAX_OUTPUT_TOKENS`)* | Max output tokens per call for the fast LLM |
+| `LLM_REASONING_EFFORT` | No | *(disabled)* | Extended thinking level for supported models (OpenAI o-series, Gemini 2.5+, Claude). Values: `low`, `medium`, `high`. LiteLLM translates this to each provider's native format automatically. The model's chain-of-thought is surfaced in the UI "thinking" step. |
+| `LLM_REASONING_BUDGET_TOKENS` | No | *(auto from effort)* | Explicit token budget for Anthropic thinking (minimum 1024). For OpenAI/Gemini the effort level is used directly. Only effective when `LLM_REASONING_EFFORT` is set. |
+| `FIM_GPT5_RESPONSES_MODE` | No | `native` | Which protocol GPT-5.x models use. `native` talks the OpenAI Responses API directly and replays each turn's encrypted reasoning, so the model keeps its chain of thought across tool calls. `bridge` uses LiteLLM's chat-completions translation, which works but re-derives the reasoning every round. `off` forces plain chat completions, where reasoning is disabled whenever tools are present. Leave unset unless you are debugging; endpoints without a `/v1/responses` route fall back on their own. Applies to GPT-5.x and later (GPT-6, GPT-6.1). `gpt-6.1-*` and `gpt-6-astra` cannot switch reasoning off, and their chat completions reject function tools at any effort: they need `native` or `bridge` and an endpoint that serves `/v1/responses`, otherwise tool calls fail. |
+| `LLM_JSON_MODE_ENABLED` | No | `true` | Global toggle for `response_format=json_object`. Set to `false` if your provider rejects LiteLLM's assistant prefill injection (e.g. AWS Bedrock relay → `ValidationException` on the 2nd+ agent iteration). When disabled, structured calls skip JSON mode and fall back to plain-text regex extraction — no quality loss. Applies to all models (ENV-configured and Admin-configured). |
+| `LLM_TOOL_CHOICE_ENABLED` | No | `true` | Global toggle for forced `tool_choice` in structured output extraction (Level 1 — Native Function Calling). Set to `false` if your model returns errors with forced tool selection (e.g. thinking-mode models that reject `tool_choice='specified'`). When disabled, structured calls skip native FC and start from JSON Mode. Per-model override available in Settings → Models → Advanced. |
+| `REASONING_LLM_MODEL` | No | *(falls back to `LLM_MODEL`)* | Model name for the reasoning tier. Used for tasks requiring deep analysis (e.g., DAG planning, plan analysis) |
+| `REASONING_LLM_API_KEY` | No | *(falls back to `LLM_API_KEY`)* | API key for the reasoning model provider |
+| `REASONING_LLM_BASE_URL` | No | *(falls back to `LLM_BASE_URL`)* | Base URL for the reasoning model provider |
+| `REASONING_LLM_TEMPERATURE` | No | *(falls back to `LLM_TEMPERATURE`)* | Sampling temperature for the reasoning model |
+| `REASONING_LLM_CONTEXT_SIZE` | No | *(falls back to `LLM_CONTEXT_SIZE`)* | Context window size for the reasoning model |
+| `REASONING_LLM_MAX_OUTPUT_TOKENS` | No | *(falls back to `LLM_MAX_OUTPUT_TOKENS`)* | Max output tokens per call for the reasoning model |
+| `REASONING_LLM_EFFORT` | No | *(falls back to `LLM_REASONING_EFFORT`)* | Reasoning effort level for the reasoning model tier. Values: `low`, `medium`, `high` |
+| `REASONING_LLM_BUDGET` | No | *(falls back to `LLM_REASONING_BUDGET_TOKENS`)* | Token budget for reasoning (primarily Anthropic). Overrides the auto-calculated budget for the reasoning tier |
+| `LLM_SUPPORTS_VISION` | No | `true` *(optimistic)* | Controls whether ENV-mode document OCR (via MarkItDown + `markitdown-ocr`) is attempted. Only applies when **no active model group is configured in Admin → Models** (pure ENV mode). When the default `true` is in effect, `convert_to_markdown` and RAG ingestion assume `LLM_MODEL` supports vision and call it for image OCR — this is the correct behavior for all common choices (`gpt-4o`, `claude-3-5-sonnet`, `gemini-1.5-pro/flash`). Set this to `false` when your ENV-configured `LLM_MODEL` does **not** support vision (e.g. `deepseek-v3`, `qwen-chat`, `llama-3.1`, `gpt-3.5-turbo`, `o1-mini`) to skip the failing vision call and go straight to text-only extraction. When an active model group exists in the Admin → Models panel, this flag is ignored and the group's `supports_vision` flags take over — the admin-curated choice is always the source of truth in DB mode. |
+| `LLM_MAX_RETRIES` | No | `3` | Retry attempts on transient errors (429, 5xx, 529, timeouts) for every LLM, embedding, and reranker call. Backoff is exponential with jitter and honours `Retry-After` |
+| `LLM_RETRY_BASE_DELAY` | No | `1.0` | Initial backoff delay in seconds |
+| `LLM_RETRY_MAX_DELAY` | No | `60.0` | Upper bound on the backoff delay in seconds |
+| `LLM_HTTP_MAX_CONNECTIONS` | No | `100` | Size of the shared HTTP connection pool used for LLM, embedding, and reranker calls |
+| `LLM_HTTP_MAX_KEEPALIVE` | No | `20` | Idle connections kept for reuse. Set to `0` to open a new connection for every call when a relay or NAT drops idle connections |
+| `LLM_HTTP_KEEPALIVE_EXPIRY` | No | `5.0` | Seconds an idle connection may be reused before it is dropped |
 
-> **解決の優先順位**：ユーザー設定 → Admin Models（DB）→ ENV フォールバック。Admin → Models で「General」ロールの管理者モデルが設定されている場合、これらの ENV 変数はフォールバックとしてのみ使用されます。ヘルスチェックでは両方の情報源が考慮されます。
+> **Resolution order**: User Preference → Admin Models (DB) → ENV Fallback. If an admin model with role "General" is configured in Admin → Models, these ENV vars serve as fallback only. The health check considers both sources.
 
 ### ENV フォールバックを管理パネルと同期させる
 
@@ -90,24 +96,26 @@ uv run scripts/env_from_active_group.py --image-gen   # also point IMAGE_GEN_* a
 
 スクリプトは ORM を介してプロバイダーキーを読み取り、そのままファイルに書き込みます。内容が出力されることはありません。完了後、アプリを再起動してください。
 
-### MarkItDown OCR 解像度
+### MarkItDown OCR Resolution
 
-`convert_to_markdown` 組み込みツールと RAG 取り込みパイプラインは、Microsoft の [MarkItDown](https://github.com/microsoft/markitdown) と公式の [`markitdown-ocr`](https://github.com/microsoft/markitdown/tree/main/packages/markitdown-ocr) プラグインを使用して、ドキュメントからテキストを抽出します。ビジョン対応 LLM が利用可能な場合、埋め込み画像とスキャン PDF ページの OCR も含まれます。
+The `convert_to_markdown` built-in tool and the RAG ingestion pipeline both use Microsoft's [MarkItDown](https://github.com/microsoft/markitdown) + the official [`markitdown-ocr`](https://github.com/microsoft/markitdown/tree/main/packages/markitdown-ocr) plugin to extract text from documents — including OCR on embedded images and scanned PDF pages when a vision-capable LLM is available.
 
-**Vision LLM 解像度順序**（最初にマッチしたものが優先）:
+The tool reads two kinds of source: a file the calling user uploaded, named by its `file_id`, and an `http://` or `https://` URL. URLs are downloaded with the same restrictions as `web_fetch` and `http_request` (no private, loopback, link-local or metadata addresses, redirects included). Local paths, `file://`, `data:` and other schemes are refused.
 
-| # | ソース | 優先度の根拠 |
+**Vision LLM resolution order** (first match wins):
+
+| # | Source | Priority rationale |
 |---|---|---|
-| 1 | エージェントの**プライマリ LLM**（`supports_vision=True` の場合） | 一貫性：同じ API キー、同じ課金バケット、会話と同じレート制限プール。 |
-| 2 | アクティブな**ModelGroup → Fast Model**（`supports_vision=True` の場合） | Fast モデル（`gpt-4o-mini`、`claude-haiku`、`gemini-1.5-flash`）は理想的な OCR ワークホース — 低コスト、低レイテンシ、通常はマルチモーダル。 |
-| 3 | アクティブな**ModelGroup → General Model**（`supports_vision=True` の場合） | プライマリがグループに含まれていない場合の品質フォールバック。 |
-| 4 | **ENV プライマリ LLM**（`LLM_MODEL`） | 純粋な ENV モード用の楽観的フォールバック。アクティブな ModelGroup が存在しない場合のみ使用。`LLM_SUPPORTS_VISION` でゲート制御。 |
+| 1 | Agent's **primary LLM** if `supports_vision=True` | Consistency: same API key, same billing bucket, same rate-limit pool as the conversation. |
+| 2 | Active **ModelGroup → Fast Model** if `supports_vision=True` | Fast models (`gpt-4o-mini`, `claude-haiku`, `gemini-1.5-flash`) are the ideal OCR workhorse — cheap, low-latency, usually multimodal. |
+| 3 | Active **ModelGroup → General Model** if `supports_vision=True` | Quality fallback when the primary is not in the group. |
+| 4 | **ENV primary LLM** (`LLM_MODEL`) | Optimistic fallback for pure ENV mode. Only taken when no active ModelGroup exists. Gated by `LLM_SUPPORTS_VISION`. |
 
-**推理モデルは OCR に優先されません。** 推理層（`o1`、`o3-mini`、`DeepSeek-R1`）は歴史的にビジョンサポートが不足しており、OCR には不適切なツールです — OCR は知覚タスクであり、熟考ではありません。ワークスペースに `supports_vision=True` の推理モデルのみがある場合、プライマリ LLM パスを介して選択されますが、リゾルバーは fast/general より上にランク付けしません。
+**Reasoning models are never preferred for OCR.** Reasoning tiers (`o1`, `o3-mini`, `DeepSeek-R1`) historically lack vision support and are the wrong tool for OCR anyway — OCR is a perception task, not deliberation. If a workspace has only a reasoning model with `supports_vision=True` it will still be picked up via the primary-LLM path, but the resolver does not actively rank it above fast/general.
 
-**ゼロリグレッション フォールバック**：どのレベルでもビジョン対応モデルが見つからない場合、OCR は静かに無効化され、MarkItDown はテキストのみモードで実行されます。Word/PowerPoint/Excel 埋め込み画像 OCR は利用不可になります（この機能がリリースされる前と同じ）が、その他すべてのテキスト抽出（見出し、表、段落テキスト）は変わらず機能し続けます。**この機能を追加することで、抽出が以前の動作より悪くなるケースは決してありません。**
+**Zero-regression fallback**: when no vision-capable model is found at any level, OCR is silently disabled and MarkItDown runs in text-only mode. Word/PowerPoint/Excel embedded-image OCR becomes unavailable (same as before this feature shipped), but all other text extraction (headings, tables, paragraph text) continues to work unchanged. **There is never a case where adding this feature made extraction worse than the previous behavior.**
 
-**非 OpenAI プロバイダー（Anthropic、Google Gemini など）** は透過的にサポートされます：解像度された LLM は `LiteLLMOpenAIShim` でラップされ、`chat.completions.create(...)` 呼び出しを `litellm.completion()` 経由でルーティングします。これはプロバイダー固有のメッセージ形式変換（例：Anthropic の `source.type="base64"` 画像ブロック）を処理します。1 つのシムが LiteLLM がサポートするすべてのプロバイダーをカバーします — 新しいプロバイダーを追加するのに FIM One でのコード変更はゼロです。
+**Non-OpenAI providers (Anthropic, Google Gemini, etc.)** are supported transparently: the resolved LLM is wrapped in a `LiteLLMOpenAIShim` that routes `chat.completions.create(...)` calls through `litellm.completion()`, which handles the provider-specific message format translation (e.g. Anthropic's `source.type="base64"` image block). One shim covers every provider LiteLLM supports — adding a new provider costs zero code changes in FIM One.
 
 ### 拡張思考（推論）
 
@@ -152,53 +160,63 @@ OpenAIおよびGeminiの場合、プロバイダーは`reasoning_effort`レベ�
 
 ## エージェント実行
 
-### ReAct エージェント
+### ReAct Agent
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `REACT_MAX_ITERATIONS` | No | `20` | ReAct リクエストあたりの最大ツール呼び出し回数。値を大きくするとより徹底的になりますが、処理が遅くなり、コストも増加します |
-| `REACT_MAX_TURN_TOKENS` | No | `0` | 緊急用サーキットブレーカー：1 回の ReAct ターンで使用できる累積トークン数（すべての反復におけるプロンプトと補完の合計）の上限。デフォルトの `0` = 無制限。**これは日次のトークン制御用ではありません** — その用途にはユーザーごとの `token_quota` を使用してください。エージェントが無限のツール呼び出しループに陥るなど、極端な状況に対する最後の安全弁です。この上限に達するとタスクは実行途中で中断され、それまでに消費したすべてのトークンが無駄になり、不完全な結果が返されます。特定の暴走エージェントの問題を封じ込める必要がない限り、`0` のままにしてください |
-| `REACT_TOOL_SELECTION_THRESHOLD` | No | `12` | 登録済みツールの総数がこのしきい値を超えると、各リクエストの前に軽量な LLM 呼び出しによって最も関連性の高いサブセットが選択されます |
-| `REACT_TOOL_SELECTION_MAX` | No | `6` | スマート選択後に保持するツールの最大数（ツール数が `REACT_TOOL_SELECTION_THRESHOLD` を超えた場合のみ有効） |
-| `REACT_SELF_REFLECTION_INTERVAL` | No | `6` | エージェントが軌道修正し、ループを回避できるよう、N 回のツール呼び出しごとに自己リフレクション用プロンプトを挿入します |
-| `REACT_TOOL_OBS_TRUNCATION` | No | `8000` | 最終回答の生成時に使用する、ツールの観測結果 1 件あたりの最大文字数。値を大きくすると、より多くの構造化データ（JSON、テーブル）を保持できますが、トークン数が増加します |
-| `REACT_TOOL_RESULT_BUDGET` | No | `40000` | 1 セッション内のすべてのツール結果に対する累積トークン予算。この上限を超えると、新しい結果は通知付きで切り詰められます。大規模な API レスポンス（例：8K ずつ返すコネクタ呼び出し 5 件）によるコンテキストの肥大化を防ぎます。`0` に設定すると上限が無効になります |
-| `REACT_COMPLETION_CHECK_SKIP_CHARS` | No | `800` | エージェントの最終回答がこの文字数を超えた場合、回答後の完了チェック用 LLM 呼び出しをスキップします。詳細な長文回答では「何か見落としがないか」の検証ラウンドトリップは不要です。値を小さくするとより積極的にスキップし、非常に大きな値にすると常にチェックを実行します |
-| `REACT_CYCLE_DETECTION_THRESHOLD` | No | `2` | 同じツールが同一の引数で連続してこの回数呼び出されると、別の方法を試すようエージェントに指示する決定論的な警告が挿入されます。ループに気付くかどうかが LLM に依存する自己リフレクションとは異なり、ハッシュベースのこのチェックは回避できません。DAG のステップにも適用されます |
-| `REACT_STALL_ROUNDS` | No | `3` | エージェントが行ったすべてのツール呼び出しをリピートガードがこの回数連続して拒否した場合に実行を終了します。回答には実行済みのステップが一覧表示され、ユーザーに続行方法を尋ねます。`0` に設定すると無効になります |
-| `REACT_MAX_TURN_SECONDS` | No | `0` | 1 回のエージェント実行に対する秒単位の実時間制限。反復の間にチェックされます。制限に達すると、実行済みのステップの概要を付けて実行を終了します。1 回のツール呼び出しには、代わりに `REACT_TOOL_TIMEOUT` が適用されます。`0` = 無制限 |
-| `REACT_COMPLETION_CHECK_MIN_TOOLS` | No | `3` | 完了チェックリストを実行する前に必要なツール呼び出しの最小数。単純なタスク（ツール呼び出し 1～2 回）では、不要な遅延を避けるため検証をスキップします。常に検証するには `1` に設定します。DAG のステップにも適用されます |
-| `REACT_TURN_PROFILE_ENABLED` | No | `true` | ターンごとのフェーズ単位のタイミングログ（`memory_load`、`compact`、`tool_schema_build`、`llm_first_token`、`llm_total`、`tool_exec`）を出力します。1 ターンにつき 1 行の構造化ログが記録されます。プロファイリングを完全に無効にするには `false` に設定します（オーバーヘッドはゼロ） |
-| `REACT_PLAN_TOOL_ENABLED` | No | `true` | エージェントが複数ステップのタスク中に計画チェックリストを書き出して維持できるよう、`update_plan` todo ツールを登録します。DAG ステップのエージェントとツールを持たないエージェントでは自動的にスキップされます |
-| `REACT_PLAN_REMINDER_INTERVAL` | No | `3` | `update_plan` の呼び出しなしで経過するツールラウンド数。この回数に達すると、古くなった計画へのリマインダー（チェックリスト全体を埋め込んだもの）が会話に再挿入され、コンテキストの圧縮後も計画が維持されます |
-| `REACT_PLAN_REPEAT_THRESHOLD` | No | `4` | 同じツールを異なる引数で連続して呼び出すラウンド数。この回数に達すると、成果のない呼び出しを繰り返すのではなく方法を変えるようエージェントに通知します。完全に同一の呼び出しはサイクル検出で別途処理されます |
-| `REACT_PLAN_NUDGE_AFTER` | No | `5` | 計画が記録されないまま経過するツールラウンド数。この回数に達すると、計画を書き留めるよう促す通知を 1 回だけ表示します。計画ツールが有効な場合にのみ適用されます |
-| `REACT_FINISH_SIGNAL` | No | `true` | チャット経路での FINAL-first 方式の回答：エージェントは `finish` シグナルを受信するとツールループを終了し、回答を実際のトークンストリーミングターンとして書き込みます。`false` に設定すると、バッファーされた再生を伴うインラインループ回答に戻ります |
-| `REACT_MAX_CONTINUATIONS` | No | `3` | プロバイダーの出力トークン制限によりモデルの回答が途中で切れ、`finish_reason=length` として報告された場合の最大継続ラウンド数。切り詰められたセグメントは、エージェントループとストリーミング生成の両方で、継ぎ目のない 1 つの回答に結合されます |
-| `REACT_BACKGROUND_TOOLS_ENABLED` | No | `true` | 時間のかかるツール（サンドボックス化された python／shell／node 実行）に `run_in_background` オプションを提供します。エージェントは即座にタスク ID を取得して作業を続行し、ツールの完了時に結果が `<task_notification>` メッセージとして届きます |
-| `REACT_BG_WAIT_TIMEOUT` | No | `300` | エージェントが回答を確定しようとする際に、実行中のバックグラウンドツールを待機する最大秒数。この時間内に完了しなかったタスクは、明示的なタイムアウト通知とともにキャンセルされます |
-| `DAG_CHECKPOINT_EVIDENCE_CHARS` | No | `4000` | DAG のクラッシュリカバリ用チェックポイントファイル（`data/dag_checkpoints/`）における、ステップごとの証拠の上限文字数。ステップの概要は完全な状態で保存されます |
-| `DAG_CHECKPOINT_MAX_AGE_HOURS` | No | `24` | この時間より古い DAG チェックポイントは読み込み時に無視されるため、古いクラッシュ残骸が新しい実行で再開されることはありません |
-| `LLM_RATE_LIMIT_PER_USER` | No | `true` | 単一のプロセス全体バケットではなく、ユーザーごとにキー付けされたレート制限バケットを使用します。同じワーカー上で、1 人の負荷の高いユーザーが他のすべてのユーザーを枯渇させるのを防ぎます。基盤となるレートはバケットごとに 60 リクエスト/分および 100K トークン/分でハードコードされています。この設定は、バケットを共有するか（グローバル）、分割するか（ユーザーごと）だけを制御します。従来のグローバルバケットに戻すには `false` に設定します（推奨されません） |
+| `REACT_MAX_ITERATIONS` | No | `20` | Max tool-call iterations per ReAct request. Higher = more thorough but slower and costlier |
+| `REACT_MAX_TURN_TOKENS` | No | `0` | Emergency circuit-breaker: max cumulative tokens (prompt + completion across all iterations) per single ReAct turn. Default `0` = unlimited. **This is NOT for daily token control** — use per-user `token_quota` for that. This is a last-resort safety valve for extreme scenarios like an agent stuck in an infinite tool-call loop. Hitting this limit aborts the task mid-execution, wasting all tokens consumed so far and returning an incomplete result. Keep at `0` unless you have a specific runaway-agent problem to contain |
+| `REACT_TOOL_SELECTION_THRESHOLD` | No | `12` | When the total number of registered tools exceeds this threshold, a lightweight LLM call selects the most relevant subset before each request |
+| `REACT_TOOL_SELECTION_MAX` | No | `6` | Max tools to keep after smart selection (only effective when tool count exceeds `REACT_TOOL_SELECTION_THRESHOLD`) |
+| `REACT_SELF_REFLECTION_INTERVAL` | No | `6` | Inject a self-reflection prompt every N tool calls to help the agent course-correct and avoid loops |
+| `REACT_TOOL_OBS_TRUNCATION` | No | `8000` | Max characters per tool observation when synthesizing the final answer. Higher values preserve more structured data (JSON, tables) at the cost of more tokens |
+| `REACT_TOOL_RESULT_BUDGET` | No | `40000` | Aggregate token budget for all tool results in a single session. When total tool-result tokens exceed this cap, new results are truncated with a notice. Prevents context bloat from large API responses (e.g., 5 connector calls returning 8K each). Set to `0` to disable the cap |
+| `REACT_TOOL_RESULT_MIN_TOKENS` | No | `400` | Minimum tokens each tool result keeps inline after `REACT_TOOL_RESULT_BUDGET` is used up, so later results are shortened instead of blanked. The full text is still saved to the workspace |
+| `REACT_TOOL_TIMEOUT` | No | `180` | Wall-clock limit in seconds for a single tool call. Stops a tool with no timeout of its own (a hung MCP server, a stalled connector) from blocking the run. `0` disables it |
+| `REACT_MAX_INJECT_CHARS` | No | `25000` | Maximum characters of a message injected mid-run that the model sees. The UI still shows the full text |
+| `REACT_COMPLETION_CHECK_SKIP_CHARS` | No | `800` | Skip the post-answer completion-check LLM call when the agent's final answer exceeds this many characters. Long detailed answers don't need a "did I miss anything?" verification round-trip. Set lower to skip more aggressively; set to a very large value to always run the check |
+| `REACT_CYCLE_DETECTION_THRESHOLD` | No | `2` | When the same tool is called with identical arguments this many times in a row, a deterministic warning is injected telling the agent to try a different approach. Unlike self-reflection (which relies on the LLM noticing the loop), this is a hash-based check that cannot be bypassed. Also applies to DAG steps |
+| `REACT_CYCLE_BLOCK_THRESHOLD` | No | `3` | Identical calls (same tool, same arguments) at which the loop stops warning and refuses the call instead of running it again |
+| `REACT_ENDPOINT_WARN_THRESHOLD` | No | `8` | Calls to the same URL host and path (query string ignored) before the agent is warned that it is re-fetching one endpoint with varying parameters |
+| `REACT_ENDPOINT_BLOCK_THRESHOLD` | No | `15` | Calls to the same URL host and path at which further calls are refused |
+| `REACT_STALL_ROUNDS` | No | `3` | End the run when the repeat guard refused every tool call the agent made for this many rounds in a row. The answer lists the steps taken and asks the user how to proceed. Set to `0` to disable |
+| `REACT_MAX_TURN_SECONDS` | No | `0` | Wall-clock limit in seconds for one agent run, checked between iterations. When reached, the run ends with a summary of the steps taken. A single tool call is bounded by `REACT_TOOL_TIMEOUT` instead. `0` = unlimited |
+| `REACT_COMPLETION_CHECK_MIN_TOOLS` | No | `3` | Minimum number of tool calls before the completion checklist fires. Simple tasks (1-2 tool calls) skip verification to avoid unnecessary latency. Set to `1` for always-on verification. Also applies to DAG steps |
+| `REACT_TURN_PROFILE_ENABLED` | No | `true` | Emit per-turn phase-level timing logs (`memory_load`, `compact`, `tool_schema_build`, `llm_first_token`, `llm_total`, `tool_exec`). One structured log line per turn. Set to `false` to disable profiling entirely (zero overhead) |
+| `REACT_PLAN_TOOL_ENABLED` | No | `true` | Register the `update_plan` todo tool so the agent writes down and maintains a plan checklist during multi-step tasks. Automatically skipped for DAG step agents and agents with no tools |
+| `REACT_PLAN_REMINDER_INTERVAL` | No | `3` | Tool rounds without an `update_plan` call before a stale-plan reminder (embedding the full checklist) is re-injected into the conversation, so the plan survives context compaction |
+| `REACT_PLAN_REPEAT_THRESHOLD` | No | `4` | Consecutive rounds calling the same tool (with different arguments) before a reminder tells the agent to change approach instead of repeating fruitless calls. Exact-duplicate calls are handled separately by cycle detection |
+| `REACT_PLAN_NUDGE_AFTER` | No | `5` | Tool rounds with no plan recorded before a one-shot nudge suggests writing the plan down. Only applies when the plan tool is enabled |
+| `REACT_FINISH_SIGNAL` | No | `true` | FINAL-first answering on the chat path: the agent ends its tool loop on a `finish` signal and then writes the answer as a genuinely token-streamed turn. Set to `false` to restore inline loop answers with buffered replay |
+| `REACT_MAX_CONTINUATIONS` | No | `3` | Maximum continuation rounds when the model's answer is cut off by the provider's output-token limit, reported as `finish_reason=length`. Truncated segments are stitched into one seamless answer, both in the agent loop and in streamed synthesis |
+| `REACT_BACKGROUND_TOOLS_ENABLED` | No | `true` | Offer a `run_in_background` option on slow tools (sandboxed python/shell/node execution). The agent gets a task id immediately and continues working; the result arrives as a `<task_notification>` message when the tool finishes |
+| `REACT_BG_WAIT_TIMEOUT` | No | `300` | Maximum seconds to wait for still-running background tools when the agent wants to finalize its answer. Tasks not finished within the window are cancelled with an explicit timeout notification |
+| `DAG_CHECKPOINT_EVIDENCE_CHARS` | No | `4000` | Per-step evidence cap in the DAG crash-resume checkpoint file (`data/dag_checkpoints/`). Step summaries are stored in full |
+| `DAG_CHECKPOINT_MAX_AGE_HOURS` | No | `24` | DAG checkpoints older than this are ignored on load, so stale crash leftovers never resume into a fresh run |
+| `LLM_RATE_LIMIT_PER_USER` | No | `true` | Use per-user keyed rate-limit buckets instead of a single process-global bucket. Prevents one noisy user from starving all others on the same worker. The underlying rate is hardcoded at 60 requests/min and 100K tokens/min per bucket — this setting only controls whether the bucket is shared (global) or partitioned (per-user). Set to `false` to revert to the legacy global bucket (not recommended) |
 
 ### DAG Planner
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `MAX_CONCURRENCY` | No | `5` | DAG エグゼキューターの最大並列ステップ数 |
-| `DAG_STEP_MAX_ITERATIONS` | No | `15` | 各 DAG ステップ内の最大ツール呼び出し反復回数 |
-| `DAG_STEP_TIMEOUT` | No | `600` | ステップ実行のタイムアウト（秒単位）。このタイムアウトを超えたステップは失敗とマークされ、依存するステップはカスケードスキップされます |
-| `DAG_MAX_REPLAN_ROUNDS` | No | `3` | 目標が達成されない場合の最大自動再計画試行回数。ユーザーの割り込み（インジェクト）は無制限で、このバジェットにはカウントされません |
-| `DAG_REPLAN_STOP_CONFIDENCE` | No | `0.8` | エージェントが目標が**到達不可能**（不可能なリクエスト、機能不足、リソース利用不可）と判断した場合にのみ適用されます。この確実性以上で再試行を停止します。不完全な成果物は確実性に関わらず常に再計画されます——これらの再試行は `DAG_MAX_REPLAN_ROUNDS` によってのみ制限されます |
-| `DAG_VERIFY_TRUNCATION` | No | `2000` | ステップ検証 LLM に送信されるステップ出力の最大文字数（品質判定用） |
-| `DAG_ANALYZER_TRUNCATION` | No | `10000` | 実行後アナライザーのフォーマット時のステップ結果あたりの最大文字数 |
-| `DAG_STEP_EVIDENCE_CHARS` | No | `16000` | ステップあたりで保持される生のツール出力（ウェブ取得、検索結果、ファイル読み取り）の最大文字数。これは権威ある「ソース証拠」として、ステップの要約と共にアナライザーと最終合成に供給されるため、回答の事実主張（合計、列挙、重大度）は要約が静かに項目を削除または誤ってラベル付けした可能性があるのではなく、ソースに対して検証できます。`0` に設定して証拠キャプチャを無効にします |
-| `DAG_REPLAN_RECENT_TRUNCATION` | No | `500` | 再計画コンテキスト構築時の最新ラウンドからのステップ結果あたりの最大文字数 |
-| `DAG_REPLAN_OLDER_TRUNCATION` | No | `200` | 再計画コンテキスト構築時の古いラウンドからのステップ結果あたりの最大文字数。古いラウンドはコンテキストを節約するためにより積極的に切り詰められます |
-| `DAG_TOOL_CACHE` | No | `true` | 単一の DAG 実行内で同一のツール呼び出しをキャッシュします。`cacheable` として明示的にマークされたツール（検索、知識検索などの読み取り専用ツール）のみがキャッシュされます。キャッシュを完全に無効にするには `false` に設定します |
-| `DAG_STEP_VERIFICATION` | No | `false` | 各 DAG ステップ後の汎用 LLM ベースの品質チェック。失敗時、ステップはフィードバック付きで 1 回再試行されます。**デフォルトはオフ**——すべてのステップに遅延を追加し、ほとんど必要ありません。ステップ出力の品質が低い場合が頻繁に観察される場合にのみ使用してください |
-| `DAG_CITATION_VERIFICATION` | No | `true` | 専門分野ステップの引用精度チェック。**前提条件**：クエリは最初に LLM ドメイン分類器によって専門分野として分類される必要があります（`ESCALATION_DOMAINS` を参照）。ドメインが検出され、このフラグが `true` の場合、完了した各ステップは法律/医療/金融引用についてスキャンされ、精度が検証されます——幻覚記事番号、捏造された事件参照、および不正な規制引用を検出します。ドメイン分類が `null`（一般クエリ）を返す場合、この設定に関わらず引用検証は実行されません |
-| `DAG_CITATION_VERIFY_TRUNCATION` | No | `6000` | 引用検証プロンプトに送信されるステップ結果の最大文字数 |
+| `MAX_CONCURRENCY` | No | `5` | Max parallel steps in DAG executor |
+| `DAG_MAX_CONCURRENCY` | No | `8` | Library default for the same limit, used only when `DAGExecutor` is constructed without an explicit value. The chat API always passes `MAX_CONCURRENCY`, so this has no effect on the portal or API |
+| `DAG_STEP_MAX_ITERATIONS` | No | `15` | Max tool-call iterations within each DAG step |
+| `DAG_STEP_TIMEOUT` | No | `600` | Step execution timeout in seconds. Steps exceeding this are marked as failed and their dependents are cascade-skipped |
+| `DAG_MAX_REPLAN_ROUNDS` | No | `3` | Planning rounds in total when the goal is not achieved: the first plan plus N−1 autonomous re-plans, so `3` allows up to 2 re-plans and `1` never re-plans. Re-plans triggered by a user message (inject) are unlimited and do not count against this budget |
+| `DAG_REPLAN_STOP_CONFIDENCE` | No | `0.8` | Applies only when the agent judges the goal **unreachable** (impossible request, missing capability, dead resource): stop retrying at or above this certainty. A missing or half-finished deliverable is always re-planned regardless of confidence — only `DAG_MAX_REPLAN_ROUNDS` bounds those retries |
+| `DAG_VERIFY_TRUNCATION` | No | `2000` | Max characters of step output sent to the step verifier LLM for quality judgment |
+| `DAG_ANALYZER_TRUNCATION` | No | `10000` | Max characters per step result when formatting for the post-execution analyzer |
+| `DAG_STEP_EVIDENCE_CHARS` | No | `16000` | Max characters of raw tool output (web fetches, search results, file reads) retained per step as authoritative "source evidence". This is fed to the analyzer and final synthesis alongside the step's own summary, so the answer's factual claims (totals, enumerations, severities) can be verified against the source instead of trusting a summary that may have silently dropped or mislabelled items. Set to `0` to disable evidence capture |
+| `DAG_REPLAN_RECENT_TRUNCATION` | No | `500` | Max characters per step result from the most recent round when building re-plan context |
+| `DAG_REPLAN_OLDER_TRUNCATION` | No | `200` | Max characters per step result from older rounds when building re-plan context. Older rounds are more aggressively truncated to save context |
+| `DAG_TOOL_CACHE` | No | `true` | Cache identical tool calls within a single DAG execution. Only tools explicitly marked as `cacheable` (read-only tools like search, knowledge retrieval) are cached. Set to `false` to disable caching entirely |
+| `DAG_STEP_VERIFICATION` | No | `false` | Generic LLM-based quality check after each DAG step. On failure, the step retries once with feedback. **Default off** — adds latency on every step and is rarely needed; most step outputs are acceptable without re-checking. Use only when you observe frequent low-quality step results |
+| `DAG_CITATION_VERIFICATION` | No | `true` | Citation-accuracy check for specialist-domain steps. **Prerequisite**: the query must first be classified as a specialist domain by the LLM domain classifier (see `ESCALATION_DOMAINS`). When the domain is detected AND this flag is `true`, each completed step is scanned for legal/medical/financial citations and verified for accuracy — catching hallucinated article numbers, fabricated case references, and incorrect regulatory citations. If domain classification returns `null` (general query), citation verification does not run regardless of this setting |
+| `DAG_CITATION_VERIFY_TRUNCATION` | No | `6000` | Max characters of step result sent to the citation verification prompt |
+| `DAG_STRUCTURED_CONTEXT_MULTIPLIER` | No | `3.0` | Multiplier applied to the truncation limit when a step result passed to later steps contains citations, tables, or code blocks |
+| `DAG_PLANNER_DESC_LENGTH` | No | `120` | Characters of each tool description shown to the planner |
+| `DAG_ROUTER_QUERY_TRUNCATION` | No | `2000` | Characters of the user query sent to the Auto-mode classifier that picks ReAct or DAG |
 
 ### ドメイン分類
 
@@ -210,13 +228,14 @@ ReAct と DAG 実行の**前に**実行される独立した LLM ベースのド
 
 ### Context Guard
 
-会話がモデルの制限を超えるのを防ぐ自動コンテキストウィンドウ管理を制御します。
+Controls the automatic context window management that prevents conversations from exceeding the model's limit.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `CONTEXT_GUARD_DEFAULT_BUDGET` | No | `32000` | コンテキストウィンドウ管理のデフォルトトークン予算。会話がこれを超えると、古いメッセージが圧縮されます |
-| `CONTEXT_GUARD_MAX_MSG_CHARS` | No | `50000` | 単一メッセージの厳密な文字制限。この制限を超えるメッセージは安全ネットとして切り詰められます |
-| `CONTEXT_GUARD_KEEP_RECENT` | No | `4` | 会話履歴を圧縮する際に保持する最新メッセージの数 |
+| `CONTEXT_GUARD_DEFAULT_BUDGET` | No | `32000` | Default token budget for context window management. When the conversation exceeds this, older messages are compacted. Also the per-request input budget assumed for a summarising model that declares no context size outside the chat path |
+| `CONTEXT_GUARD_MAX_MSG_CHARS` | No | `50000` | Hard character limit on any single message. Messages exceeding this are truncated as a safety net |
+| `CONTEXT_GUARD_KEEP_RECENT` | No | `4` | Number of most recent messages to preserve when compacting conversation history |
+| `CONTEXT_GUARD_MAX_COMPACT_CHUNKS` | No | `8` | Maximum summary requests for one compaction. History larger than the fast model's window is summarised in consecutive parts; beyond this many parts, the first part and the most recent ones are kept and the middle is dropped |
 
 ### コンテンツガードレール
 
@@ -242,18 +261,28 @@ ReAct と DAG 実行の**前に**実行される独立した LLM ベースのド
 |---|---|---|---|
 | ~~`SYSTEM_PROMPT_RESERVE`~~ | — | — | **削除されました。** 以前はコンテキスト予算からシステムプロンプト用に固定の4K予約を差し引いていました。ContextGuardがメッセージリストトークンを推定する際にシステムプロンプトを既に含めているため、二重計算が発生していました。予算計算式は現在`(context_size - max_output_tokens) × 0.92`です（マージンはトークン推定エラーを吸収します）。システムプロンプトの実際のサイズは動的に考慮されます |
 
-## Web Tools (オプション)
+## Web Tools (Optional)
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `JINA_API_KEY` | No | — | Jina API キー。**デフォルト**検索バックエンドを提供し、サービス固有のキーが設定されていない場合は**fetch、embedding、reranker**の共有フォールバックとして機能します。[jina.ai](https://jina.ai/) で取得してください |
-| `TAVILY_API_KEY` | No | — | Tavily Search API キー。`WEB_SEARCH_PROVIDER=tavily` の場合に必須です。プロバイダーが未設定の場合は自動検出でも使用されます |
-| `BRAVE_API_KEY` | No | — | Brave Search API キー。`WEB_SEARCH_PROVIDER=brave` の場合に必須です。プロバイダーが未設定の場合は自動検出でも使用されます |
-| `EXA_API_KEY` | No | — | Exa Search API キー。`WEB_SEARCH_PROVIDER=exa` の場合に必須です。プロバイダーが未設定の場合は自動検出でも使用されます。[Exa](/integrations/exa) を参照してください。[exa.ai](https://exa.ai/) で取得してください |
-| `WEB_SEARCH_PROVIDER` | No | `jina` | 検索プロバイダーセレクター：`jina`（デフォルト）/ `tavily` / `brave` / `exa`。デフォルト以外のプロバイダーを使用する場合は、明示的に設定することをお勧めします |
-| `WEB_FETCH_PROVIDER` | No | `jina`（キーが設定されている場合）/ `httpx`（それ以外） | Fetch プロバイダー：`jina`（Jina Reader API を使用）/ `httpx`（直接 HTTP リクエスト、API キー不要） |
+| `JINA_API_KEY` | No | — | Jina API key. Powers the **default** search backend, and acts as a shared fallback for **fetch, embedding, and reranker** when no service-specific key is set. Get yours at [jina.ai](https://jina.ai/) |
+| `TAVILY_API_KEY` | No | — | Tavily Search API key. Required when `WEB_SEARCH_PROVIDER=tavily`; also used by auto-detect if the provider is unset |
+| `BRAVE_API_KEY` | No | — | Brave Search API key. Required when `WEB_SEARCH_PROVIDER=brave`; also used by auto-detect if the provider is unset |
+| `EXA_API_KEY` | No | — | Exa Search API key. Required when `WEB_SEARCH_PROVIDER=exa`; also used by auto-detect if the provider is unset. See [Exa](/integrations/exa). Get yours at [exa.ai](https://exa.ai/) |
+| `WEB_SEARCH_PROVIDER` | No | `jina` | Search provider selector: `jina` (default) / `tavily` / `brave` / `exa`. Prefer setting this explicitly when using a non-default provider |
+| `WEB_FETCH_PROVIDER` | No | `jina` (if key set, else `httpx`) | Fetch provider: `jina` (uses Jina Reader API) / `httpx` (direct HTTP request, no API key needed) |
+| `EXA_SEARCH_TYPE` | No | `auto` | Exa search type: `auto`, `neural`, `fast`, `deep-lite`, `deep`, `deep-reasoning`, `instant` |
+| `EXA_CATEGORY` | No | — | Restrict Exa results to one category (`company`, `research paper`, `news`, `personal site`, `financial report`, `people`) |
+| `EXA_INCLUDE_DOMAINS` / `EXA_EXCLUDE_DOMAINS` | No | — | Comma-separated domain allowlist / blocklist for Exa |
+| `EXA_START_PUBLISHED_DATE` / `EXA_END_PUBLISHED_DATE` | No | — | ISO-8601 bounds on the publication date of Exa results |
+| `EXA_MAX_AGE_HOURS` | No | — | Only return pages Exa indexed within the last N hours |
+| `EXA_INCLUDE_HIGHLIGHTS` | No | `true` | Request highlight snippets from Exa |
+| `EXA_TEXT_MAX_CHARS` | No | `800` | Cap on the text returned per Exa result |
+| `EXA_SUMMARY_QUERY` | No | — | Custom summary prompt applied to each Exa result |
 
-> **クイックスタートのヒント**：`JINA_API_KEY` を設定するだけで、デフォルト Web 検索スタック、Web fetch、embedding、reranking が有効になります——1 つのキーで 4 つのサービスが利用できます。`WEB_SEARCH_PROVIDER` と対応する API キーで検索を Tavily、Brave、または Exa に切り替えることができます。
+> **Quick start tip**: Setting just `JINA_API_KEY` enables the default web search stack, plus web fetch, embedding, and reranking — one key, four services. Switch search to Tavily, Brave, or Exa with `WEB_SEARCH_PROVIDER` and the matching API key.
+
+---
 
 ## RAG & ナレッジベース（推奨）
 
@@ -289,18 +318,18 @@ ReAct と DAG 実行の**前に**実行される独立した LLM ベースのド
 
 ### Reranker
 
-Rerankerは取得したドキュメントを再スコアリングして関連性を向上させます。3つのプロバイダーがサポートされており、`RERANKER_PROVIDER`で選択するか、利用可能なAPIキーからシステムに自動検出させることができます。
+Reranker re-scores retrieved documents to improve relevance. Three providers are supported — select via `RERANKER_PROVIDER` or let the system auto-detect from available API keys.
 
-| 変数 | 必須 | デフォルト | 説明 |
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| `RERANKER_PROVIDER` | いいえ | *(自動検出)* | `jina` / `cohere` / `openai`。未設定の場合：`COHERE_API_KEY`が設定されていればCohereを使用、それ以外はJinaを使用 |
-| `RERANKER_MODEL` | いいえ | `jina-reranker-v2-base-multilingual` | モデル識別子（JinaおよびOpenAIプロバイダーに適用） |
-| `COHERE_API_KEY` | いいえ | — | Cohere APIキー（設定されており`RERANKER_PROVIDER`が未設定の場合、Cohere rerankerを自動選択） |
-| `COHERE_RERANKER_MODEL` | いいえ | `rerank-multilingual-v3.0` | Cohere固有のrerankerモデル |
+| `RERANKER_PROVIDER` | No | *(auto-detect)* | `jina` / `cohere` / `openai`. If unset: uses Cohere if `COHERE_API_KEY` set, otherwise Jina |
+| `RERANKER_MODEL` | No | `jina-reranker-v2-base-multilingual` | Model identifier (applies to Jina and OpenAI providers). With `RERANKER_PROVIDER=openai` the default is `text-embedding-3-small` |
+| `COHERE_API_KEY` | No | — | Cohere API key (auto-selects Cohere reranker when set and `RERANKER_PROVIDER` is unset) |
+| `COHERE_RERANKER_MODEL` | No | `rerank-multilingual-v3.0` | Cohere-specific reranker model |
 
-> **Jina**は`JINA_API_KEY`を使用します（上記のWeb Toolsから）。**OpenAI**は`LLM_API_KEY` / `LLM_BASE_URL`を再利用します — 追加キーは不要です。**Cohere**は独自の`COHERE_API_KEY`が必要です。
+> **Jina** uses `JINA_API_KEY` (from Web Tools above). **OpenAI** reuses `LLM_API_KEY` / `LLM_BASE_URL` — no extra key needed (`OPENAI_API_KEY`, when set, takes precedence over `LLM_API_KEY` for the reranker). **Cohere** requires its own `COHERE_API_KEY`.
 
-> Rerankerは**オプション**です — ナレッジベース検索はフュージョンスコアリングを使用して、これなしで機能します。埋め込みはナレッジベース機能に**推奨**されます。
+> Reranker is **optional** — knowledge base search works without it using fusion scoring. Embedding is **recommended** for knowledge base features.
 
 ### ベクトルストア
 
@@ -310,31 +339,62 @@ Rerankerは取得したドキュメントを再スコアリングして関連性
 
 ---
 
-## コード実行
+## Code Execution
 
-| 変数 | 必須 | デフォルト | 説明 |
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| `CODE_EXEC_BACKEND` | いいえ | `local` | `local`（ホスト上での直接実行）または`docker`（隔離されたコンテナ） |
-| `DOCKER_PYTHON_IMAGE` | いいえ | `python:3.11-slim` | Python実行用のDockerイメージ |
-| `DOCKER_NODE_IMAGE` | いいえ | `node:20-slim` | Node.js実行用のDockerイメージ |
-| `DOCKER_SHELL_IMAGE` | いいえ | `python:3.11-slim` | シェル実行用のDockerイメージ |
-| `DOCKER_MEMORY` | いいえ | *（Dockerのデフォルト）* | コンテナあたりのRAM上限（例：`256m`、`512m`、`1g`） |
-| `DOCKER_CPUS` | いいえ | *（Dockerのデフォルト）* | コンテナあたりのCPUクォータ（例：`0.5`、`1.0`） |
-| `SANDBOX_TIMEOUT` | いいえ | `120` | デフォルト実行タイムアウト（秒） |
-| `DOCKER_HOST_DATA_DIR` | いいえ | *（未設定）* | `./data`ボリュームマウントのホスト側絶対パス。DooD（Docker-outside-of-Docker）デプロイメントに必須。`docker-compose.yml`は`${PWD}/data`経由で自動設定します。 |
+| `CODE_EXEC_BACKEND` | No | `docker` with the bundled `docker-compose.yml`, `local` otherwise | `docker`: each execution in a throw-away sandbox container, started through the sandbox proxy. `local`: inside the application process and container, with no isolation |
+| `DOCKER_PYTHON_IMAGE` | No | `python:3.11-slim` | Docker image for Python execution |
+| `DOCKER_NODE_IMAGE` | No | `node:20-slim` | Docker image for Node.js execution |
+| `DOCKER_SHELL_IMAGE` | No | `python:3.11-slim` | Docker image for shell execution |
+| `DOCKER_MEMORY` | No | `256m` | RAM cap per container (e.g. `256m`, `512m`, `1g`) |
+| `DOCKER_CPUS` | No | `0.5` | CPU quota per container (e.g. `0.5`, `1.0`) |
+| `SANDBOX_TIMEOUT` | No | `120` | Default execution timeout in seconds |
+| `DOCKER_HOST_DATA_DIR` | No | *(not set)* | Host-side absolute path of the `./data` volume mount. Required when the application runs in a container; `docker-compose.yml` sets it to `${PWD}/data`. The sandbox proxy only allows mounts of `<this>/sandbox/<conversation>/workspace`. |
+| `DOCKER_SANDBOX_USER` | No | the application's `uid:gid` when it is not root (`10001:10001` in the image) | `uid:gid` the sandbox containers run as. The bundled compose file passes the same value to the proxy as `SANDBOX_PROXY_USER`; the proxy runs sandboxes as that user and refuses any other |
+| `DOCKER_PIDS_LIMIT` | No | `256` | Process limit per sandbox container |
+| `DOCKER_SHELL_NETWORK` | No | *(not set: no network)* | A Docker network `shell_exec` containers join. It must be a bridge network labelled `fim-one.sandbox-egress=filtered` and created with `-o com.docker.network.bridge.enable_icc=false`, with your own firewall rules; see [Security](/security#code-execution-and-the-docker-socket). Code execution never has a network |
+| `DOCKER_HOST` | No | `tcp://docker-socket-proxy:2375` in `docker-compose.yml` | `tcp://…`: the sandbox proxy, which the application talks to itself (no Docker CLI). Never the daemon's socket |
+| `SANDBOX_PROXY_TOKEN` | No | generated by the proxy into a root-only volume | The secret the proxy asks every client for. Set it (32+ characters, same value for both services) only when you manage it yourself |
+| `SANDBOX_PROXY_EXTRA_IMAGES` | No | — | Read by the `docker-socket-proxy` service: further images it may start, comma-separated. The three `DOCKER_*_IMAGE` values are always allowed |
+| `SANDBOX_PROXY_ALLOW_PULL` | No | `true` | Read by the proxy: whether it may pull a configured image that is missing. A pull names one repository and one tag (`latest` when the image has none); a registry with a port is fine. Digest-pinned images (`repo@sha256:…`) and images that need registry credentials are not pulled through the proxy: pull them on the host |
+| `SANDBOX_PROXY_USER` | No | `10001:10001` | Read by the proxy: the non-root `uid:gid` every sandbox container runs as |
+| `SANDBOX_PROXY_MAX_CONNECTIONS` | No | `64` | Read by the proxy: connections that presented the token, served at once (a running sandbox holds two). Beyond it the proxy answers `503` with `Retry-After`, and the application asks again a few times |
+| `SANDBOX_PROXY_MAX_PENDING` | No | `16` | Read by the proxy: connections whose token has not been checked yet. Each has 5 seconds to send its request head; they do not count against `SANDBOX_PROXY_MAX_CONNECTIONS`. When all are taken, a new connection takes the place of one that has been waiting for at least 250 ms (one from a peer outside `SANDBOX_PROXY_CLIENT_HOSTS` first, else the oldest one from the peer address holding the most), which is answered 503; when every pending connection is younger than that, the new connection is answered 503 instead |
+| `SANDBOX_PROXY_MAX_LIFETIME` | No | `1800` | Read by the proxy: seconds after a create at which the proxy stops and removes the sandbox container it made, by its Id, whatever the application does (a removal that fails is tried again three times). Counted from a create the daemon accepted, failed with a 5xx, or did not answer within 120 seconds; not from one it refused with a 4xx. A container the application removed itself is not removed again. Keep it above `SANDBOX_TIMEOUT` plus the time an image pull takes. A limit pending when the proxy restarts is not carried over |
+| `SANDBOX_PROXY_PROJECT` | No | the compose project of the proxy's container | Read by the proxy: the value of the `fim-one.project` label it puts on every sandbox container (with `fim-one.sandbox=1`). `deploy.sh` removes the sandboxes of its own project by this label |
+| `SANDBOX_MAX_OUTPUT_BYTES` | No | `10485760` | The most that is kept of a sandbox container's stdout, and of its stderr, before the tool-level truncation applies |
+| `SANDBOX_PROXY_MAX_MEMORY` / `SANDBOX_PROXY_MAX_CPUS` / `SANDBOX_PROXY_MAX_PIDS` | No | 4 GiB / `4` / `4096` | Read by the proxy: the most a sandbox container may ask for. Raise them if an agent's `sandbox_config` needs more |
+| `SANDBOX_PROXY_CLIENT_HOSTS` | No | `fim-one` in `docker-compose.yml` | Read by the proxy: host names whose addresses may connect to it |
+| `FIM_EDGE_NETWORK` | With `docker-compose.prod.yml` | none | Read by `docker-compose.prod.yml`: name of the existing external network that the reverse proxy uses to reach the app. See [Production compose file](/deployment/production-compose) |
 
-> **セキュリティ**：`local`モードはAIが生成したコードをホスト上で直接実行します。インターネット公開またはマルチユーザーデプロイメントの場合は、常に`CODE_EXEC_BACKEND=docker`を設定してください。
+> **Security**: `local` runs AI-generated code inside the application container, as the application's user: every user who can use the code tools can read and change what the application can. Its Python restrictions and shell word list are not a security boundary. Use it for single-user or development setups only. The application container is never given the Docker socket; if it can reach a container runtime anyway (a Docker, Podman or containerd socket, or a `DOCKER_HOST` that is a daemon), `local` code execution and stdio MCP servers refuse to start. See [Security → Code execution and the Docker socket](/security#code-execution-and-the-docker-socket).
 
 ---
 
-## ツール成果物
+## Tool Output Truncation
 
-ツール実行（コード実行、テンプレートレンダリング、画像生成）によって生成されたファイルのサイズ制限。
+Limits applied to what a built-in tool returns to the model.
 
-| 変数 | 必須 | デフォルト | 説明 |
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| `MAX_ARTIFACT_SIZE` | いいえ | `10485760` (10 MB) | 単一成果物ファイルの最大サイズ（バイト） |
-| `MAX_ARTIFACTS_TOTAL` | いいえ | `52428800` (50 MB) | セッションあたりの成果物の最大合計サイズ（バイト） |
+| `TOOL_OUTPUT_MAX_CHARS` | No | `50000` | Max characters for JSON-aware truncation of web and API tool output |
+| `TOOL_OUTPUT_MAX_ITEMS` | No | `10` | Max JSON array items kept before truncation |
+| `TOOL_OUTPUT_MAX_BYTES` | No | `102400` (100 KB) | Max bytes of raw output kept from code-execution tools |
+
+---
+
+## Tool Artifacts
+
+Size limits for files produced by tool execution (code execution, template rendering, image generation).
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `MAX_ARTIFACT_SIZE` | No | `10485760` (10 MB) | Max single artifact file size in bytes |
+| `MAX_ARTIFACTS_TOTAL` | No | `52428800` (50 MB) | Max total artifact size per session in bytes |
+| `TEMPLATE_RENDER_TIMEOUT_SECONDS` | No | `10` | Wall-clock limit for one `template_render` call (1–120). The template is rendered in a separate process, which is stopped when the limit is reached. |
+| `TEMPLATE_RENDER_MEMORY_MB` | No | `256` | Memory limit for that process (64–4096). A render that grows beyond it is stopped. |
+| `TEMPLATE_RENDER_CONCURRENCY` | No | `4` | How many templates are rendered at the same time (1–64); further calls wait up to the time limit. |
 
 ---
 
@@ -352,14 +412,14 @@ Rerankerは取得したドキュメントを再スコアリングして関連性
 
 ---
 
-## 画像生成（オプション）
+## Image Generation (Optional)
 
-| 変数 | 必須 | デフォルト | 説明 |
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| `IMAGE_GEN_PROVIDER` | いいえ | `google` | `google`（Gemini ネイティブ API）または `openai`（OpenAI 互換 `/v1/images/generations`） |
-| `IMAGE_GEN_API_KEY` | いいえ | — | Google AI Studio キー（`google`）またはプロキシ/OpenAI API キー（`openai`） |
-| `IMAGE_GEN_MODEL` | いいえ | `gemini-3.1-flash-image-preview` | 画像生成モデル（例：`dall-e-3`、`gemini-nano-banana-2`） |
-| `IMAGE_GEN_BASE_URL` | いいえ | *(プロバイダーごと)* | Google: `https://generativelanguage.googleapis.com/v1beta`; OpenAI: `https://api.openai.com/v1` |
+| `IMAGE_GEN_PROVIDER` | No | `google` | `google` (Gemini native API) or `openai` (OpenAI-compatible `/v1/images/generations`) |
+| `IMAGE_GEN_API_KEY` | No | — | Google AI Studio key (`google`) or proxy/OpenAI API key (`openai`) |
+| `IMAGE_GEN_MODEL` | No | `gemini-3.1-flash-image-preview` (`google`) / `dall-e-3` (`openai`) | Image generation model (e.g. `dall-e-3`, `gemini-nano-banana-2`) |
+| `IMAGE_GEN_BASE_URL` | No | *(per provider)* | Google: `https://generativelanguage.googleapis.com/v1beta`; OpenAI: `https://api.openai.com/v1` |
 
 ---
 
@@ -378,9 +438,13 @@ Used for login codes and email notifications. The `email_send` built-in tool is 
 | `SMTP_FROM_NAME` | No | — | Display name shown in From header |
 | `SMTP_REPLY_TO` | No | — | Reply-To address; replies go here instead of `SMTP_FROM` |
 | `SMTP_ALLOWED_DOMAINS` | No | — | Comma-separated domain allowlist (e.g. `example.com,corp.io`); blocks recipients outside listed domains |
-| `SMTP_ALLOWED_ADDRESSES` | No | — | Comma-separated exact-address allowlist; combined with `SMTP_ALLOWED_DOMAINS`. Also applies to email sent through `send_notification` |
-| `EMAIL_TOOL_ENABLED` | No | `false` | Offer `email_send` with no recipient allowlist. Enable only when every user of this instance may mail any address from this account |
-| `NOTIFICATION_TOOL_ENABLED` | No | `false` | Offer the `send_notification` agent tool, which posts to the instance-wide Slack / Lark / WeCom webhooks and the SMTP account. Enable only when every user of this instance may post to those channels |
+| `SMTP_ALLOWED_ADDRESSES` | No | — | Comma-separated exact-address allowlist; combined with `SMTP_ALLOWED_DOMAINS`. Also applies to the recipients of an organization's email channel |
+| `EMAIL_TOOL_ENABLED` | No | `false` | Offer `email_send` with no recipient allowlist, and let organizations create email channels to any address. Enable only when every user of this instance may mail any address from this account |
+| `NOTIFICATION_TOOL_ENABLED` | No | `false` | Offer the `send_notification` agent tool, which sends to an enabled [channel](/configuration/channels/overview) of an organization the calling user belongs to |
+| `SLACK_WEBHOOK_URL` | No | — | **Deprecated, removed in the next release.** Instance-wide Slack incoming-webhook URL, used by the admin `/api/notifications` endpoints and offered by `send_notification` to every user as `instance:slack`. Create a Slack webhook channel in the organization instead |
+| `LARK_WEBHOOK_URL` | No | — | **Deprecated, removed in the next release.** Instance-wide Lark (Feishu) group-bot webhook URL, same paths, offered as `instance:lark`. Create a Lark / Feishu webhook channel instead |
+| `WECOM_WEBHOOK_URL` | No | — | **Deprecated, removed in the next release.** Instance-wide WeCom group-bot webhook URL, same paths, offered as `instance:wecom`. Create a WeCom webhook channel instead |
+| `APP_NAME` | No | `FIM One` | Product name used in system emails (login codes, admin notifications) |
 
 ### Verification code limits
 
@@ -388,14 +452,15 @@ Emailed codes (sign-in, registration, password reset) allow five tries each. The
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `AUTH_CODE_SENDS_PER_ADDRESS_HOUR` | No | `5` | Codes issued per address and purpose per hour |
-| `AUTH_CODE_SENDS_PER_ADDRESS_DAY` | No | `20` | Codes issued per address and purpose per day |
+| `AUTH_CODE_SENDS_BEFORE_COOLDOWN` | No | `3` | Codes issued per address and purpose each day (UTC) before a wait applies |
+| `AUTH_CODE_SEND_COOLDOWN_MAX_MINUTES` | No | `60` | Longest wait between codes for one address and purpose. The wait starts at one minute after the codes above and doubles with each code up to this value, which also bounds the codes per address a day (about 30 with the defaults). The wait is shared by everyone requesting codes for the address. `0` switches the wait off |
 | `AUTH_CODE_SENDS_PER_IP_HOUR` | No | `30` | Anonymous requests for a code per client address per hour |
 | `AUTH_CODE_CHECKS_PER_IP_HOUR` | No | `60` | Anonymous attempts to use a code per client address per hour |
+| `AUTH_CODE_TRIES_PER_CLIENT` | No | `3` | Anonymous tries of one code from one client address, of the code's five |
 
-A request over a limit is answered with HTTP 429 (`verification_rate_limited`) before the address is looked up, so the answer is the same whether or not the address has an account. A signed-in request for a reset code is counted under the account, separately from anonymous requests for the same address. The client address is the one the application server sees: behind a reverse proxy, run the server so that it trusts the proxy's forwarded address, otherwise all clients share one count.
+Addresses are compared without case and without a trailing dot of the domain (`name@example.com.` counts as `name@example.com`). A request over a limit is answered with HTTP 429 (`verification_rate_limited`) before the address is looked up, so the answer is the same whether or not the address has an account. A signed-in request for a reset code is counted under the account, separately from anonymous requests for the same address. The client address is the one the application server sees: behind a reverse proxy, run the server so that it trusts the proxy's forwarded address, otherwise all clients share one count.
 
-Only codes that are actually issued count toward the per-address limits: a request inside the one-minute resend interval is refused and not counted. Requests for a sign-in or reset code are answered the same way whether or not the address has an account; a code is mailed only to an active account's address.
+Requests for a sign-in or reset code are answered the same way whether or not the address has an account; a code is mailed only to an active account's address.
 
 ### Password sign-in limits
 
@@ -405,7 +470,7 @@ Only codes that are actually issued count toward the per-address limits: a reque
 | `AUTH_LOGIN_LOCK_MINUTES` | No | `15` | Length of the first lock (and of the counting period); each further lock in a row lasts twice as long, up to 24 hours |
 | `AUTH_LOGIN_FAILURES_PER_IP_HOUR` | No | `20` | Failed password attempts per client address and clock hour; further attempts get HTTP 429 (`too_many_login_attempts`) until the hour ends |
 
-`0` switches a rule off. A locked account answers a password attempt exactly as a wrong password does; the lock is written to the server log and to the login history (`account_locked_now`, then `account_locked` for each refused attempt). A successful password or emailed-code sign-in clears the count; signing in with an emailed code is not blocked by a lock.
+`0` switches a rule off. A locked account answers a password attempt exactly as a wrong password does; the lock is written to the server log and to the login history (`account_locked_now`, then `account_locked` for each refused attempt). A successful password or emailed-code sign-in, and any password reset (by the user, through the forgotten-password flow or by an administrator), clears the count; signing in with an emailed code is not blocked by a lock.
 
 ---
 
@@ -415,11 +480,18 @@ Only codes that are actually issued count toward the per-address limits: a reque
 |---|---|---|---|
 | `CONNECTOR_RESPONSE_MAX_CHARS` | No | `50000` | Max characters for non-array JSON / plain-text connector responses |
 | `CONNECTOR_RESPONSE_MAX_ITEMS` | No | `10` | Max array items to keep when connector response is a JSON array |
-| `CREDENTIAL_ENCRYPTION_KEY` | No | _(unset)_ | Fernet encryption key for connector credential blobs. When set, auth tokens stored in `connector_credentials` are encrypted at rest. If unset, credentials are stored as plaintext JSON (backward-compatible). Changing this key invalidates all existing encrypted credentials. |
+| `CREDENTIAL_ENCRYPTION_KEY` | No | *(auto-generated)* | Secret from which the Fernet key for connector and MCP credential blobs is derived. Credentials are always encrypted at rest: when the variable is unset, a random key is generated on first start and written to `.env`. Back it up and set it explicitly for multi-replica deployments; changing or losing it makes all stored credentials unreadable. In the Docker image the generated key is kept in the key store (`/var/lib/fim-one/secrets`, the `app_secrets` volume) instead of `.env`, it is generated only while the database is empty, and the container refuses to start when the database has data and the key is in neither place. |
 | `CONNECTOR_TOOL_MODE` | No | `progressive` | How connector tools are exposed to agents. `progressive`: single `ConnectorMetaTool` with `discover`/`execute` subcommands (~30 tokens/connector). `classic`: one tool per action (legacy, ~250 tokens/action). |
 | `DATABASE_TOOL_MODE` | No | `progressive` | How database connector tools are exposed to agents. `progressive`: single `DatabaseMetaTool` with `list_tables`/`discover`/`query` subcommands. `legacy`: one tool per action per database connector (3 tools each). |
 | `DB_CONNECTOR_ALLOWED_HOSTS` | No | *(empty)* | Internal database hosts that database connectors may connect to. By default a database connector can only reach public addresses: private, loopback, link-local, shared-address and cloud-metadata ranges are refused, judged on the address the host name resolves to, on every connection. List the internal databases your deployment needs as comma-separated entries: an IP address (`10.20.30.40`), a CIDR network (`10.20.0.0/16`), a host name (`db.corp.internal`) or a wildcard (`*.rds.internal`), each optionally limited to a port (`db.corp.internal:5432`, `[fd00::5]:5432`). The hosts of the application's own database and Redis (`DATABASE_URL`, `REDIS_URL`) are never allowed, on any port. An entry that cannot be parsed makes every database connector fail, public targets included, until it is corrected; the entry is written to the server log, not shown to users. Do not use `0.0.0.0/0` or `::/0`: they allow cloud metadata addresses and every internal service. See [Database connectors on internal networks](#database-connectors-on-internal-networks). |
 | `MCP_TOOL_MODE` | No | `progressive` | How MCP server tools are exposed to agents. `progressive`: single `MCPServerMetaTool` with `discover`/`call` subcommands. `legacy`: one tool per MCP server action (original individual tools). |
+| `SKILL_TOOL_MODE` | No | `progressive` | How Skills reach the agent. `progressive`: stub listing in the system prompt plus `read_skill` on demand. `inline`: full Skill content in the system prompt. Only applies while the Skills module is enabled |
+| `CONNECTOR_DISCOVER_INDENT` | No | `2` | JSON indent of the API connector meta-tool's `discover` output. Lower values use fewer tokens |
+| `DATABASE_DISCOVER_INDENT` | No | `2` | JSON indent of the database meta-tool's `discover` output |
+| `MCP_DISCOVER_INDENT` | No | `2` | JSON indent of the MCP meta-tool's `discover` output |
+| `SKILL_STUB_DESC_LENGTH` | No | `120` | Characters of each Skill description kept in its system-prompt stub. `0` disables truncation |
+| `COMPACT_CATALOG_DESC_LENGTH` | No | `80` | Characters of each tool description in the catalog used for ReAct tool selection |
+| `COMPACT_SCHEMA_DESC_LENGTH` | No | `200` | Characters of each tool description in compact tool schemas |
 
 ---
 
@@ -451,7 +523,13 @@ After an upgrade, existing connectors that point at internal hosts answer "This 
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `DATABASE_URL` | No | `sqlite+aiosqlite:///./data/fim_one.db` | Database connection string. **SQLite** (zero-config): `sqlite+aiosqlite:///./data/fim_one.db`. **PostgreSQL** (production): `postgresql+asyncpg://user:pass@localhost:5432/fim_one`. Docker Compose auto-sets PostgreSQL. |
-| `JWT_SECRET_KEY` | No | `CHANGE_ME` | Secret key for JWT token signing. Placeholder value `CHANGE_ME` (or any legacy default) triggers auto-generation of a secure 256-bit random key on first start, which is written back to `.env`. Set explicitly in production to keep tokens valid across restarts and replicas. |
+| `SQLITE_POOL_SIZE` | No | `10` | Connection pool size when `DATABASE_URL` is SQLite |
+| `SQLITE_MAX_OVERFLOW` | No | `5` | Extra connections allowed beyond the SQLite pool size |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | No | `fim` / `fim` / `fim_one` | Docker Compose only: credentials of the bundled PostgreSQL service; the compose `DATABASE_URL` is derived from them. Change the password before exposing the database port |
+| `JWT_SECRET_KEY` | No | `CHANGE_ME` | Secret key for JWT token signing. Placeholder value `CHANGE_ME` (or any legacy default) triggers auto-generation of a secure 256-bit random key on first start, which is written back to `.env`. Set explicitly in production to keep tokens valid across restarts and replicas. In the Docker image the same rules apply as for `CREDENTIAL_ENCRYPTION_KEY`. |
+| `FIM_ALLOW_NEW_KEYS` | No | *(not set)* | Docker image only. `true` lets the container generate missing keys although the database already has data. What was encrypted with the previous `CREDENTIAL_ENCRYPTION_KEY` stays unreadable. Set it once, then remove it |
+| `FIM_ALLOW_UNMOUNTED_KEY_STORE` | No | *(not set)* | Docker image only. Missing keys are generated only into a key store on a mount of its own (`/var/lib/fim-one/secrets`, the `app_secrets` volume, or a persistent volume mounted at a directory above it; a tmpfs does not count); without one, the container refuses to start rather than keep keys that the next recreate deletes. `true` generates them into the container anyway. Prefer mounting the volume or setting the keys in `.env` |
+| `FIM_SECRETS_DIR` | No | `/var/lib/fim-one/secrets` | Docker image only. The key store: a directory of root's that the application's user cannot read. Mount a volume on it. Refused when it is at or under `data/` or the uploads directory (by real path), or when a directory between its mount and it is not root's or is writable by group or others |
 | `FIM_BCRYPT_COST` | No | `12` | bcrypt work factor for password hashing, clamped to 4-31. Default 12 costs roughly 200ms per hash on modern CPUs; lower it on weak hardware, raise it for security-hardened deployments. |
 | `CORS_ORIGINS` | No | — | Comma-separated list of extra allowed CORS origins beyond the default localhost entries. Required when the frontend runs on a non-localhost domain (e.g. `https://app.example.com`). |
 | `IP_RULES_ENFORCED` | No | `true` | Apply the IP rules under admin Security to API requests. A deny rule blocks matching clients; any active allow rule blocks every client that matches none. Set `false` to recover from a rule that locks administrators out, without deleting rules |
@@ -460,10 +538,13 @@ After an upgrade, existing connectors that point at internal hosts answer "This 
 | `EXPORT_FONT_DIR` | No | *(auto-detected)* | Directory holding `NotoSansSC-Regular.ttf` / `NotoSansSC-Bold.ttf` for PDF export. Fetch with `python scripts/fetch_export_fonts.py`; Docker images already bundle it. Without an embeddable TrueType CJK font, PDF export falls back to a non-embedded CID font with degraded spacing and no bold. |
 | `MAX_UPLOAD_SIZE_MB` | No | `50` | Max file upload size in megabytes (backend enforcement) |
 | `NEXT_PUBLIC_MAX_UPLOAD_SIZE_MB` | No | `50` | Max file upload size shown in frontend UI. **Build-time variable** — must match `MAX_UPLOAD_SIZE_MB`. |
-| `MCP_SERVERS` | No | — | JSON array of MCP server configs (requires `uv sync --extra mcp`) |
+| `MARKITDOWN_MAX_DOWNLOAD_BYTES` | No | `52428800` | Largest document, in bytes, the `convert_to_markdown` tool downloads from a URL. Larger responses are refused, and a download that has not finished after 60 seconds is stopped. |
+| `MARKITDOWN_MAX_UNPACKED_BYTES` | No | `268435456` | Largest total uncompressed size, in bytes, of a ZIP-based document (`.zip`, Word, Excel, PowerPoint, EPUB) that is converted to Markdown, counted over every member of every nested archive. Applies to `convert_to_markdown`, knowledge-base ingestion and upload previews; a larger document is refused before it is unpacked. |
+| `MARKITDOWN_MAX_ARCHIVE_MEMBERS` | No | `5000` | Most files a ZIP-based document may hold, nested archives included. |
+| `MARKITDOWN_MAX_ARCHIVE_DEPTH` | No | `3` | How deep archives inside a ZIP-based document may be nested; the outer archive counts as 1. |
 | `SSRF_ALLOW_FAKE_IP_RANGE` | No | `false` | Outbound requests made for users (web fetch, HTTP request, connectors, URL import, database connectors) refuse internal addresses. `198.18.0.0/15` counts as internal. Set to `true` only on a machine whose DNS proxy (Surge, Clash and similar "fake-IP" modes) resolves public host names into that range; it opens that range and nothing else. |
-| `ALLOW_STDIO_MCP` | No | `false` | Allow stdio MCP servers. Set `true` only for trusted local deployments |
-| `ALLOWED_STDIO_COMMANDS` | No | `npx,uvx,node,python,python3,deno,bun` | Comma-separated list of allowed base commands for stdio MCP servers. Only effective when `ALLOW_STDIO_MCP=true` |
+| `ALLOW_STDIO_MCP` | No | `false` | Allow stdio MCP servers. A stdio server is a command run inside the application container: with `true`, **system administrators can run arbitrary commands there**. Only administrators can create, edit, copy or publish a stdio server, and one whose owner is not an active administrator is never started, not even by "Test connection"; other users can use a stdio server an administrator shared |
+| `ALLOWED_STDIO_COMMANDS` | No | `npx,uvx,node,python,python3,deno,bun` | Base names an administrator may use as a stdio server's command. A guard against typos, **not a security boundary**: `python -c`, `node -e` and `npx <any package>` run arbitrary code. Only effective when `ALLOW_STDIO_MCP=true` |
 | `LOG_LEVEL` | No | `INFO` | Logging level: `DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` |
 | `REDIS_URL` | No | — | Redis connection URL for cross-worker interrupt relay. **Required when `WORKERS>1`** — without it, mid-stream interrupt/inject requests may hit a different worker and silently fail. Auto-configured by Docker Compose. |
 | `WORKERS` | No | `1` | Uvicorn worker processes. `1` is safe and needs no external services. For production multi-worker, use PostgreSQL (SQLite is single-writer). SQLite works for local dev under light load. Auth, OAuth, and file operations are fully multi-worker safe (JWT-based). Docker Compose auto-configures both PostgreSQL and Redis. |
@@ -478,6 +559,29 @@ After an upgrade, existing connectors that point at internal hosts answer "This 
 
 ---
 
+## Workflow Human Intervention Steps
+
+A Human Intervention (approval) step stops the run until someone decides. The run is stored as `waiting` and continued when the approval is decided, also after a restart and with several server processes. The step is off unless you enable it.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `WORKFLOW_HUMAN_INTERVENTION_ENABLED` | No | `false` | Accept Human Intervention steps in workflows. While `false`, the editor does not offer the step, saving or importing a workflow that contains one is refused with `human_intervention_disabled` naming the steps, and a workflow that already contains one still opens for editing but is refused at run start |
+
+## Workflow Run Recovery
+
+Every server process stamps the runs it is executing. A run still `running` whose stamp is stale was being executed by a process that no longer exists: it is closed as failed, its open approval requests are closed and its working directory is removed. The same sweep, which also runs at startup, continues waiting runs whose approval was decided or expired while no process was listening.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `WORKFLOW_RUN_HEARTBEAT_SECONDS` | No | `10` | How often a process stamps the runs it is executing, from a thread of its own and by the database's clock. A run cancelled from another process starts no further step; a step already in progress is stopped on this pass at the latest |
+| `WORKFLOW_RUN_STALE_SECONDS` | No | `90` | A `running` run with no stamp for this long is taken for dead and closed as failed. Never less than three heartbeats. A blocked event loop does not stop the stamping; a process that cannot reach the database for this long loses its runs. On PostgreSQL a run whose record is locked by a write still in progress is left for the next pass: whoever is writing it is alive |
+| `WORKFLOW_RUN_SWEEP_SECONDS` | No | `30` | How often the recovery sweep runs after the one at startup |
+| `SANDBOX_ORPHAN_MAX_AGE_HOURS` | No | `24` | A run working directory under `data/sandbox` that belongs to no workflow run record (a single-step test, a delegated agent, an evaluation run) is removed once nothing in it has changed for this many hours. Directories of workflow runs are removed when the run has ended |
+| `WORKFLOW_RUN_LEGACY_GRACE_SECONDS` | No | `1800` | Runs that were `running` before the first start of a version with heartbeats carry no mark. They are left alone for this long after a process of the new version first finds them (an old process may still be executing them during a rolling deployment; restarts do not restart the wait), then closed as failed |
+| `WORKFLOW_MAX_WAITING_RUNS_PER_USER` | No | `20` | How many runs of one user may wait for a decision at the same time. At the limit, a workflow with a step that waits is refused before it starts with `workflow_waiting_limit_reached`. `0` removes the limit |
+| `WORKFLOW_SUSPEND_STATE_MAX_BYTES` | No | `5242880` | The most a waiting run may keep to go on later (its variables and step outputs, stored encrypted with the credential key). A run that would exceed it fails at the step with `workflow_suspend_state_too_large` |
+| `WORKFLOW_RESUME_SLOT_WAIT_SECONDS` | No | `3600` | How long a run continued after its approval may queue for one of its user's concurrent-run slots. It queues ahead of that user's new runs; after this long without a slot it fails with `workflow_resume_slot_timeout` |
+
 ## ワークフロー実行の保持
 
 古いワークフロー実行を自動的に削除するバックグラウンドクリーンアップタスク。ワークフロー単位のオーバーライド（ワークフロー設定UIで設定）がこれらのグローバルデフォルトより優先されます。
@@ -488,35 +592,48 @@ After an upgrade, existing connectors that point at internal hosts answer "This 
 | `WORKFLOW_RUN_MAX_PER_WORKFLOW` | いいえ | `100` | ワークフローあたり最大この数の実行を保持（古い順に削除） |
 | `WORKFLOW_RUN_CLEANUP_INTERVAL_HOURS` | いいえ | `24` | バックグラウンドクリーンアップタスクの実行間隔（時間） |
 
-### チャネル確認リクエスト有効期限
+## Audit Record Retention
 
-古い保留中の承認リクエスト（`FeishuGateHook` などのチャネルフックまたは Approval Playground によって生成される）を期限切れとしてマークするバックグラウンドスイーパー。忘れられたカードを数日後にクリックしても、既に破棄されたエージェント状態が反転しないようにします。
+A daily background sweep removes audit records older than their retention period, in small batches. Every sweep leaves one `audit.retention_sweep` entry in the audit log with the number of rows removed from each table. With several replicas, one of them sweeps: on PostgreSQL they agree through a session-level advisory lock, so `DATABASE_URL` must reach the database directly or through a pooler in session mode. Behind a pooler in transaction mode (PgBouncer's `pool_mode = transaction`, a Supabase or Neon pooled port) the lock is taken and released on different server sessions; the sweeper then logs a warning and closes the connection. The usage ledger is never swept. The first sweep runs within ten minutes of the first start on a version that has it: set a variable to `0` beforehand to keep older records.
 
-| 変数 | 必須 | デフォルト | 説明 |
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| `CHANNEL_CONFIRMATION_TTL_MINUTES` | いいえ | `1440` | この時間より古い保留中の確認は自動的に期限切れになります（デフォルト：24時間） |
-| `CHANNEL_CONFIRMATION_SWEEP_INTERVAL_SECONDS` | いいえ | `600` | 有効期限スイーパーが実行される頻度（デフォルト：10分ごと） |
+| `AUDIT_RETENTION_DAYS` | No | `365` | How long the audit log, the sign-in history and organizations' review trails are kept. A value from 1 to 179 is raised to `180`. At the same age the arguments stored with a decided approval request are cleared; the request and its decision stay. `0` keeps everything for ever |
+| `CALL_LOG_RETENTION_DAYS` | No | `180` | How long the records of calls to connectors, databases and MCP servers are kept. `0` keeps them for ever |
 
-## OAuth (オプション)
+### Channel Confirmation Request Expiry
 
-プロバイダーに対して `CLIENT_ID` と `CLIENT_SECRET` の両方が設定されている場合、ログインページに対応する OAuth ボタンが自動的に表示されます。
+Background sweeper that marks pending approval requests (chat confirmations, workflow approvals, Approval Playground cards) as expired once their own deadline has passed, so a click days later on a forgotten card doesn't flip agent state that has already been torn down. The TTL applies only to requests recorded before the deadline column existed.
 
-| 変数 | 必須 | デフォルト | 説明 |
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| `GITHUB_CLIENT_ID` | いいえ | — | GitHub OAuth App クライアント ID。[github.com/settings/developers](https://github.com/settings/developers) → OAuth Apps で作成 |
-| `GITHUB_CLIENT_SECRET` | いいえ | — | GitHub OAuth App クライアントシークレット |
-| `GOOGLE_CLIENT_ID` | いいえ | — | Google OAuth クライアント ID。[console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials) で作成 |
-| `GOOGLE_CLIENT_SECRET` | いいえ | — | Google OAuth クライアントシークレット |
-| `DISCORD_CLIENT_ID` | いいえ | — | Discord OAuth2 クライアント ID。[discord.com/developers](https://discord.com/developers/applications) で作成 |
-| `DISCORD_CLIENT_SECRET` | いいえ | — | Discord OAuth2 クライアントシークレット |
-| `FEISHU_APP_ID` | いいえ | — | Feishu (Lark) App ID。[open.feishu.cn](https://open.feishu.cn/app) で作成。`contact:user.email:readonly` パーミッションが必要 |
-| `FEISHU_APP_SECRET` | いいえ | — | Feishu (Lark) App Secret |
-| `FEISHU_TRUSTED_TENANT_KEYS` | いいえ | — | カンマ区切りの Feishu `tenant_key` 値。メールアドレスで既存アカウントにマッチする可能性のあるエンタープライズメール。その他のテナントはサインインできますが、メールアドレスでアカウントを要求することはできません |
-| `FRONTEND_URL` | **本番環境** | `http://localhost:3000` | OAuth 完了後にブラウザが遷移する先。本番環境では設定が必須です（例：`https://yourdomain.com`） |
-| `API_BASE_URL` | **本番環境** | `http://localhost:8000` | 外部からアクセス可能なバックエンド URL。OAuth コールバック URL の構築に使用。本番環境では設定が必須です |
-| `NEXT_PUBLIC_API_URL` | **本番環境** | *（`<hostname>:8000` として自動検出）* | OAuth リダイレクト用のブラウザ側 API ベース URL。**これはフロントエンドのビルド時変数です** — ローカル開発では `frontend/.env.local` に設定するか、カスタム本番環境デプロイメント用に Docker ビルド引数として渡してください。標準的なリバースプロキシセットアップ（ポート 80/443）では自動検出が機能します。 |
+| `CHANNEL_CONFIRMATION_TTL_MINUTES` | No | `1440` | Pending confirmations with no recorded deadline older than this are auto-expired (default: 24 hours) |
+| `CHANNEL_CONFIRMATION_SWEEP_INTERVAL_SECONDS` | No | `600` | How often the expiry sweeper runs (default: every 10 minutes) |
 
-> **本番環境** = ローカルではオプション（デフォルトが機能）ですが、**インターネット公開デプロイメントでは必須です**。
+---
+
+## OAuth (Optional)
+
+When both `CLIENT_ID` and `CLIENT_SECRET` are set for a provider, the login page automatically shows the corresponding OAuth button.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `GITHUB_CLIENT_ID` | No | — | GitHub OAuth App client ID. Create at [github.com/settings/developers](https://github.com/settings/developers) → OAuth Apps |
+| `GITHUB_CLIENT_SECRET` | No | — | GitHub OAuth App client secret |
+| `GOOGLE_CLIENT_ID` | No | — | Google OAuth client ID. Create at [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials) |
+| `GOOGLE_CLIENT_SECRET` | No | — | Google OAuth client secret |
+| `DISCORD_CLIENT_ID` | No | — | Discord OAuth2 client ID. Create at [discord.com/developers](https://discord.com/developers/applications) |
+| `DISCORD_CLIENT_SECRET` | No | — | Discord OAuth2 client secret |
+| `FEISHU_APP_ID` | No | — | Feishu (Lark) App ID. Create at [open.feishu.cn](https://open.feishu.cn/app). Requires `contact:user.email:readonly` permission |
+| `FEISHU_APP_SECRET` | No | — | Feishu (Lark) App Secret |
+| `FEISHU_TRUSTED_TENANT_KEYS` | No | — | Comma-separated Feishu `tenant_key` values whose enterprise email may match an existing account by email. Other tenants can sign in but never claim an account by email |
+| `FEISHU_ALLOWED_BASE_URLS` | No | — | Comma-separated https origins (for example `https://open.feishu.example.com`, no path) that a [Feishu app channel](/configuration/channels/feishu) may use as its `base_url` besides `https://open.feishu.cn` and `https://open.larksuite.com`. Needed only for a privately deployed Feishu. A channel whose `base_url` is not listed is refused when saved (`feishu_channel_base_url_not_allowed`) and sends nothing |
+| `FRONTEND_URL` | **Prod** | `http://localhost:3000` | Where the browser lands after OAuth completes. Must be set in production (e.g. `https://yourdomain.com`) |
+| `API_BASE_URL` | **Prod** | `http://localhost:8000` | Externally reachable backend URL, used to build OAuth callback URLs. Must be set in production |
+| `BACKEND_URL` | No | *(falls back to `PUBLIC_BACKEND_URL`, then `FRONTEND_URL`)* | Public base URL of the backend, used to build the callback URL shown for a Feishu channel and links in channel cards. Set it when the backend is reached at a different address than the portal |
+| `NEXT_PUBLIC_API_URL` | **Prod** | *(auto-detected as `<hostname>:8000`)* | Browser-side API base URL for OAuth redirects. **This is a frontend build-time variable** — set it in `frontend/.env.local` for local dev, or pass it as a Docker build arg for custom production deployments. Auto-detection works for standard reverse-proxy setups (port 80/443). |
+
+> **Prod** = optional locally (defaults work), but **required for any internet-facing deployment**.
 
 ### 各プロバイダーに登録するOAuth コールバックURL
 
@@ -558,12 +675,12 @@ Cloudflareのネットワークを通じてすべてのトラフィックをル�
 
 > すべての `NEXT_PUBLIC_*` 分析変数は**ビルド時**です — 変更を反映させるにはフロントエンドの再ビルドが必要です。
 
-## Stripe Billing（オプション）
+## Stripe Billing (Optional)
 
-Stripe は Pro サブスクリプションを提供します。3つの変数をすべて空白のままにすると、課金が無効になります——FIM One の残りの機能は変わりません。**`STRIPE_SECRET_KEY`** **と** `STRIPE_WEBHOOK_SECRET` の両方を一緒に設定する必要があります。部分的な設定は最初の使用時にエラーが発生します。
+Stripe powers paid subscriptions. Leave all three variables blank to disable billing — the rest of FIM One works unchanged. **Both** `STRIPE_SECRET_KEY` **and** `STRIPE_WEBHOOK_SECRET` must be set together; partial config raises an error at first use. Which access posture applies (no subscriptions, included + paid, or paid only) is chosen in the admin panel; see [Billing](/configuration/billing).
 
-| 変数 | 必須 | デフォルト | 説明 |
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| `STRIPE_SECRET_KEY` | いいえ | — | Stripe API シークレットキー。`sk_test_` / `sk_live_`（フルアクセス）または `rk_test_` / `rk_live_`（制限付きキー）で始まる必要があります。Stripe ダッシュボード → Developers → API keys から取得してください。`sk_live_*` キーをソースにコミットしないでください。 |
-| `STRIPE_WEBHOOK_SECRET` | いいえ | — | Stripe ウェブフック署名シークレット（`whsec_*`）。Stripe ダッシュボード → Developers → Webhooks → Add endpoint でウェブフックエンドポイントを登録するときに作成されます。受信ウェブフックペイロードを検証するために必要です。 |
-| `STRIPE_BILLING_RETURN_URL` | いいえ | `http://localhost:3000/settings?tab=billing` | Checkout / Customer Portal セッション後に Stripe がユーザーをリダイレクトする URL。これを本番環境の課金設定ページに設定してください（例：`https://your-domain.com/settings?tab=billing`）。 |
+| `STRIPE_SECRET_KEY` | No | — | Stripe API secret key. Must start with `sk_test_` / `sk_live_` (full access) or `rk_test_` / `rk_live_` (restricted key). Get yours from the Stripe Dashboard → Developers → API keys. Never commit a `sk_live_*` key to source. |
+| `STRIPE_WEBHOOK_SECRET` | No | — | Stripe webhook signing secret (`whsec_*`). Created when you register the webhook endpoint in Stripe Dashboard → Developers → Webhooks → Add endpoint. Required to verify inbound webhook payloads. |
+| `STRIPE_BILLING_RETURN_URL` | No | `http://localhost:3000/settings?tab=billing` | URL Stripe redirects users to after Checkout / Customer Portal sessions. Set this to your production billing settings page (e.g. `https://your-domain.com/settings?tab=billing`). |

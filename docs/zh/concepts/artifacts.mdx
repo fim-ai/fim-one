@@ -1,41 +1,41 @@
 ---
-title: "工件"
+title: "Artifacts"
 icon: "file-export"
-description: "浏览、预览和下载所有对话中AI生成的文件。"
+description: "Browse, preview, and download all AI-generated files across your conversations."
 ---
 
-工件是智能体在对话过程中生成的文件——图像、HTML页面、代码文件、文档和其他输出。工件页面是一个跨对话库，让您可以查找、预览和下载智能体创建的所有内容。
+Artifacts are the files that AI agents produce during conversations — images, HTML pages, code files, documents, and other outputs. The Artifacts page is a cross-conversation gallery that lets you find, preview, and download the deliverables your agents have produced.
 
-## 工件如何创建
+## How Artifacts Are Created
 
-任何返回包含 `artifacts` 列表的 `ToolResult` 的工具都会生成可下载的文件。智能体不需要特殊指令 — 工件创建是工具执行的自然副作用。
+Any tool that returns a `ToolResult` with an `artifacts` list generates downloadable files. The agent doesn't need special instructions — artifact creation is a natural side effect of tool execution.
 
-常见生产者：
+Common producers:
 
-| 工具 | 工件类型 | 示例 |
+| Tool | Artifact Type | Example |
 |------|--------------|---------|
-| `python_exec` | 图像、HTML、CSV、JSON | 保存为 PNG 的 matplotlib 图表 |
-| `template_render` | HTML | 格式化报告 |
-| 代码执行工具 | 任何文件 | 生成的代码、导出的数据 |
-| 图像生成 | 图像 | AI 生成的插图 |
+| `python_exec` | Images, HTML, CSV, JSON | A matplotlib chart saved as PNG |
+| `template_render` | HTML | A formatted report |
+| Code execution tools | Any file | Generated code, exported data |
+| Image generation | Images | AI-generated illustrations |
 
-当工具生成工件时，它会作为可下载的附件内联显示在对话中。所有工件也会被收集在工件库中，以便跨对话浏览。
+When a tool produces an artifact, it appears inline in the conversation as a downloadable attachment. Deliverables — the files an answer hands over as final output — are also collected in the Artifacts gallery for cross-conversation browsing; intermediate files stay in their conversation.
 
-## 画廊
+## The Gallery
 
-Artifacts 页面（`/artifacts`）提供了您在所有对话中生成的所有文件的统一视图。
+The Artifacts page (`/artifacts`) provides a unified view of the deliverables from all your conversations.
 
-### 筛选
+### Filtering
 
-四种类型筛选器可以缩小视图范围：
+Filter tabs narrow the view (All plus four types):
 
-| 筛选器 | 文件类型 |
+| Filter | File Types |
 |--------|-----------|
-| **全部** | 所有内容 |
-| **图像** | PNG、JPG、GIF、SVG、WebP |
-| **HTML** | HTML 页面和报告 |
-| **代码** | Python、JavaScript、TypeScript、JSON、YAML、XML、CSS、SQL、Markdown、shell 脚本 |
-| **文件** | 其他所有内容 — CSV、PDF、纯文本、二进制文件 |
+| **All** | Everything |
+| **Images** | PNG, JPG, GIF, SVG, WebP |
+| **HTML** | HTML pages and reports |
+| **Code** | Any text file except HTML, plus JSON: source code, Markdown, CSV, plain text, YAML |
+| **Files** | Everything else — PDF, archives, binary files |
 
 ### 预览
 
@@ -56,6 +56,6 @@ Artifacts 页面（`/artifacts`）提供了您在所有对话中生成的所有�
 - 创建时间戳
 - 源对话（点击可导航回生成该工件的对话）
 
-## 存储
+## Storage
 
-工件存储在服务器文件系统上，每个对话一个目录。每个工件都获得一个基于 UUID 的文件名，使得没有访问对话的情况下无法猜测 URL。文件直接提供服务 — 没有单个工件的数据库记录，保持存储层简单快速。
+Artifacts are stored on the server filesystem, one directory per conversation. Each artifact is stored under a random 12-character id plus its original name; download URLs carry the conversation UUID. Files are served directly — no database records for individual artifacts, keeping the storage layer simple and fast.

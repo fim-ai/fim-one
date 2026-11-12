@@ -1,32 +1,32 @@
 ---
-title: "평가 센터"
+title: "Evaluation Center"
 icon: "flask"
-description: "테스트 데이터셋과 자동화된 LLM 등급 평가로 에이전트를 정량적으로 벤치마크합니다."
+description: "Quantitatively benchmark your agents with test datasets and automated LLM grading."
 ---
 
-평가 센터를 통해 프로덕션 배포 **전에** 에이전트 품질을 검증할 수 있습니다. 테스트 케이스 데이터셋을 생성하고, 게시된 모든 에이전트에 대해 실행한 후, 케이스별 통과/실패 판정, 지연 시간 및 토큰 사용량이 포함된 정량적 보고서를 받습니다.
+The Evaluation Center lets you verify agent quality **before** deploying to production. Create a dataset of test cases, run them against any agent you own, and get a quantitative report with per-case pass/fail verdicts, latency, and token usage.
 
 <Info>
-엔터프라이즈 조달 검토를 위해 설계됨 — 모든 결과는 감사 가능하고, 재현 가능하며, 지속적으로 저장됩니다.
+Designed for enterprise procurement review — every result is auditable, reproducible, and stored persistently.
 </Info>
 
-## 작동 방식
+## How It Works
 
-각 평가 실행은 모든 테스트 케이스에 대해 **3단계 파이프라인**을 실행합니다:
+Each evaluation run executes a **three-stage pipeline** for every test case:
 
 <Steps>
-  <Step title="에이전트 실행">
-    실제 ReActAgent가 테스트 케이스 프롬프트를 실행합니다. 채팅과 동일한 엔진: 동일한 모델, 동일한 도구, 동일한 지침. 모킹 없음, 지름길 없음.
+  <Step title="Agent Execution">
+    A real ReActAgent runs the test case prompt. Same engine as chat, with the agent's instructions and the built-in tools. No mocking, no shortcuts.
 
-    생성: **답변**, **지연시간**, **토큰 사용량**.
+    Produces: **answer**, **latency**, **token usage**.
   </Step>
-  <Step title="LLM 채점">
-    별도의 "채점자" LLM(빠른 모델)이 예상 동작 및 어설션에 대해 답변을 판단합니다.
+  <Step title="LLM Grading">
+    A separate "grader" LLM (fast model) judges the answer against the expected behavior and assertions.
 
-    입력: 프롬프트 + 예상 동작 + 어설션 + 답변. 출력: `{ verdict: "pass"|"fail", reasoning: "..." }`.
+    Input: prompt + expected behavior + assertions + answer. Output: `{ verdict: "pass"|"fail", reasoning: "..." }`.
   </Step>
-  <Step title="저장 및 집계">
-    각 케이스 결과는 데이터베이스에 저장됩니다. 모든 케이스가 완료된 후: **통과율**, **평균 지연시간**, **총 토큰**이 계산되어 실행에 첨부됩니다.
+  <Step title="Persist & Aggregate">
+    Each case result is saved to the database. After all cases finish: **pass rate**, **avg latency**, **total tokens** are computed and attached to the run.
   </Step>
 </Steps>
 
@@ -93,45 +93,45 @@ description: "테스트 데이터셋과 자동화된 LLM 등급 평가로 에이
 
 ## 테스트되는 항목
 
-### 포함됨
-- **기본 제공 도구**: calculator, web_search, web_fetch, python_exec, file_ops 등
-- **에이전트 지침**: 에이전트의 `extra_instructions` 필드가 전달됨
-- **에이전트의 구성된 모델**: 에이전트에 사용자 정의 모델 구성이 있는 경우 해당 모델이 사용됨
+### Included
+- **Builtin tools**: calculator, web_search, web_fetch, python_exec, file_ops, etc.
+- **Agent instructions**: The agent's `instructions` are passed through
+- **Agent's configured model**: If the agent has an inline model config, that model is used; otherwise the system default model
 
-### 포함되지 않음 (의도적)
-- **커넥터**: 외부 HTTP 커넥터는 실시간 타사 서비스가 필요하므로 불안정한 테스트를 피하기 위해 평가에서 제외됨
-- **MCP 서버**: 같은 이유 — 외부 프로세스 종속성
-- **대화 기록**: 각 케이스는 이전 컨텍스트 없이 격리된 상태에서 실행됨
-- **지식 베이스**: KB 검색 도구는 평가 모드에서 로드되지 않음
+### Not Included (by design)
+- **Connectors**: External HTTP connectors require live third-party services — skipped in eval to avoid flaky tests
+- **MCP servers**: Same reason — external process dependencies
+- **Conversation history**: Each case runs in isolation with no prior context
+- **Knowledge bases**: The agent's knowledge bases are not attached in eval mode
 
 <Info>
-이는 평가 결과가 에이전트의 **추론 및 도구 사용 능력**을 반영하며, 외부 서비스와의 통합을 반영하지 않음을 의미합니다. 커넥터 테스트 기능을 통해 커넥터를 별도로 테스트하세요.
+This means eval results reflect the agent's **reasoning and tool-use ability**, not its integration with external services. Test connectors separately via the Connector Test feature.
 </Info>
 
-## 채점자
+## The Grader
 
-채점자는 LLM(시스템의 "빠른" 모델)으로, 네 가지 정보를 받아 구조화된 JSON 판정을 반환합니다:
+The grader is an LLM (the system's "fast" model) that receives four pieces of information and returns a structured JSON verdict:
 
-**시스템 프롬프트:**
-> 당신은 공정한 AI 평가자입니다. 당신의 역할은 AI 에이전트의 답변이 주어진 프롬프트에 대한 예상 동작을 충족하는지 판단하는 것입니다.
+**System prompt:**
+> You are an impartial AI evaluator. Your job is to judge whether an AI agent's answer meets the expected behavior for a given prompt.
 >
-> 엄격하지만 공정하게 평가하세요. "통과"는 답변이 예상 동작에 따라 프롬프트를 진정으로 다루어야 합니다. "실패"는 답변이 잘못되었거나, 불완전하거나, 주제를 벗어났거나, 핵심 요구사항을 놓쳤다는 의미입니다.
+> Be strict but fair. A "pass" requires the answer to genuinely address the prompt according to the expected behavior. A "fail" means the answer is wrong, incomplete, off-topic, or misses key requirements.
 
-**사용자 메시지 포함:**
-1. 원본 프롬프트
-2. 예상 동작
-3. 어설션 목록(또는 "지정되지 않음")
-4. 에이전트의 실제 답변
+**User message includes:**
+1. The original prompt
+2. The expected behavior
+3. The list of assertions (or "None specified")
+4. The agent's actual answer
 
-**출력 스키마:**
+**Output schema:**
 ```json
 {
   "verdict": "pass" | "fail",
-  "reasoning": "답변이 통과하거나 실패하는 이유에 대한 설명..."
+  "reasoning": "Explanation of why the answer passes or fails..."
 }
 ```
 
-채점자는 스키마를 강제하기 위해 함수 호출과 함께 `structured_llm_call`을 사용합니다. 채점자 자체가 실패하면(네트워크 오류, 잘못된 응답), 사건은 `error`로 표시됩니다.
+The grader uses `structured_llm_call` with function calling to enforce the schema. If the grader produces no verdict (network error, malformed response), the case is recorded as `fail` with the reasoning "Grader failed to produce a verdict." `error` means the agent run itself raised.
 
 ## 모범 사례
 

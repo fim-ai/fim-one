@@ -1,18 +1,20 @@
 ---
-title: "マーケット"
+title: "Market"
 icon: "store"
-description: "組織全体およびグローバルコミュニティ全体でソリューションとコンポーネントを発見、購読、および公開します。"
+description: "Discover, subscribe to, and publish Solutions and Components across your organization and the global community."
 ---
 
-マーケットはFIM Oneの組み込みリソースマーケットプレイスです。共有リソースを2つのレベルに整理します：
+The Market is FIM One's built-in resource marketplace. It organizes shared resources into two tiers:
 
-- **ソリューション** -- エンドツーエンドの機能を提供する高レベルのリソース：エージェント、スキル、およびワークフロー。
-- **コンポーネント** -- ソリューションが依存する構成要素：コネクタおよびMCP サーバー。
+- **Solutions** -- high-level resources that deliver end-to-end capabilities: Agents, Skills, and Workflows.
+- **Components** -- building blocks that Solutions depend on: Connectors and MCP Servers.
 
-スコープ（組織またはグローバルマーケット）で参照し、必要なものを見つけ、購読して、FIM Oneを離れることなく使用を開始できます。
+Skills and Workflows are optional modules, off by default. They appear in the Market only after an administrator enables them under Admin → Settings → Modules.
+
+You browse by scope (your Organization or the Global Market), find what you need, subscribe, and start using it -- all without leaving FIM One.
 
 <Info>
-マーケットは**プルモデル**を使用します：リソースは参照によって発見され、明示的に購読されます。自動参加またはプッシュメカニズムはありません。インストールするものを選択でき、いつでもスコープでフィルタリングできます。
+The Market uses a **pull model**: resources are discovered by browsing and explicitly subscribed to. There is no auto-join or push mechanism -- you choose what to install, and you can filter by scope at any time.
 </Info>
 
 ## 何が見つかるか？
@@ -27,27 +29,27 @@ description: "組織全体およびグローバルコミュニティ全体でソ
 | **スキル** | ソリューション | システムプロンプトに注入されるグローバルSOP、エージェントをオーケストレーション可能 |
 | **ワークフロー** | ソリューション | スケジュール実行またはトリガー実行用のDAG自動化フロー |
 
-### コンポーネント
+### Components
 
-コンポーネントは、ソリューションが構築される統合とツールサービスです。
+Components are the integrations and tool services that Solutions are built from.
 
-| リソース | カテゴリ | 提供内容 |
+| Resource | Category | What you get |
 |---|---|---|
-| **Connector** | コンポーネント | エージェントツールとして利用可能なAPI/データベース統合 |
-| **MCP Server** | コンポーネント | セッションに読み込まれるサードパーティツールサービス |
+| **Connector** | Component | API integration available as agent tools (database connectors cannot be published) |
+| **MCP Server** | Component | Third-party tool service loaded into sessions |
 
 <Tip>
-ナレッジベースはマーケットに表示されることはなく、購読されることもありません。KBを使用するエージェントは実行時に所有者のコンテンツを委譲するため、エージェントの購読だけで十分です。
+Knowledge Bases never appear in the Market and are never subscribed. An Agent that uses a KB delegates its owner's content at run time, so subscribing to the Agent is all you need.
 </Tip>
 
-## スコープ
+## Scope
 
-マーケットページの上部にはスコープセレクターがあります。UI とサブスクリプションフローは両方のスコープで同じです。リソースの表示のみが変わります。
+The Market has a scope selector at the top of the page. The UI and subscription flow are identical in both scopes -- only the visibility of resources changes.
 
-- **Organization** -- チームまたは企業内で共有されるリソース。ここに公開する場合、レビューは不要です。
-- **Global Market** -- FIM One コミュニティ全体からのリソース。ここに公開する場合、管理者の承認が必要です。
+- **Organization** -- resources shared within your team or company. Publishing here does not require review unless the organization has turned review on for that resource type.
+- **Global Market** -- resources from the entire FIM One community. Publishing here requires admin approval.
 
-いつでもスコープを切り替えて、利用可能なものを探索できます。
+Switch between scopes at any time to explore what is available.
 
 ## サブスクライブするにはどうすればよいですか？
 
@@ -65,9 +67,9 @@ description: "組織全体およびグローバルコミュニティ全体でソ
 
 サブスクリプションは即座に有効になります。パブリッシャーからの承認は不要です。いつでもサブスクリプションを解除して、ワークスペースからリソースを削除できます。
 
-## 公開方法
+## How Do I Publish?
 
-リソースの所有者は誰でも公開して、リソースを発見可能にすることができます。公開は組織またはグローバルマーケットのいずれかをターゲットにできます。
+Any resource owner can publish to make their resource discoverable. Publishing can target either your Organization or the Global Market.
 
 ```mermaid
 flowchart LR
@@ -77,25 +79,25 @@ flowchart LR
     R -->|"Approved"| V["Visible in Market"]
 ```
 
-| ターゲット | 誰が見ることができるか | レビューが必要か |
+| Target | Who can see it | Review required? |
 |---|---|---|
-| **Organization** | 組織のすべてのメンバー | いいえ（組織レベルの信頼） |
-| **Global Market** | すべての認証済みユーザー | はい -- 管理者の承認が必要 |
+| **Organization** | All members of your org | No by default; an org can require review per resource type |
+| **Global Market** | All authenticated users | Yes -- admin approval required |
 
-グローバルマーケットへの公開は常にレビューゲートを通過します。管理者はリソースを承認、却下（メモ付き）、または保留中のままにすることができます。却下されたリソースは修正して再提出できます。
+Publishing to the Global Market always goes through a review gate. Admins can approve, reject (with a note), or leave the resource pending. Rejected resources can be revised and resubmitted.
 
-## 認証情報について
+## What About Credentials?
 
-認証情報（APIキー、OAuthトークン、データベースパスワード）が必要なリソースにサブスクライブする場合、オンボーディングウィザードはサブスクリプション中にそれらを収集します。認証情報は安全に保存され、アカウントにスコープされます。他のユーザーはそれらを見ることはできません。
+When you subscribe to a resource that requires credentials (API keys, OAuth tokens), the onboarding wizard collects them during subscription. Credentials are stored securely and scoped to your account -- no one else can see them.
 
-リソースの設定ページから、いつでも認証情報を更新またはローテーションできます。
+You can update or rotate credentials at any time from the resource's settings page.
 
-## 統合の仕組み
+## How It Integrates
 
-内部的には、Market は**シャドウ組織**として実装されています。つまり、メンバーを持たない見えないシステム組織です。Global Market に公開されたリソースは、このシャドウ組織内で `visibility: "org"` に設定されており、既存の可視性システムでそれらを自然に含めることができます。
+Under the hood, the Market is implemented as a **shadow organization** -- an invisible system org that holds no members. Resources published to the Global Market are set to `visibility: "org"` within this shadow org, which allows the existing visibility system to include them naturally.
 
-これは、Market がツール組み立てパイプラインで**特別な処理コードを必要としない**ことを意味します。個人リソースと組織リソースを読み込む同じ 3 段階の可視性フィルター（own -> org-shared -> subscribed）が、Market リソースも読み込みます。サブスクライブすると、サブスクリプションレコードが作成され、リソースが可視性フィルターに自動的に表示されます。
+This means the Market requires **zero special-case code** in the tool assembly pipeline. The same visibility filter (own, or subscribed and still shared) that loads personal and org resources also loads Market resources. When you subscribe, a subscription record is created, and the resource appears in your visibility filter automatically.
 
-依存関係をバンドルする Solution（例えば、バインドされたコネクタとナレッジベースを持つエージェント）の場合、サブスクリプションプロセスはそれらの依存関係を解決してプロビジョニングするため、すべてがそのまま機能します。
+For Solutions that bundle dependencies (e.g., an Agent with bound Connectors and Knowledge Bases), the subscription process resolves and provisions those dependencies so everything works out of the box.
 
-すべてのリソースタイプ全体で可視性フィルターがどのように機能するかについての技術的な詳細は、[エージェント & リソース検出 -- 可視性モデル](/architecture/agent-discovery#visibility-model)を参照してください。
+For technical details on how the visibility filter works across all resource types, see [Agent & Resource Discovery -- Visibility Model](/architecture/agent-discovery#visibility-model).

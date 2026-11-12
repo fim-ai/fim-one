@@ -39,21 +39,21 @@ sequenceDiagram
 
 重要な洞察：**完全なツールスキーマは会話スコープであり、プロンプトスコープではありません。** これらはツール結果メッセージとして表示され、コンテキスト管理システムは後のターンで要約または切り詰めることができます。対照的に、システムプロンプトコンテンツは会話全体を通じて完全なサイズで永続化します。
 
-## 5つの開示メカニズム
+## Five disclosure mechanisms
 
-FIM Oneは、5つのリソースタイプ全体に段階的な開示を均一に適用します。各リソースは同じ2層パターンを使用しますが、メタツールはそのセマンティクスに合わせてカスタマイズされています。
+FIM One applies progressive disclosure uniformly across five resource types. Each uses the same two-tier pattern but with a meta-tool tailored to its semantics.
 
-| リソース | メタツール | スタブの表示内容 | オンデマンド返却内容 | 設定変数 | デフォルト |
+| Resource | Meta-Tool | Stubs Show | On-Demand Returns | Config Var | Default |
 |---|---|---|---|---|---|
-| スキル | `read_skill` | 名前 + 説明（120文字） | 完全なSOP内容 + 埋め込みスクリプト | `SKILL_TOOL_MODE` | `progressive` |
-| APIコネクタ | `connector` | コネクタ名 + アクション一覧 | パラメータ付きの完全なアクションスキーマ | `CONNECTOR_TOOL_MODE` | `progressive` |
-| データベースコネクタ | `database` | DB名 + テーブル名 + カウント | カラムスキーマ、SQLクエリ実行 | `DATABASE_TOOL_MODE` | `progressive` |
-| MCPサーバー | `mcp` | サーバー名 + ツール一覧 | 完全なツールスキーマ + 呼び出し | `MCP_TOOL_MODE` | `progressive` |
-| 組み込みツール | `request_tools` | コンパクトカタログ（名前 + 80文字説明） | セッションに注入された完全なツールスキーマ | _(自動)_ | ツール数 >12 時に自動 |
+| Skills (when the module is enabled; off by default) | `read_skill` | Name + description (120 chars) | Full SOP content + embedded script | `SKILL_TOOL_MODE` | `progressive` |
+| API Connectors | `connector` | Connector name + action list | Full action schemas with parameters | `CONNECTOR_TOOL_MODE` | `progressive` |
+| Database Connectors | `database` | DB name + table names + counts | Column schemas, SQL query execution | `DATABASE_TOOL_MODE` | `progressive` |
+| MCP Servers | `mcp` | Server name + tool list | Full tool schemas + invocation | `MCP_TOOL_MODE` | `progressive` |
+| Built-in Tools | `request_tools` | Compact catalog (name + 80-char desc) | Full tool schema injected into session | _(auto)_ | Auto when >12 tools |
 
-### スキル -- `read_skill`
+### Skills -- `read_skill`
 
-**LLMが最初に見るもの:**
+**What the LLM sees initially:**
 
 ```
 ## Available Skills
@@ -62,13 +62,13 @@ Call read_skill(name) to load full content before executing any of these:
 - Refund Processing: Step-by-step refund workflow with approval gates...
 ```
 
-各スタブはおおよそ30トークン -- 名前と完全なスキルコンテンツから切り詰められた120文字の説明です。
+Each stub is roughly 30 tokens -- a name plus the Skill's description, truncated to 120 characters (`SKILL_STUB_DESC_LENGTH`).
 
-**オンデマンド時に起こること:** LLMが`read_skill("Customer Complaint SOP")`を呼び出し、完全なSOP テキスト -- ステップバイステップの指示、決定木、埋め込みスクリプトの数千トークンの可能性がある内容を受け取ります。このコンテンツはシステムプロンプトテキストではなくツール結果として入力されるため、後続のターンで通常のコンテキスト管理（要約、切り詰め）の対象となります。
+**What happens on demand:** The LLM calls `read_skill("Customer Complaint SOP")` and receives the complete SOP text -- potentially thousands of tokens of step-by-step instructions, decision trees, and embedded scripts. This content enters as a tool result, not as system prompt text, so it is subject to normal context management (summarization, truncation) in later turns.
 
-**レガシーモード:** `SKILL_TOOL_MODE=inline`は完全なスキルコンテンツをシステムプロンプトに直接埋め込みます。スキルが少なく、小さい場合に適しています -- ただしスケーリングが悪くなります。
+**Legacy mode:** `SKILL_TOOL_MODE=inline` embeds the full Skill content directly in the system prompt. Suitable when you have few, small Skills -- but scales poorly.
 
-**コンテキスト削減:** 平均2,000トークンの10個のスキルを持つデプロイメントは、プログレッシブモード（スタブのみ）で約300トークン対インラインモードで約20,000トークンを消費します。これは永続的なコンテキストコストの98%削減です。
+**Context savings:** A deployment with 10 Skills averaging 2,000 tokens each consumes ~300 tokens in progressive mode (stubs only) vs. ~20,000 tokens in inline mode. That is a 98% reduction in persistent context cost.
 
 ### APIコネクタ -- `connector`
 
@@ -143,17 +143,17 @@ MCP サーバーは段階的な情報開示の最も劇的なケースです。G
 
 **コンテキスト削減:** ここでの削減は極めて大きいです。GitHub MCP サーバーの 35 個のツールは 10,000 トークン以上のスキーマを消費する可能性があります。段階的モードでは、スタブは約 100 トークンのコストがかかります。ユーザーがそのコンバーセーション内で GitHub を必要としない場合、これらの 10,000 トークンは決して使用されません。
 
-### 組み込みツール -- `request_tools`
+### Built-in Tools -- `request_tools`
 
-5番目のメカニズムは、他の4つとは異なるアーキテクチャです。リソースタイプをメタツールの背後に統合するのではなく、**ツール選択のボトルネック**に対処します -- エージェントが12以上のツールを利用可能な場合に何が起こるかです。
+The fifth mechanism is architecturally different from the other four. It does not consolidate a resource type behind a meta-tool. Instead, it addresses the **tool selection bottleneck** -- what happens when the agent has more than 12 tools available.
 
-**動作方法：** ツールの総数が`REACT_TOOL_SELECTION_THRESHOLD`（デフォルト：12）を超える場合、ReActエンジンは軽量なLLM呼び出しを実行して、現在のクエリに最も関連性の高い上位6つのツールを選択します。残りのツールは完全なレジストリに保存されます。`request_tools`メタツールが自動的に登録され、すべての未ロードツールをコンパクトなカタログ（名前 + 80文字の説明）としてリストアップします。
+**How it works:** When the total tool count exceeds `REACT_TOOL_SELECTION_THRESHOLD` (default: 12), the ReAct engine selects up to 6 relevant tools for the current query (a keyword match first, a lightweight fast-LLM call otherwise) and adds pinned tools such as `read_skill` and `update_plan` on top. The remaining tools are stored in a full registry. A `request_tools` meta-tool is automatically registered, listing all unloaded tools as a compact catalog (name + 80-character description).
 
 ```mermaid
 flowchart TD
     A["30 tools available"] --> B{"Count > 12?"}
-    B -->|Yes| C["LLM selects top 6"]
-    C --> D["6 active tools +<br/>request_tools meta-tool"]
+    B -->|Yes| C["Select top 6<br/>(keyword match or LLM)"]
+    C --> D["6 active tools + pinned tools +<br/>request_tools meta-tool"]
     D --> E["LLM uses active tools"]
     E --> F{"Needs a tool<br/>not in active set?"}
     F -->|Yes| G["request_tools(['web_search', 'email_send'])"]
@@ -162,7 +162,7 @@ flowchart TD
     F -->|No| J["Continue normally"]
 ```
 
-**LLMが最初に見るもの：**
+**What the LLM sees initially:**
 
 ```
 Load additional tools into the current session.
@@ -172,28 +172,28 @@ Available tools not yet loaded:
 - python_exec: Execute Python code in a sandboxed environment and return the output...
 ```
 
-**オンデマンドで何が起こるか：** `request_tools(tool_names=["web_search", "email_send"])`は、これらのツールを完全なレジストリからアクティブなレジストリにコピーします。次のイテレーションでシステムプロンプトが再構築されるため、LLMは完全なスキーマを見ることができます。これは副作用です -- ツールは会話の途中でアクティブなツールセットを変更します。
+**What happens on demand:** `request_tools(tool_names=["web_search", "email_send"])` copies those tools from the full registry into the active registry. The system prompt is rebuilt on the next iteration so the LLM sees the full schemas. This is a side-effect -- the tool mutates the active tool set mid-conversation.
 
-**環境変数なし：** このメカニズムはツール選択がセットをフィルタリングするときに自動的にアクティベートされます。`REQUEST_TOOLS_MODE`環境変数はありません。ツール選択を完全に無効にしたい場合は、`REACT_TOOL_SELECTION_THRESHOLD`を非常に大きな数に設定してください。
+**No env var:** This mechanism activates automatically when tool selection filters the set. There is no `REQUEST_TOOLS_MODE` environment variable. If you want to disable tool selection entirely, set `REACT_TOOL_SELECTION_THRESHOLD` to a very high number.
 
-**コンテキストの節約：** 節約は、利用可能なツールの数と選択が選ぶツールの数によって異なります。30個のツールを持つエージェントが、アクティブなスキーマ6個 + `request_tools`カタログのみを見る場合、ツールスキーマコンテキストの約60～70%を節約できます。
+**Context savings:** The savings depend on how many tools are available and how many the selection picks. An agent with 30 tools seeing only 6 active schemas + the `request_tools` catalog saves roughly 60--70% of the tool schema context.
 
-## ツールアセンブリパイプラインへの適合方法
+## How it fits into the tool assembly pipeline
 
-[System Overview](/architecture/system-overview)では、リクエストごとの8ステップツールアセンブリパイプラインについて説明しています。段階的開示は複数のポイントで機能します：
+The [System Overview](/architecture/system-overview) describes an 8-step per-request tool assembly pipeline. Progressive disclosure acts at multiple points:
 
-| パイプラインステップ | 段階的開示の役割 |
+| Pipeline Step | Progressive Disclosure Role |
 |---|---|
-| **1. ベース検出** | 効果なし -- 組み込みツールは通常通りロードされます |
-| **2. エージェントカテゴリフィルタ** | 効果なし -- カテゴリフィルタリングはモードに関わらず適用されます |
-| **3. KB注入** | 効果なし -- KBツールは本質的に軽量です（1～2ツール） |
-| **4. コネクタロード** | `ConnectorMetaTool`はすべてのAPIコネクタを統合します；`DatabaseMetaTool`はすべてのDBコネクタを統合します |
-| **5. MCPロード** | `MCPServerMetaTool`はすべてのMCPサーバーを1つのツールに統合します |
-| **6. スキル注入** | `ReadSkillTool`はシステムプロンプト内の完全なコンテンツをコンパクトなスタブに置き換えます |
-| **7. CallAgent登録** | 効果なし -- `call_agent`は既に単一ツールでカタログを持っています |
-| **8. ランタイム選択** | 選択フェーズがセットをフィルタリングするときに`request_tools`メタツールが登録されます |
+| **1. Base discovery** | No effect -- built-in tools are loaded normally |
+| **2. Agent category filter** | No effect -- category filtering applies regardless of mode |
+| **3. KB injection** | No effect -- KB tools are naturally lightweight (1--2 tools) |
+| **4. Connector loading** | `ConnectorMetaTool` consolidates all API connectors; `DatabaseMetaTool` consolidates all DB connectors |
+| **5. MCP loading** | `MCPServerMetaTool` consolidates all MCP servers into one tool |
+| **6. Skills injection** | `ReadSkillTool` replaces full content with compact stubs in system prompt |
+| **7. CallAgent registration** | No effect -- `call_agent` is already a single tool with a catalog |
+| **8. Runtime selection** | `request_tools` meta-tool registered when selection filters the set |
 
-最終的な効果：ステップ4～6は各々のツール数を1（または小さな定数）に削減し、ステップ8は選択フェーズで見落とされた可能性のあるものを動的にロードするためのセーフティネットを追加します。レガシーモードでは50以上のツールを持つHubエージェントが、段階的モードでは8～10個で提示される可能性があります -- 選択閾値をはるかに下回ります。
+The net effect: steps 4--6 each reduce their tool count to 1 (or a small constant), and step 8 adds a safety net for dynamically loading anything the selection phase missed. An agent that would have 50+ tools in legacy mode might present 8--10 in progressive mode -- well below the selection threshold.
 
 ## 設定
 
@@ -237,13 +237,13 @@ Available tools not yet loaded:
 
 3. **コンテキスト効率。** フレームワークはLLMがコネクター内のどのアクションを必要とするかを知ることができません。コネクターのすべてのアクションを展開すると、無関係なものにトークンを浪費します。LLMはまずアクション名を（スタブ経由で）確認してから、特定のアクションのスキーマのみをリクエストします。これは純粋な2段階開示です。
 
-### なぜ単一の汎用ツールではなくリソースごとのメタツールなのか？
+### Why per-resource meta-tools rather than one universal tool?
 
-単一の `discover_resource(type, name)` ツールはシンプルに実装できますが、LLMにとっては劣っています。リソースごとのメタツールは以下を提供します：
+A single `discover_resource(type, name)` tool would be simpler to implement but worse for the LLM. Per-resource meta-tools provide:
 
-- **型付きパラメータ。** `connector` には `subcommand`、`connector`、`action`、`parameters` があります。`database` には `subcommand`、`database`、`table`、`sql` があります。パラメータスキーマはLLMに正確に何が期待されているかを伝えます。
-- **列挙制約。** 各メタツールはスキーマ内の列挙値として有効な名前（コネクタ名、データベース名、サーバー名）をリストアップします。LLMはコネクタ名を幻想することはできません。
-- **カテゴリセマンティクス。** `connector` ツールはカテゴリ `connector` を持ち、`database` はカテゴリ `database` を持ち、`mcp` はカテゴリ `mcp` を持ちます。これはエージェントカテゴリフィルタリングに組み込まれます。`connector` カテゴリのみで設定されたエージェントは `database` または `mcp` メタツールを見ることができません。
+- **Typed parameters.** `connector` has `subcommand`, `connector`, `action`, `parameters`. `database` has `subcommand`, `database`, `table`, `sql`. The parameter schemas tell the LLM exactly what is expected.
+- **Enum constraints.** Each meta-tool lists its valid names (connector names, database names, server names) as enum values in the schema. The LLM cannot hallucinate a connector name.
+- **Category semantics.** The `connector` tool has category `connector`, `database` has category `database`, `mcp` has category `mcp`. An agent's `tool_categories` filter applies to built-in tools only; which meta-tools appear is decided by the agent's bound connectors and MCP servers.
 
 ### なぜプログレッシブモードとレガシーモードの両方があるのか？
 

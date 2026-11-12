@@ -1,18 +1,20 @@
 ---
-title: "마켓"
+title: "Market"
 icon: "store"
-description: "조직 전체 및 글로벌 커뮤니티에서 솔루션 및 컴포넌트를 발견하고, 구독하고, 게시합니다."
+description: "Discover, subscribe to, and publish Solutions and Components across your organization and the global community."
 ---
 
-마켓은 FIM One의 내장 리소스 마켓플레이스입니다. 공유 리소스를 두 가지 계층으로 구성합니다:
+The Market is FIM One's built-in resource marketplace. It organizes shared resources into two tiers:
 
-- **Solutions** -- 엔드투엔드 기능을 제공하는 고수준 리소스: 에이전트, 스킬, 워크플로우.
-- **Components** -- 솔루션이 의존하는 구성 요소: 커넥터 및 MCP 서버.
+- **Solutions** -- high-level resources that deliver end-to-end capabilities: Agents, Skills, and Workflows.
+- **Components** -- building blocks that Solutions depend on: Connectors and MCP Servers.
 
-조직 또는 글로벌 마켓의 범위별로 탐색하고, 필요한 것을 찾고, 구독한 후 시작할 수 있습니다 -- 모두 FIM One을 떠나지 않고도 가능합니다.
+Skills and Workflows are optional modules, off by default. They appear in the Market only after an administrator enables them under Admin → Settings → Modules.
+
+You browse by scope (your Organization or the Global Market), find what you need, subscribe, and start using it -- all without leaving FIM One.
 
 <Info>
-마켓은 **풀 모델**을 사용합니다: 리소스는 탐색을 통해 발견되고 명시적으로 구독됩니다. 자동 가입이나 푸시 메커니즘은 없습니다 -- 설치할 항목을 선택하고, 언제든지 범위별로 필터링할 수 있습니다.
+The Market uses a **pull model**: resources are discovered by browsing and explicitly subscribed to. There is no auto-join or push mechanism -- you choose what to install, and you can filter by scope at any time.
 </Info>
 
 ## 무엇을 찾을 수 있나요?
@@ -29,25 +31,25 @@ description: "조직 전체 및 글로벌 커뮤니티에서 솔루션 및 컴�
 
 ### Components
 
-Components는 Solutions이 구축되는 통합 및 도구 서비스입니다.
+Components are the integrations and tool services that Solutions are built from.
 
 | Resource | Category | What you get |
 |---|---|---|
-| **Connector** | Component | 에이전트 도구로 사용 가능한 API/데이터베이스 통합 |
-| **MCP Server** | Component | 세션에 로드되는 타사 도구 서비스 |
+| **Connector** | Component | API integration available as agent tools (database connectors cannot be published) |
+| **MCP Server** | Component | Third-party tool service loaded into sessions |
 
 <Tip>
-Knowledge Bases는 Market에 나타나지 않으며 구독되지 않습니다. KB를 사용하는 Agent는 런타임에 소유자의 콘텐츠를 위임하므로 Agent를 구독하는 것만으로 충분합니다.
+Knowledge Bases never appear in the Market and are never subscribed. An Agent that uses a KB delegates its owner's content at run time, so subscribing to the Agent is all you need.
 </Tip>
 
-## 범위
+## Scope
 
-마켓의 페이지 상단에는 범위 선택기가 있습니다. 두 범위 모두에서 UI와 구독 흐름은 동일하며, 리소스의 가시성만 변경됩니다.
+The Market has a scope selector at the top of the page. The UI and subscription flow are identical in both scopes -- only the visibility of resources changes.
 
-- **조직** -- 팀이나 회사 내에서 공유되는 리소스입니다. 여기에 게시하는 것은 검토가 필요하지 않습니다.
-- **글로벌 마켓** -- 전체 FIM One 커뮤니티의 리소스입니다. 여기에 게시하려면 관리자 승인이 필요합니다.
+- **Organization** -- resources shared within your team or company. Publishing here does not require review unless the organization has turned review on for that resource type.
+- **Global Market** -- resources from the entire FIM One community. Publishing here requires admin approval.
 
-언제든지 범위 간에 전환하여 사용 가능한 항목을 탐색할 수 있습니다.
+Switch between scopes at any time to explore what is available.
 
 ## 어떻게 구독하나요?
 
@@ -65,9 +67,9 @@ Knowledge Bases는 Market에 나타나지 않으며 구독되지 않습니다. K
 
 구독은 즉시 이루어지며 게시자의 승인이 필요하지 않습니다. 언제든지 구독을 취소하여 워크스페이스에서 리소스를 제거할 수 있습니다.
 
-## 어떻게 게시하나요?
+## How Do I Publish?
 
-모든 리소스 소유자는 리소스를 검색 가능하도록 게시할 수 있습니다. 게시는 조직 또는 글로벌 마켓을 대상으로 할 수 있습니다.
+Any resource owner can publish to make their resource discoverable. Publishing can target either your Organization or the Global Market.
 
 ```mermaid
 flowchart LR
@@ -77,25 +79,25 @@ flowchart LR
     R -->|"Approved"| V["Visible in Market"]
 ```
 
-| 대상 | 누가 볼 수 있는가 | 검토 필요? |
+| Target | Who can see it | Review required? |
 |---|---|---|
-| **조직** | 조직의 모든 구성원 | 아니오 (조직 수준 신뢰) |
-| **글로벌 마켓** | 모든 인증된 사용자 | 예 -- 관리자 승인 필요 |
+| **Organization** | All members of your org | No by default; an org can require review per resource type |
+| **Global Market** | All authenticated users | Yes -- admin approval required |
 
-글로벌 마켓에 게시하는 것은 항상 검토 게이트를 거칩니다. 관리자는 리소스를 승인하거나, 거부(메모 포함)하거나, 보류 상태로 둘 수 있습니다. 거부된 리소스는 수정하여 다시 제출할 수 있습니다.
+Publishing to the Global Market always goes through a review gate. Admins can approve, reject (with a note), or leave the resource pending. Rejected resources can be revised and resubmitted.
 
-## 자격 증명은 어떻게 되나요?
+## What About Credentials?
 
-자격 증명이 필요한 리소스(API 키, OAuth 토큰, 데이터베이스 암호)를 구독할 때, 온보딩 마법사가 구독 중에 자격 증명을 수집합니다. 자격 증명은 안전하게 저장되며 계정에 범위가 지정됩니다 -- 다른 사람은 볼 수 없습니다.
+When you subscribe to a resource that requires credentials (API keys, OAuth tokens), the onboarding wizard collects them during subscription. Credentials are stored securely and scoped to your account -- no one else can see them.
 
-리소스의 설정 페이지에서 언제든지 자격 증명을 업데이트하거나 회전할 수 있습니다.
+You can update or rotate credentials at any time from the resource's settings page.
 
-## 통합 방식
+## How It Integrates
 
-내부적으로 Market은 **섀도우 조직**으로 구현됩니다 -- 멤버가 없는 보이지 않는 시스템 조직입니다. Global Market에 게시된 리소스는 이 섀도우 조직 내에서 `visibility: "org"`로 설정되어 있으며, 이를 통해 기존 가시성 시스템이 자연스럽게 이들을 포함할 수 있습니다.
+Under the hood, the Market is implemented as a **shadow organization** -- an invisible system org that holds no members. Resources published to the Global Market are set to `visibility: "org"` within this shadow org, which allows the existing visibility system to include them naturally.
 
-이는 Market이 도구 어셈블리 파이프라인에서 **특수한 경우의 코드가 전혀 필요 없음**을 의미합니다. 개인 및 조직 리소스를 로드하는 동일한 3계층 가시성 필터(own -> org-shared -> subscribed)가 Market 리소스도 로드합니다. 구독하면 구독 기록이 생성되고 리소스가 가시성 필터에 자동으로 나타납니다.
+This means the Market requires **zero special-case code** in the tool assembly pipeline. The same visibility filter (own, or subscribed and still shared) that loads personal and org resources also loads Market resources. When you subscribe, a subscription record is created, and the resource appears in your visibility filter automatically.
 
-종속성을 번들로 제공하는 솔루션(예: 바인딩된 커넥터 및 지식 베이스가 있는 에이전트)의 경우, 구독 프로세스가 해당 종속성을 해결하고 프로비저닝하여 모든 것이 즉시 작동합니다.
+For Solutions that bundle dependencies (e.g., an Agent with bound Connectors and Knowledge Bases), the subscription process resolves and provisions those dependencies so everything works out of the box.
 
-모든 리소스 유형에 걸친 가시성 필터 작동 방식에 대한 기술 세부 정보는 [에이전트 및 리소스 검색 -- 가시성 모델](/architecture/agent-discovery#visibility-model)을 참조하세요.
+For technical details on how the visibility filter works across all resource types, see [Agent & Resource Discovery -- Visibility Model](/architecture/agent-discovery#visibility-model).

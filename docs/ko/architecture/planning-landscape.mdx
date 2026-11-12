@@ -9,25 +9,25 @@ mode: "wide"
 
 업계 논의에서는 종종 **루프 엔지니어링**(단일 에이전트가 반복적으로 생각하고 행동하는 방식)에서 **그래프 엔지니어링**(다중 노드 토폴로지를 명시적인 엔지니어링 객체로 만드는 방식)으로의 전환을 언급합니다. 이 용어는 새롭지만, 실제 관행은 그렇지 않습니다. LangGraph 스타일의 시스템과 멀티 에이전트 조직들은 수년간 그래프를 사용해왔습니다. FIM One에 중요한 것은 사람들이 의미하는 **그래프의 종류**와 그것이 우리의 세 가지 실행 계층에 어떻게 매핑되는지입니다.
 
-### 그래프 엔지니어링이 보통 의미하는 것
+### What graph engineering usually means
 
-| 계층 (일반적인 프레임) | 관심사 |
+| Layer (common framing) | Concern |
 |---|---|
-| **Harness** | 도구, 샌드박스, 인증, 로깅, 모델 주변의 할당량 |
-| **Loop** | 하나의 에이전트의 생각 → 행동 → 관찰 사이클 |
-| **Graph** | **노드**가 연결되는 방식: 분기, 조인, 사이클, 사람 체크포인트, 공유 상태 |
+| **Harness** | Tools, sandbox, auth, logging, quotas around the model |
+| **Loop** | One agent's think → act → observe cycle |
+| **Graph** | How **nodes** connect: branches, joins, cycles, human checkpoints, shared state |
 
-그 프레임 전반의 합의: **그래프는 루프를 대체하지 않습니다**. 그래프 설계는 **프로세스 간의 관계**를 설계합니다. 각 에이전트 노드는 여전히 전체 루프를 실행할 수 있습니다.
+Consensus across that framing: **graph does not replace loop**. Graph designs **relationships between processes**; each agentic node may still run a full loop.
 
-"Graph"는 실제로 과도하게 사용됩니다. 세 가지 사용법이 혼합됩니다:
+"Graph" is overloaded in practice. Three usages get mixed:
 
-| 사용법 | 예시 | 역할 |
+| Usage | Example | Role |
 |---|---|---|
-| **제어 흐름 그래프** | LangGraph `StateGraph`: 조건부 엣지, 재시도, 중단/재개 | 다음에 누가 실행할지를 결정하는 상태 머신 |
-| **작업 종속성 그래프** | Claude Code Tasks `blockedBy`; FIM One `depends_on` | 작업 스케줄링 및 병렬화 |
-| **지식 그래프** | 엔티티 및 타입 관계 | 검색 / 메모리 (오케스트레이션 아님) |
+| **Control-flow graph** | LangGraph `StateGraph`: conditional edges, retries, interrupt/resume | State machine for who runs next |
+| **Task dependency graph** | Claude Code Tasks `blockedBy`; FIM One `dependencies` | Schedule and parallelize work |
+| **Knowledge graph** | Entities and typed relations | Retrieval / memory (not orchestration) |
 
-이 페이지는 처음 두 가지(오케스트레이션)에 관한 것입니다.
+This page is about the first two (orchestration).
 
 ### "Dify Workflow with a new name"이 아님
 
@@ -59,17 +59,17 @@ flowchart LR
   end
 ```
 
-### FIM One에서 산업 맵이 어떻게 위치하는가
+### How the industry map sits on FIM One
 
-FIM One은 이미 제어 스펙트럼 전체를 아우르고 있으며, 채팅 "Planner mode"는 일부일 뿐입니다.
+FIM One already spans the control spectrum; chat "Planner mode" is only one slice.
 
-| 산업 아이디어 | 가장 가까운 FIM One 부분 | 적합도 |
+| Industry idea | Closest FIM One piece | Fit |
 |---|---|---|
-| 클래식 시각적 Workflow | **Workflow Engine** (설계 시점 청사진) | 강함 |
-| 제어 흐름 그래프 + HITL + 지속 가능한 상태 | Workflow 휴먼 스텝 + 확인 闸门; 채팅 DAG에서 부분적 | 중간 |
-| 작업 종속성 그래프 + 병렬 스케줄 | **DAGPlanner** (`depends_on`, 위상 정렬 팬아웃) | 스케줄링에서 강함; 중간 그래프 HITL에서 약함 |
-| 단일 에이전트 루프 + 체크리스트 메모리 | **ReAct** (`update_plan`, 도구, `ask_user_question`) | 강함 |
-| 런타임 LLM 드로우 플랜 매 턴 | **DAGPlanner** (Dify 아님; LangGraph 설계 시점 DSL 아님) | 고유한 제품 |
+| Classic visual Workflow | **Workflow Engine** (design-time blueprint) | Strong |
+| Control-flow graph + HITL + durable state | Workflow human steps + confirmation gates; partial on chat DAG | Medium |
+| Task dependency graph + parallel schedule | **DAGPlanner** (`dependencies`, topological fan-out) | Strong on scheduling; weaker on mid-graph HITL |
+| Single agent loop + checklist memory | **ReAct** (`update_plan`, tools, `ask_user_question`) | Strong |
+| Runtime LLM-drawn plan every turn | **DAGPlanner** (not Dify; not LangGraph design-time DSL) | Distinct product |
 
 ```mermaid
 flowchart TB
@@ -91,19 +91,19 @@ flowchart TB
   D -->|"each step is already a ReAct agent"| R
 ```
 
-### 그래프 엔지니어링 vs FIM One DAG (채팅 Planner)
+### Graph engineering vs FIM One DAG (chat Planner)
 
-같은 계열(명시적 다단계 토폴로지). 다른 종류.
+Same family (explicit multi-step topology). Different species.
 
-| 차원 | 그래프 엔지니어링 (일반적) | FIM One DAG (채팅) |
+| Dimension | Graph engineering (typical) | FIM One DAG (chat) |
 |---|---|---|
-| **그래프를 그리는 사람** | 개발자 / 구현자 (안정적 토폴로지) | **런타임의 LLM** (목표당 새로운 그래프) |
-| **엣지 의미** | 종종 **제어 흐름** (다음 위치, 사이클 포함) | 주로 **의존성 / 데이터** (`depends_on`, 비순환 실행) |
-| **수정** | 엣지 수준 재시도, 휴먼 노드, 동일 그래프 재개 | **PlanAnalyzer → 재계획** (종종 **새로운** 그래프) |
-| **노드 깊이** | 노드는 전체 에이전트 루프일 수 있음 | **이미 단계당 전체 ReAct**: `DAGExecutor`는 다중 반복 도구 루프(`DAG_STEP_MAX_ITERATIONS`의 기본 상한, 일반적으로 15)를 포함하여 `agent.run()`을 실행합니다. 기본 모델은 레지스트리 **general** (인프라 fast 아님); `model_hint`는 추론으로 확대하거나 fast로 강등할 수 있습니다. 도구 캐시, 단계/인용 검증, 소스 증거는 각 단계와 함께 제공됩니다. 단계 에이전트는 `enable_plan_tool=False`를 설정합니다 (단계 내 `update_plan` 보드 없음). 작업 단위가 이미 초점이 맞춰진 부분 작업이기 때문입니다. |
-| **공유 상태** | 일급 타입 상태 + 체크포인트 내러티브 | 단계 결과 + 메모리/컴팩트; 단계 체크포인트 존재 |
-| **실행 중 질문** | 제품 기능으로 중단 | 확인 게이트 존재; **`ask_user_question`은 ReAct 전용** (채팅 외부 루프), 일급 DAG 대기 엣지 아님 |
-| **제품 진입점** | 프레임워크 또는 백엔드 조직도 | ReAct 옆의 사용자 표시 모드 |
+| **Who draws the graph** | Developer / implementer (stable topology) | **LLM at runtime** (new graph per goal) |
+| **Edge meaning** | Often **control flow** (where next, including cycles) | Mostly **dependency / data** (`dependencies`, acyclic run) |
+| **Correction** | Edge-level retry, human node, resume same graph | **PlanAnalyzer → replan** (often a **new** graph) |
+| **Node depth** | Node may be a full agent loop | **Already full ReAct per step**: `DAGExecutor` runs `agent.run()` with a multi-iteration tool loop (default cap from `DAG_STEP_MAX_ITERATIONS`, commonly 15). Default model is registry **general** (not infrastructure fast); `model_hint` can escalate to reasoning or demote to fast. Tool cache, step/citation verification, and source evidence ship with each step. Step agents set `enable_plan_tool=False` (no `update_plan` board inside a step) because the unit of work is already a focused sub-task. |
+| **Shared state** | First-class typed state + checkpoint narrative | Step results + memory/compact; step checkpoints exist |
+| **Mid-run questions** | Interrupt as a product feature | Confirmation gates exist; **`ask_user_question` is ReAct-only** (chat outer loop), not a first-class DAG wait edge |
+| **Product entry** | Framework or backend org chart | User-visible mode next to ReAct |
 
 ```mermaid
 flowchart TB
@@ -116,35 +116,35 @@ flowchart TB
   end
   subgraph fimdag["FIM One DAG chat path"]
     G[User goal] --> P[LLM Planner]
-    P --> J[JSON depends_on DAG]
+    P --> J[JSON dependencies DAG]
     J --> E[Topological executor]
     E --> Z[PlanAnalyzer]
     Z -->|not achieved / recoverable| P
   end
 ```
 
-**함의:** 그래프 엔지니어링 주변의 산업 관심은 **그래프/스케줄링 엔진 유지를 검증**합니다. 이는 **모든 턴에 "Planner"를 선택하도록 강제하는 채팅 기본값을 요구하지 않습니다**. 대부분의 작업은 여전히 강력한 루프를 원합니다; 그래프는 병렬 분기, 고정 규정 준수 경로, 다중 역할 오케스트레이션에서 가치를 입증합니다.
+**Implication:** industry heat around graph engineering **validates keeping a graph/scheduling engine**. It does **not** require a chat default that forces users to pick "Planner" for every turn. Most tasks still want a strong loop; graphs earn their keep on parallel branches, fixed compliance paths, and multi-role orchestration.
 
-### FIM One이 배울 수 있는 것 (ReAct, DAG, Workflow 강화)
+### What FIM One can learn (empower ReAct, DAG, Workflow)
 
-구체적인 수확, 슬로건 아님. 영향력 순서.
+Concrete takeaways, not slogans. Ordered by leverage.
 
-| # | 그래프 엔지니어링 아이디어 | 적용 대상 | 방향 |
+| # | Graph engineering idea | Apply to | Direction |
 |---|---|---|---|
-| 1 | **루프 대신이 아닌 루프 위의 그래프** | 제품 + 자동 라우팅 | 기본 UX는 **ReAct** 유지 (루프 + `update_plan` + `ask_user_question`). 토폴로지가 비용을 정당화할 때 DAG/Workflow 사용. |
-| 2 | **이질적 심층 노드** | DAG | **이미 현재 상태.** 각 단계는 완전한 ReAct 에이전트 (`agent.run`, 다중 반복 도구, 기본적으로 일반 이상의 모델)이며, 단일 LLM 호출이 아님. 남은 제어 옵션은 선택사항 (예: 긴 단계의 계획 보드), 구조적 격차 아님. |
-| 3 | **에지로서의 인터럽트 / 재개** | DAG + ReAct | 실행 중 명확화는 **외부** 루프 또는 일급 대기 상태로 속함. "사용자에게 묻고" 텍스트로 답한 후 "목표 미달성"으로 재계획하는 가짜 DAG 단계 회피. |
-| 4 | **전체 그래프 재계획 vs 제어된 사이클** | DAG | 모든 단계 텍스트를 실패한 최종 답변으로 버리기보다 단계 로컬 재시도 / 부분 이월 선호 (완료된 단계의 경우 이미 부분적으로 참). |
-| 5 | **에지를 따른 타입 지정 공유 상태** | DAG + Workflow | 단계 I/O에 대한 강력한 계약 (스키마, 결과물)은 분석기 과신과 답변/출처 편차 감소. |
-| 6 | **버전 관리되는 자산으로서의 토폴로지** | Workflow | 감사를 위해 인간 작성 그래프 유지; 런타임 LLM DAG가 규정 준수 청사진을 대체할 것으로 예상하지 않음. |
-| 7 | **"대부분의 작업은 그래프가 필요 없음" 솔직함** | 자동 + 문서 | 명확화 및 선택, 짧은 Q&A, 탐색 작업을 ReAct로 라우팅; DAG는 분해 가능한 병렬 작업용으로 예약. |
+| 1 | **Graph over loop, not instead of** | Product + Auto routing | Default UX stays **ReAct** (loop + `update_plan` + `ask_user_question`). Use DAG/Workflow when topology earns cost. |
+| 2 | **Heterogeneous deep nodes** | DAG | **Already the status quo.** Each step is a full ReAct agent (`agent.run`, multi-iteration tools, general-or-better model by default), not a one-shot LLM call. The one exception is a step the planner tags `llm_direct` (pure transformation of upstream outputs), which runs as a single tool-less call. Remaining knobs are optional (e.g. plan board on long steps), not a structural gap. |
+| 3 | **Interrupt / resume as edges** | DAG + ReAct | Mid-run clarification belongs in the **outer** loop or as a first-class wait state. Avoid fake DAG steps that "ask the user" in text and then replan as "goal not achieved". |
+| 4 | **Controlled cycles vs whole-graph replan** | DAG | Prefer step-local retry / partial carryover (already partly true for completed steps) over dumping all step text as a failed final answer. |
+| 5 | **Typed shared state along edges** | DAG + Workflow | Stronger contracts for step I/O (schema, deliverables) reduce Analyzer false confidence and answer/source drift. |
+| 6 | **Topology as a versioned asset** | Workflow | Keep human-authored graphs for audit; do not expect runtime LLM DAGs to replace compliance blueprints. |
+| 7 | **Honest "most tasks never need a graph"** | Auto + docs | Route clarify-and-choose, short Q&A, and exploratory work to ReAct; reserve DAG for decomposable parallel work. |
 
-**"그래프를 하고 있을" 때 피해야 할 안티패턴:**
+**Anti-patterns to avoid when "doing graph":**
 
-- **의존성 그래프**를 **인간 상태 머신** 시뮬레이션에 사용 (대기 원시 없는 다단계 "답변 대기").
-- ReAct **`update_plan`** (체크리스트 메모리)을 그래프 엔지니어링 (스케줄링 토폴로지)과 동일시.
-- 그래프 열을 두 번째 채팅 성격으로 배송하는 대신 **엔진 구성** (외부 루프, 필요할 때 내부 스케줄).
-- FIM One DAG 단계를 "얕은 LLM 호출"로 설명: 엔진을 과소평가하고 제품 결정을 오도.
+- Using a **dependency graph** to simulate a **human state machine** (multi-step "wait for answers" with no wait primitive).
+- Equating ReAct **`update_plan`** (checklist memory) with graph engineering (scheduling topology).
+- Shipping graph heat as a second chat personality instead of as **engine composition** (loop outside, schedule inside when needed).
+- Describing FIM One DAG steps as "shallow LLM calls": that understates the engine and misleads product decisions.
 
 ## AI 도구 환경에서 "계획"의 다섯 가지 종류
 
@@ -205,20 +205,20 @@ flowchart TB
 
 ## Full-Power Runtime: FIM One vs Claude Code Teams
 
-둘 다 진정한 에이전트입니다 — 핵심 루프는 동일합니다: **인식 → 추론 → 행동 → 피드백**. 차이점은 최대 용량에서 병렬 작업을 어떻게 조율하는지에 있습니다.
+Both are genuine Agents — the core loop is identical: **Perceive → Reason → Act → Feedback**. The difference lies in how they orchestrate parallel work at full capacity.
 
-| 차원 | Claude Code Teams | FIM One DAG |
+| Dimension | Claude Code Teams | FIM One DAG |
 |---|---|---|
-| **병렬 모델** | 리더가 SubAgent를 생성하고 메시지를 통해 작업 할당 | 위상 정렬이 독립적인 단계를 자동으로 병렬화 |
-| **작업 그래프** | `blockedBy` / `blocks` 엣지가 있는 TaskList (동적 DAG) | `depends_on` 엣지가 있는 정적 JSON DAG |
-| **조율** | 명시적 메시지 전달 (SendMessage / Broadcast) | 암시적 의존성 엣지 — 메시지 없음, 데이터 흐름만 |
-| **에이전트 생명주기** | 동적 풀 — 필요에 따라 에이전트 생성, 완료 시 종료 | 단계별 **ReAct 에이전트** (단계별 `_resolve_agent`를 통한 새로운 에이전트); 각 단계는 전체 다중 반복 도구 루프 실행 |
-| **피드백 및 수정** | 각 SubAgent가 자율적으로 재시도; 실패 시 리더가 재할당 | PlanAnalyzer가 결과 평가 → 재계획 루프 (최대 3라운드); 완료된 단계는 다음 계획으로 이월 가능 |
-| **인간 개입** | 계획 모드 승인 후 자율 실행 | 완전 자동 — PlanAnalyzer가 통과/재계획 결정 (채팅 수준 ASK는 ReAct만 해당) |
-| **컨텍스트 관리** | 각 SubAgent는 격리된 컨텍스트 윈도우 획득 (교차 오염 없음) | 단계별 공유 DbMemory + LLM Compact; 각 단계 에이전트는 여전히 작업 + 의존성 결과만 확인, 전체 피어 트랜스크립트 아님 |
-| **토큰 경제학** | `N개 에이전트 × 에이전트당 토큰` — 시간↓ 토큰↑ (곱셈 비용) | 병렬 분기는 순차 ReAct보다 비용이 많지만, 공유 메모리와 단계 상한선은 보통 다중 에이전트 팀 지출 이하 |
-| **확장 패턴** | 더 많은 SubAgent 추가 (수평, 메시지 결합) | 더 많은 DAG 분기 추가 (수평, 의존성 결합) |
-| **최적 용도** | 다양하고 느슨하게 관련된 작업 (연구 + 코드 + 테스트) | 명확한 데이터 의존성이 있는 구조화된 워크플로우 |
+| **Parallel model** | Leader spawns SubAgents, assigns tasks via messages | Topological sort auto-parallelizes independent steps |
+| **Task graph** | TaskList with `blockedBy` / `blocks` edges (dynamic DAG) | Static JSON DAG with `dependencies` edges |
+| **Coordination** | Explicit message passing (SendMessage / Broadcast) | Implicit dependency edges — no messages, just data flow |
+| **Agent lifecycle** | Dynamic pool — agents spawned on demand, shut down when done | Per-step **ReAct agents** (fresh agent per step via `_resolve_agent`); each step runs a full multi-iteration tool loop |
+| **Feedback & correction** | Each SubAgent retries autonomously; Leader re-assigns on failure | PlanAnalyzer evaluates outcomes → Re-Planning loop (up to 3 rounds in total: the first plan plus 2 re-plans); completed steps can carry into the next plan |
+| **Human involvement** | Plan mode approval, then autonomous execution | Fully automatic — PlanAnalyzer decides pass/replan (chat-level ASK is ReAct-only) |
+| **Context management** | Each SubAgent gets isolated context window (no cross-contamination) | Shared DbMemory + LLM Compact across the turn; each step agent still sees its task + dependency results, not a full peer transcript |
+| **Token economics** | `N agents × per-agent tokens` — time↓ tokens↑ (multiplicative cost) | Parallel branches cost more than serial ReAct, but shared memory and step caps usually stay below multi-agent team spend |
+| **Scaling pattern** | Add more SubAgents (horizontal, message-coupled) | Add more DAG branches (horizontal, dependency-coupled) |
+| **Best suited for** | Diverse, loosely-related tasks (research + code + test) | Structured workflows with clear data dependencies |
 
 ### Real-World Benchmark: v0.5 RAG System
 
@@ -241,19 +241,19 @@ This demonstrates the core trade-off: **시간 병렬화로 인한 토큰 증가
 
 **핵심:** 동일한 에이전트 본질, 수렴하는 병렬 철학. Claude Code는 **팀 협업** 모델을 따릅니다 — 리더가 메시지를 통해 통신하는 워커에게 위임합니다. FIM One은 **파이프라인 스케줄링** 모델을 따릅니다 — DAG 실행기가 의존성 해결을 기반으로 **ReAct 스텝**을 디스패치합니다. 실제로 두 모델 모두 의존성 기반 병렬 실행을 구현합니다. 차이는 조정 오버헤드(메시지 vs 엣지), 격리(피어 에이전트 vs 작업 + 의존성 결과), 토큰 경제학입니다. 제품 격차는 "노드를 에이전트로 만들기"보다는 **그래프를 스케줄할 시기 vs 하나의 채팅 루프에 머물 시기**, 그리고 **그래프가 일시 중지할 수 없는 인간 대기 엣지**입니다.
 
-## 구조화된 출력 성능 저하
+## Structured Output Degradation
 
-DAG 파이프라인의 모든 구조화된 LLM 호출 사이트(Planner, Analyzer, Tool Selection)는 3단계 성능 저하 체인을 구현하는 통합 `structured_llm_call()` 유틸리티를 사용합니다:
+All structured LLM call sites in the DAG pipeline (Planner, Analyzer, Tool Selection) use a unified `structured_llm_call()` utility that implements a 3-level degradation chain:
 
-| 레벨 | 조건 | 작동 방식 |
+| Level | Condition | How it works |
 |---|---|---|
-| **Native FC** | `llm.abilities["tool_call"]` | 가상 도구 호출을 강제 실행하고 `tool_calls[0].arguments`에서 추출 |
-| **JSON Mode** | `llm.abilities["json_mode"]` | `response_format={"type":"json_object"}`를 설정하고 `extract_json()`으로 파싱 |
-| **Plain text** | 항상 사용 가능 | `extract_json()`으로 자유 형식 콘텐츠를 파싱하고 선택적으로 `regex_fallback()` 실행 |
+| **Native FC** | `llm.abilities["tool_call"]` (and `tool_choice` not disabled) | Forces a virtual tool call; extracts from `tool_calls[0].arguments` |
+| **JSON Mode** | `llm.abilities["json_mode"]` | Sets `response_format={"type":"json_object"}`; parses with `extract_json()` |
+| **Plain text** | always available | Parses free-form content with `extract_json()`, then optional `regex_fallback()` |
 
-각 텍스트 기반 레벨은 다음 레벨로 넘어가기 전에 재포맷 프롬프트로 한 번 재시도합니다. 결과는 파싱된 값, 추출 성공 레벨, 누적된 토큰 사용량을 포함하는 `StructuredCallResult`입니다.
+Each text-based level retries once with a reformat prompt before falling to the next. The result is a `StructuredCallResult` containing the parsed value, which extraction level succeeded, and accumulated token usage.
 
-이 설계는 동일한 프롬프트가 GPT-4(native FC), Claude(JSON mode), 로컬 모델(plain text)에서 안정적으로 작동하도록 하며, 네 개의 호출 사이트에 분산되지 않고 한 곳에서 일관된 오류 처리 및 재시도 로직을 제공합니다.
+This design means the same prompt works reliably across GPT-4 (native FC), Claude (JSON mode), and local models (plain text), with consistent error handling and retry logic in one place instead of scattered across four call sites.
 
 ## 세 가지 실행 계층: 제어 스펙트럼
 

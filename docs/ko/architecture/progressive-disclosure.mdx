@@ -39,21 +39,21 @@ sequenceDiagram
 
 핵심 통찰: **전체 도구 스키마는 대화 범위이지, 프롬프트 범위가 아닙니다.** 이들은 컨텍스트 관리 시스템이 이후 턴에서 요약하거나 자를 수 있는 도구 결과 메시지로 나타납니다. 반대로 시스템 프롬프트 콘텐츠는 전체 대화에 걸쳐 전체 크기로 유지됩니다.
 
-## 다섯 가지 공개 메커니즘
+## Five disclosure mechanisms
 
-FIM One은 다섯 가지 리소스 유형에 걸쳐 점진적 공개를 균일하게 적용합니다. 각각은 동일한 2단계 패턴을 사용하지만 의미론에 맞게 조정된 메타 도구를 사용합니다.
+FIM One applies progressive disclosure uniformly across five resource types. Each uses the same two-tier pattern but with a meta-tool tailored to its semantics.
 
-| 리소스 | 메타 도구 | 스텁 표시 | 온디맨드 반환 | 설정 변수 | 기본값 |
+| Resource | Meta-Tool | Stubs Show | On-Demand Returns | Config Var | Default |
 |---|---|---|---|---|---|
-| Skills | `read_skill` | 이름 + 설명 (120자) | 전체 SOP 콘텐츠 + 임베드된 스크립트 | `SKILL_TOOL_MODE` | `progressive` |
-| API Connectors | `connector` | 커넥터 이름 + 작업 목록 | 매개변수가 포함된 전체 작업 스키마 | `CONNECTOR_TOOL_MODE` | `progressive` |
-| Database Connectors | `database` | DB 이름 + 테이블 이름 + 개수 | 열 스키마, SQL 쿼리 실행 | `DATABASE_TOOL_MODE` | `progressive` |
-| MCP Servers | `mcp` | 서버 이름 + 도구 목록 | 전체 도구 스키마 + 호출 | `MCP_TOOL_MODE` | `progressive` |
-| Built-in Tools | `request_tools` | 컴팩트 카탈로그 (이름 + 80자 설명) | 세션에 주입된 전체 도구 스키마 | _(auto)_ | >12개 도구일 때 자동 |
+| Skills (when the module is enabled; off by default) | `read_skill` | Name + description (120 chars) | Full SOP content + embedded script | `SKILL_TOOL_MODE` | `progressive` |
+| API Connectors | `connector` | Connector name + action list | Full action schemas with parameters | `CONNECTOR_TOOL_MODE` | `progressive` |
+| Database Connectors | `database` | DB name + table names + counts | Column schemas, SQL query execution | `DATABASE_TOOL_MODE` | `progressive` |
+| MCP Servers | `mcp` | Server name + tool list | Full tool schemas + invocation | `MCP_TOOL_MODE` | `progressive` |
+| Built-in Tools | `request_tools` | Compact catalog (name + 80-char desc) | Full tool schema injected into session | _(auto)_ | Auto when >12 tools |
 
-### 스킬 -- `read_skill`
+### Skills -- `read_skill`
 
-**LLM이 처음 보는 것:**
+**What the LLM sees initially:**
 
 ```
 ## Available Skills
@@ -62,13 +62,13 @@ Call read_skill(name) to load full content before executing any of these:
 - Refund Processing: Step-by-step refund workflow with approval gates...
 ```
 
-각 스텁은 대략 30개의 토큰입니다 -- 전체 스킬 콘텐츠에서 잘린 이름과 120자 설명입니다.
+Each stub is roughly 30 tokens -- a name plus the Skill's description, truncated to 120 characters (`SKILL_STUB_DESC_LENGTH`).
 
-**필요에 따라 발생하는 것:** LLM이 `read_skill("Customer Complaint SOP")`를 호출하고 완전한 SOP 텍스트를 받습니다 -- 잠재적으로 수천 개의 토큰의 단계별 지침, 의사결정 트리, 그리고 포함된 스크립트입니다. 이 콘텐츠는 시스템 프롬프트 텍스트가 아닌 도구 결과로 입력되므로, 이후 턴에서 일반적인 컨텍스트 관리(요약, 잘림)의 대상이 됩니다.
+**What happens on demand:** The LLM calls `read_skill("Customer Complaint SOP")` and receives the complete SOP text -- potentially thousands of tokens of step-by-step instructions, decision trees, and embedded scripts. This content enters as a tool result, not as system prompt text, so it is subject to normal context management (summarization, truncation) in later turns.
 
-**레거시 모드:** `SKILL_TOOL_MODE=inline`은 전체 스킬 콘텐츠를 시스템 프롬프트에 직접 포함시킵니다. 스킬이 적고 작을 때 적합합니다 -- 하지만 확장성이 떨어집니다.
+**Legacy mode:** `SKILL_TOOL_MODE=inline` embeds the full Skill content directly in the system prompt. Suitable when you have few, small Skills -- but scales poorly.
 
-**컨텍스트 절감:** 평균 2,000개의 토큰을 가진 10개의 스킬이 있는 배포는 프로그레시브 모드(스텁만)에서 ~300개의 토큰을 소비하는 반면 인라인 모드에서는 ~20,000개의 토큰을 소비합니다. 이는 지속적인 컨텍스트 비용에서 98%의 감소입니다.
+**Context savings:** A deployment with 10 Skills averaging 2,000 tokens each consumes ~300 tokens in progressive mode (stubs only) vs. ~20,000 tokens in inline mode. That is a 98% reduction in persistent context cost.
 
 ### API 커넥터 -- `connector`
 
@@ -143,17 +143,17 @@ MCP 서버는 점진적 공개의 가장 극적인 사례입니다. GitHub MCP �
 
 **컨텍스트 절약:** 여기서의 절약은 극단적입니다. GitHub MCP 서버의 35개 도구는 스키마의 10,000개 이상의 토큰을 소비할 수 있습니다. 점진적 모드에서는 스텁 비용이 약 100개 토큰입니다. 사용자가 해당 대화에서 GitHub이 필요하지 않으면 이 10,000개 토큰은 절대 소비되지 않습니다.
 
-### 기본 제공 도구 -- `request_tools`
+### Built-in Tools -- `request_tools`
 
-다섯 번째 메커니즘은 다른 네 가지와 아키텍처가 다릅니다. 리소스 유형을 메타 도구 뒤에 통합하지 않습니다. 대신 **도구 선택 병목 현상**을 해결합니다 -- 에이전트가 12개 이상의 도구를 사용할 수 있을 때 발생하는 상황입니다.
+The fifth mechanism is architecturally different from the other four. It does not consolidate a resource type behind a meta-tool. Instead, it addresses the **tool selection bottleneck** -- what happens when the agent has more than 12 tools available.
 
-**작동 방식:** 총 도구 개수가 `REACT_TOOL_SELECTION_THRESHOLD`(기본값: 12)를 초과하면, ReAct 엔진은 현재 쿼리에 가장 관련성이 높은 상위 6개 도구를 선택하기 위해 경량 LLM 호출을 실행합니다. 나머지 도구는 전체 레지스트리에 저장됩니다. `request_tools` 메타 도구가 자동으로 등록되며, 로드되지 않은 모든 도구를 간단한 카탈로그(이름 + 80자 설명)로 나열합니다.
+**How it works:** When the total tool count exceeds `REACT_TOOL_SELECTION_THRESHOLD` (default: 12), the ReAct engine selects up to 6 relevant tools for the current query (a keyword match first, a lightweight fast-LLM call otherwise) and adds pinned tools such as `read_skill` and `update_plan` on top. The remaining tools are stored in a full registry. A `request_tools` meta-tool is automatically registered, listing all unloaded tools as a compact catalog (name + 80-character description).
 
 ```mermaid
 flowchart TD
     A["30 tools available"] --> B{"Count > 12?"}
-    B -->|Yes| C["LLM selects top 6"]
-    C --> D["6 active tools +<br/>request_tools meta-tool"]
+    B -->|Yes| C["Select top 6<br/>(keyword match or LLM)"]
+    C --> D["6 active tools + pinned tools +<br/>request_tools meta-tool"]
     D --> E["LLM uses active tools"]
     E --> F{"Needs a tool<br/>not in active set?"}
     F -->|Yes| G["request_tools(['web_search', 'email_send'])"]
@@ -162,7 +162,7 @@ flowchart TD
     F -->|No| J["Continue normally"]
 ```
 
-**LLM이 처음 보는 것:**
+**What the LLM sees initially:**
 
 ```
 Load additional tools into the current session.
@@ -172,28 +172,28 @@ Available tools not yet loaded:
 - python_exec: Execute Python code in a sandboxed environment and return the output...
 ```
 
-**필요할 때 발생하는 일:** `request_tools(tool_names=["web_search", "email_send"])`는 전체 레지스트리에서 해당 도구를 활성 레지스트리로 복사합니다. 다음 반복에서 시스템 프롬프트가 재구성되므로 LLM은 전체 스키마를 볼 수 있습니다. 이것은 부작용입니다 -- 도구가 대화 중간에 활성 도구 집합을 변경합니다.
+**What happens on demand:** `request_tools(tool_names=["web_search", "email_send"])` copies those tools from the full registry into the active registry. The system prompt is rebuilt on the next iteration so the LLM sees the full schemas. This is a side-effect -- the tool mutates the active tool set mid-conversation.
 
-**환경 변수 없음:** 이 메커니즘은 도구 선택이 집합을 필터링할 때 자동으로 활성화됩니다. `REQUEST_TOOLS_MODE` 환경 변수는 없습니다. 도구 선택을 완전히 비활성화하려면 `REACT_TOOL_SELECTION_THRESHOLD`를 매우 높은 숫자로 설정하세요.
+**No env var:** This mechanism activates automatically when tool selection filters the set. There is no `REQUEST_TOOLS_MODE` environment variable. If you want to disable tool selection entirely, set `REACT_TOOL_SELECTION_THRESHOLD` to a very high number.
 
-**컨텍스트 절약:** 절약액은 사용 가능한 도구 수와 선택이 선택하는 도구 수에 따라 달라집니다. 30개의 도구를 사용할 수 있고 활성 스키마 6개만 보는 에이전트 + `request_tools` 카탈로그는 대략 60~70%의 도구 스키마 컨텍스트를 절약합니다.
+**Context savings:** The savings depend on how many tools are available and how many the selection picks. An agent with 30 tools seeing only 6 active schemas + the `request_tools` catalog saves roughly 60--70% of the tool schema context.
 
-## 도구 조립 파이프라인에 어떻게 적합한지
+## How it fits into the tool assembly pipeline
 
-[System Overview](/architecture/system-overview)는 요청당 8단계 도구 조립 파이프라인을 설명합니다. 점진적 공개는 여러 지점에서 작동합니다:
+The [System Overview](/architecture/system-overview) describes an 8-step per-request tool assembly pipeline. Progressive disclosure acts at multiple points:
 
-| 파이프라인 단계 | 점진적 공개 역할 |
+| Pipeline Step | Progressive Disclosure Role |
 |---|---|
-| **1. 기본 검색** | 영향 없음 -- 기본 제공 도구는 정상적으로 로드됨 |
-| **2. 에이전트 카테고리 필터** | 영향 없음 -- 카테고리 필터링은 모드와 관계없이 적용됨 |
-| **3. KB 주입** | 영향 없음 -- KB 도구는 자연스럽게 경량임 (1--2개 도구) |
-| **4. 커넥터 로딩** | `ConnectorMetaTool`은 모든 API 커넥터를 통합함; `DatabaseMetaTool`은 모든 DB 커넥터를 통합함 |
-| **5. MCP 로딩** | `MCPServerMetaTool`은 모든 MCP 서버를 하나의 도구로 통합함 |
-| **6. 스킬 주입** | `ReadSkillTool`은 전체 콘텐츠를 시스템 프롬프트의 컴팩트 스텁으로 대체함 |
-| **7. CallAgent 등록** | 영향 없음 -- `call_agent`는 이미 카탈로그가 있는 단일 도구임 |
-| **8. 런타임 선택** | `request_tools` 메타 도구는 선택이 집합을 필터링할 때 등록됨 |
+| **1. Base discovery** | No effect -- built-in tools are loaded normally |
+| **2. Agent category filter** | No effect -- category filtering applies regardless of mode |
+| **3. KB injection** | No effect -- KB tools are naturally lightweight (1--2 tools) |
+| **4. Connector loading** | `ConnectorMetaTool` consolidates all API connectors; `DatabaseMetaTool` consolidates all DB connectors |
+| **5. MCP loading** | `MCPServerMetaTool` consolidates all MCP servers into one tool |
+| **6. Skills injection** | `ReadSkillTool` replaces full content with compact stubs in system prompt |
+| **7. CallAgent registration** | No effect -- `call_agent` is already a single tool with a catalog |
+| **8. Runtime selection** | `request_tools` meta-tool registered when selection filters the set |
 
-순 효과: 4--6단계는 각각 도구 개수를 1개(또는 작은 상수)로 줄이고, 8단계는 선택 단계에서 놓친 항목을 동적으로 로드하기 위한 안전장치를 추가합니다. 레거시 모드에서 50개 이상의 도구를 가질 수 있는 Hub 에이전트는 점진적 모드에서 8--10개를 제시할 수 있습니다 -- 선택 임계값보다 훨씬 낮습니다.
+The net effect: steps 4--6 each reduce their tool count to 1 (or a small constant), and step 8 adds a safety net for dynamically loading anything the selection phase missed. An agent that would have 50+ tools in legacy mode might present 8--10 in progressive mode -- well below the selection threshold.
 
 ## 구성
 
@@ -237,13 +237,13 @@ Available tools not yet loaded:
 
 3. **컨텍스트 효율성.** 프레임워크는 LLM이 필요로 할 커넥터 내의 어떤 작업인지 알 수 없습니다. 커넥터의 모든 작업을 확장하면 관련 없는 작업에 토큰을 낭비합니다. LLM은 먼저 작업 이름을 본 후(스텁을 통해), 특정 작업의 스키마만 요청합니다. 이것이 2단계 공개의 가장 순수한 형태입니다.
 
-### 리소스별 메타-도구를 사용하는 이유는?
+### Why per-resource meta-tools rather than one universal tool?
 
-단일 `discover_resource(type, name)` 도구가 더 간단하게 구현될 수 있지만 LLM에는 좋지 않습니다. 리소스별 메타-도구는 다음을 제공합니다:
+A single `discover_resource(type, name)` tool would be simpler to implement but worse for the LLM. Per-resource meta-tools provide:
 
-- **타입이 지정된 매개변수.** `connector`는 `subcommand`, `connector`, `action`, `parameters`를 가집니다. `database`는 `subcommand`, `database`, `table`, `sql`을 가집니다. 매개변수 스키마는 LLM에게 정확히 무엇이 예상되는지 알려줍니다.
-- **열거형 제약.** 각 메타-도구는 유효한 이름(커넥터 이름, 데이터베이스 이름, 서버 이름)을 스키마의 열거형 값으로 나열합니다. LLM은 커넥터 이름을 임의로 생성할 수 없습니다.
-- **카테고리 의미론.** `connector` 도구는 카테고리 `connector`를 가지고, `database`는 카테고리 `database`를 가지며, `mcp`는 카테고리 `mcp`를 가집니다. 이는 에이전트 카테고리 필터링에 반영됩니다 -- `connector` 카테고리만으로 구성된 에이전트는 `database` 또는 `mcp` 메타-도구를 볼 수 없습니다.
+- **Typed parameters.** `connector` has `subcommand`, `connector`, `action`, `parameters`. `database` has `subcommand`, `database`, `table`, `sql`. The parameter schemas tell the LLM exactly what is expected.
+- **Enum constraints.** Each meta-tool lists its valid names (connector names, database names, server names) as enum values in the schema. The LLM cannot hallucinate a connector name.
+- **Category semantics.** The `connector` tool has category `connector`, `database` has category `database`, `mcp` has category `mcp`. An agent's `tool_categories` filter applies to built-in tools only; which meta-tools appear is decided by the agent's bound connectors and MCP servers.
 
 ### 왜 프로그레시브 모드와 레거시 모드 둘 다 필요한가?
 

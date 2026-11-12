@@ -1,67 +1,83 @@
 ---
-title: "Aperçu des canaux"
+title: "Channels Overview"
 icon: "tower-broadcast"
-description: "Connectez FIM One aux plateformes de messagerie externes pour les notifications, les approbations et l'interaction bidirectionnelle des agents."
+description: "Connect FIM One to external messaging platforms for notifications, approvals, and two-way agent interaction."
 ---
 
-Un **Canal** est un pont entre FIM One et une plateforme de messagerie externe — Feishu (Lark), Slack, DingTalk, Teams, et ainsi de suite. Les canaux permettent à un agent :
+A **Channel** is a bridge between FIM One and an external messaging platform — Feishu (Lark), Slack, DingTalk, Teams, and so on. Channels let an agent:
 
-- **Envoyer des messages sortants** (mises à jour de statut, artefacts, rapports).
-- **Recevoir des messages entrants** (un utilisateur pose une question dans un chat de groupe ; l'agent répond).
-- **Protéger les appels d'outils sensibles** derrière une approbation humaine, livrée sous forme de carte interactive.
+- **Send outbound messages** (status updates, artifacts, reports).
+- **Receive card callbacks** (a person taps Approve or Reject on a card). Answering questions asked in a group chat is not implemented.
+- **Gate sensitive tool calls** behind a human approval, delivered as an interactive card.
 
-Les canaux sont limités à une **organisation**, et non à un utilisateur individuel. Tout administrateur d'organisation peut les créer, les modifier et les désactiver.
+Channels are scoped to an **organization**, not an individual user. Any org admin can create, edit, and disable them.
 
-## Pourquoi les canaux sont limités à l'organisation
+## Why channels are org-scoped
 
-Un canal est l'**identité** d'une organisation sur une plateforme de messagerie instantanée externe — pas une ligne directe personnelle. Quand un agent publie une carte à un groupe Feishu, le message porte l'autorité de l'organisation qui a configuré le canal : le bot est enregistré auprès du tenant Feishu de cette organisation, les membres du groupe sont des pairs au sein de cette organisation, et la piste d'approbation / audit appartient à cette organisation.
+A channel is an organization's **identity** in an external IM platform — not an individual's hotline. When an agent posts a card to a Feishu group, the message carries the authority of the organization that configured the channel: the bot is registered to that organization's Feishu tenant, the group members are peers inside that organization, and the approval / audit trail belongs to that organization.
 
-FIM One reflète ce mappage un-à-un :
+FIM One mirrors this mapping one-to-one:
 
-| FIM One | Plateforme de messagerie instantanée externe |
+| FIM One | External IM platform |
 |---|---|
-| **Organisation** | Tenant / entreprise Feishu (et ses administrateurs) |
-| **Canal** | Un bot + conversation de groupe possédés par ce tenant |
-| **Membre de l'organisation** | Une personne au sein de ce tenant qui peut approuver, recevoir des notifications ou réagir aux cartes |
-| **Agent (publié par l'organisation)** | Le worker IA agissant au nom de l'organisation |
+| **Organization** | Feishu tenant / enterprise (and its admins) |
+| **Channel** | A bot + group chat owned by that tenant |
+| **Org member** | A person inside that tenant who can approve, receive notifications, or react to cards |
+| **Agent (org-published)** | The AI worker acting on behalf of the organization |
 
-Les agents personnels (non publiés, possédés par un seul utilisateur) n'ont intentionnellement pas accès aux canaux. Un agent personnel envoyant un message à un canal de l'organisation usurperait l'identité de l'organisation — un risque d'audit et une violation de gouvernance. Publier un agent à une organisation est la façon dont cet agent gagne le droit de parler au nom de l'organisation à travers ses canaux.
+An agent can only use a channel inside its own organization. For a draft or personal agent, which has no organization of its own, that means an organization its owner is a member of. Saving an agent with a channel from any other organization is refused (`approval_channel_denied` for the approval channel, `completion_channel_denied` for the completion-notification channel), and at run time such a binding is treated as no channel at all.
 
-Cette contrainte s'applique uniformément : à la fois `FeishuGateHook` (routage des approbations) et les notifications d'achèvement (canal configuré par l'agent) respectent la même limite d'identité organisationnelle.
+This constraint applies uniformly: both the approval gate (`ApprovalGateHook`, approval routing) and completion notifications (agent-configured channel) respect the same org-identity boundary.
 
-## Plateformes supportées
+## Supported platforms
 
-| Plateforme | Statut | Entrant | Sortant | Carte d'approbation |
+| Type | What it is | Outbound | Callbacks | Approval card |
 |---|---|---|---|---|
-| [Feishu (Lark)](./feishu) | GA | Oui | Oui | Oui (`feishu_gate` hook) |
-| Slack | Planifié | — | — | — |
-| DingTalk | Planifié | — | — | — |
+| [Feishu app](./feishu) | A Feishu / Lark app (bot) and a group chat | Yes | Card callbacks only | Yes (`approval_gate` hook) |
+| Lark / Feishu webhook | A custom bot's incoming webhook in one group | Yes | — | — |
+| Slack webhook | A Slack incoming webhook | Yes | — | — |
+| WeCom webhook | A WeCom (Enterprise WeChat) group-bot webhook | Yes | — | — |
+| Email | A fixed list of recipients, sent from the instance SMTP account | Yes | — | — |
 
-## Comment les canaux interagissent avec les Hooks
+The webhook and email types are outbound only: they carry completion notifications and the messages an agent sends with the `send_notification` tool, and cannot be chosen as an approval channel.
 
-Le hook `feishu_gate` est le consommateur principal d'un canal Feishu. Quand un agent est sur le point d'appeler un outil marqué `requires_confirmation: true`, le hook :
+## Sending from an agent: `send_notification`
 
-1. Résout le canal Feishu actif de l'organisation.
-2. Affiche une carte d'approbation interactive avec le nom de l'outil et ses arguments.
-3. Publie la carte dans le groupe de discussion configuré (`chat_id`).
-4. Suspend l'appel de l'outil jusqu'à ce qu'un membre du groupe appuie sur **Approve** ou **Reject**.
-5. Reprend (ou abandonne) l'outil selon le verdict, et diffuse la décision via SSE.
+When the operator sets `NOTIFICATION_TOOL_ENABLED=true`, agents get a `send_notification` tool. It sends a title and a body to one channel, named by its name or id, among the enabled channels of the organizations the **calling user** belongs to. That is the person chatting, or the user a workflow run acts for, whichever agent the tool is used through. Called without a channel it returns the list and sends nothing; it never picks a channel on its own.
 
-Attachez le hook à un agent via `model_config_json.hooks.class_hooks = ["feishu_gate"]`, ou activez-le dans l'éditeur d'agent.
+### Webhook channels
 
-## Création d'un canal
+Add a custom bot (incoming webhook) to the group on the platform and paste the URL it issues. FIM One posts only to the platform's own host over https: `open.feishu.cn` or `open.larksuite.com` for Lark / Feishu, `hooks.slack.com` for Slack, `qyapi.weixin.qq.com` for WeCom. Any other URL is refused (`channel_webhook_url_invalid`). The URL is the credential for that group, so it is encrypted at rest and never returned by the API; leave the field blank when editing to keep it.
 
-1. Connectez-vous en tant que **Propriétaire d'organisation** ou **Administrateur**.
-2. Allez à **Paramètres de l'organisation → Canaux → Nouveau canal**.
-3. Choisissez un type de canal (par exemple Feishu), remplissez les identifiants, sélectionnez un chat cible et enregistrez.
-4. Cliquez sur **Envoyer un message de test** pour vérifier le câblage bidirectionnel.
+### Email channels
 
-Chaque type de canal a sa propre forme d'identifiants et sa propre danse d'abonnement aux événements — suivez le guide spécifique à la plateforme pour les étapes exactes :
+An email channel lists recipient addresses. Mail leaves from the instance SMTP account (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`), so it is held to what the operator allows agents to send: the recipients must pass `SMTP_ALLOWED_DOMAINS` / `SMTP_ALLOWED_ADDRESSES`, or the operator must set `EMAIL_TOOL_ENABLED=true`. Otherwise creating the channel is refused (`channel_email_not_permitted`), and the check runs again on every send.
 
-- [Configuration de Feishu (Lark)](./feishu)
+## How Channels interact with Hooks
 
-## Notes de sécurité
+The `approval_gate` hook (`feishu_gate` in agent settings saved earlier) is the primary consumer of a Feishu channel. When an agent is about to call a tool marked `requires_confirmation: true` (or any tool, when the agent is set to confirm all), and the agent's approval mode routes to a channel, the hook:
 
-- Les secrets d'application et les clés de chiffrement sont **chiffrés au repos** en utilisant la `FERNET_SECRET_KEY` du backend.
-- Le point de terminaison de rappel (`/api/channels/{id}/callback`) **vérifie chaque signature** par rapport à la `encrypt_key` / `verification_token` stockée avant d'agir sur l'événement.
-- Seuls les membres du groupe de chat cible peuvent approuver ou rejeter une carte d'approbation — FIM One n'accorde pas d'autorité supplémentaire au-delà de ce que la plateforme de messagerie leur donne déjà.
+1. Resolves the agent's **Approval channel**. Only the channel bound explicitly on the agent is used; the hook never borrows the notification channel or another channel in the organization. With none bound, **Auto** mode shows the approval in the portal chat and **Channel only** refuses the call.
+2. Renders an interactive approval card with the tool name and arguments.
+3. Posts the card to the configured group chat (`chat_id`).
+4. Suspends the tool call until a permitted approver taps **Approve** or **Reject**. Who is permitted is fixed when the request is created (the approver scope at that moment); the click must arrive through the channel that delivered the card, and the clicker's Feishu account must be linked to a FIM One account.
+5. Resumes (or aborts) the tool based on the verdict, and streams the decision back over SSE.
+
+The hook is attached to every agent automatically. Configure it in the agent editor's **Approval** section: the mode (Auto / Inline only / Channel only), the approver scope, and the approval channel.
+
+## Creating a Channel
+
+1. Sign in as an **Org Owner** or **Admin**.
+2. Go to **Organization Settings → Channels → New Channel**.
+3. Pick a channel type, fill in what it needs (Feishu app credentials and a target chat, a webhook URL, or recipient addresses), and save.
+4. Open the channel's details and click **Send Test Message** to check that it delivers.
+
+Each channel type has its own credential shape and event-subscription dance — follow the platform-specific guide for the exact steps:
+
+- [Feishu (Lark) setup](./feishu)
+
+## Security notes
+
+- App secrets and encrypt keys are **encrypted at rest** with the key derived from `CREDENTIAL_ENCRYPTION_KEY`.
+- The callback endpoint (`/api/channels/{id}/callback`) **verifies every signature** against the stored `encrypt_key` before acting on the event. A push without a signature (Feishu's URL verification handshake) is accepted only when its encrypted envelope opens with the channel's Encrypt Key and its token matches the Verification Token when one is set; an unsigned, unencrypted body is refused.
+- A card click counts only when the clicker's Feishu account is linked to a FIM One user whom the agent's approver scope allows (the initiator, the agent owner, or any org member). Other members of the group can see the card but cannot decide it.

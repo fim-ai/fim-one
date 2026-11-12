@@ -1,32 +1,32 @@
 ---
-title: "評価センター"
+title: "Evaluation Center"
 icon: "flask"
-description: "テストデータセットと自動LLM採点を使用してエージェントを定量的にベンチマークします。"
+description: "Quantitatively benchmark your agents with test datasets and automated LLM grading."
 ---
 
-評価センターを使用すると、本番環境にデプロイする**前に**エージェントの品質を検証できます。テストケースのデータセットを作成し、公開されているエージェントに対して実行し、ケースごとの合格/不合格の判定、レイテンシ、トークン使用量を含む定量的なレポートを取得します。
+The Evaluation Center lets you verify agent quality **before** deploying to production. Create a dataset of test cases, run them against any agent you own, and get a quantitative report with per-case pass/fail verdicts, latency, and token usage.
 
 <Info>
-エンタープライズ調達レビュー向けに設計されています。すべての結果は監査可能で、再現可能で、永続的に保存されます。
+Designed for enterprise procurement review — every result is auditable, reproducible, and stored persistently.
 </Info>
 
-## 仕組み
+## How It Works
 
-各評価実行は、すべてのテストケースに対して**3段階のパイプライン**を実行します：
+Each evaluation run executes a **three-stage pipeline** for every test case:
 
 <Steps>
-  <Step title="エージェント実行">
-    実際のReActAgentがテストケースプロンプトを実行します。チャットと同じエンジン：同じモデル、同じツール、同じ指示。モッキングなし、ショートカットなし。
+  <Step title="Agent Execution">
+    A real ReActAgent runs the test case prompt. Same engine as chat, with the agent's instructions and the built-in tools. No mocking, no shortcuts.
 
-    出力：**answer**、**latency**、**token usage**。
+    Produces: **answer**, **latency**, **token usage**.
   </Step>
-  <Step title="LLMグレーディング">
-    別の「グレーダー」LLM（高速モデル）が、期待される動作とアサーションに対して答えを判定します。
+  <Step title="LLM Grading">
+    A separate "grader" LLM (fast model) judges the answer against the expected behavior and assertions.
 
-    入力：prompt + expected behavior + assertions + answer。出力：`{ verdict: "pass"|"fail", reasoning: "..." }`。
+    Input: prompt + expected behavior + assertions + answer. Output: `{ verdict: "pass"|"fail", reasoning: "..." }`.
   </Step>
-  <Step title="永続化と集約">
-    各ケースの結果がデータベースに保存されます。すべてのケースが完了した後：**pass rate**、**avg latency**、**total tokens**が計算され、実行に添付されます。
+  <Step title="Persist & Aggregate">
+    Each case result is saved to the database. After all cases finish: **pass rate**, **avg latency**, **total tokens** are computed and attached to the run.
   </Step>
 </Steps>
 
@@ -93,45 +93,45 @@ description: "テストデータセットと自動LLM採点を使用してエー
 
 ## テストされる内容
 
-### 含まれるもの
-- **組み込みツール**: 計算機、web_search、web_fetch、python_exec、file_ops など
-- **エージェント指示**: エージェントの `extra_instructions` フィールドが渡されます
-- **エージェントの設定済みモデル**: エージェントがカスタムモデル設定を持っている場合、そのモデルが使用されます
+### Included
+- **Builtin tools**: calculator, web_search, web_fetch, python_exec, file_ops, etc.
+- **Agent instructions**: The agent's `instructions` are passed through
+- **Agent's configured model**: If the agent has an inline model config, that model is used; otherwise the system default model
 
-### 含まれていないもの（設計上の理由）
-- **コネクタ**: 外部HTTPコネクタはライブの第三者サービスが必要なため、不安定なテストを避けるために評価時にスキップされます
-- **MCPサーバー**: 同じ理由で、外部プロセスの依存関係があります
-- **会話履歴**: 各ケースは事前のコンテキストなしで独立して実行されます
-- **ナレッジベース**: KB検索ツールは評価モードでは読み込まれません
+### Not Included (by design)
+- **Connectors**: External HTTP connectors require live third-party services — skipped in eval to avoid flaky tests
+- **MCP servers**: Same reason — external process dependencies
+- **Conversation history**: Each case runs in isolation with no prior context
+- **Knowledge bases**: The agent's knowledge bases are not attached in eval mode
 
 <Info>
-これは評価結果がエージェントの**推論とツール使用能力**を反映していることを意味し、外部サービスとの統合ではありません。コネクタテスト機能を使用して、コネクタを個別にテストしてください。
+This means eval results reflect the agent's **reasoning and tool-use ability**, not its integration with external services. Test connectors separately via the Connector Test feature.
 </Info>
 
-## グレーダー
+## The Grader
 
-グレーダーはLLM（システムの「高速」モデル）で、4つの情報を受け取り、構造化されたJSON判定を返します：
+The grader is an LLM (the system's "fast" model) that receives four pieces of information and returns a structured JSON verdict:
 
-**システムプロンプト：**
-> あなたは公平なAI評価者です。あなたの仕事は、AIエージェントの回答が与えられたプロンプトに対して期待される動作を満たしているかどうかを判断することです。
+**System prompt:**
+> You are an impartial AI evaluator. Your job is to judge whether an AI agent's answer meets the expected behavior for a given prompt.
 >
-> 厳密かつ公正に判断してください。「合格」には、回答が期待される動作に従ってプロンプトに真摯に対処する必要があります。「不合格」は、回答が間違っている、不完全である、トピックから外れている、または主要な要件を見落としていることを意味します。
+> Be strict but fair. A "pass" requires the answer to genuinely address the prompt according to the expected behavior. A "fail" means the answer is wrong, incomplete, off-topic, or misses key requirements.
 
-**ユーザーメッセージに含まれるもの：**
-1. 元のプロンプト
-2. 期待される動作
-3. アサーションのリスト（または「指定なし」）
-4. エージェントの実際の回答
+**User message includes:**
+1. The original prompt
+2. The expected behavior
+3. The list of assertions (or "None specified")
+4. The agent's actual answer
 
-**出力スキーマ：**
+**Output schema:**
 ```json
 {
   "verdict": "pass" | "fail",
-  "reasoning": "回答が合格または不合格である理由の説明..."
+  "reasoning": "Explanation of why the answer passes or fails..."
 }
 ```
 
-グレーダーは`structured_llm_call`を関数呼び出しで使用してスキーマを強制します。グレーダー自体が失敗した場合（ネットワークエラー、不正な形式の応答）、ケースは`error`としてマークされます。
+The grader uses `structured_llm_call` with function calling to enforce the schema. If the grader produces no verdict (network error, malformed response), the case is recorded as `fail` with the reasoning "Grader failed to produce a verdict." `error` means the agent run itself raised.
 
 ## ベストプラクティス
 

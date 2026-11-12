@@ -94,15 +94,15 @@ flowchart TD
 
 ---
 
-## 仕組み
+## How it works
 
-内部では、両方のビルダーは通常のエージェントと同じインフラストラクチャを共有しています:
+Under the hood, the builders share the same infrastructure as regular agents:
 
-| ビルダーモード | メカニズム |
+| Builder mode | Mechanism |
 |-------------|-----------|
-| **クイック提案** | 単一のLLM推論呼び出しが、構造化JSON形式の完全な設定を生成します |
-| **高度なビルダー** | ReActエージェントループ: 推論 → ビルダーツール呼び出し → 結果を観察 → 次のステップを決定 |
+| **Quick suggestions** | A single LLM inference call generates the full configuration as structured JSON |
+| **Advanced builder** | A ReAct agent loop: Reason → call a builder tool → observe the result → decide next step |
 
-高度なビルダーは完全なReActエージェントであり、制限されたツールセット（9個のコネクタまたは6個のエージェントビルダーツールのみで、ウェブまたは計算ツールはなし）を持っています。ターゲットリソースの現在の状態を読み取り、何を変更する必要があるかを計画し、適切なツールを呼び出し、完了を宣言する前に結果を検証します。
+The advanced builder is a full ReAct agent that happens to have a restricted toolset — the 9 Connector or 6 Agent builder tools (the Connector builder also gets web search and fetch, to read API docs) and no code execution. A third builder with its own tool set configures database connectors: connection test, table listing, schema annotation and sample queries. It reads the current state of the target resource, plans what needs to change, calls the appropriate tools, and verifies the result before declaring it done.
 
-つまり、高度なビルダーは曖昧性に対応できます: OpenAPI インポートが30個のアクションを作成しても、5個だけが関連している場合、「注文関連のエンドポイントのみを保持する」と指示すれば、残りを削除します。
+This means the advanced builder can handle ambiguity: if the OpenAPI import creates 30 actions but only 5 are relevant, you can tell it "keep only the order-related endpoints" and it will delete the rest.

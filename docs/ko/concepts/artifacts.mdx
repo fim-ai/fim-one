@@ -1,41 +1,41 @@
 ---
-title: "아티팩트"
+title: "Artifacts"
 icon: "file-export"
-description: "대화 전체에서 AI가 생성한 모든 파일을 찾아보고, 미리보기하고, 다운로드하세요."
+description: "Browse, preview, and download all AI-generated files across your conversations."
 ---
 
-아티팩트는 대화 중에 AI 에이전트가 생성하는 파일입니다 — 이미지, HTML 페이지, 코드 파일, 문서 및 기타 출력물입니다. 아티팩트 페이지는 에이전트가 생성한 모든 것을 찾아보고, 미리보기하고, 다운로드할 수 있는 대화 전체 갤러리입니다.
+Artifacts are the files that AI agents produce during conversations — images, HTML pages, code files, documents, and other outputs. The Artifacts page is a cross-conversation gallery that lets you find, preview, and download the deliverables your agents have produced.
 
-## 아티팩트 생성 방식
+## How Artifacts Are Created
 
-`ToolResult`에 `artifacts` 목록을 반환하는 모든 도구는 다운로드 가능한 파일을 생성합니다. 에이전트에는 특별한 지시가 필요하지 않습니다 — 아티팩트 생성은 도구 실행의 자연스러운 부작용입니다.
+Any tool that returns a `ToolResult` with an `artifacts` list generates downloadable files. The agent doesn't need special instructions — artifact creation is a natural side effect of tool execution.
 
-일반적인 생성자:
+Common producers:
 
-| 도구 | 아티팩트 유형 | 예시 |
+| Tool | Artifact Type | Example |
 |------|--------------|---------|
-| `python_exec` | 이미지, HTML, CSV, JSON | PNG로 저장된 matplotlib 차트 |
-| `template_render` | HTML | 형식화된 보고서 |
-| 코드 실행 도구 | 모든 파일 | 생성된 코드, 내보낸 데이터 |
-| 이미지 생성 | 이미지 | AI 생성 일러스트레이션 |
+| `python_exec` | Images, HTML, CSV, JSON | A matplotlib chart saved as PNG |
+| `template_render` | HTML | A formatted report |
+| Code execution tools | Any file | Generated code, exported data |
+| Image generation | Images | AI-generated illustrations |
 
-도구가 아티팩트를 생성하면 대화에 다운로드 가능한 첨부 파일로 인라인으로 표시됩니다. 모든 아티팩트는 대화 간 검색을 위해 아티팩트 갤러리에도 수집됩니다.
+When a tool produces an artifact, it appears inline in the conversation as a downloadable attachment. Deliverables — the files an answer hands over as final output — are also collected in the Artifacts gallery for cross-conversation browsing; intermediate files stay in their conversation.
 
-## 갤러리
+## The Gallery
 
-Artifacts 페이지(`/artifacts`)는 모든 대화에서 생성한 모든 파일의 통합 보기를 제공합니다.
+The Artifacts page (`/artifacts`) provides a unified view of the deliverables from all your conversations.
 
-### 필터링
+### Filtering
 
-네 가지 유형 필터로 보기를 좁힐 수 있습니다:
+Filter tabs narrow the view (All plus four types):
 
-| 필터 | 파일 유형 |
+| Filter | File Types |
 |--------|-----------|
-| **모두** | 모든 파일 |
-| **이미지** | PNG, JPG, GIF, SVG, WebP |
-| **HTML** | HTML 페이지 및 보고서 |
-| **코드** | Python, JavaScript, TypeScript, JSON, YAML, XML, CSS, SQL, Markdown, 셸 스크립트 |
-| **파일** | 기타 — CSV, PDF, 일반 텍스트, 바이너리 파일 |
+| **All** | Everything |
+| **Images** | PNG, JPG, GIF, SVG, WebP |
+| **HTML** | HTML pages and reports |
+| **Code** | Any text file except HTML, plus JSON: source code, Markdown, CSV, plain text, YAML |
+| **Files** | Everything else — PDF, archives, binary files |
 
 ### 미리보기
 
@@ -56,6 +56,6 @@ Artifacts 페이지(`/artifacts`)는 모든 대화에서 생성한 모든 파일
 - 생성 타임스탬프
 - 소스 대화 (생성된 대화로 다시 이동하려면 클릭)
 
-## 저장소
+## Storage
 
-아티팩트는 서버 파일시스템에 저장되며, 대화당 하나의 디렉토리를 사용합니다. 각 아티팩트는 UUID 기반 파일명을 가지므로, 대화에 접근하지 않으면 URL을 추측할 수 없습니다. 파일은 직접 제공되며, 개별 아티팩트에 대한 데이터베이스 레코드가 없어 저장소 계층을 단순하고 빠르게 유지합니다.
+Artifacts are stored on the server filesystem, one directory per conversation. Each artifact is stored under a random 12-character id plus its original name; download URLs carry the conversation UUID. Files are served directly — no database records for individual artifacts, keeping the storage layer simple and fast.

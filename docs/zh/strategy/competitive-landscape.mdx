@@ -15,20 +15,20 @@ FIM One:  "All-in-one agent platform for Global × China enterprises"
 
 Dify / Manus是**替代产品**——它们要求用户将工作迁移到新平台。FIM One是**跨境智能体平台**——它连接用户已有的系统，让他们通过AI进行沟通。
 
-## 竞争矩阵
+## Competitive Matrix
 
-| 维度 | Dify | Manus | Coze | FIM One |
+| Dimension | Dify | Manus | Coze | FIM One |
 |-----------|------|-------|------|-----------|
-| **方法** | 可视化DAG工作流构建器 | 自主消费者智能体 | 可视化构建器+智能体空间 | 跨境智能体平台 |
-| **交付方式** | 独立平台 | 云SaaS+API | 云SaaS+自托管（Coze Studio） | 平台/API/嵌入 |
-| **规划** | 人工设计的静态DAG | 多智能体思维链 | 静态工作流+动态智能体 | LLM DAG规划+ReAct循环 |
-| **遗留系统集成** | API节点（手动连接） | 无 | 插件市场 | 连接器平台（标准化） |
-| **跨系统编排** | 否 | 否 | 否 | 是（Hub模式，N:N） |
-| **可嵌入** | iframe+脚本嵌入 | 仅API | Chat SDK+10+通道 | API/iframe（Widget计划中） |
-| **人工确认** | 否 | 否 | 否 | 是（执行前闸门） |
-| **自托管** | 是（Docker Compose） | 否 | 是（Coze Studio，Apache 2.0） | 是（单进程） |
-| **许可证** | Apache 2.0 | 专有 | Apache 2.0（Coze Studio） | 源代码可用 |
-| **关注度** | 121K+星标 | 被Meta收购（20亿美元+，中国监管审查） | ByteDance支持，20K+星标（Studio） | 早期阶段 |
+| **Approach** | Visual DAG workflow builder | Autonomous consumer agent | Visual builder + agent space | Cross-Border Agent Platform |
+| **Delivery** | Standalone platform | Cloud SaaS + API | Cloud SaaS + self-hosted (Coze Studio) | Platform / API (embed planned) |
+| **Planning** | Human-designed static DAGs | Multi-agent Chain-of-Thought | Static workflows + dynamic agents | LLM DAG planning + ReAct loops |
+| **Legacy system integration** | API nodes (manual wiring) | None | Plugin marketplace | Connector Platform (standardized) |
+| **Cross-system orchestration** | No | No | No | Yes (one agent across several systems) |
+| **Embeddable** | iframe + script embed | API only | Chat SDK + 10+ channels | API (iframe / widget planned) |
+| **Human confirmation** | No | No | No | Yes (pre-execution gate) |
+| **Self-hosted** | Yes (Docker Compose) | No | Yes (Coze Studio, Apache 2.0) | Yes (Docker Compose) |
+| **License** | Apache 2.0 | Proprietary | Apache 2.0 (Coze Studio) | Source Available |
+| **Traction** | 121K+ stars | Acquired by Meta ($2B+, China regulatory review) | ByteDance backed, 20K+ stars (Studio) | Early stage |
 
 ## 基准测试策略
 
@@ -42,35 +42,35 @@ Dify / Manus是**替代产品**——它们要求用户将工作迁移到新平�
 
 ## FIM One 的独特优势
 
-### 1. 连接器架构 (MCP + 治理)
+### 1. Connector Architecture (Adapters + Governance)
 
 ```
 Platform (ReAct / DAG / Portal)
     ↓
 Connector Governance (audit, read_only, auth, confirmation gate)
     ↓
-MCP Protocol (standard transport, process isolation)
+Integration adapters (API connector, database connector, MCP server)
     ↓
-Legacy System (DB / API / message bus)
+Legacy System (DB / API)
 ```
 
-连接器作为 **MCP 服务器**实现，上层配有治理层。智能体不知道它在与遗留系统通信 -- 连接器在 ToolRegistry 中显示为普通工具。这个领域中没有其他平台拥有内置企业治理的标准化连接器架构。详见 [连接器架构](/architecture/connector-architecture)。
+API and database connectors run in-process as governed tools; external **MCP servers** attach through the MCP client under the same governance. The agent doesn't know it's talking to a legacy system -- connectors surface as ordinary tools in the ToolRegistry. No other platform in this space has a standardized connector architecture with enterprise governance built in. See [Connector Architecture](/architecture/connector-architecture) for the full design.
 
-### 2. 双模式交付
+### 2. Dual-Mode Delivery (embedded mode planned)
 
 ```
 Standalone:  Full web UI, independent AI assistant
-Embedded:    <script src="fim-one.js"> injected into host page
-             OR iframe / standalone URL with auth passthrough
+Embedded:    host page calls the API today; a drop-in script / iframe
+             embed with identity passed from the host is planned
 ```
 
-### 3. 人工确认门
+### 3. Human Confirmation Gate
 
-对遗留系统的写入操作需要明确的用户批准。实现为预执行钩子 -- 不修改智能体循环。SSE 事件 `confirmation_required` 暂停执行，直到用户响应。
+Connector actions marked as requiring confirmation need explicit user approval. Implemented as a pre-execution hook -- does not modify the agent loop. SSE event `awaiting_confirmation` pauses execution until user responds.
 
-### 4. 页面上下文注入
+### 4. Page Context Injection (planned)
 
-嵌入时，小部件从主机页面读取上下文（当前合约 ID、页面 URL、DOM 选择器），并将其注入到智能体的上下文中。智能体不仅理解用户*问了什么*，还理解用户*在哪里*。
+Not shipped; it depends on the embed. When embedded, the widget will read context from the host page (current contract ID, page URL, DOM selectors) and inject it into the agent's context. The agent understands *where* the user is, not just *what* they asked.
 
 ## 类别耐久性分析
 
@@ -113,16 +113,16 @@ Embedded:    <script src="fim-one.js"> injected into host page
 - 优势: 字节跳动资源支持、广泛的渠道生态、开源发展势头
 - 我们的看法: 最强的嵌入/渠道覆盖; 关注企业集成模式的发展
 
-## MuleSoft类比
+## The MuleSoft Analogy
 
-FIM One的连接器架构在概念上是**AI时代的MuleSoft**：
+FIM One's Connector architecture is conceptually **AI-era MuleSoft**:
 
 | | MuleSoft | FIM One |
 |-|----------|-----------|
-| **What** | 系统间API集成 | 跨境智能体平台，用于系统集成 |
-| **How** | 连接器+声明式映射 | MCP服务器+连接器治理层 |
-| **Protocol** | Anypoint SDK | MCP（开放标准）+治理层 |
-| **Standardization** | Anypoint连接器 | Level 1（Python MCP服务器）-> Level 2（YAML）-> Level 3（AI生成） |
-| **Value** | "连接一切" | "面向全球×中国企业的一体化智能体平台" |
+| **What** | System-to-system API integration | Cross-Border Agent Platform for system integration |
+| **How** | Connectors + declarative mapping | API / database connectors and MCP servers + Connector Governance Layer |
+| **Protocol** | Anypoint SDK | HTTP, SQL drivers, MCP (open standard) + governance layer |
+| **Standardization** | Anypoint connectors | Manual config, OpenAPI import, or AI builder |
+| **Value** | "Connect everything" | "All-in-one agent platform for Global × China enterprises" |
 
-这个类比对企业定位很有力。
+This analogy is powerful for enterprise positioning.

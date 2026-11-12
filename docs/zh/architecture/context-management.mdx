@@ -14,23 +14,23 @@ LLM 的上下文窗口是有限的。一个 128K 令牌的模型听起来很慷�
 
 FIM One 通过五层纵深防御架构解决了这个问题。每一层解决问题的不同规模，它们组合得很干净——没有单一层需要完美，因为下一层会捕捉它遗漏的内容。
 
-## 五层防御机制
+## Five layers of defense
 
-上下文管理不是单一机制。它是一个堆栈，其中每一层在特定的粒度级别处理特定的关注点：
+Context management is not a single mechanism. It is a stack, where each layer handles a specific concern at a specific granularity:
 
-| 层级 | 组件 | 功能 | 触发时机 |
+| Layer | Component | What it does | When it acts |
 |-------|-----------|-------------|-------------|
-| **5** | 预算配置 | 从模型规格计算可用的输入令牌预算 | 启动时 / 每次请求 |
-| **4** | DbMemory | 加载持久化历史记录，加载时进行压缩 | 每次请求一次 |
-| **3** | ContextGuard | 每次迭代的预算强制执行 | 每个 ReAct 迭代 |
-| **2** | CompactUtils | 令牌估计、智能截断、LLM 压缩 | 由第 3 和 4 层调用 |
-| **1** | 内存实现 | 抽象接口 + 具体策略 | 框架级别 |
+| **5** | Budget Configuration | Computes usable input token budget from model specs | At startup / per-request |
+| **4** | DbMemory | Loads persisted history, compacts on load | Once per request |
+| **3** | ContextGuard | Per-iteration budget enforcement | Every ReAct iteration |
+| **2** | CompactUtils | Token estimation, smart truncation, LLM compaction | Called by layers 3 and 4 |
+| **1** | Memory Implementations | Abstract interface + concrete strategies | Framework-level |
 
-这些层从下到上编号，因为高层依赖于低层。第 5 层设置预算。第 4 层进行初始加载时压缩。第 3 层在每次迭代时强制执行预算。第 2 层和第 1 层提供第 3 层和第 4 层使用的原语。
+The layers are numbered bottom-up because higher layers depend on lower ones. Layer 5 sets the budget. Layer 4 does the initial load-time compaction. Layer 3 enforces the budget on every iteration. Layers 2 and 1 provide the primitives that layers 3 and 4 use.
 
 ```mermaid
 flowchart TD
-    L5["Layer 5: Budget Configuration<br/><i>context_size - max_output</i>"]
+    L5["Layer 5: Budget Configuration<br/><i>(context_size - max_output) × 0.92</i>"]
     L4["Layer 4: DbMemory<br/><i>Load history, compact on load</i>"]
     L3["Layer 3: ContextGuard<br/><i>Per-iteration enforcement</i>"]
     L2["Layer 2: CompactUtils<br/><i>Estimation, truncation, LLM compact</i>"]
@@ -43,82 +43,102 @@ flowchart TD
     L4 -.->|"implements"| L1
 ```
 
-### 第 5 层 — 预算配置
+### Layer 5 — Budget Configuration
 
-预算由两个值计算得出：
+The budget is computed from two values of the model in use:
 
 ```
-usable_input_tokens = context_size - max_output_tokens
+usable_input_tokens = (context_size - max_output_tokens) × 0.92
 ```
 
-默认值为：`128,000 - 64,000 = 64,000 tokens`。
+With defaults: `(128,000 - 64,000) × 0.92 = 58,880 tokens`. The 8% margin absorbs the error of heuristic token estimation, so compaction triggers before the provider's hard limit.
 
-不会减去静态系统提示预留。系统提示（智能体指令、工具描述、格式化开销）包含在 ContextGuard 动态估计的消息列表中 — 在顶部减去固定预留会导致重复计算并浪费预算。典型的系统提示消耗 3K-5K 个 token；具有许多工具或长指令的智能体可能会使用更多。ContextGuard 会自动考虑实际大小。
+No static system prompt reserve is subtracted. The system prompt (agent instructions, tool descriptions, formatting overhead) is included in the message list that ContextGuard estimates dynamically — subtracting a fixed reserve on top would double-count it and waste budget. A typical system prompt consumes 3K-5K tokens; agents with many tools or long instructions may use more. ContextGuard accounts for the actual size automatically.
 
-预算值可以来自三个来源，按优先级顺序解决：
+The values come from the models a chat turn resolved: the agent's own model and fast model when it sets them, otherwise the active model group, otherwise the system default. Each resolved model reports its own `context_size` and `max_output_tokens`, so two agents on different models get different budgets in the same deployment.
 
-1. **数据库 ModelConfig** — 由管理员设置的每个模型 `context_size` 和 `max_output_tokens`。
-2. **环境变量** — `LLM_CONTEXT_SIZE` 和 `LLM_MAX_OUTPUT_TOKENS`。
-3. **硬编码默认值** — 128K 上下文，64K 输出。
+A model with no context size configured (the field left empty in its model configuration) falls back to the system budget for its role, resolved in priority order:
 
-主 LLM 和快速 LLM 具有独立的预算。DAG 步骤执行使用快速 LLM 的预算；ReAct 模式使用主 LLM 的预算。这很重要，因为运营商通常会为 ReAct 配对一个大上下文模型（历史记录会累积），为 DAG 步骤配对一个更小、更快的模型（每个步骤都从头开始）。
+1. **System ModelConfig for the role** — `context_size` and `max_output_tokens` of the system `general` or `fast` model set by the admin.
+2. **Environment variables** — `LLM_CONTEXT_SIZE` / `FAST_LLM_CONTEXT_SIZE` and `LLM_MAX_OUTPUT_TOKENS`.
+3. **Hardcoded defaults** — 128K context, 64K output.
 
-强制执行 4,000 token 的下限 — 如果配置错误的值会产生更小的预算，系统会固定到 4K，而不是无声地失败。
+The main LLM and fast LLM have independent budgets, and which one applies depends on who reads the message list:
+
+- **ReAct mode** sends one message list to both models: the fast model decides tool calls, the main model writes the final answer (and the fast model stands in when the main model is unavailable). The list is budgeted against the **smaller** of the two budgets, so any mix of windows stays within both. When a legal, medical or similar domain query escalates the turn to the reasoning model, that model's window replaces the main model's in the comparison.
+- **DAG mode** budgets history loading and planning against the main model, and each step against the model that runs it (the general model by default, or the one the step's `model_hint` selects).
+
+At startup the backend logs a warning when the system fast model's window is smaller than the general model's budget: nothing overflows, but conversations compact earlier than the general model alone would need.
+
+A floor of 4,000 tokens is enforced — if misconfigured values would produce a smaller budget, the system clamps to 4K rather than failing silently. One misconfiguration is handled before the floor: when the output reserve is as large as the window itself (a small model whose max output tokens was left at the 64K default), half the window is reserved instead. Set the model's max output tokens to get an exact budget.
 
 ### Layer 4 — DbMemory
 
-`DbMemory` 是生产环境中的内存实现。它从数据库加载持久化的对话历史，并将其压缩以适应令牌预算，然后才会被智能体看到。
+`DbMemory` is the production memory implementation. It loads persisted conversation history from the database and compacts it to fit the token budget before the agent sees it.
 
-该设计**有意设为只读**。持久化由 `chat.py` 处理——拥有完整消息生命周期的 API 层（包括元数据、使用情况跟踪和图像附件）。`DbMemory` 仅读取。其 `add_message()` 和 `clear()` 方法是空操作。这种分离防止了双重写入，并将持久化逻辑保持在一个地方。
+The design is **read-only by intention**. Persistence is handled by `chat.py` — the API layer that owns the full message lifecycle (including metadata, usage tracking, and image attachments). `DbMemory` does not persist conversation turns: its `add_message()` and `clear()` methods are no-ops, and its only write is a synthetic `tool` result row for a tool call left dangling by an interrupted turn. This separation prevents double-writes and keeps the persistence logic in one place.
 
-加载时，`DbMemory`：
+On load, `DbMemory`:
 
-1. 查询对话的所有 `user` 和 `assistant` 消息，按创建时间排序。
-2. 删除尾部用户消息（当前查询，智能体将重新附加）。
-3. 重建图像附件——包含图像的用户消息在数据库中存储元数据（`file_id`、`mime_type`），`DbMemory` 从磁盘重建 base64 数据 URL，以便 LLM 可以"看到"之前回合的图像。
-4. 压缩：如果提供了 `compact_llm`，使用 `CompactUtils.llm_compact()`。否则，回退到 `CompactUtils.smart_truncate()`。
+1. Queries all `user`, `assistant` and `tool` messages for the conversation, ordered by creation time.
+2. Drops the trailing user message (the current query, which the agent will re-append).
+3. Reconstructs image attachments — user messages that included images store metadata (`file_id`, `mime_type`) in the database, and `DbMemory` rebuilds the base64 data-URLs from disk so the LLM can "see" images from earlier turns.
+4. Compacts: if a `compact_llm` was provided, uses `CompactUtils.llm_compact()`. Otherwise, falls back to `CompactUtils.smart_truncate()`. The whole stored conversation is the input here, so this is where the history most often exceeds the summarising model's window; it is then summarised in parts (see [Chunked compaction input](#chunked-compaction-input)).
 
-压缩后，`DbMemory` 设置跟踪标志（`was_compacted`、`_original_count`、`_compacted_count`），SSE 层使用这些标志向前端发出 `compact` 事件。
+After compaction, `DbMemory` sets tracking flags (`was_compacted`, `_original_count`, `_compacted_count`) that the SSE layer uses to emit a `compact` event to the frontend.
 
-### 第 3 层 — ContextGuard
+### Layer 3 — ContextGuard
 
-`ContextGuard` 是每次迭代的预算执行器。它在每个 ReAct 迭代的顶部被调用——既在独立 ReAct 模式中，也在每个 DAG 步骤的智能体内部。这是消息到达 LLM API 之前的最后一道防线。
+`ContextGuard` is the per-iteration budget enforcer. It is called at the top of every ReAct iteration — both in standalone ReAct mode and inside each DAG step's agent. This is the last line of defense before the messages hit the LLM API.
 
-执行遵循三步流程：
+The enforcement follows a three-step process:
 
-1. **截断超大单条消息。** 任何超过 50K 字符的单条消息都会被硬截断并添加 `[Truncated]` 后缀。这可以捕获失控的工具输出——返回整个网页的网页抓取、转储大型数据集的文件读取。
+1. **Truncate oversized individual messages.** Any single message exceeding 50K characters is hard-truncated with a `[Truncated]` suffix. This catches runaway tool outputs — a web scrape that returns an entire webpage, a file read that dumps a large dataset.
 
-2. **估计总令牌数。** 如果总数在预算范围内，立即返回。大多数迭代在这里通过——压缩是例外，而不是常态。
+2. **Estimate total tokens.** If the total fits within budget, return immediately. Most iterations pass here — compaction is the exception, not the norm.
 
-3. **如果超过预算则压缩。** 如果有可用的 `compact_llm`，使用带有提示特定提示的 LLM 驱动压缩。否则，回退到 `smart_truncate`。
+3. **Compact if over budget.** If a `compact_llm` is available, use LLM-powered compaction with a hint-specific prompt. Otherwise, fall back to `smart_truncate`.
 
-**提示系统**使 ContextGuard 具有上下文感知能力，而不是一刀切的方案。不同的情况需要不同的压缩策略：
+The **hint system** is what makes ContextGuard context-aware rather than one-size-fits-all. Different situations need different compaction strategies:
 
-| 提示 | 使用者 | 保留 | 丢弃 |
+| Hint | Used by | Preserves | Drops |
 |------|---------|-----------|-------|
-| `react_iteration` | ReAct 智能体循环 | 最近的推理链、当前目标、关键数据 | 旧的冗余步骤、失败的重试、冗长的工具输出 |
-| `planner_input` | DAG 丰富查询 | 用户意图演变、关键决策、约束条件 | 对话细节、问候语、工具调用机制 |
-| `step_dependency` | DAG 步骤上下文 | 关键数据、数字、结论 | 推理过程、失败的尝试、冗长的格式 |
-| `general` | 默认回退 | 关键事实、决策、工具结果 | 问候语、填充内容、冗余的往返 |
+| `react_iteration` | ReAct agent loop | Recent reasoning chain, current goal, critical data | Old redundant steps, failed retries, verbose tool outputs |
+| `planner_input` | DAG enriched query | User intent evolution, key decisions, constraints | Dialogue details, greetings, tool call mechanics |
+| `step_dependency` | Defined, no caller today | Key data, numbers, conclusions | Reasoning process, failed attempts, verbose formatting |
+| `general` | Default fallback | Key facts, decisions, tool results | Greetings, filler, redundant back-and-forth |
 
-每个提示都映射到一个精心措辞的系统提示，告诉压缩 LLM 要保留什么和要丢弃什么。提示以"用与对话相同的语言写作"结尾——这对于摘要会被默认转换为英文的 CJK 用户来说很重要。
+Each hint maps to a carefully worded system prompt that tells the compaction LLM what to keep and what to discard. Each prompt instructs the LLM to write in the same language as the conversation — a detail that matters for CJK users whose summaries would otherwise default to English.
 
-如果 LLM 压缩失败（网络错误、空响应、任何异常），ContextGuard 会无声地回退到 `smart_truncate`。智能体永远看不到失败。这是一个刻意的可靠性选择：通过启发式截断丢失一些上下文比崩溃迭代要好。
+If LLM compaction fails (network error, empty response, any exception), ContextGuard falls back to `smart_truncate` silently. The agent never sees the failure. This is a deliberate reliability choice: better to lose some context via heuristic truncation than to crash the iteration.
+
+#### Chunked compaction input
+
+The summariser is the fast model, and its window can be smaller than the history it is asked to condense: a large main model paired with a small fast one, or a long stored conversation loaded by `DbMemory`. Sending that history as one request overflows the summariser, and compaction degrades to truncation exactly when it is needed.
+
+`CompactUtils.summarize_history()` is the single summarising step behind `ContextGuard`, `DbMemory` and the DAG planner-input summary. It takes the summariser's own input budget (from the window that model declares) and guarantees no request exceeds it:
+
+1. History that fits goes out as one request, as before.
+2. Longer history is cut into consecutive parts. A tool call and its results always land in the same part; only a single exchange larger than a whole part is split, and an over-long message is cut rather than dropped.
+3. The parts are folded in order: the first is summarised on its own, and each later request carries the summary so far (capped at 10K tokens, or a quarter of the summariser's budget if smaller) plus the next part, and asks for one updated summary in the same format.
+4. `CONTEXT_GUARD_MAX_COMPACT_CHUNKS` (default 8) bounds the number of requests. History needing more parts keeps the first part and the most recent ones, and the summariser is told there is a gap.
+
+If the compact prompt alone leaves no room for history in the summariser's window, or any part fails, the result is the same `smart_truncate` fallback. The split only concerns the text the summariser reads: the message list kept for the main model still never starts with tool results whose tool call was summarised away.
 
 ### Layer 2 — CompactUtils
 
-`CompactUtils` 是一个无状态的实用工具类——没有实例，没有状态，只有纯函数。它提供了第 3 层和第 4 层构建的三种能力。
+`CompactUtils` is a stateless utility class — no instances, no state, just pure functions. It provides three capabilities that layers 3 and 4 build on.
 
-**Token 估算**将文本转换为近似的 token 计数，无需导入 tokenizer 库。启发式算法：
+**Token estimation** converts text to an approximate token count without importing a tokenizer library. The heuristic:
 
-- ASCII 字符：~4 个字符每 token
-- CJK / 非 ASCII 字符：~1.5 个字符每 token
-- 图像：765 tokens 每张图像（固定成本）
-- 每条消息开销：4 tokens（角色标记、分隔符）
+- ASCII characters: ~4 characters per token
+- CJK / non-ASCII characters: ~1.5 characters per token
+- Images: 765 tokens per image (flat cost)
+- Per-message overhead: 4 tokens (role marker, delimiters)
 
-**`smart_truncate`** 是启发式回退方案。它无条件地保留固定消息，然后向后遍历非固定消息，累积直到预算耗尽。结果是适合的对话后缀。它还确保结果永远不会以助手消息开头——孤立的助手轮次（前面没有用户消息）会让 LLM 感到困惑。
+**`smart_truncate`** is the heuristic fallback. It keeps pinned messages unconditionally, then walks backward through non-pinned messages, accumulating until the budget is exhausted. The result is a suffix of the conversation that fits. It also ensures the result never starts with an assistant message — an orphaned assistant turn with no preceding user message confuses LLMs.
 
-**`llm_compact`** 是 LLM 驱动的路径。它将消息分为三组——系统消息（始终保留）、固定消息（始终保留）和可压缩消息。最旧的可压缩消息被总结为单个 `[Conversation summary]` 系统消息；最近的 4 条消息保持原样。如果压缩后的结果仍然过长，它会在压缩输出上回退到 `smart_truncate`——双重保险。
+**`llm_compact`** is the LLM-powered path. It splits messages into three groups — system messages (always kept), pinned messages (always kept), and compactable messages. The oldest compactable messages are summarized into a single `[Conversation summary]` system message (in parts when they exceed the summariser's window); the most recent 4 messages are kept verbatim, more when the cut would otherwise separate a tool call from its results. If the compacted result is still too long, it falls back to `smart_truncate` on the compacted output — belt and suspenders.
 
 ### 第 1 层 — 内存实现
 
@@ -132,9 +152,9 @@ usable_input_tokens = context_size - max_output_tokens
 
 WindowMemory 和 SummaryMemory 保留在代码库中，因为它们作为测试的有用基元，以及对于嵌入 FIM One 核心库而不使用 Web 层的用户很有用。它们不是死代码 — 它们是架构发展而来的简单情况。
 
-## ReAct 中的上下文流动
+## How context flows through ReAct
 
-ReAct 智能体在两个不同的阶段使用上下文管理：加载时和迭代时。
+The ReAct agent uses context management at two distinct phases: load time and iteration time.
 
 ```mermaid
 sequenceDiagram
@@ -151,7 +171,7 @@ sequenceDiagram
     Chat->>Agent: run(query)
     Agent->>Agent: Assemble: system + history + pinned query
 
-    loop Each iteration (non-streaming)
+    loop Each iteration
         Agent->>CG: check_and_compact(messages, hint="react_iteration")
         CG->>CG: Truncate oversized, estimate, compact if needed
         CG-->>Agent: messages (within budget)
@@ -178,15 +198,15 @@ sequenceDiagram
     Chat->>Chat: Persist, emit compact SSE if compacted
 ```
 
-工具迭代使用非流式 `chat()` 以提高速度；答案合成使用通过 `stream_answer()` 的流式 `stream_chat()`。这种两阶段分割——快速工具循环后跟流式合成——优化了延迟和用户体验。有关包括双模式执行和工具选择的完整 ReAct 引擎架构，请参阅 [ReAct 引擎](/architecture/react-engine)。
+Tool iterations run on the fast model when one is configured (non-streaming `chat()` in JSON mode, `stream_chat()` in native mode); the answer is streamed through `stream_answer()`. This two-phase split — tool loop followed by a streamed answer — optimizes both latency and user experience. For full ReAct engine architecture including dual-mode execution and tool selection, see [ReAct Engine](/architecture/react-engine).
 
-关键洞察：**DbMemory 处理历史上下文问题（来自先前请求的轮次），而 ContextGuard 处理请求内增长问题（工具结果在智能体循环期间累积）。** 它们在不同的时间尺度上运行并捕获不同的故障模式。
+The key insight: **DbMemory handles the historical context problem (turns from previous requests), while ContextGuard handles the within-request growth problem (tool results accumulating during an agent loop).** They operate at different timescales and catch different failure modes.
 
-用户的当前查询始终标记为 `pinned=True`。这确保它在所有压缩中都能保留——`smart_truncate` 和 `llm_compact` 都无条件地保留固定消息。无论历史记录压缩得多么激进，用户的实际问题永远不会丢失。
+The user's current query is always marked as `pinned=True`. This ensures it survives all compaction — both `smart_truncate` and `llm_compact` preserve pinned messages unconditionally. No matter how aggressively the history is compressed, the user's actual question is never lost.
 
-## 上下文如何通过 DAG 流动
+## How context flows through DAG
 
-DAG 模式的上下文形状与 ReAct 根本不同。它不是一个长对话线程，而是一棵树：一个规划阶段、多个并行执行步骤和一个分析阶段。每个阶段都有自己的上下文管理策略。
+DAG mode has a fundamentally different context shape than ReAct. Instead of one long conversation thread, it has a tree: a planning phase, multiple parallel execution steps, and an analysis phase. Each phase has its own context management strategy.
 
 ```mermaid
 flowchart TD
@@ -204,24 +224,24 @@ flowchart TD
     I --> K
     J --> K
     K --> L{"Achieved?"}
-    L -->|No, low confidence| M["6. Replan: 500-char step summaries"]
+    L -->|No, recoverable| M["6. Replan: 500-char step summaries"]
     M --> F
     L -->|Yes| N["stream_synthesize → Final answer"]
 ```
 
-**阶段 1 — 历史记录加载。** DbMemory 加载并压缩对话历史记录，与 ReAct 相同。压缩后的历史记录被格式化为以 `"Previous conversation:"` 为前缀的文本块。
+**Phase 1 — History loading.** DbMemory loads and compacts conversation history, same as ReAct. The compacted history is formatted into a text block prefixed with `"Previous conversation:"`.
 
-**阶段 2 — 富化查询构造。** 历史记录文本和当前查询被组合成一个 `enriched_query`。如果超过 16K 个令牌，将使用 `planner_input` 提示词进行 LLM 总结。选择 16K 阈值是因为规划器需要一次性读取整个查询 — 与 ReAct 不同，规划期间没有迭代压缩。
+**Phase 2 — Enriched query construction.** The history text and current query are combined into an `enriched_query`. If this exceeds 16K tokens, it is LLM-summarized using the `planner_input` hint prompt, in parts when the history exceeds the fast model's window. The 16K threshold is chosen because the planner needs to read the entire query in a single pass — unlike ReAct, there is no iterative compaction during planning.
 
-**阶段 3 — 规划。** 规划器接收一个 2 条消息的提示：系统提示加富化查询。这里没有 ContextGuard — 富化查询已经通过 16K 检查进行了大小控制。
+**Phase 3 — Planning.** The planner receives a 2-message prompt: system prompt plus enriched query. No ContextGuard here — the enriched query is already size-controlled by the 16K check.
 
-**阶段 4 — 步骤执行。** 每个 DAG 步骤作为一个独立的 ReAct 智能体运行，具有自己的 ContextGuard。关键是，这些步骤智能体**没有记忆** — 它们从零开始，只有任务描述和依赖上下文。这是设计使然：DAG 步骤应该是自包含的工作单元。依赖结果通过 `_build_step_context` 注入，该函数在 50K 处进行字符截断（ContextGuard 的 `max_message_chars` 限制）。
+**Phase 4 — Step execution.** Each DAG step runs as an independent ReAct agent with its own ContextGuard. Critically, these step agents have **no memory** — they start fresh with only their task description and dependency context. This is by design: DAG steps should be self-contained units of work. Dependency results are injected via `_build_step_context`, which character-truncates at 50K (the ContextGuard's `max_message_chars` limit).
 
-**阶段 5 — 分析。** 步骤结果被格式化供分析器 LLM 使用，每个步骤在 10K 字符处进行截断。这可以防止单个步骤的冗长输出主导分析上下文。
+**Phase 5 — Analysis.** Step results are formatted for the analyzer LLM with per-step truncation at 10K characters. This prevents a single step's verbose output from dominating the analysis context.
 
-**阶段 6 — 重新规划。** 当分析器确定目标未实现且置信度低于阈值时，步骤结果被截断为仅 500 个字符用于重新规划上下文。重新规划需要知道*发生了什么*和*哪里出错了*，而不是每个步骤输出的完整细节。这种激进的截断使重新规划提示足够紧凑，以便规划器能够有效处理。
+**Phase 6 — Replanning.** When the analyzer determines the goal was not achieved and does not judge it unreachable, step results are truncated to 500 characters each for the latest round (200 for older rounds) in the replanning context. Replanning needs to know *what happened* and *what went wrong*, not the full detail of every step's output. This aggressive truncation keeps the replan prompt compact enough for the planner to process efficiently.
 
-有关完整的 DAG 管道架构（包括 LLM 调用映射和重新规划逻辑），请参阅 [DAG 引擎](/architecture/dag-engine)。
+For the full DAG pipeline architecture including the LLM Call Map and re-planning logic, see [DAG Engine](/architecture/dag-engine).
 
 ## 固定消息
 
@@ -235,37 +255,37 @@ flowchart TD
 
 这是一种权衡。取消固定旧的注入消息意味着它们可能被总结或截断。但另一种选择——让固定消息挤占所有其他上下文——更糟。系统倾向于保留最近的上下文，这几乎总是比较旧的注入更相关。
 
-## 令牌估计
+## Token estimation
 
-FIM One 使用启发式令牌估计而非真实分词器。这是一个经过深思熟虑的选择，具有明确的权衡。
+FIM One uses heuristic token estimation rather than a real tokenizer. This is a deliberate choice with clear trade-offs.
 
-**为什么不使用真实分词器？** 三个原因：
+**Why not a real tokenizer?** Three reasons:
 
-1. **依赖成本。** `tiktoken`（OpenAI 的分词器）是 15MB 的编译 Rust 绑定。`sentencepiece`（某些开源模型使用）有其自身的构建要求。对于针对多个 LLM 提供商的框架，没有单一正确的分词器——每个模型族都使用不同的分词器。
+1. **Dependency cost.** `tiktoken` (OpenAI's tokenizer) is 15MB of compiled Rust bindings. `sentencepiece` (used by some open-source models) has its own build requirements. For a framework that targets multiple LLM providers, there is no single correct tokenizer — each model family uses a different one.
 
-2. **速度。** 启发式估计是对字符串的单次遍历。真实分词涉及词汇表查找、BPE 合并操作和特殊令牌处理。ContextGuard 在每次迭代中调用估计，有时多次——速度差异很重要。
+2. **Speed.** Heuristic estimation is a single pass over the string. Real tokenization involves vocabulary lookup, BPE merge operations, and special token handling. ContextGuard calls estimation on every iteration, sometimes multiple times — the speed difference matters.
 
-3. **足够好。** 启发式方法针对混合语言文本进行了调整（ASCII/CJK 分割涵盖两个主要情况）。对于边界情况（大量标点符号的代码、不寻常的 Unicode），可能偏差 1.5-2 倍，但上下文管理本质上是近似的。在 64K 预算上偏差 30% 仍然留有舒适的余量。
+3. **Good enough.** The heuristic is tuned for mixed-language text (the ASCII/CJK split covers the two major cases). It can be 1.5-2x off for edge cases (heavily punctuated code, unusual Unicode), but context management is inherently approximate. Being 30% off on a ~59K budget still leaves a comfortable margin.
 
-具体启发式方法：
+The concrete heuristics:
 
-| 内容类型 | 比率 | 原理 |
+| Content type | Ratio | Rationale |
 |-------------|-------|-----------|
-| ASCII 文本 | ~4 字符/令牌 | 英文散文和代码在 GPT/Claude 分词器中平均为 3.5-4.5 字符/令牌 |
-| CJK / 非 ASCII | ~1.5 字符/令牌 | 每个 CJK 字符通常为 1-2 个令牌；1.5 是几何平均值 |
-| 图像 | 765 令牌/图像 | 视觉 API 中 base64 编码图像的近似成本 |
-| 每条消息开销 | 4 令牌 | 角色标记、分隔符、格式化 |
+| ASCII text | ~4 chars/token | English prose and code average 3.5-4.5 chars/token across GPT/Claude tokenizers |
+| CJK / non-ASCII | ~1.5 chars/token | Each CJK character is typically 1-2 tokens; 1.5 is the geometric mean |
+| Images | 765 tokens/image | Approximate cost of a base64-encoded image in the vision API |
+| Per-message overhead | 4 tokens | Role marker, delimiters, formatting |
 
-估计总是为非空内容返回至少 1 个令牌。这可防止预算算术中的除以零边界情况。
+The estimation always returns at least 1 token for non-empty content. This prevents division-by-zero edge cases in budget arithmetic.
 
-## 用户看到的内容
+## What the user sees
 
-上下文管理的设计目标是在常见情况下保持隐形，仅在激活时产生最小干扰。用户可见的信号包括：
+Context management is designed to be invisible in the common case and minimally intrusive when it activates. The user-facing signals are:
 
-**CompactDivider。** 当 `DbMemory` 在加载时压缩历史记录时，前端会渲染一条虚线分隔符，显示文本"较早的上下文（N 条消息）已由 AI 总结。"这会出现在摘要和保留的最近消息之间，为用户提供视觉提示，表明较旧的上下文已被压缩，而不会中断对话流。
+**CompactDivider.** When `DbMemory` compacts history on load, the frontend renders a dashed divider with the text "Earlier context (N messages) was summarized by AI." This appears between the summary and the preserved recent messages, giving the user a visual cue that older context has been compressed without interrupting the conversation flow.
 
-**令牌使用显示。** 每个响应末尾的 `done` 卡片显示"X.Xk in / X.Xk out"——消耗的总输入和输出令牌。这包括在压缩上花费的令牌（用于总结的快速 LLM 调用）。监控令牌消耗的用户可以看到压缩何时增加了开销。
+**Token usage display.** The `done` card at the end of each response shows "X.Xk in / X.Xk out" — the total input and output tokens consumed. Tokens the fast LLM spends on compaction are not included in this figure.
 
-**优雅的错误处理。** 如果上下文管理完全失败——考虑到回退链，这种情况不应该发生，但理论上可能发生——错误会作为响应中的智能体错误文本出现，而不是系统崩溃。对话继续进行；用户可以重试或重新表述。
+**Graceful error handling.** If context management fails entirely — a scenario that should not happen given the fallback chain, but could in theory — the error surfaces as agent error text in the response, not as a system crash. The conversation continues; the user can retry or rephrase.
 
-目标是大多数用户永远不需要考虑上下文管理。他们进行长对话，系统透明地处理预算，唯一可见的工件是偶尔出现的压缩分隔符。对于关心令牌效率的高级用户和运营人员，使用显示和可配置的预算参数提供了他们需要的控制。
+The goal is that most users never think about context management. They have long conversations, the system handles the budget transparently, and the only visible artifact is an occasional compact divider. For power users and operators who care about token efficiency, the usage display and the configurable budget parameters provide the control they need.

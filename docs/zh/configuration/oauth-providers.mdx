@@ -24,19 +24,19 @@ FIM One 支持通过 GitHub、Google、Discord 和 Feishu（Lark）进行社交�
 
 ## GitHub
 
-**开发者控制台:** https://github.com/settings/developers
+**Developer console:** https://github.com/settings/developers
 
-1. 点击 **OAuth Apps** → **New OAuth App**。
-2. 填写：
-   - **Application name** — 任意名称（例如 `FIM One`）
-   - **Homepage URL** — 你的前端 URL（例如 `https://yourdomain.com`）
+1. Click **OAuth Apps** → **New OAuth App**.
+2. Fill in:
+   - **Application name** — any name (e.g. `FIM One`)
+   - **Homepage URL** — your frontend URL (e.g. `https://yourdomain.com`)
    - **Authorization callback URL** — `https://yourdomain.com/api/auth/oauth/github/callback`
-3. 点击 **Register application**，然后点击 **Generate a new client secret**。
-4. 将 **Client ID** 和生成的 **Client Secret** 复制到你的 `.env`。
+3. Click **Register application**, then click **Generate a new client secret**.
+4. Copy the **Client ID** and the generated **Client Secret** into your `.env`.
 
-**自动请求的作用域:** `read:user`, `user:email`
+**Scopes requested automatically:** `read:user`, `user:email`
 
-具有私密主要邮箱的 GitHub 账户处理正确 — FIM One 始终从 `/user/emails` 获取主要验证邮箱，而不是公开资料邮箱。
+GitHub accounts with a private primary email are handled correctly — FIM One fetches the primary email from `/user/emails` (not the public profile email) and records whether GitHub marks it verified.
 
 ```env
 GITHUB_CLIENT_ID=Ov23li...
@@ -120,15 +120,15 @@ FEISHU_APP_ID=cli_a1b2c3d4e5f6...
 FEISHU_APP_SECRET=...
 ```
 
-### 重要：飞书邮箱行为
+### Important: Feishu Email Behavior
 
-飞书用户信息 API (`authen/v1/user_info`) 返回用户的**企业联系邮箱** (联系邮箱) — 由组织管理员在飞书管理后台配置的地址。这**不是**用户的个人飞书登录邮箱。
+The Feishu user info API (`authen/v1/user_info`) returns an `email` and an **enterprise contact email** (联系邮箱, `enterprise_email`) — the address configured by the organization admin in the Feishu admin console. FIM One reads `email` first, then `enterprise_email`. The address counts as verified only when it is the enterprise email of a tenant listed in `FEISHU_TRUSTED_TENANT_KEYS`.
 
-后果：
-- 组织管理员未配置联系邮箱的用户将从 API 获得空的邮箱字段，即使他们拥有有效的飞书账户。
-- 个人飞书账户用户（不属于企业）将始终获得空的邮箱。
+Consequences:
+- Users whose org admin has not configured a contact email will get an empty email field from the API, even though they have a valid Feishu account.
+- Users on personal Feishu accounts (not part of an enterprise) will always get an empty email.
 
-FIM One 可以优雅地处理这种情况：参见下面的[账户绑定规则](#account-binding-rules)。
+FIM One handles this gracefully: see [Account Binding Rules](#account-binding-rules) below.
 
 ---
 
@@ -136,45 +136,44 @@ FIM One 可以优雅地处理这种情况：参见下面的[账户绑定规则](
 
 注册用户可以从**设置 → 账户**链接其他 OAuth 提供商。当用户启动绑定时，以下规则适用：
 
-### 通用规则（GitHub、Google、Discord）
+### Linking from Settings (all providers)
 
-OAuth 提供商返回的电子邮件必须与 FIM 账户注册的电子邮件相匹配。这可以防止意外将他人的社交账户关联到您的 FIM 账户。
+Linking needs a full sign-in: a session that has passed two-factor authentication where it is enabled. API keys and the temporary 2FA token cannot link a provider.
 
-如果电子邮件不匹配，绑定将被拒绝，并返回 `email_mismatch` 错误。
+- **Both sides have an email** → the email returned by the provider must match the FIM account's email. This prevents accidentally linking another person's social account to your FIM account. A mismatch is rejected with an `email_mismatch` error.
+- **Either side has no email** (the provider returned none, or the FIM account has no email) → binding succeeds on the signed-in session alone. In practice this affects Feishu accounts without an enterprise email and some Discord accounts.
 
-### 飞书异常
+### First sign-in with a provider (no binding yet)
 
-由于飞书的 API 返回企业联系邮箱而非登录邮箱，且该字段对于个人账户或管理员未配置的组织中的账户通常为空，飞书的邮箱匹配检查遵循更宽松的规则：
+When a user signs in through a provider that is not linked to any account yet:
 
-- **双方都有邮箱** → 邮箱必须匹配（与其他提供商的检查相同）。
-- **任一方没有邮箱**（飞书返回空值，或 FIM 账户没有邮箱）→ 仅基于票证身份验证成功绑定。
+1. FIM One looks for an existing account with the same email. The match is used only when the address is verified on both sides: the provider reports it as verified, and the existing account's email is verified. For Feishu, "verified" means the enterprise email of a tenant listed in `FEISHU_TRUSTED_TENANT_KEYS`.
+2. If a match is found, the provider is linked to that existing FIM account and the user is logged in.
+3. Otherwise a new FIM account is created with whatever email the provider returned (none, if it returned none). This is refused with `registration_disabled` when registration is disabled or invite-only.
 
-### Feishu 登录（尚未绑定）
+**When is an account's email verified?** When it was registered with the emailed verification code (`email_verification_enabled` on and SMTP configured), when an administrator created it, when it is the first account of the installation, or when it was created by a provider sign-in whose provider reported the address as verified. An account registered with an email and a password on a deployment that does not send verification codes holds an **unverified** address: a provider sign-in for that address is not linked to it and creates a separate account instead, so two accounts can then hold the same address. A password signs in to the account it was set on; an emailed sign-in or reset code goes to the account whose address is verified. To use one account with both, sign in with the password first and link the provider under Settings → Account, instead of using the provider's button on the sign-in page.
 
-当用户首次通过 Feishu 登录时（没有现有绑定）：
-
-1. FIM One 查找现有账户，其电子邮件与 Feishu 企业联系人电子邮件匹配。
-2. 如果找到匹配项，Feishu 账户会自动绑定到该现有 FIM 账户，用户随即登录。
-3. 如果没有匹配项（包括电子邮件为空的情况），会创建一个由 Feishu `open_id` 标识的新 FIM 账户。该账户的电子邮件为空，用户可以稍后从设置中填写。
+If the matched or linked account has two-factor authentication enabled, the sign-in stops at the 2FA step before a session is issued.
 
 ---
 
-## 环境变量快速参考
+## Environment Variables Quick Reference
 
-| 变量 | 提供商 | 必需 | 描述 |
+| Variable | Provider | Required | Description |
 |---|---|---|---|
-| `GITHUB_CLIENT_ID` | GitHub | Both | GitHub OAuth App 客户端 ID |
-| `GITHUB_CLIENT_SECRET` | GitHub | Both | GitHub OAuth App 客户端密钥 |
-| `GOOGLE_CLIENT_ID` | Google | Both | Google OAuth 2.0 客户端 ID |
-| `GOOGLE_CLIENT_SECRET` | Google | Both | Google OAuth 2.0 客户端密钥 |
-| `DISCORD_CLIENT_ID` | Discord | Both | Discord OAuth2 应用客户端 ID |
-| `DISCORD_CLIENT_SECRET` | Discord | Both | Discord OAuth2 应用客户端密钥 |
-| `FEISHU_APP_ID` | Feishu | Both | Feishu 内部应用 ID（注意：不是 `CLIENT_ID`） |
-| `FEISHU_APP_SECRET` | Feishu | Both | Feishu 内部应用密钥 |
-| `FRONTEND_URL` | All | Prod | OAuth 完成后浏览器重定向的位置（例如 `https://yourdomain.com`） |
-| `API_BASE_URL` | All | Prod | 外部可访问的后端 URL，用于构建回调 URL |
-| `NEXT_PUBLIC_API_URL` | All | Prod | 浏览器端 API URL 用于 OAuth 重定向 — 在构建时嵌入 |
+| `GITHUB_CLIENT_ID` | GitHub | Both | GitHub OAuth App client ID |
+| `GITHUB_CLIENT_SECRET` | GitHub | Both | GitHub OAuth App client secret |
+| `GOOGLE_CLIENT_ID` | Google | Both | Google OAuth 2.0 client ID |
+| `GOOGLE_CLIENT_SECRET` | Google | Both | Google OAuth 2.0 client secret |
+| `DISCORD_CLIENT_ID` | Discord | Both | Discord OAuth2 application client ID |
+| `DISCORD_CLIENT_SECRET` | Discord | Both | Discord OAuth2 application client secret |
+| `FEISHU_APP_ID` | Feishu | Both | Feishu in-house app ID (note: not `CLIENT_ID`) |
+| `FEISHU_APP_SECRET` | Feishu | Both | Feishu in-house app secret |
+| `FEISHU_TRUSTED_TENANT_KEYS` | Feishu | No | Comma-separated `tenant_key` values whose enterprise email may match an existing account by email |
+| `FRONTEND_URL` | All | Prod | Where the browser is redirected after OAuth completes (e.g. `https://yourdomain.com`) |
+| `API_BASE_URL` | All | Prod | Externally reachable backend URL, used to build callback URLs |
+| `NEXT_PUBLIC_API_URL` | All | Prod | Browser-side API URL for OAuth redirects — baked in at build time |
 
-"必需: Both" 表示 `_ID` 和 `_SECRET`（或 Feishu 的 `_APP_ID` 和 `_APP_SECRET`）必须一起设置；仅设置其中一个无效。
+"Required: Both" means both the `_ID` and `_SECRET` (or `_APP_ID` and `_APP_SECRET` for Feishu) must be set together; setting only one has no effect.
 
-> 查看[环境变量](/configuration/environment-variables)了解 `FRONTEND_URL`、`API_BASE_URL` 和 `NEXT_PUBLIC_API_URL` 的完整文档。
+> See [Environment Variables](/configuration/environment-variables) for full documentation of `FRONTEND_URL`, `API_BASE_URL`, and `NEXT_PUBLIC_API_URL`.

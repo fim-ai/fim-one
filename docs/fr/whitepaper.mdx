@@ -103,7 +103,7 @@ FIM One n'est délibérément pas une iPaaS, et cette distinction n'est pas cosm
     Every connector publishes a typed schema. The agent sees actions, parameters, and return types — never raw HTTP. OpenAPI, MCP, and direct database connections are first-class.
   </Card>
   <Card title="Three Execution Engines" icon="sitemap">
-    **ReAct** for exploratory tasks, **DAG** for structured pipelines, **Workflow** (up to 25 nodes) for deterministic human-designed pipelines. One agent core picks the engine per task.
+    **ReAct** for exploratory tasks, **DAG** for structured pipelines, **Workflow** (visual editor, 9 node types, an optional module) for deterministic human-designed pipelines. One agent core picks the engine per task.
   </Card>
   <Card title="Schema-First Tool Loading" icon="bolt">
     Tool schemas are pre-seeded at ~30 tokens each; the agent expands on demand. Per-session prompt overhead drops ~80%, and the platform scales to **10,000+ APIs** without blowing the context window.
@@ -116,15 +116,15 @@ FIM One n'est délibérément pas une iPaaS, et cette distinction n'est pas cosm
   </Card>
 </CardGroup>
 
-## 5. Trois modes de livraison — Un cœur d'agent unique
+## 5. Three Delivery Modes — One Agent Core
 
-Le même planificateur, la même mémoire et la même bibliothèque de connecteurs alimentent trois formes de produits distincts. Le choix est une décision de déploiement, non un fork de code.
+The same planner, memory, and connector library power three distinct product shapes. The choice is a deployment decision, not a code fork.
 
-**Standalone** — un portail autonome. L'acheteur souhaite une interface de chat sur une base de connaissances organisée, ou un bac à sable de code, ou un assistant général. Aucun système hôte impliqué. Convient aux services d'assistance informatique internes, à la productivité de l'ingénierie, aux bases de connaissances d'assistance client.
+**Standalone** — a self-contained portal. The buyer wants a chat interface over a curated knowledge base, or a code sandbox, or a general assistant. No host system involved. Fits internal IT help desks, engineering productivity, customer-support KBs.
 
-**Copilot** — l'agent intégré dans un système hôte existant via iframe, widget ou intégration directe. L'hôte gère l'authentification ; le Copilot hérite du contexte utilisateur. Convient à Finance Copilot dans SAP Fiori, Sales Copilot dans Salesforce, DevOps Copilot dans un portail développeur interne.
+**Copilot** — the agent embedded inside an existing host system. Today the host UI calls the FIM One API; a drop-in iframe / widget embed, with the user's identity passed from the host, is planned. Fits Finance Copilot inside SAP Fiori, Sales Copilot inside Salesforce, DevOps Copilot inside an internal developer portal.
 
-**Hub** — la surface d'orchestration centrale. Chaque système connecté s'y termine. Les utilisateurs posent des questions multi-systèmes ; l'agent planifie et exécute sur les systèmes. Convient à « clôturer Q1 pour toutes les entités APAC », « trouver tous les clients qui ont manqué un renouvellement et rédiger une relance », « rapprocher les paiements d'hier entre la passerelle et le grand livre ».
+**Hub** — the central orchestration surface. Every connected system terminates here. Users ask cross-system questions; the agent plans and executes across systems. Fits "close out Q1 for all APAC entities", "find every customer who missed a renewal and draft outreach", "reconcile yesterday's payments between gateway and ledger".
 
 ```mermaid
 flowchart LR
@@ -153,61 +153,61 @@ flowchart LR
   C --> Reports
 ```
 
-## 6. Modèle d’alignement des connecteurs
+## 6. Connector Alignment Model
 
-Un connecteur est une interface d’action typée reposant sur une stratégie d’authentification. FIM One définit trois niveaux d’authentification qui couvrent la grande majorité des systèmes d’entreprise.
+A connector is a typed action surface backed by an auth strategy. FIM One defines three auth tiers that cover the vast majority of enterprise systems.
 
 <AccordionGroup>
-  <Accordion title="Niveau 1 — Connecteurs de bases de données (complet ou basique)">
-    Connexion directe à une base de données relationnelle. Le mode **Full** expose n’importe quelle requête SQL à l’agent, avec un accès limité par un rôle en lecture seule ; le mode **Basic** expose uniquement des requêtes paramétrées préenregistrées. Prise en charge native des **bases de données conformes à Xinchuang — Dameng (DM8), KingbaseES, HighGo** — ainsi que de PostgreSQL et MySQL. Les clients du secteur public et les entreprises d’État, ainsi que les clients soumis à une réglementation, peuvent satisfaire aux exigences de conformité dès le premier jour de leurs achats.
+  <Accordion title="Tier 1 — Database Connectors">
+    Direct connection to a relational database. The agent writes SQL against the introspected schema; a connector is read-only by default, stays private to its owner, and columns marked as personal data come back masked. Native support for **Xinchuang-compliant databases — Dameng (DM8), KingbaseES, HighGo** — alongside PostgreSQL and MySQL. Central/state-owned and regulated customers pass compliance procurement day-one.
   </Accordion>
-  <Accordion title="Niveau 2 — Connecteurs OpenAPI (clé utilisateur)">
-    Toute API REST disposant d’une spécification OpenAPI. L’agent lit la spécification, sélectionne le point de terminaison et l’appelle avec la clé de l’utilisateur connecté. Cette catégorie couvre les SaaS modernes (Slack, Linear, GitHub) ainsi que les API internes bien documentées.
+  <Accordion title="Tier 2 — OpenAPI Connectors (User-Key)">
+    Any REST API with an OpenAPI specification. The agent reads the spec, selects the endpoint, and calls it with the logged-in user's key. Covers modern SaaS (Slack, Linear, GitHub) and well-documented internal APIs.
   </Accordion>
-  <Accordion title="Niveau 3 — Connecteurs à ticket de connexion / systèmes existants">
-    Pour les systèmes — particulièrement courants sur le marché chinois — qui s’authentifient via un service de tickets de connexion plutôt que par OAuth2. Le connecteur gère le cycle de vie du ticket (obtention, actualisation, invalidation) et présente une interface typée standard vers les couches supérieures. Ce niveau permet d’intégrer des systèmes que tous les autres fournisseurs ignorent.
+  <Accordion title="Tier 3 — Login-Ticket / Legacy Connectors (planned)">
+    For systems — particularly common in the Chinese market — that authenticate via a login-ticket service rather than OAuth2. The connector will manage the ticket lifecycle (acquire, refresh, invalidate) and present a normal typed surface upward. Not shipped yet: today API connectors authenticate with a bearer token, an API key, or basic auth.
   </Accordion>
 </AccordionGroup>
 
-Chaque connecteur déclare également une **dualité Canal/Intégration** : un même système sous-jacent peut apparaître à la fois comme un *canal* (destination de notifications, interface d’approbation) et comme une *intégration* (source de données, cible d’actions). Feishu est à la fois un canal de notifications et une source de données de discussion de groupe ; DingTalk et WeCom suivent le même modèle.
+Each connector also declares a **Channel/Integration duality**: the same underlying system can appear both as a *channel* (notification sink, approval surface) and as an *integration* (data source, action target). Feishu is both a notification channel and a group-chat data source; DingTalk and WeCom follow the same pattern.
 
-## 7. Intelligence Artificielle Fiable pour l'Entreprise — Trois Piliers
+## 7. Trustworthy Enterprise AI — Three Pillars
 
-L'intelligence artificielle d'entreprise échoue en production non pas parce que le modèle est incorrect, mais parce que l'organisation ne peut pas prouver qu'il est correct. FIM One traite la confiance comme une architecture, exprimée en trois piliers.
+Enterprise AI fails in production not because the model is wrong but because the organization cannot prove it is right. FIM One treats trust as architecture, expressed in three pillars.
 
 <CardGroup cols={3}>
-  <Card title="Chaque Conclusion Est Citée" icon="paperclip">
-    La récupération RAG + la chaîne de citation permet à l'agent de référencer un paragraphe spécifique dans un document spécifique pour chaque affirmation. Les conclusions sont traçables et vérifiables. Aucune sortie de boîte noire.
+  <Card title="Every Conclusion Is Cited" icon="paperclip">
+    RAG retrieval + citation chain lets the agent reference a specific paragraph in a specific document for every claim. Conclusions are traceable and auditable. No black-box output.
   </Card>
-  <Card title="Chaque Écriture Est Confirmée" icon="hand">
-    Les opérations d'écriture sont forcées de s'arrêter avant l'exécution, en attente d'une approbation humaine — en ligne dans le portail ou hors bande via un groupe d'approbation Feishu. La chaîne de hook est une contrainte architecturale, pas une suggestion de politique. Elle ne peut pas être contournée.
+  <Card title="Sensitive Actions Are Confirmed" icon="hand">
+    Actions marked as requiring confirmation (or every tool call, when an agent is set to confirm all) pause before execution, waiting for a human approval — inline in the portal or out-of-band via a Feishu approval group. The hook chain is an architectural constraint, not a policy suggestion. It cannot be bypassed.
   </Card>
-  <Card title="Chaque Lancement Est Mesuré" icon="chart-bar">
-    L'évaluation basée sur les données quantifie la qualité avant chaque lancement. Chaque itération est mesurable ; l'approvisionnement d'entreprise obtient des preuves, pas des promesses.
+  <Card title="Every Release Is Measured" icon="chart-bar">
+    Dataset-driven evaluation quantifies quality before each release. Every iteration is measurable; enterprise procurement gets evidence, not promises.
   </Card>
 </CardGroup>
 
-Pour soutenir cela, chaque exécution d'agent émet une trace structurée : plan, appels d'outils, arguments, observations, approbations, réponse finale. Les traces sont l'unité d'audit. Les identifiants utilisent le chiffrement Fernet (AES-128-CBC + HMAC-SHA256). Les journaux d'audit complets sont stockés et exportables.
+Supporting this, every agent run emits a structured trace: plan, tool calls, arguments, observations, approvals, final answer. Traces are the unit of audit. Credentials use Fernet encryption (AES-128-CBC + HMAC-SHA256). Full audit logs are stored and exportable.
 
-Lorsqu'un opérateur rejette un appel d'outil, l'agent s'arrête — il ne paraphrase pas et ne réessaie pas. Le rejet est une décision de politique, pas une erreur à récupérer.
+When an operator rejects a tool call, the agent stops — it does not paraphrase and retry. Rejection is a policy decision, not an error to recover from.
 
-## 8. Déploiement et modèle commercial
+## 8. Deployment and Business Model
 
-FIM One est fourni avec une source publique sous la licence FIM One Source Available License (FIM-SAL) — source disponible, pas de l'open source approuvé par l'OSI — avec trois formes de déploiement et trois niveaux d'édition.
+FIM One ships with public source under the FIM One Source Available License (FIM-SAL) — source-available, not OSI-approved open source — with three deployment shapes and three edition tiers.
 
 <CardGroup cols={3}>
   <Card title="Community" icon="code">
-    Gratuit à vie. Auto-hébergé. Pour les développeurs et les équipes d'évaluation.
+    Free forever. Self-hosted. For developers and evaluation teams.
   </Card>
   <Card title="Cloud" icon="cloud">
-    Hébergé par FIM.AI sur cloud.fim.ai. Abonnement par utilisateur + par connecteur. L'entité de Singapour gère les contrats à l'étranger.
+    FIM.AI-hosted on cloud.fim.ai. Per-user + per-connector subscription. Singapore entity handles overseas contracts.
   </Card>
   <Card title="Enterprise" icon="briefcase">
-    Déploiement privé, tarification personnalisée, outils de conformité, support technique dédié. Pour les grandes entreprises et les clients gouvernementaux/publics.
+    Private deployment, custom pricing, compliance tooling, dedicated technical support. For large enterprises and government/state-owned customers.
   </Card>
 </CardGroup>
 
-La base de code compte environ 170 000 lignes de Python réparties sur plus de 1 590 modules, avec environ 100 fichiers de test et un support intégré pour 6 langues d'interface. La source est disponible publiquement sous FIM-SAL — les entreprises peuvent auditer la sécurité elles-mêmes. Le coût d'exécution dominant est les tokens LLM, pas l'infrastructure ; l'agnosticisme des fournisseurs signifie que vous bénéficiez à mesure que la frontière repousse les prix vers le bas, sans migration.
+The backend is ~106,000 lines of Python across 440+ modules, with 230+ test files and built-in support for 6 UI languages. Source is publicly available under FIM-SAL — enterprises can audit security themselves. The dominant runtime cost is LLM tokens, not infrastructure; provider-agnosticism means you benefit as the frontier pushes prices down, without migration.
 
 ## 9. Delivery Path
 
@@ -219,17 +219,17 @@ Production deployment follows a three-step path that keeps risk bounded and time
 | **2. Pilot** | 1–2 months | Private deployment to your servers. First 3–5 connectors (ERP / OA / Feishu / DingTalk / database). One business line covered. Audit and approval baselines established. |
 | **3. Scale** | 3–6 months | Expansion to more business lines and connectors. Industry Skill packs accumulated. Internal administrators trained. Operations runbook and SLA delivered. |
 
-Eight vertical pre-built Solution templates cover the most common scenarios: finance audit, contract review, data reporting, procurement reconciliation, customer payment collection, compliance screening, HR screening, ops on-call.
+Eight pre-built Solution templates cover common scenarios: financial audit, contract review, data reporting, IT operations, HR onboarding, sales proposals, content creation, and meeting summaries.
 
-## 10. Où cela s'inscrit
+## 10. Where This Goes
 
-**Court terme — profondeur des connecteurs.** Plus de connecteurs Tier-3 hérités pour le marché chinois, certification Xinchuang plus approfondie, et un AI Builder qui transforme une spécification OpenAPI ou une capture d'écran de schéma de base de données en connecteur fonctionnel en quelques minutes.
+**Near-term — connector depth.** Tier-3 legacy connectors for the Chinese market, deeper Xinchuang certification, and an AI Builder that turns an OpenAPI spec or a database schema screenshot into a working connector in minutes.
 
-**Court terme — profondeur de la gouvernance.** RBAC plus riche, permissions de connecteur à quatre niveaux, IdP indépendant, SSO par défaut, conformité SOC 2 et ISO 27001.
+**Near-term — governance depth.** Richer RBAC, four-tier connector permissions, independent IdP, SSO by default, SOC 2 and ISO 27001 posture.
 
-**Moyen terme — écosystème.** SaaS cloud, une Marketplace de connecteurs, et des packs de solutions sectoriels — la couche d'infrastructure sur laquelle les tiers construisent.
+**Mid-term — ecosystem.** Cloud SaaS, a Connector Marketplace, and industry Solution packs — the infrastructure layer that third parties build on top of.
 
-Le pari à plus long terme est que la forme de l'IA d'entreprise ressemblera bien davantage à une plateforme d'agent multi-systèmes qu'à une CLI. Les travailleurs du savoir n'installeront pas dix assistants IA ; ils interrogeront la plateforme d'agent de leur entreprise, et la plateforme saura comment accéder à n'importe quel système détenant la réponse — SaaS mondial, la pile d'entreprise chinoise, ou n'importe quoi entre les deux. FIM One construit cette plateforme.
+The longer-term bet is that the shape of enterprise AI will look far more like a cross-system agent platform than a CLI. Knowledge workers will not install ten AI assistants; they will ask their company's agent platform, and the platform will know how to reach whatever system holds the answer — global SaaS, the China enterprise stack, or anything in between. FIM One is building that platform.
 
 ## 11. Appendice — Aller plus loin
 

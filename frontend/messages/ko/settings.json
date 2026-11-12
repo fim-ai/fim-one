@@ -46,7 +46,6 @@
     "usernamePlaceholder": "사용자명을 입력하세요",
     "usernameMinLength": "사용자명은 최소 2자 이상이어야 합니다",
     "usernameSaved": "사용자명이 저장되었습니다",
-    "usernameSaveFailed": "사용자명 저장에 실패했습니다",
     "usernameTaken": "이미 사용 중인 사용자명입니다",
     "usernameCooldown": "사용자명은 7일마다 한 번만 변경할 수 있습니다. {days}일 후에 다시 시도하세요.",
     "usernameChangeConfirmTitle": "사용자명을 변경하시겠습니까?",
@@ -279,7 +278,14 @@
     "dataExportDownloading": "내보내기 준비 중...",
     "dataExportSuccess": "데이터 내보내기가 시작되었습니다",
     "dataExportFailed": "데이터 내보내기에 실패했습니다",
-    "bindErrorTimeout": "제공자의 응답이 너무 오래 걸렸습니다. 다시 시도해주세요."
+    "bindErrorTimeout": "제공자의 응답이 너무 오래 걸렸습니다. 다시 시도해주세요.",
+    "sessionsPendingSecondFactor": "Awaiting second factor",
+    "securityEventsTitle": "Security Events",
+    "securityEventsDescription": "Changes to your password, two-factor authentication, sign-in providers, API keys and sessions, with where each was made from.",
+    "securityEventsEvent": "Event",
+    "securityEventsByAdministrator": "By an administrator",
+    "securityEventsNoData": "No security events yet",
+    "securityEventsLoadFailed": "Failed to load security events"
   },
   "appearance": {
     "title": "모양",
@@ -370,7 +376,14 @@
     "tokens": "토큰",
     "noQuota": "할당량 제한이 설정되지 않음",
     "unentitled": "계속하려면 구독하세요",
-    "unentitledHint": "이 인스턴스는 모델을 사용하기 전에 유료 플랜이 필요합니다."
+    "unentitledHint": "이 인스턴스는 모델을 사용하기 전에 유료 플랜이 필요합니다.",
+    "origins": {
+      "direct_chat": "Direct Chat",
+      "workflows": "Workflows",
+      "evaluations": "Evaluations",
+      "ai_assist": "AI assist",
+      "deleted_agents": "Deleted agents"
+    }
   },
   "notifications": {
     "title": "알림",

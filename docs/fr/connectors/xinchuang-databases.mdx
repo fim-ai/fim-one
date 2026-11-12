@@ -1,27 +1,30 @@
 ---
-title: "Bases de données Xinchuang (信创)"
+title: "Xinchuang (信创) Databases"
 icon: "database"
-description: "Connectez FIM One aux bases de données chinoises nationales : KingbaseES, DM8 et HighGo."
+description: "Connect FIM One to domestic Chinese databases: KingbaseES, DM8, and HighGo."
 ---
 
-Le connecteur de base de données de FIM One supporte nativement les protocoles de communication PostgreSQL, MySQL et Oracle. Cela signifie que trois des quatre bases de données Xinchuang (信创 — logiciels produits localement) les plus courantes fonctionnent sans glue supplémentaire ; seul DM8 (达梦) nécessite un driver du fournisseur.
+FIM One's Database Connector ships five drivers: PostgreSQL, MySQL,
+KingbaseES, HighGo, and DM8. KingbaseES and HighGo speak the PostgreSQL
+wire protocol, so two of the three supported Xinchuang (信创 —
+domestically-produced software) databases work with zero extra glue;
+only DM8 (达梦) needs a vendor driver.
 
-Ce guide vous montre comment connecter chacune d'elles.
+This guide walks through connecting each one.
 
 <Info>
-  Vous cherchez l'architecture du driver ? Consultez
+  Looking for the driver architecture? See
   [`src/fim_one/core/tool/connector/database/drivers/`](https://github.com/fim-ai/fim-one/tree/master/src/fim_one/core/tool/connector/database/drivers).
-  Ajouter un cinquième driver représente environ 60 lignes quand le protocole de communication est compatible avec Postgres.
+  Adding another driver is ~60 lines when the wire protocol is Postgres-compatible.
 </Info>
 
-## Matrice de prise en charge
+## Support matrix
 
-| Base de données | Fournisseur             | Protocole                | Package du pilote                 | Statut                 |
-|-----------------|-------------------------|--------------------------|-----------------------------------|------------------------|
-| KingbaseES      | 人大金仓 / Kingbase      | Protocole réseau PostgreSQL | `asyncpg` (fourni avec `[postgres]`) | Prêt pour la production |
-| HighGo          | 瀚高 / HighGo           | Protocole réseau PostgreSQL | `asyncpg` (fourni avec `[postgres]`) | Prêt pour la production |
-| DM8             | 达梦 / DaMeng            | Protocole DM natif       | `dmPython` (wheel du fournisseur) | Prêt pour la production |
-| GBase           | 南大通用 / GBase         | ODBC / natif             | —                                 | Non prévu              |
+| Database       | Vendor                 | Protocol                 | Driver package                 | Status    |
+|----------------|------------------------|--------------------------|--------------------------------|-----------|
+| KingbaseES     | 人大金仓 / Kingbase     | PostgreSQL wire protocol | `asyncpg` (ships with `[postgres]`) | Production-ready |
+| HighGo         | 瀚高 / HighGo          | PostgreSQL wire protocol | `asyncpg` (ships with `[postgres]`) | Production-ready |
+| DM8            | 达梦 / DaMeng          | Native DM protocol       | `dmPython` (vendor wheel)      | Production-ready |
 
 ## 1. KingbaseES (人大金仓)
 
@@ -88,8 +91,7 @@ uv run python scripts/test_xinchuang_dbs.py \
 ## 3. DM8 (达梦)
 
 DM8 is **not** PostgreSQL-compatible — it has its own wire protocol
-and catalog views (`ALL_TABLES`, `ALL_TAB_COLUMNS`, ...) that are
-Oracle-style. FIM One ships a dedicated `DM8Driver` that wraps the
+and its own catalog views (`ALL_TABLES`, `ALL_TAB_COLUMNS`, ...). FIM One ships a dedicated `DM8Driver` that wraps the
 official Python client.
 
 ### Prérequis : installer `dmPython`
@@ -156,8 +158,8 @@ Lorsque Progressive Disclosure est activé (`DATABASE_TOOL_MODE=progressive`,
 par défaut depuis v0.8.1), ceux-ci sont fusionnés en un seul méta-outil `database`
 avec les sous-commandes `list_tables` / `discover` / `query`.
 
-## Pages associées
+## Related
 
-- [Configuration de la base de données](/configuration/database) — stockage backend de FIM One
-- [Variables d’environnement](/configuration/environment-variables) — `DATABASE_TOOL_MODE`, `CREDENTIAL_ENCRYPTION_KEY`
-- [Feuille de route](/roadmap) — travaux prévus ; GBase et les autres pilotes d’entreprise n’y figurent pas
+- [Database configuration](/configuration/database) — backend storage for FIM One itself
+- [Environment variables](/configuration/environment-variables) — `DATABASE_TOOL_MODE`, `CREDENTIAL_ENCRYPTION_KEY`
+- [Roadmap](/roadmap) — planned work; no further database drivers are on it

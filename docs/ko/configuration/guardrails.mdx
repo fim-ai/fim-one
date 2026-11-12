@@ -7,30 +7,34 @@ description: "에이전트나 사용자에게 도달하기 전에 안전하지 �
 콘텐츠 가드레일은 FIM One의 세 번째 **콘텐츠 중심** 안전 계층입니다.
 이는 기존 도구 권한 게이트(`core/hooks/*`)와 `core/security/*`의 자격증명 / SSRF 보호와 의도적으로 직교합니다. 가드레일은 *실행되는 것*이 아니라 *말해지는 것*을 검사합니다.
 
-## 세 가지 계층
+## The three layers
 
-| 계층        | 소유자                          | 제어 대상                              |
+| Layer        | Owner                          | What it gates                              |
 | ------------ | ------------------------------ | ------------------------------------------ |
-| Permission   | `core/hooks/*`                 | 특정 도구 호출 실행 여부   |
-| Security     | `core/security/*`              | 자격증명, SSRF, MCP 인증      |
-| **Guardrail** | `core/agent/guardrail.py`     | 사용자 입력 및 모델 출력 내용     |
+| Permission   | `core/hooks/*`                 | Whether a specific tool call may execute   |
+| Security     | `core/security/*`              | Credentials, SSRF, MCP authentication      |
+| **Guardrail** | `core/agent/guardrail.py`     | Content of user input and model output     |
 
-한 턴은 세 계층을 모두 독립적으로 통과합니다:
+A turn passes through all three independently:
 
-* 입력 가드레일은 **LLM 호출 전에** 실행되므로, 트립와이어가 토큰을 소비하지 않고 턴을 중단합니다.
-* 권한 게이트는 **모델이 호출할 도구를 결정한 후에** 실행됩니다.
-* 보안 검사는 **각 커넥터 / 제공자 통합 내에서** 실행됩니다.
-* 출력 가드레일은 **에이전트가 최종 답변을 생성한 후** 사용자에게 스트리밍되기 전에 실행됩니다.
+* Input guardrails run **before any LLM call**, so a tripwire aborts the
+  turn without spending tokens.
+* The permission gate runs **after** the model decides which tool to invoke.
+* Security checks run **inside** each connector / provider integration.
+* Output guardrails run **after** the agent has produced its final answer.
+  When the answer is streamed token by token, the check runs once the
+  stream completes, so text may already be on screen when the tripwire
+  fires.
 
-## 기본 활성화된 보안 가드레일
+## Built-in guardrails
 
-| 이름           | 측면    | 동작 |
+| Name           | Side    | Behaviour |
 | -------------- | ------- | --------- |
-| `jailbreak`    | input   | 알려진 프롬프트 오버라이드 구문("ignore previous instructions", DAN, developer-mode 등)을 감지하는 정규식 기반 감지기입니다. 기본적으로 활성화되어 있습니다. |
-| `max_length`   | output  | 에이전트 답변이 `FIM_GUARDRAIL_MAX_OUTPUT_CHARS`(기본값 50,000자)를 초과할 때 트립와이어가 작동합니다. 기본적으로 비활성화되어 있습니다. |
+| `jailbreak`    | input   | Regex-based detector for known prompt-override phrases ("ignore previous instructions", DAN, developer-mode, etc.). Enabled by default. |
+| `max_length`   | output  | Tripwires when the agent answer exceeds `FIM_GUARDRAIL_MAX_OUTPUT_CHARS` (default 50 000 chars). Disabled by default. |
 
-트립와이어가 작동하면 채팅 스트림은 구조화된
-`guardrail_tripwired` Server-Sent Event를 내보냅니다:
+When a tripwire fires, the chat stream emits a structured
+`guardrail_tripwired` Server-Sent Event:
 
 ```json
 {
@@ -45,7 +49,7 @@ description: "에이전트나 사용자에게 도달하기 전에 안전하지 �
 }
 ```
 
-프론트엔드는 이를 일반적인 오류 대신 "차단됨" 알림으로 렌더링합니다.
+The frontend renders this as a "blocked" notice instead of a generic error.
 
 ## 구성
 

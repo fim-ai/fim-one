@@ -22,13 +22,13 @@ description: "LLM 루프 아래에 위치하며 에이전트 지시사항으로 
 
 훅은 FIM One이 "에이전트는 ~해야 한다"를 "에이전트는 ~할 수 없다"로 바꾸는 방법입니다.
 
-## 훅이 연결되는 위치
+## Where hooks plug in
 
-현재 세 가지 훅 포인트가 정의되어 있습니다. 각각은 에이전트가 한 번의 루프 반복 중에 통과하는 경계를 표시합니다:
+Three hook points are defined today. Each marks a boundary the agent crosses during one loop iteration:
 
 ```mermaid
 flowchart TD
-    S(["Session start"]) --> SS["SessionStart hooks<br/>inject dynamic context"]
+    S(["Session start"]) --> SS["SessionStart hooks<br/>run for side effects"]
     SS --> LLM["LLM inference<br/>(reasoning / tool pick)"]
     LLM --> DECIDE{"Tool call?"}
     DECIDE -->|no| ANSWER(["Final answer"])
@@ -42,13 +42,13 @@ flowchart TD
     OBS --> LLM
 ```
 
-| 훅 포인트 | 발동 시점 | 차단 가능? | 데이터 변경 가능? |
+| Hook point | Fires when | Can it block? | Can it mutate data? |
 |---|---|---|---|
-| `SessionStart` | 세션의 첫 번째 LLM 호출 전 | 아니오 | 예 — 초기 프롬프트에 컨텍스트 주입 |
-| `PreToolUse` | LLM이 도구를 선택한 후, 도구 실행 전 | **예** (`allow=False`를 통해) | 예 — 실행 전 `tool_args` 재작성 가능 |
-| `PostToolUse` | 도구가 반환된 후, 관찰이 LLM으로 전달되기 전 | 아니오 | 예 — 관찰 재작성 가능 |
+| `SessionStart` | Before the first LLM call of a session | No | No — runs for side effects only |
+| `PreToolUse` | After the LLM picks a tool, before the tool runs | **Yes** (via `allow=False`) | Yes — can rewrite `tool_args` before execution |
+| `PostToolUse` | After the tool returns, before the observation goes to the LLM | No | Yes — can rewrite the observation |
 
-같은 포인트의 여러 훅은 우선순위 순서대로 실행됩니다. 이전 `PreToolUse` 훅의 재작성된 인자는 이후 훅으로 전달되므로 미들웨어가 구성됩니다.
+Multiple hooks at the same point run in priority order. An earlier `PreToolUse` hook's rewritten args are carried forward to later hooks, so middleware composes.
 
 ## 훅 vs. 명령어 선택 기준
 
@@ -65,9 +65,9 @@ flowchart TD
 
 경험칙: **잘못된 동작이 인시던트라면 훅을 사용하세요. 잘못된 동작이 사소한 불편함이라면 명령어로 충분합니다.**
 
-## 훅 계약
+## The hook contract
 
-훅은 `PreToolUseHook`, `PostToolUseHook`, 또는 `SessionStartHook`의 서브클래스이며 하나의 필수 메서드를 가집니다:
+A hook is a subclass of `PreToolUseHook` or `PostToolUseHook` (a session-start hook is registered as a plain `Hook` object) with one required method:
 
 ```python
 class ReadOnlyGuard(PreToolUseHook):
@@ -87,27 +87,27 @@ class ReadOnlyGuard(PreToolUseHook):
         return HookResult()               # default: allow=True, no mutation
 ```
 
-전달된 `HookContext`는 `tool_name`, `tool_args`, `agent_id`, `user_id`, 그리고 엔진이 요청별 사실(조직 id, 대화 id, 커넥터 작업의 `requires_confirmation` 플래그 등)로 채우는 유연한 `metadata` 딕셔너리를 포함합니다.
+The `HookContext` passed in carries `tool_name`, `tool_args`, `agent_id`, `user_id`, and a flexible `metadata` dict the engine populates with per-request facts (org id, tool call id, the connector action's `requires_confirmation` flag).
 
-반환된 `HookResult`는 결과를 제어합니다:
+The `HookResult` returned controls the outcome:
 
-- `allow: bool = True` — 도구 호출 진행 여부 (`PostToolUse` / `SessionStart`에서는 무시됨)
-- `error: str | None` — 인간이 읽을 수 있는 이유로, 차단될 때 LLM에 관찰로 표시됨
-- `modified_args: dict | None` — 설정된 경우, 실행 전에 도구 인자를 대체함
-- `modified_result: Any | None` — 설정된 경우 (`PostToolUse`), LLM으로 반환되기 전에 관찰을 대체함
-- `side_effects: list[str]` — 훅이 수행한 작업의 감사 추적으로, 에이전트의 추적에 병합됨
+- `allow: bool = True` — whether the tool call proceeds (ignored for `PostToolUse` / `SessionStart`)
+- `error: str | None` — human-readable reason, surfaced to the LLM as the observation when blocked
+- `modified_args: dict | None` — if set, replaces the tool args before execution
+- `modified_result: str | None` — if set (PostToolUse), replaces the observation before it returns to the LLM
+- `side_effects: list[str]` — notes on what the hook did, collected by the registry (not surfaced in the agent's trace today)
 
-## 사례 연구: `FeishuGateHook`
+## Case study: `ApprovalGateHook`
 
-이 시스템 위에 출시된 첫 번째 훅은 `FeishuGateHook`입니다. 이는 `PreToolUse` 훅으로, `requires_confirmation=True`로 표시된 모든 도구를 조직의 Feishu 그룹에 게시된 인간 승인 카드로 변환합니다.
+The first hook shipped on top of this system is `ApprovalGateHook` (`fim_one.core.assembly.confirmation`; registry key `approval_gate`, formerly `feishu_gate` / `FeishuGateHook`) — a `PreToolUse` hook that turns any tool call needing confirmation (the action's `requires_confirmation` flag, or the agent's confirm-all setting) into a human approval. The hook builds a `ConfirmationSpec` and hands it to `ConfirmationService`, which records the request, delivers it as a card in the portal chat or as a Feishu card in the approval channel bound to the agent, according to the agent's confirmation mode (Auto / Inline only / Channel only), and waits for the decision; Auto uses the in-portal card when no channel is bound. In a chat with no agent the tool's own flag alone decides, and the person chatting approves inline. Who may decide is written on the request when it is created and read back by the portal and the channel callback alike.
 
-이 훅은 전체 생명주기를 실행합니다:
+This hook exercises the full lifecycle:
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant ReAct as ReAct loop
-    participant Hook as FeishuGateHook
+    participant Hook as ApprovalGateHook
     participant DB as ConfirmationRequest
     participant Feishu as Feishu group
     participant Op as Operator
@@ -126,14 +126,14 @@ sequenceDiagram
     ReAct->>ReAct: Execute oa__purchase_pay
 ```
 
-이 설계가 제공하는 것:
+What this design is buying:
 
-- **도구 호출이 진정으로 일시 중지됩니다.** 에이전트의 SSE 스트림은 "I will call `oa__purchase_pay`"와 관찰 사이에서 일시 중지됩니다. 사용자는 에이전트가 대기 중인 것을 보며, 이는 내부에서 일어나는 일과 일치합니다.
-- **승인이 프로세스 재시작을 견딥니다.** 대기 중인 행은 데이터베이스에 있으며, 메모리에는 없습니다. 카드가 미결 상태일 때 백엔드가 재시작되면, 다음 폴링이 중단된 지점부터 계속됩니다.
-- **결정이 감사됩니다.** `ConfirmationRequest`는 `payload`, `responded_at`, `responded_by_open_id` 및 최종 상태를 유지합니다. 누가 무엇을 언제 승인했는지에 대한 감사 가능한 기록입니다.
-- **의사 결정 루프에 LLM이 없습니다.** 모델이 도구 호출을 생성합니다. 인간이 판정을 생성합니다. 훅은 결정론적 다리입니다.
+- **The tool call is genuinely suspended.** The agent's SSE stream pauses between "I will call `oa__purchase_pay`" and the observation. The user sees the agent waiting, which matches what is happening under the hood.
+- **Approval survives a process restart.** The pending row is in the database, not in memory. If the backend restarts while a card is outstanding, the next poll picks up where it left off.
+- **The decision is audited.** `ConfirmationRequest` keeps `payload`, `responded_at`, `responded_by_open_id`, and the final status — an auditable record of who approved what and when.
+- **No LLM in the decision loop.** The model produces the tool call. Humans produce the verdict. The hook is the deterministic bridge.
 
-`FeishuGateHook`은 구성된 [Feishu Channel](/configuration/channels/feishu)에 의존합니다. 훅은 채널의 `send_interactive_card()` 메서드를 통해 카드를 전송하고 채널이 파싱한 콜백 이벤트를 수신합니다. 이러한 분리는 의도적입니다. 훅은 "승인 상태 머신"을 소유하고, 채널은 "IM 플랫폼 메커니즘"을 소유합니다. 동일한 훅은 내일 Slack이나 WeCom을 대상으로 할 수 있으며, 로직을 변경하지 않고 채널 구현만 변경하면 됩니다.
+The channel path depends on a [Feishu Channel](/configuration/channels/feishu) bound as the agent's approval channel. The service asks only whether the channel implements `ApprovalCarrier` (`send_approval`, `parse_decision`, `approval_target`), never which platform it is; the Feishu channel is the first implementation. The separation is deliberate: the service owns the approval state machine, the channel owns the IM platform mechanics. A Slack or WeCom channel that implements the carrier protocol would carry approvals without a change to the gate. A callback can decide only requests its own channel delivered.
 
 ## 후보 훅 (계획 없음)
 
@@ -150,30 +150,30 @@ sequenceDiagram
 
 ## Hooks vs. Channels
 
-두 추상화는 직교하는 문제를 해결합니다:
+The two abstractions solve orthogonal problems:
 
-| 개념 | 모델링 대상 | 수명 | 예시 |
+| Concept | What it models | Lifetime | Example |
 |---|---|---|---|
-| **Hook** | 플랫폼 코드가 실행되는 에이전트 실행의 지점 | 도구 호출당 | `FeishuGateHook`, `AuditLogHook` |
-| **Channel** | 외부 메시징 플랫폼에 대한 플러그인 가능한 어댑터 | 조직당 장기 | `FeishuChannel`, 계획 중인 `SlackChannel` |
+| **Hook** | A point in the agent's execution where platform code runs | Per tool call | `ApprovalGateHook`, `AuditLogHook` |
+| **Channel** | A pluggable adapter to an external messaging platform | Long-lived per org | `FeishuChannel`, planned `SlackChannel` |
 
-Hooks는 Channels를 사용합니다 — 외부 세계와 통신해야 하는 hook(카드 전송, 알림 게시, 그룹으로 에스컬레이션)은 조직의 Channel을 호출합니다. 이를 사용하는 hook이 없는 channel도 여전히 유용합니다(예: 에이전트가 도구를 통해 사전에 알림을 보낼 수 있음). 하지만 승인 게이트 패턴은 특히 두 부분이 모두 준비되어 있어야 합니다.
+Hooks consume Channels — a hook that needs to talk to the outside world (send a card, post an alert, escalate to a group) calls into the org's Channel. A channel without any hook using it is still useful (e.g. agents can proactively send notifications via a tool), but the approval-gate pattern specifically requires both halves to be in place.
 
-다르게 말하면: **Channels는 "인간과 어떻게 통신할 것인가"라는 인프라이고, Hooks는 "언제 인간과 통신해야 하는가"라는 정책입니다**. 프로덕션 인간-루프 워크플로우에는 둘 다 필요합니다.
+Put differently: **Channels are the "where do I talk to humans" plumbing, Hooks are the "when do I have to talk to humans" policy**. Production human-in-the-loop workflows need both.
 
-## 현재 상태 (v0.8.4)
+## Current state (v0.9.4)
 
-출시된 항목과 앞으로 남은 항목의 스냅샷입니다.
+Snapshot of what shipped and what is still ahead:
 
-- ✅ `HookRegistry`, `HookContext`, `HookResult` 프리미티브를 ReAct와 DAG 모두에 연결
-- ✅ `PreToolUseHook` / `PostToolUseHook` / `SessionStartHook` 추상 기반 클래스
-- ✅ `FeishuGateHook` — `ConfirmationRequest` 테이블, 폴링 루프, 시간 초과/만료, 콜백 기반 상태 변경을 포함해 완성
-- ✅ `card.action.trigger`를 디코딩하고 대기 중인 행을 업데이트하는 Feishu 채널 콜백 엔드포인트
-- ✅ 에이전트 수준 훅 선언: `agent.model_config_json.hooks.class_hooks`가 모든 ReAct/DAG 세션에서 인스턴스화된 `HookRegistry`로 확인됨
-- ✅ **모든 실행 경로에서 훅이 실행됩니다**: 기본 채팅 경로(Portal, API, DAG), 위임된 하위 에이전트(`CallAgentTool`), Workflow `AGENT` 노드. Eval Center는 의도적으로 훅을 **우회합니다**(자동 평가가 사람의 승인을 기다리느라 차단되면 안 됩니다).
+- ✅ `HookRegistry`, `HookContext`, `HookResult` primitives wired into both ReAct and DAG
+- ✅ `PreToolUseHook` / `PostToolUseHook` abstract bases
+- ✅ `ApprovalGateHook` and `ConfirmationService` — complete, including the `ConfirmationRequest` table, polling loop, timeout/expire, and callback-driven state flips; workflow approval steps and confirmations of connector actions in a workflow use the same service, and instead of polling they suspend the run and are told of the decision through `ConfirmationService.on_decided`
+- ✅ Feishu channel callback endpoint that decodes `card.action.trigger` and updates the pending row
+- ✅ Agent-level hook declarations: `agent.model_config_json.hooks.class_hooks` resolves to an instantiated `HookRegistry` on every ReAct/DAG session
+- ✅ **Hooks fire on every execution surface**: the main chat path (Portal, API, DAG), delegated sub-agents (`CallAgentTool`), and Workflow `AGENT` nodes. Eval Center runs intentionally **bypass** hooks (automated evaluation must not block on human approval).
 
-  위임된 에이전트는 호출자의 레지스트리를 상속하지 않습니다. 자체 `model_config_json`으로 **별도의** 레지스트리를 구성합니다. 확인 게이트는 모든 에이전트에 자동으로 연결되므로, 레지스트리를 다시 구성하면 상속보다 더 많은 항목이 포함됩니다. 즉, 위임된 에이전트는 게이트에 더해 자체적으로 선언한 항목도 가져오며, 게이트는 호출자의 `require_confirmation_for_all`이 아니라 위임된 에이전트의 값을 확인합니다. 두 실행 경로 모두 **fail closed**로 동작합니다. 훅을 구성할 수 없는 에이전트는 실행되지 않습니다.
-- ❌ `AuditLogHook`, `ReadOnlyGuard`, `ResultTruncateHook`, `ConnectorRateLimitHook` (계획 없음)
-- ❌ 사용자 정의 YAML 훅 선언 (계획 없음)
+  A delegated agent does not inherit its caller's registry — it builds **its own** from its own `model_config_json`. Because the confirmation gate is auto-attached to every agent, rebuilding is a superset of inheriting: the delegate gets the gate *plus* whatever it declares for itself, and the gate resolves the delegate's `require_confirmation_for_all` rather than its caller's. Both surfaces fail **closed**: an agent whose hooks cannot be built is not run.
+- ❌ `AuditLogHook`, `ReadOnlyGuard`, `ResultTruncateHook`, `ConnectorRateLimitHook` (not planned)
+- ❌ User-defined YAML hook declarations (not planned)
 
-훅 시스템은 프로덕션 강화의 **핵심 기반**입니다. 첫 번째 사용자 기능인 `FeishuGateHook` 자체도 프로덕션 기능이므로, 전체 훅 카탈로그가 완성될 때까지 기다리는 대신 2026-04-24 로드쇼에 맞춰 뼈대를 먼저 출시했습니다.
+The Hook System is a **load-bearing foundation** for production hardening. Its first user (`ApprovalGateHook`) is also a production feature in its own right, which is why the skeleton shipped early for the 2026-04-24 roadshow rather than waiting for the full hook catalog.

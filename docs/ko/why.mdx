@@ -21,38 +21,38 @@ Legacy systems                     — "nobody dares touch it"
 
 **모든 시스템 공급업체가 이제 자신의 AI를 제공합니다.** Feishu에는 AI가 있습니다. Salesforce에는 Einstein이 있습니다. SAP에는 Joule이 있습니다. 하지만 각각은 **자신의 벽 안에서만** 똑똑합니다. Feishu AI는 ERP 잔액을 확인할 수 없습니다. Salesforce Einstein은 OA 승인을 트리거할 수 없습니다. 이들은 설계상 도메인에 제한되어 있습니다 — 경쟁사와의 연결이 비즈니스 이익에 반하기 때문입니다.
 
-## FIM One의 역할
+## What FIM One Does
 
-FIM One은 모든 시스템을 연결하는 **외부의 타사 수평형 플랫폼**입니다.
+FIM One is the **external, third-party, horizontal platform** that connects all of them.
 
-*Avatar*에 등장하는 Eywa를 떠올려 보세요. 판도라 아래에 존재하며 모든 나무, 생명체, 기억을 하나의 살아 있는 시스템으로 연결하는 신경망입니다. 각 생명체는 독립적으로 존재하지만, Eywa를 통해 서로를 감지하고 정보를 공유하며 필요할 때 함께 행동합니다. 어떤 생명체도 수정되지 않습니다. Eywa는 단지 연결을 가능하게 합니다.
+Think of Eywa from *Avatar* — the neural network beneath Pandora that connects every tree, every creature, every memory into one living system. Each organism stays independent, but through Eywa they sense each other, share information, and act together when needed. No organism is modified; Eywa simply makes the connection possible.
 
-FIM One은 여러분의 엔터프라이즈를 위한 Eywa입니다. ERP, CRM, OA, 데이터베이스는 기존과 완전히 동일하게 유지됩니다. FIM One은 이들 사이에 지능형 네트워크를 구성하여, 마침내 AI를 통해 서로 통신할 수 있도록 합니다.
+FIM One is your enterprise's Eywa. Your ERP, CRM, OA, and databases remain exactly as they are — FIM One weaves the intelligent network between them, so they can finally talk to each other through AI.
 
 <Tip>
-**클라이언트는 코드를 전혀 변경하지 않습니다.** FIM One은 여러분이 제공하는 자격 증명과 네트워크 액세스만 사용하여 기존 시스템에 능동적으로 연결합니다. 데이터베이스를 읽고, API를 호출하고, 알림을 전송할 수 있습니다.
+**The client changes zero code.** FIM One bridges into existing systems proactively — reading databases, calling APIs, pushing notifications — using only the credentials and network access you provide.
 </Tip>
 
-제공해야 하는 항목:
-- 데이터베이스 자격 증명(읽기 전용 계정 권장)
-- API 엔드포인트 및 인증 키
-- 네트워크 허용 목록 액세스
+What you provide:
+- Database credentials (read-only accounts recommended)
+- API endpoints and authentication keys
+- Network whitelist access
 
-FIM One이 제공하는 기능:
-- **모든** 시스템을 이해하고 오케스트레이션하는 AI
-- 모든 작업 감사, 모든 쓰기 작업에 대한 사람의 확인을 통한 게이트
-- 데이터는 시스템 내부에 그대로 유지 — FIM One은 데이터 레이크가 아니라 지능 계층을 제공합니다
+What FIM One delivers:
+- AI that understands and orchestrates across **all** your systems
+- Every connector call audited, sensitive actions gated by human confirmation
+- Your data stays in your systems — FIM One provides the intelligence layer, not a data lake
 
-## 두 가지 모드, 하나의 플랫폼
+## Two Modes, One Platform
 
-| 모드 | 설명 | 시작하기 |
+| Mode | What it is | Start here |
 |------|-----------|------------|
-| **Copilot** | 하나의 시스템에 내장된 AI — 기존 UI에서 사용자와 함께 작동 | 빠르게 가치 입증: ERP에 "Finance Copilot" 임베드 |
-| **Hub** | 모든 시스템을 연결하는 중앙 AI 포털 — 크로스시스템 오케스트레이션 | 가치 확대: ERP + CRM + OA + Lark을 한 곳에서 연결 |
+| **Copilot** | AI embedded inside one system — works alongside users in their existing UI (through the API today; a drop-in embed is planned) | Prove value fast: embed a "Finance Copilot" in your ERP |
+| **Hub** | Central AI portal connecting all systems — cross-system orchestration | Scale value: connect ERP + CRM + OA + Lark in one place |
 
-**Land and Expand**: 하나의 시스템에서 Copilot으로 시작하세요. 사용자는 새로운 도구를 배울 필요 없이 즉각적인 가치를 경험합니다. ROI가 입증되면 크로스시스템 에이전트 플랫폼으로 확대하세요 — 이미 운영 중인 모든 시스템이 하나의 에이전트 코어를 통해 AI를 만나는 중앙 포털입니다. Copilot은 계속 실행되고, 플랫폼은 크로스시스템 인텔리전스를 추가합니다.
+**Land and Expand**: Start with a Copilot in one system. Users see immediate value without learning a new tool. When the ROI is proven, scale it to the cross-system agent platform — a central portal where every system you already run meets AI through one agent core. The Copilot keeps running; the platform adds cross-system intelligence.
 
-> Copilot은 하나의 시스템 내에서 가치를 입증합니다. 에이전트 플랫폼은 모든 시스템에 걸쳐 가치를 발휘합니다.
+> Copilot proves value inside one system. The agent platform unlocks value across all systems.
 
 ## 왜 그냥...이 아닐까요?
 
@@ -78,31 +78,31 @@ FIM One은 워크플로우 로직을 복제하지 않습니다. 커넥터의 관
 
 Feishu AI는 Feishu 내에서만 작동합니다. Salesforce Einstein은 Salesforce 내에서만 작동합니다. 둘 다 경계를 넘을 수 없습니다. **어떤 벤더도 진정한 크로스 시스템 통합을 구축하지 않을 것입니다** — 이는 그들의 종속성 유지 인센티브에 위배됩니다. FIM One은 그러한 이해 충돌이 없는 유일한 플레이어입니다.
 
-## FIM One 연결 방식
+## How FIM One Connects
 
-FIM One은 전송과 거버넌스를 분리하는 3계층 아키텍처를 사용합니다:
+FIM One uses a three-layer architecture that separates transport from governance:
 
 ```
-FIM One Platform (AI 오케스트레이션, 멀티테넌트, UI)
+FIM One Platform (AI orchestration, multi-tenant, UI)
     ↓
-Connector Governance Layer (감사, 인증, 확인 게이트, 서킷 브레이커)
+Connector Governance Layer (audit, auth, confirmation gate, circuit breaker)
     ↓
 Connector (API / Database / MCP protocol)
     ↓
 Your Systems (ERP, CRM, OA, databases, custom APIs)
 ```
 
-**거버넌스 레이어**가 엔터프라이즈 수준의 준비를 가능하게 합니다:
+The **Governance Layer** is what makes this enterprise-ready:
 
-| 기능 | 역할 |
+| Capability | What it does |
 |-----------|-------------|
-| **감사 로깅** | 모든 도구 호출 기록 — 누가, 무엇을, 언제, 결과 |
-| **사용자 확인** | 쓰기 작업은 실행 전 명시적 사용자 승인 필요 |
-| **서킷 브레이커** | 시스템이 다운되면 FIM One은 즉시 재시도를 중단하고 토큰 소비 방지 |
-| **자격증명 암호화** | AES-GCM 암호화(저장 시), 사용자별 자격증명 격리 |
-| **읽기 전용 강제** | 기본값은 읽기 전용이며, 쓰기 작업은 명시적으로 제어됨 |
+| **Audit logging** | Every tool call recorded — who, what, when, result |
+| **Human confirmation** | Actions marked as requiring confirmation (or every tool call, when the agent is set to confirm all) wait for explicit approval before execution |
+| **Circuit breaker** | If a system goes down, FIM One stops retrying immediately instead of burning tokens |
+| **Credential encryption** | Fernet encryption at rest, per-user credential isolation |
+| **Read-only enforcement** | Database connectors default to read-only; the owner must switch writes on |
 
-에이전트는 SAP, PostgreSQL 데이터베이스, 또는 사용자 정의 REST API와 통신하는지 알거나 신경 쓸 필요가 없습니다. 커넥터는 표준화된 브릿지이므로 새로운 시스템을 추가하려면 커넥터 구성만 필요하고 코드 변경은 불필요합니다.
+The agent doesn't know or care whether it's talking to SAP, a PostgreSQL database, or a custom REST API. Connectors are standardized bridges — adding a new system requires only connector configuration, not code changes.
 
 ## 커넥터를 구축하는 세 가지 방법
 

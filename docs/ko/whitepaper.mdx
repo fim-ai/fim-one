@@ -93,38 +93,38 @@ FIM One은 의도적으로 iPaaS가 아니며, 이 구분은 단순한 용어의
 | 거버넌스 | 외부 추가 기능 | 내장 훅 |
 | 카테고리 (Gartner 2025) | iPaaS MQ (감소 중) | AI Agent Platform |
 
-## 4. 아키텍처 원칙
+## 4. Architecture Principles
 
 <CardGroup cols={2}>
-  <Card title="공급자 무관" icon="shuffle">
-    OpenAI 호환 LLM — OpenAI, Anthropic, DeepSeek, Qwen, 로컬 Ollama, Xinchuang 인증 모델. 모델 선택은 배포 변수이지 아키텍처 약속이 아닙니다.
+  <Card title="Provider-Agnostic" icon="shuffle">
+    Any OpenAI-compatible LLM — OpenAI, Anthropic, DeepSeek, Qwen, local Ollama, Xinchuang-certified models. Model choice is a deployment variable, not an architectural commitment.
   </Card>
-  <Card title="프로토콜 우선" icon="network-wired">
-    모든 연결기는 타입이 지정된 스키마를 게시합니다. 에이전트는 작업, 매개변수 및 반환 타입을 봅니다 — 원본 HTTP는 절대 아닙니다. OpenAPI, MCP 및 직접 데이터베이스 연결은 1급입니다.
+  <Card title="Protocol-First" icon="network-wired">
+    Every connector publishes a typed schema. The agent sees actions, parameters, and return types — never raw HTTP. OpenAPI, MCP, and direct database connections are first-class.
   </Card>
-  <Card title="3가지 실행 엔진" icon="sitemap">
-    탐색 작업을 위한 **ReAct**, 구조화된 파이프라인을 위한 **DAG**, 결정론적 사람이 설계한 파이프라인을 위한 **Workflow**(최대 25개 노드). 하나의 에이전트 코어가 작업당 엔진을 선택합니다.
+  <Card title="Three Execution Engines" icon="sitemap">
+    **ReAct** for exploratory tasks, **DAG** for structured pipelines, **Workflow** (visual editor, 9 node types, an optional module) for deterministic human-designed pipelines. One agent core picks the engine per task.
   </Card>
-  <Card title="스키마 우선 도구 로딩" icon="bolt">
-    도구 스키마는 약 30개 토큰으로 사전 시드됩니다. 에이전트는 필요에 따라 확장합니다. 세션당 프롬프트 오버헤드는 약 80% 감소하며, 플랫폼은 컨텍스트 윈도우를 초과하지 않고 **10,000개 이상의 API**로 확장됩니다.
+  <Card title="Schema-First Tool Loading" icon="bolt">
+    Tool schemas are pre-seeded at ~30 tokens each; the agent expands on demand. Per-session prompt overhead drops ~80%, and the platform scales to **10,000+ APIs** without blowing the context window.
   </Card>
-  <Card title="훅 관리" icon="shield-halved">
-    모든 도구 호출은 구성 가능한 훅 체인을 통과합니다: 감사, 정책, 인간 승인. 훅은 LLM 루프 외부에서 실행됩니다 — 결정론적이고 감사 가능합니다.
+  <Card title="Hook-Governed" icon="shield-halved">
+    Every tool call passes through a configurable hook chain: audit, policy, human-in-the-loop approval. Hooks run outside the LLM loop — deterministic and auditable.
   </Card>
-  <Card title="메모리 인식" icon="brain">
-    단기 대화, 장기 지식 기반 및 세션 간 메모리는 1급 기본 요소이지 추가 기능이 아닙니다.
+  <Card title="Memory-Aware" icon="brain">
+    Short-term conversation, long-term knowledge base, and cross-session memory are first-class primitives, not bolt-ons.
   </Card>
 </CardGroup>
 
-## 5. 세 가지 배포 모드 — 하나의 에이전트 코어
+## 5. Three Delivery Modes — One Agent Core
 
-동일한 플래너, 메모리, 커넥터 라이브러리가 세 가지 서로 다른 제품 형태를 지원합니다. 선택은 배포 결정이지, 코드 포크가 아닙니다.
+The same planner, memory, and connector library power three distinct product shapes. The choice is a deployment decision, not a code fork.
 
-**Standalone** — 자체 포함된 포털입니다. 구매자는 큐레이션된 지식 기반, 코드 샌드박스, 또는 일반 어시스턴트에 대한 채팅 인터페이스를 원합니다. 호스트 시스템이 관여하지 않습니다. 내부 IT 헬프데스크, 엔지니어링 생산성, 고객 지원 KB에 적합합니다.
+**Standalone** — a self-contained portal. The buyer wants a chat interface over a curated knowledge base, or a code sandbox, or a general assistant. No host system involved. Fits internal IT help desks, engineering productivity, customer-support KBs.
 
-**Copilot** — iframe, 위젯, 또는 직접 임베드를 통해 기존 호스트 시스템 내에 임베드된 에이전트입니다. 호스트가 인증을 처리하고, Copilot은 사용자 컨텍스트를 상속받습니다. SAP Fiori 내 Finance Copilot, Salesforce 내 Sales Copilot, 내부 개발자 포털 내 DevOps Copilot에 적합합니다.
+**Copilot** — the agent embedded inside an existing host system. Today the host UI calls the FIM One API; a drop-in iframe / widget embed, with the user's identity passed from the host, is planned. Fits Finance Copilot inside SAP Fiori, Sales Copilot inside Salesforce, DevOps Copilot inside an internal developer portal.
 
-**Hub** — 중앙 오케스트레이션 표면입니다. 모든 연결된 시스템이 여기로 종료됩니다. 사용자가 교차 시스템 질문을 하면, 에이전트가 시스템 전체에서 계획하고 실행합니다. "모든 APAC 엔티티에 대해 Q1 종료", "갱신을 놓친 모든 고객을 찾아 아웃리치 초안 작성", "어제의 결제를 게이트웨이와 원장 간에 조정"에 적합합니다.
+**Hub** — the central orchestration surface. Every connected system terminates here. Users ask cross-system questions; the agent plans and executes across systems. Fits "close out Q1 for all APAC entities", "find every customer who missed a renewal and draft outreach", "reconcile yesterday's payments between gateway and ledger".
 
 ```mermaid
 flowchart LR
@@ -153,83 +153,83 @@ flowchart LR
   C --> Reports
 ```
 
-## 6. 커넥터 정렬 모델
+## 6. Connector Alignment Model
 
-커넥터는 인증 전략을 기반으로 하는 타입이 지정된 작업 인터페이스입니다. FIM One은 대부분의 엔터프라이즈 시스템을 지원하는 세 가지 인증 계층을 정의합니다.
+A connector is a typed action surface backed by an auth strategy. FIM One defines three auth tiers that cover the vast majority of enterprise systems.
 
 <AccordionGroup>
-  <Accordion title="계층 1 — 데이터베이스 커넥터 (Full 또는 Basic)">
-    관계형 데이터베이스에 직접 연결합니다. **Full** 모드에서는 읽기 전용 역할로 제한된 상태에서 에이전트에 임의의 SQL을 노출하고, **Basic** 모드에서는 사전 등록된 매개변수화 쿼리만 노출합니다. PostgreSQL 및 MySQL과 함께 **Xinchuang 규정을 준수하는 데이터베이스 — Dameng (DM8), KingbaseES, HighGo**를 기본 지원합니다. 중앙 및 국유 기업과 규제 대상 고객은 첫날부터 규정 준수 조달 요건을 충족할 수 있습니다.
+  <Accordion title="Tier 1 — Database Connectors">
+    Direct connection to a relational database. The agent writes SQL against the introspected schema; a connector is read-only by default, stays private to its owner, and columns marked as personal data come back masked. Native support for **Xinchuang-compliant databases — Dameng (DM8), KingbaseES, HighGo** — alongside PostgreSQL and MySQL. Central/state-owned and regulated customers pass compliance procurement day-one.
   </Accordion>
-  <Accordion title="계층 2 — OpenAPI 커넥터 (사용자 키)">
-    OpenAPI 사양을 사용하는 모든 REST API를 지원합니다. 에이전트는 사양을 읽고 엔드포인트를 선택한 다음 로그인한 사용자의 키로 호출합니다. 최신 SaaS(Slack, Linear, GitHub)와 문서화가 잘 된 내부 API를 지원합니다.
+  <Accordion title="Tier 2 — OpenAPI Connectors (User-Key)">
+    Any REST API with an OpenAPI specification. The agent reads the spec, selects the endpoint, and calls it with the logged-in user's key. Covers modern SaaS (Slack, Linear, GitHub) and well-documented internal APIs.
   </Accordion>
-  <Accordion title="계층 3 — 로그인 티켓 / 레거시 커넥터">
-    OAuth2 대신 로그인 티켓 서비스를 통해 인증하는 시스템을 위한 계층입니다. 이러한 시스템은 특히 중국 시장에서 흔히 볼 수 있습니다. 커넥터는 티켓 수명 주기(획득, 갱신, 무효화)를 관리하고 상위 계층에 일반적인 타입 지정 인터페이스를 제공합니다. 이 계층을 통해 다른 모든 공급업체가 건너뛰는 시스템까지 지원할 수 있습니다.
+  <Accordion title="Tier 3 — Login-Ticket / Legacy Connectors (planned)">
+    For systems — particularly common in the Chinese market — that authenticate via a login-ticket service rather than OAuth2. The connector will manage the ticket lifecycle (acquire, refresh, invalidate) and present a normal typed surface upward. Not shipped yet: today API connectors authenticate with a bearer token, an API key, or basic auth.
   </Accordion>
 </AccordionGroup>
 
-각 커넥터는 **채널/통합 이중성**도 선언합니다. 동일한 기반 시스템이 *채널*(알림 수신 대상, 승인 인터페이스)과 *통합*(데이터 소스, 작업 대상)으로 모두 표시될 수 있습니다. Feishu는 알림 채널이자 그룹 채팅 데이터 소스이며, DingTalk와 WeCom도 동일한 패턴을 따릅니다.
+Each connector also declares a **Channel/Integration duality**: the same underlying system can appear both as a *channel* (notification sink, approval surface) and as an *integration* (data source, action target). Feishu is both a notification channel and a group-chat data source; DingTalk and WeCom follow the same pattern.
 
-## 7. 신뢰할 수 있는 엔터프라이즈 AI — 세 가지 기둥
+## 7. Trustworthy Enterprise AI — Three Pillars
 
-엔터프라이즈 AI가 프로덕션에서 실패하는 이유는 모델이 잘못되었기 때문이 아니라 조직이 모델이 올바르다는 것을 증명할 수 없기 때문입니다. FIM One은 신뢰를 아키텍처로 취급하며, 세 가지 기둥으로 표현됩니다.
+Enterprise AI fails in production not because the model is wrong but because the organization cannot prove it is right. FIM One treats trust as architecture, expressed in three pillars.
 
 <CardGroup cols={3}>
-  <Card title="모든 결론에는 인용이 있습니다" icon="paperclip">
-    RAG 검색 + 인용 체인을 통해 에이전트는 모든 주장에 대해 특정 문서의 특정 단락을 참조할 수 있습니다. 결론은 추적 가능하고 감사 가능합니다. 블랙박스 출력이 없습니다.
+  <Card title="Every Conclusion Is Cited" icon="paperclip">
+    RAG retrieval + citation chain lets the agent reference a specific paragraph in a specific document for every claim. Conclusions are traceable and auditable. No black-box output.
   </Card>
-  <Card title="모든 쓰기 작업은 확인됩니다" icon="hand">
-    쓰기 작업은 실행 전에 일시 중지되어 인간의 승인을 기다립니다 — 포털 내 또는 Feishu 승인 그룹을 통해 대역 외로. 훅 체인은 아키텍처 제약이지, 정책 제안이 아닙니다. 우회할 수 없습니다.
+  <Card title="Sensitive Actions Are Confirmed" icon="hand">
+    Actions marked as requiring confirmation (or every tool call, when an agent is set to confirm all) pause before execution, waiting for a human approval — inline in the portal or out-of-band via a Feishu approval group. The hook chain is an architectural constraint, not a policy suggestion. It cannot be bypassed.
   </Card>
-  <Card title="모든 릴리스는 측정됩니다" icon="chart-bar">
-    데이터셋 기반 평가는 각 릴리스 전에 품질을 정량화합니다. 모든 반복은 측정 가능하며, 엔터프라이즈 조달은 약속이 아닌 증거를 얻습니다.
+  <Card title="Every Release Is Measured" icon="chart-bar">
+    Dataset-driven evaluation quantifies quality before each release. Every iteration is measurable; enterprise procurement gets evidence, not promises.
   </Card>
 </CardGroup>
 
-이를 지원하기 위해 모든 에이전트 실행은 구조화된 추적을 내보냅니다: 계획, 도구 호출, 인수, 관찰, 승인, 최종 답변. 추적은 감사의 단위입니다. 자격 증명은 Fernet 암호화(AES-128-CBC + HMAC-SHA256)를 사용합니다. 전체 감사 로그는 저장되고 내보낼 수 있습니다.
+Supporting this, every agent run emits a structured trace: plan, tool calls, arguments, observations, approvals, final answer. Traces are the unit of audit. Credentials use Fernet encryption (AES-128-CBC + HMAC-SHA256). Full audit logs are stored and exportable.
 
-운영자가 도구 호출을 거부하면 에이전트는 중지됩니다 — 다시 표현하고 재시도하지 않습니다. 거부는 정책 결정이지, 복구해야 할 오류가 아닙니다.
+When an operator rejects a tool call, the agent stops — it does not paraphrase and retry. Rejection is a policy decision, not an error to recover from.
 
-## 8. 배포 및 비즈니스 모델
+## 8. Deployment and Business Model
 
-FIM One은 FIM One Source Available License(FIM-SAL) 하에서 공개 소스로 제공됩니다 — 소스 이용 가능하지만 OSI 승인 오픈소스는 아닙니다 — 3가지 배포 형태와 3가지 에디션 계층을 제공합니다.
+FIM One ships with public source under the FIM One Source Available License (FIM-SAL) — source-available, not OSI-approved open source — with three deployment shapes and three edition tiers.
 
 <CardGroup cols={3}>
   <Card title="Community" icon="code">
-    영구 무료. 자체 호스팅. 개발자 및 평가 팀용.
+    Free forever. Self-hosted. For developers and evaluation teams.
   </Card>
   <Card title="Cloud" icon="cloud">
-    FIM.AI 호스팅(cloud.fim.ai). 사용자당 + 커넥터당 구독. 싱가포르 법인이 해외 계약 처리.
+    FIM.AI-hosted on cloud.fim.ai. Per-user + per-connector subscription. Singapore entity handles overseas contracts.
   </Card>
   <Card title="Enterprise" icon="briefcase">
-    프라이빗 배포, 맞춤형 가격 책정, 규정 준수 도구, 전담 기술 지원. 대규모 엔터프라이즈 및 정부/공기업 고객용.
+    Private deployment, custom pricing, compliance tooling, dedicated technical support. For large enterprises and government/state-owned customers.
   </Card>
 </CardGroup>
 
-코드베이스는 1,590개 이상의 모듈에 걸쳐 약 170,000줄의 Python으로 구성되어 있으며, 약 100개의 테스트 파일과 6가지 UI 언어에 대한 기본 지원을 포함합니다. 소스는 FIM-SAL 하에서 공개적으로 이용 가능합니다 — 엔터프라이즈는 자체적으로 보안을 감사할 수 있습니다. 지배적인 런타임 비용은 인프라가 아닌 LLM 토큰입니다. 제공자 불가지론은 최첨단 기술이 가격을 낮출 때 마이그레이션 없이 이점을 얻을 수 있음을 의미합니다.
+The backend is ~106,000 lines of Python across 440+ modules, with 230+ test files and built-in support for 6 UI languages. Source is publicly available under FIM-SAL — enterprises can audit security themselves. The dominant runtime cost is LLM tokens, not infrastructure; provider-agnosticism means you benefit as the frontier pushes prices down, without migration.
 
-## 9. 배포 경로
+## 9. Delivery Path
 
-프로덕션 배포는 위험을 제한하고 가치 창출 시간을 단축하는 3단계 경로를 따릅니다.
+Production deployment follows a three-step path that keeps risk bounded and time-to-value short.
 
-| 단계 | 타임라인 | 수행 내용 |
+| Step | Timeline | What happens |
 |---|---|---|
-| **1. PoC** | 2주 | 1–2개의 대표 시나리오(재무 감사, 계약 검토, 데이터 보고), 실제 데이터에 대한 엔드투엔드 구현. 7일 내 첫 번째 버전, 14일 내 검증 보고서. |
-| **2. Pilot** | 1–2개월 | 귀사 서버에 대한 프라이빗 배포. 처음 3–5개 커넥터(ERP / OA / Feishu / DingTalk / 데이터베이스). 하나의 비즈니스 라인 커버. 감사 및 승인 기준선 수립. |
-| **3. Scale** | 3–6개월 | 더 많은 비즈니스 라인 및 커넥터로 확장. 산업별 스킬 팩 누적. 내부 관리자 교육. 운영 실행 가이드 및 SLA 제공. |
+| **1. PoC** | 2 weeks | 1–2 representative scenarios (finance audit, contract review, data reporting), end-to-end on real data. First version in 7 days, validation report in 14. |
+| **2. Pilot** | 1–2 months | Private deployment to your servers. First 3–5 connectors (ERP / OA / Feishu / DingTalk / database). One business line covered. Audit and approval baselines established. |
+| **3. Scale** | 3–6 months | Expansion to more business lines and connectors. Industry Skill packs accumulated. Internal administrators trained. Operations runbook and SLA delivered. |
 
-8개의 수직 사전 구축 솔루션 템플릿이 가장 일반적인 시나리오를 다룹니다: 재무 감사, 계약 검토, 데이터 보고, 조달 조정, 고객 결제 수금, 컴플라이언스 심사, HR 심사, 운영 온콜.
+Eight pre-built Solution templates cover common scenarios: financial audit, contract review, data reporting, IT operations, HR onboarding, sales proposals, content creation, and meeting summaries.
 
-## 10. 이것이 어디로 가는가
+## 10. Where This Goes
 
-**단기 — 커넥터 깊이.** 중국 시장을 위한 더 많은 Tier-3 레거시 커넥터, 더 깊은 Xinchuang 인증, 그리고 OpenAPI 스펙이나 데이터베이스 스키마 스크린샷을 몇 분 안에 작동하는 커넥터로 변환하는 AI Builder.
+**Near-term — connector depth.** Tier-3 legacy connectors for the Chinese market, deeper Xinchuang certification, and an AI Builder that turns an OpenAPI spec or a database schema screenshot into a working connector in minutes.
 
-**단기 — 거버넌스 깊이.** 더 풍부한 RBAC, 4단계 커넥터 권한, 독립적인 IdP, 기본 SSO, SOC 2 및 ISO 27001 태세.
+**Near-term — governance depth.** Richer RBAC, four-tier connector permissions, independent IdP, SSO by default, SOC 2 and ISO 27001 posture.
 
-**중기 — 에코시스템.** Cloud SaaS, Connector Marketplace, 그리고 산업별 Solution 팩 — 제3자가 그 위에 구축하는 인프라 계층.
+**Mid-term — ecosystem.** Cloud SaaS, a Connector Marketplace, and industry Solution packs — the infrastructure layer that third parties build on top of.
 
-더 장기적인 전망은 엔터프라이즈 AI의 형태가 CLI보다는 크로스 시스템 에이전트 플랫폼처럼 훨씬 더 보일 것이라는 것입니다. 지식 근로자는 10개의 AI 어시스턴트를 설치하지 않을 것이고, 대신 자신의 회사의 에이전트 플랫폼에 질문할 것이며, 플랫폼은 답변을 보유한 모든 시스템에 도달하는 방법을 알 것입니다 — 글로벌 SaaS, 중국 엔터프라이즈 스택, 또는 그 사이의 모든 것. FIM One은 그 플랫폼을 구축하고 있습니다.
+The longer-term bet is that the shape of enterprise AI will look far more like a cross-system agent platform than a CLI. Knowledge workers will not install ten AI assistants; they will ask their company's agent platform, and the platform will know how to reach whatever system holds the answer — global SaaS, the China enterprise stack, or anything in between. FIM One is building that platform.
 
 ## 11. 부록 — 더 깊이 있는 학습
 

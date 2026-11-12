@@ -4,11 +4,11 @@ icon: "building"
 description: "역할 기반 액세스, 선택적 검토 및 자격증명 폴백을 포함한 팀 수준의 리소스 공유."
 ---
 
-## 개요
+## Overview
 
-조직은 FIM One의 팀 협업 단위입니다. 사용자 그룹이 신뢰할 수 있는 범위 내에서 리소스(智能体, 연결기, MCP 서버, 워크플로우, 스킬)를 공유할 수 있게 해줍니다. 지식 베이스는 한 가지 예외입니다. 지식 베이스는 절대 공유할 수 없으며, 다른 멤버에게는 공유된 智能体의 내부 종속성으로만 도달합니다([공유 및 자격증명](/architecture/sharing-and-credentials) 참조).
+Organizations are FIM One's unit for team collaboration. They let groups of users share resources — Agents, API Connectors, and MCP Servers, plus Skills and Workflows when an administrator has enabled those modules — within a trusted scope. Knowledge Bases and database connectors are the exceptions: database connectors cannot be published, and Knowledge Bases are never shareable, and reach other members only as an internal dependency of a shared Agent (see [Sharing and credentials](/architecture/sharing-and-credentials)).
 
-FIM One의 모든 리소스는 **개인용**으로 시작됩니다(생성자에게만 표시됨). 리소스를 조직에 게시하면 마켓의 조직 범위를 통해 다른 조직 멤버가 **발견할 수 있게** 됩니다. 멤버는 조직의 공유 리소스를 탐색하고 필요한 것을 구독합니다.
+Every resource in FIM One starts as **personal** (visible only to its creator). When you publish a resource to an organization, it becomes **discoverable** by other org members through the Market's organization scope. Members browse the org's shared resources and subscribe to the ones they need.
 
 ```mermaid
 flowchart TD
@@ -27,7 +27,7 @@ flowchart TD
     O -.->|"visible but not subscribed"| M3
 ```
 
-조직과 글로벌 마켓은 동일한 구독 기반 액세스 모델을 공유합니다. 핵심 차이점은 신뢰입니다. 조직은 멤버가 서로를 알고 신뢰하는 팀 또는 회사를 나타내므로 검토는 선택사항이고 자격증명 공유는 간단합니다.
+Organizations and the global Market share the same subscription-based access model. The key difference is trust: organizations represent a team or company where members know and trust each other, so review is optional and credential sharing is straightforward.
 
 ## 조직 생성 및 관리
 
@@ -70,28 +70,27 @@ sequenceDiagram
     P-->>M: Agent appears in workspace
 ```
 
-### 검토 시스템
+### Review System
 
-검토는 **선택 사항**이며 리소스 유형별로 구성됩니다. 각 조직은 독립적인 토글 플래그를 가집니다:
+Review is **optional** and configured per resource type. Each organization has independent toggle flags:
 
 - `review_agents`
 - `review_connectors`
-- `review_kbs`
 - `review_mcp_servers`
 - `review_workflows`
 - `review_skills`
 
-리소스 유형에 대해 검토가 비활성화되면, 게시된 리소스는 즉시 멤버들이 발견할 수 있습니다 — 관리자 조치가 필요하지 않습니다. 검토가 활성화되면, 리소스는 `pending_review` 상태로 진입하며 관리자 승인이 필요합니다.
+When review is disabled for a resource type, published resources are immediately discoverable by members — no admin action needed. When review is enabled, resources enter a `pending_review` state and require admin approval before they become visible.
 
 <Tip>
-조직 소유자는 자동으로 검토를 우회합니다. 게시된 리소스는 항상 즉시 발견 가능합니다.
+Organization owners bypass review automatically. Their published resources are always immediately discoverable.
 </Tip>
 
-이러한 유연성을 통해 조직은 거버넌스 요구사항에 맞출 수 있습니다. 소규모 스타트업은 마찰 없는 공유를 위해 모든 검토 토글을 비활성화할 수 있으며, 규정 준수에 중점을 두는 엔터프라이즈는 에이전트와 커넥터에 대한 검토를 활성화하여 감시를 유지할 수 있습니다.
+This flexibility lets organizations match their governance needs. A small startup might disable all review toggles for frictionless sharing, while a compliance-focused enterprise enables review on Agents and Connectors to maintain oversight.
 
-## 자격증명 폴백
+## Credential Fallback
 
-커넥터와 MCP 서버는 종종 자격증명(API 키, 데이터베이스 암호, OAuth 토큰)이 필요합니다. FIM One은 **폴백 메커니즘**을 제공하여 멤버가 모든 자격증명을 직접 구성할 필요가 없도록 합니다.
+Connectors and MCP Servers often require credentials (API keys, database passwords, OAuth tokens). FIM One provides a **fallback mechanism** so that members don't have to configure every credential themselves.
 
 ```mermaid
 flowchart TD
@@ -109,15 +108,51 @@ flowchart TD
     C2 -->|No| ERR2["Error: credential required"]
 ```
 
-두 가지 모드가 있습니다:
+There are two modes:
 
-- **폴백 활성화** (`allow_fallback=true`, 기본값): 자신의 자격증명을 제공하지 않는 멤버는 자동으로 소유자의 기본 자격증명을 사용합니다. 이는 팀 공유 API 키 또는 단일 키가 전체 팀을 커버하는 내부 서비스에 적합합니다.
-- **폴백 비활성화** (`allow_fallback=false`): 모든 멤버가 자신의 자격증명을 구성해야 합니다. 이는 각 사용자가 개인 API 키가 필요한 경우(예: 사용자별 SaaS 라이선스)에 적합합니다.
+- **Fallback disabled** (`allow_fallback=false`, the default): Every member must configure their own credentials; until they do, the tool is hidden from their agents. This is appropriate when each user needs a personal API key (for example, per-seat SaaS licenses).
+- **Fallback enabled** (`allow_fallback=true`, set by the owner): Members who don't provide their own credentials automatically use the owner's default credentials. This works well for team-shared API keys or internal services where a single key covers the whole team.
 
-자격증명이 필요하지 않은 리소스(예: 읽기 전용 공개 API 커넥터 또는 인증이 없는 에이전트)는 구독 후 즉시 작동합니다. 구성이 필요하지 않습니다.
+Resources that don't require credentials — such as a read-only public API connector or an Agent with no authentication — work immediately after subscription. No configuration needed.
+
+### MCP servers: the address is the owner's
+
+A member's own credential for an MCP server is a set of environment variables (stdio servers) or request headers (SSE and HTTP servers). The server's URL and its launch arguments have no per-member counterpart: whoever connects, connects to what the owner configured. If the owner put a credential there, a member's own credential does not replace it.
+
+So with fallback disabled, an MCP server whose address looks like it carries a credential can be used by its owner only. Other members are refused with `mcp_server_address_private`, whether or not they saved credentials of their own, and the server's card tells them so instead of asking for keys. The owner sees a warning on the card and in the editor once the server is shared, or once one of the owner's shared agents or workflows uses it (the people who run those are refused the server the same way) (the save and publish responses carry `warning: "mcp_server_address_private"` and, in `warning_reasons`, which part of the address counted: the query string, the user-info, a path segment, an argument name and so on, never the value), and has two ways out:
+
+- move the credential into a header or an environment variable, so that each member brings their own; or
+- enable fallback, which lends the server as configured: the address, and with it the headers and environment variables saved on the server. Members without credentials of their own then act under the owner's.
+
+What counts as "carries a credential" is decided by shape:
+
+| Where | Counts | Example |
+| --- | --- | --- |
+| URL | user-info, any query string, a fragment | `https://user:pass@host/mcp`, `https://host/mcp?token=…` |
+| URL | a path segment shaped like a token: a UUID, 16 or more hex digits, 20 or more characters mixing letters and digits, or a known token prefix; a `;name=value` path parameter | `https://mcp.zapier.com/api/mcp/s/<secret>/mcp`, `https://host/<32 hex>/sse`, `https://host/mcp;token=…` |
+| Launch arguments | a flag, assignment or header with `token`, `key`, `secret`, `password`, `passwd`, `pwd`, `auth`, `authorization`, `credential(s)`, `bearer`, `pat`, `dsn`, `connection`, `cookie` or `session` as a whole word of its name, given a value | `--api-key VALUE`, `--token=VALUE`, `API_KEY=VALUE`, `apiKey=VALUE`, `X-Api-Key: VALUE` |
+| Launch arguments | a URL that counts by the URL rows above | `--endpoint=https://host/?key=…`, `mcp-remote https://host/<32 hex>/sse` |
+| Launch arguments | a known token shape | `sk-…`, `ghp_…`, `gho_…`, `github_pat_…`, `xoxb-…`, `xoxp-…`, `AKIA…`, `glpat-…`, `ntn_…`, `hf_…`, `AIza…`, a JWT, `Bearer <token>`; any UUID or value of 32 or more characters mixing letters and digits |
+| Launch arguments | Docker's `-e NAME=VALUE` / `--env NAME=VALUE`, whatever the name | `docker run -e NOTION_API=…` (`-e NAME` alone passes the variable through and does not count) |
+| Launch arguments | a connection string with `Password=` / `Pwd=`, or a DSN starting `user:pass@` | `Server=db;Password=…`, `user:pass@tcp(db:3306)/app` |
+
+Names are read word by word (split at `-`, `_`, `.` and camelCase), so `--keyboard-layout`, `--tokenizer`, `--author` and `--hotkey` do not count; neither do plurals (`--max-tokens 100`), a name that negates (`--no-auth true`), a name that describes where or how (`--key-file /path`, `--auth-type basic`), or a switch for a value (`--auth none`). Any query string counts, `?v=2` included: nothing tells a version from a token. The path rule is a heuristic, which is why the warning says the address *may* contain a credential: an opaque id in the path that is no secret counts, and a short or worded secret segment (`https://host/mcp/hunter2/sse`) does not. The fixed addresses of the well-known remote servers (GitHub, Linear, Notion, Sentry, Atlassian, Context7, Cloudflare, Asana, Hugging Face) are not flagged. The check also does not recognise a short secret passed as a bare positional argument or after a flag whose name says nothing (`-k hunter2`, `--id abc123`); a long opaque one is recognised wherever it stands. Keep credentials in headers and environment variables, where they are encrypted at rest and never shown to other members.
+
+Other members never see a shared server's URL, command or launch arguments, with fallback on or off.
+
+### Agents with a custom model endpoint are the owner's
+
+An agent normally selects a model an administrator configured under Admin → Models. Its inline model settings (`model_config_json`, set through the API) may instead name an endpoint of their own: a `base_url` with the `api_key` that goes with it. Every turn of a conversation with such an agent, the user's messages and files included, is sent to that address. Selecting a model configuration the agent's owner created with a `base_url` of its own (`model_config_id` or `fast_model_config_id`) counts the same. An agent uses only model configurations an administrator created or its owner created; one that names another user's configuration falls back to the default model.
+
+By default such an agent is used by its owner only:
+
+- it cannot be published or resubmitted for review, and a shared agent cannot be given a `base_url` (`agent_model_endpoint_not_shareable`, 400);
+- an agent that was shared before it had to follow this rule stays published, but everyone except its owner is refused with `agent_model_endpoint_private` (403), in chat, when another agent delegates to it and in a workflow Agent step, and it is not offered for delegation. Its owner can remove the `base_url` and select a configured model, which makes it usable by subscribers again.
+
+A platform administrator who accepts that members' conversations go to the endpoints authors choose sets `shared_custom_model_endpoints` to `true` with `PATCH /api/admin/settings`; publishing such agents is then allowed and subscribers use them as before. The setting is off unless it has been set.
 
 <Info>
-자격증명 폴백은 멤버가 리소스를 구독한 후에만 적용됩니다. 폴백 메커니즘은 리소스의 접근성이 아니라 런타임에 자격증명이 어떻게 해결되는지를 결정합니다.
+Credential fallback only applies after a member subscribes to the resource. The fallback mechanism determines how credentials are resolved at runtime, not whether the resource is accessible.
 </Info>
 
 ## 리소스 가시성
@@ -143,13 +178,13 @@ A resource is available in your workspace if:
 
 ## Infrastructure Resources (org-wide, no subscription)
 
-두 번째 클래스의 org 범위 리소스는 위의 personal → publish → subscribe 라이프사이클을 따르지 **않습니다**. 이러한 리소스는 **Org Owner 또는 Admin이 한 번 구성**한 후 org의 모든 에이전트에서 투명하게 사용 가능합니다:
+A second class of org-scoped resource does **not** follow the personal → publish → subscribe lifecycle above. These are **configured once by an Org Owner or Admin** and then transparently available to every agent in the org:
 
 | Resource | Purpose | Configured by | Consumed by |
 |---|---|---|---|
-| **Channels** | IM 플랫폼으로의 아웃바운드 브리지 (현재 Feishu; Slack / WeCom / Teams 계획 중) | Org Owner / Admin | 모든 에이전트의 [Hook System](/architecture/hook-system) 및 proactive-notification 도구 |
-| **OAuth Providers** | 소셜 로그인 자격증명 (GitHub, Google, Feishu, Discord) | System admin (env vars) | 로그인 페이지 |
-| **API Keys** | 헤드리스 클라이언트를 위한 프로그래밍 방식 액세스 토큰 | 각 사용자, org 범위 | 외부 통합 |
+| **Channels** | Outbound bridge to an IM platform (Feishu today; Slack / WeCom / Teams planned) | Org Owner / Admin | Every agent's [Hook System](/architecture/hook-system) and proactive-notification tools |
+| **OAuth Providers** | Social-login credentials (GitHub, Google, Feishu, Discord) | System admin (env vars) | Sign-in page |
+| **API Keys** | Programmatic access tokens for headless clients | Each user, for their own account | External integrations |
 
 ```mermaid
 flowchart LR
@@ -161,25 +196,27 @@ flowchart LR
         A3["Agent C"]
     end
     Admin -->|"configure once"| Ch
-    A1 -. "uses via feishu_gate hook" .-> Ch
+    A1 -. "uses via approval_gate hook" .-> Ch
     A2 -. "uses for notifications" .-> Ch
     A3 -. "uses for approval cards" .-> Ch
 ```
 
-핵심 구분: **publishable resources** (Agents, Connectors, Skills, …)는 명시적 멤버 구독이 필요한 사용자별 아티팩트입니다; **infrastructure resources** (Channels, OAuth, API keys)는 모든 에이전트가 암묵적으로 공유하는 플랫폼 수준의 배선입니다. 특히 Channels는 전체 org를 위한 IM 핫라인입니다 — 잘 유지된 하나의 Feishu 채널이 모든 에이전트의 approval gate, 모든 예약된 보고서, 모든 escalation 이벤트를 지원합니다.
+The key distinction: **publishable resources** (Agents, Connectors, Skills, …) are per-user artifacts that need explicit member subscription; **infrastructure resources** (Channels, OAuth, API keys) are platform-level wiring that all agents share implicitly. Channels specifically are the IM hotline for the whole org — one well-maintained Feishu channel backs every agent's approval gate, every scheduled report, every escalation event.
 
-채널 라이프사이클 및 지원되는 플랫폼에 대해서는 [Channels overview](/configuration/channels/overview)를 참조하세요.
+See [Channels overview](/configuration/channels/overview) for the channel lifecycle and supported platforms.
 
 ## 실제 시나리오
 
-### 팀이 데이터베이스 커넥터 공유하기
+### Team Sharing an API Connector
 
-1. Alice가 팀의 PostgreSQL 데이터베이스에 대한 커넥터를 생성합니다
-2. Alice가 팀의 조직에 게시합니다 (커넥터는 검토가 비활성화됨)
-3. 커넥터가 마켓의 조직 범위에서 검색 가능해집니다
-4. Bob이 조직의 공유 리소스를 탐색하고 커넥터를 찾아 구독합니다
-5. 커넥터가 Bob의 워크스페이스에 나타나며, Alice의 데이터베이스 자격증명을 폴백으로 사용합니다
-6. Carol도 구독합니다. 외부 계약자인 Dave도 구독하고 대신 자신의 읽기 전용 자격증명을 구성합니다
+1. Alice creates a Connector to the team's internal order API and turns on **Allow fallback**
+2. Alice publishes it to her team's org (review is disabled for connectors)
+3. The Connector becomes discoverable in the org scope of the Market
+4. Bob browses the org's shared resources, finds the Connector, and subscribes
+5. The Connector appears in Bob's workspace, using Alice's API credentials as fallback
+6. Carol subscribes too. Dave (an external contractor) subscribes and configures his own read-only credentials instead
+
+Database connectors cannot be published to an organization or the Market; each user who needs one creates their own.
 
 ### 엄격한 검토를 통한 조직 관리
 
@@ -189,12 +226,12 @@ flowchart LR
 4. 에이전트가 검색 가능해지며 — 다른 멤버들이 이제 에이전트를 찾고 구독할 수 있습니다
 5. 게시자가 나중에 승인된 에이전트를 편집하면 재승인을 위해 자동으로 `pending_review`로 되돌아갑니다
 
-### 대규모 조직에서의 선택적 구독
+### Selective Subscription in a Large Organization
 
-1. 조직이 내부 API, 데이터베이스 및 타사 서비스를 포함하는 50개 이상의 커넥터를 게시합니다
-2. 데이터 팀은 데이터베이스 커넥터와 분석 API만 구독합니다
-3. 마케팅 팀은 CRM 및 이메일 플랫폼 커넥터만 구독합니다
-4. 각 팀 멤버의 워크스페이스는 집중되고 정돈된 상태를 유지합니다
+1. An organization publishes 50+ Connectors covering internal APIs and third-party services
+2. The data team subscribes only to the data-warehouse and analytics API Connectors
+3. The marketing team subscribes only to the CRM and email platform Connectors
+4. Each team member's workspace stays focused and uncluttered
 
 ## 참고 항목
 

@@ -25,15 +25,15 @@ https://github.com/user-attachments/assets/8a0e1136-ffbc-4950-86bd-b2f8884214af
 
 ---
 
-## 概述
+## Overview
 
-全球企业运行着一系列互不通信的系统——ERP、CRM、OA、HR、财务、数据库、跨地区的即时通讯平台。FIM One是**一体化智能体平台**，将你已有的每个系统接入一个智能体核心——一侧是全球SaaS，另一侧是完整的中国栈（飞书、企业微信、钉钉、DM、金仓等）。一个大脑。每个系统。全球SaaS × 中国栈。
+Global enterprises run a sprawl of systems that don't talk to each other — ERP, CRM, OA, HR, finance, databases, IM platforms across regions. FIM One is the **all-in-one agent platform** that wires every system you already run into one agent core — global SaaS on one side, the full China stack (Feishu, WeCom, DingTalk, DM, Kingbase, etc.) on the other. One brain. Every system. Global SaaS × China Stack.
 
-| 模式           | 说明                                              | 访问方式                  |
+| Mode           | What it is                                              | Access                  |
 | -------------- | ------------------------------------------------------- | ----------------------- |
-| **独立模式** | 通用AI助手——搜索、代码、知识库         | 门户                  |
-| **副驾驶**    | AI嵌入到宿主系统的UI中                       | iframe / widget / embed |
-| **中枢**        | 跨所有连接系统的中央AI编排   | 门户 / API            |
+| **Standalone** | General-purpose AI assistant — search, code, KB         | Portal                  |
+| **Copilot**    | AI embedded in a host system's UI                       | API (embed planned)     |
+| **Hub**        | Central AI orchestration across all connected systems   | Portal / API            |
 
 ```mermaid
 graph LR
@@ -124,56 +124,56 @@ cd frontend && pnpm install && cd ..
 - **数据库连接器** —— PostgreSQL、MySQL，以及全球大多数平台无法连接的中国常见企业数据库（DM、KingbaseES、HighGo）。支持模式内省和 AI 驱动的注释。
 - **三种构建方式** —— 导入 OpenAPI 规范、使用 AI 聊天构建器，或直接连接 MCP 服务器。
 
-#### 规划与执行
-- **动态DAG规划** — LLM在运行时将目标分解为依赖图。无硬编码工作流。
-- **并发执行** — 独立步骤通过asyncio并行运行；自动重新规划最多3轮。
-- **ReAct智能体** — 结构化的推理与行动循环，具有自动错误恢复。
-- **智能体框架** — 生产级执行环境：ContextGuard提供5层令牌预算管理，渐进式披露元工具保持工具表面可控，自反思循环对抗目标漂移。
-- **钩子系统** — 在LLM循环外运行的确定性强制执行。首个发布版本：`FeishuGateHook`将敏感工具调用置于人工审批卡后，发布到Feishu群组。可扩展至审计日志、只读模式保护和速率限制（v0.9）。
-- **内容护栏** — 三层安全防护：工具权限钩子（操作）、凭证/SSRF/MCP认证检查（协议）和内容护栏（输入/输出文本）。默认越狱短语检测器在LLM调用前中止轮次，节省令牌并在聊天中显示清晰的阻止通知。输出护栏可选，通过`FIM_GUARDRAILS_OUTPUT`启用。
-- **自动路由** — 分类查询并路由到最优模式（ReAct或DAG）。可通过`AUTO_ROUTING`配置。
-- **扩展思考** — OpenAI o系列、Gemini 2.5+、Claude的思维链。
-- **提示词缓存可观测性** — Anthropic提示词缓存`read/create`令牌计数按轮次捕获，在聊天`done`负载中显示并记录，以便操作员验证缓存命中并检测不遵守折扣的中继站。
+#### Planning & Execution
+- **Dynamic DAG planning** — LLM decomposes goals into dependency graphs at runtime. No hard-coded workflows.
+- **Concurrent execution** — Independent steps run in parallel via asyncio; auto re-plan up to 3 rounds in total (the first plan plus 2 re-plans).
+- **ReAct agent** — Structured reasoning-and-acting loop with automatic error recovery.
+- **Agent harness** — Production-grade execution environment: ContextGuard for 5-layer token-budget management, progressive-disclosure meta-tools to keep the tool surface tractable, and self-reflection loops to counter goal drift.
+- **Hook System** — Deterministic enforcement that runs outside the LLM loop. First shipped: `ApprovalGateHook` gates sensitive tool calls behind a human approval card in the chat or in a Feishu group. Extensible to audit logging, read-only-mode guards, and rate limits (v0.9).
+- **Content guardrails** — Three-layer safety: tool-permission hooks (actions), credential / SSRF / MCP-auth checks (protocols), and content guardrails (input/output text). Default jailbreak-phrase detector aborts the turn before the LLM is invoked, saving tokens and surfacing a clear blocked notice in chat. Output guardrails optional via `FIM_GUARDRAILS_OUTPUT`.
+- **Auto-routing** — Auto mode classifies each query and routes it to ReAct or DAG. Selectable per agent and per message; the default is ReAct.
+- **Extended thinking** — Chain-of-thought for OpenAI o-series, Gemini 2.5+, Claude.
+- **Prompt-cache observability** — Anthropic prompt-cache `read/create` token counts captured per turn, surfaced in the chat `done` payload and logged so operators can verify cache hits and detect relay stations that don't honor the discount.
 
-#### 工作流与工具
-- **可视化工作流编辑器** — 12种节点类型、拖放画布（React Flow v12）、JSON格式的导入/导出。
-- **智能文件处理** — 上传的文件自动内联到上下文（小文件）或通过 `read_uploaded_file` 工具按需读取。智能文档处理：PDF、DOCX和PPTX文件在模型支持视觉能力时进行视觉感知处理，并提取嵌入的图像。智能PDF模式从富文本页面提取文本，将扫描页面渲染为图像。
-- **通用文档转换** — 内置 `convert_to_markdown` 工具通过Microsoft MarkItDown将PDF/Word/Excel/PowerPoint/HTML/图像/音频/Outlook `.msg`/EPUB/YouTube转录内容转换为清晰的Markdown。具有视觉能力的LLM可对嵌入的图像和扫描页面进行OCR——支持Claude、Gemini、Bedrock以及任何LiteLLM支持的提供商，无需针对各提供商的适配器代码。
-- **可插拔工具** — Python、Node.js、shell执行，支持可选的Docker沙箱（`CODE_EXEC_BACKEND=docker`）。
-- **V4A补丁编辑** — 超越 `find_replace`，智能体可通过 `file_ops.apply_patch` 应用带有模糊空白匹配的行块补丁——对于精确子字符串匹配过于脆弱的多行编辑具有鲁棒性。
-- **完整RAG管道** — Jina嵌入+LanceDB+混合检索+重排器+内联 `[N]` 引用。视觉感知摄取将扫描PDF和Office嵌入图像通过工作区的默认视觉LLM进行OCR处理。
-- **工具产物** — 丰富的输出（HTML预览、文件）在聊天中渲染。
+#### Workflow & Tools
+- **Visual workflow editor** — 9 node types, drag-and-drop canvas (React Flow v12), import/export as JSON. Optional module, off by default; an admin enables it under Admin → Settings → Modules.
+- **Smart file handling** — Uploaded files auto-inlined into context (small) or readable on-demand via `read_uploaded_file` tool. Intelligent document processing: PDFs, DOCX, and PPTX files get vision-aware processing with embedded image extraction when the model supports vision. Smart PDF mode extracts text from text-rich pages and renders scanned pages as images.
+- **Universal document conversion** — Built-in `convert_to_markdown` tool turns PDF / Word / Excel / PowerPoint / HTML / images / audio / Outlook `.msg` / EPUB / YouTube transcripts into clean Markdown via Microsoft MarkItDown. Vision-capable LLMs OCR embedded images and scanned pages — works with Claude, Gemini, Bedrock, and any LiteLLM-supported provider, no per-provider adapter code.
+- **Pluggable tools** — Python, Node.js, shell exec with optional Docker sandbox (`CODE_EXEC_BACKEND=docker`).
+- **V4A patch editing** — Beyond `find_replace`, agents can apply line-hunk patches with fuzzy whitespace matching via `file_ops.apply_patch` — robust to multi-line edits where exact-substring match would be brittle.
+- **Full RAG pipeline** — Jina embedding + LanceDB + hybrid retrieval + reranker + inline `[N]` citations. Vision-aware ingestion routes scanned PDFs and Office embedded images through the workspace's default vision LLM for OCR.
+- **Tool artifacts** — Rich outputs (HTML previews, files) rendered in-chat.
 
-#### 消息通道 (v0.8)
-- **组织范围的即时通讯桥接** — `BaseChannel` 抽象，支持跨 Slack、Microsoft Teams、Discord、Feishu (Lark)、WeCom 和 DingTalk 的出站消息。首个发布实现是 Feishu；Slack / Teams / WeCom / Email 在 v0.9 路线图中。
-- **Fernet 加密凭证** — 应用密钥和加密密钥在静态时加密；每个入站回调都经过签名验证。
-- **交互式审批卡片** — 通道原生 `GateHook`（目前支持 Feishu，Slack/Teams 即将推出）在敏感工具调用触发时向你的群组发送审批/拒绝卡片；工具会阻塞直到群组成员点击决议。无需自定义工作流引擎即可实现人工审批。
-- **可配置的每个智能体审批路由** — 三种模式（自动 / 仅内联 / 仅通道）配合审批人范围选择器（发起人 / 智能体所有者 / 任何组织成员）。单一审计路径记录 `approver_user_id` 和 `decided_at`，无论决议来自聊天还是通道。自动模式在未链接通道时回退到内联，因此智能体始终获得真实的审批体验。
-- **任务完成通知** — 长时间运行的 ReAct 或 DAG 智能体可在工作完成时向组织通道推送摘要卡片。在"设置 → 智能体 → 通知"中按智能体配置。
-- **浏览并选择 UI** — 无需从供应商控制台复制原始通道 ID；门户调用即时通讯平台的 API 并显示群组选择器。
+#### Messaging Channels (v0.8)
+- **Org-scoped IM bridge** — `BaseChannel` abstraction for outbound messaging across Slack, Microsoft Teams, Discord, Feishu (Lark), WeCom, and DingTalk. First shipping implementation is Feishu; Slack / Teams / WeCom / Email are planned.
+- **Fernet-encrypted credentials** — App secrets and encrypt keys encrypted at rest; every inbound callback signature-verified.
+- **Interactive approval cards** — Channel-native `GateHook` (Feishu today, Slack/Teams next) posts an Approve / Reject card to your group when a sensitive tool call fires; the tool blocks until a group member taps a verdict. Human-in-the-loop approval without a custom workflow engine.
+- **Configurable approval routing per agent** — Three modes (Auto / Inline only / Channel only) with an approver-scope selector (initiator / agent owner / any org member). One audit path stamps `approver_user_id` and `decided_at` whether the verdict came from chat or from the channel. Auto mode falls back to inline if no channel is linked, so agents always get a real approval UX.
+- **Task-completion notifications** — Long-running ReAct or DAG agents can push a summary card to the org's channel when work finishes. Configurable per-agent in Settings → Agent → Notifications.
+- **Browse-and-pick UI** — No copying raw channel IDs from the vendor console; the portal calls the IM platform's API and shows a group picker.
 
-#### 平台
-- **多租户** — JWT 认证、组织隔离、带有使用分析和连接器指标的管理面板。通过 `WORKERS=N` 支持多工作进程，使用 Redis 中断代理进行跨工作进程中继。
-- **应用市场** — 发布和订阅智能体、连接器、知识库、技能、工作流。
-- **全局技能（SOP）** — 为每个用户加载的可复用操作流程；渐进模式可减少约 80% 的令牌消耗。
-- **Stripe 计费和按用户配额** — 可选的 Pro 计划升级，通过 Stripe Checkout + Customer Portal。配额链（按用户覆盖 → 计划层级 → 系统默认值），`0` 表示无限制。管理员功能标志控制整个流程；不使用 Stripe 的私有部署保持清洁。
-- **评估中心** — 测试数据集管理、并行评估运行，使用 LLM 评分判断，每个案例的通过/失败/延迟/令牌结果查看器，支持自动轮询。
-- **对话恢复** — 合成 `tool_result` 行在中断的轮次后持久化；客户端通过 `/chat/resume` 自动重连断开的 SSE 流，支持指数退避和"重新连接中…"指示器。
-- **6 种语言** — EN、ZH、JA、KO、DE、FR。翻译完全自动化——单一词汇表驱动每个 LLM 翻译调用（JSON、MDX、README），提交前钩子拒绝手动编辑生成的语言环境文件。
-- **首次运行设置向导**、深色/浅色主题、命令面板、流式 SSE、DAG 可视化。
+#### Platform
+- **Multi-tenant** — JWT auth, org isolation, admin panel with usage analytics and connector metrics. Multi-worker support via `WORKERS=N` with a Redis interrupt broker for cross-worker relay.
+- **Marketplace** — Publish and subscribe to agents, API connectors and MCP servers, plus skills and workflows when those modules are enabled. Knowledge bases and database connectors stay private to their owner.
+- **Global skills (SOPs)** — Reusable operating procedures loaded for every user; progressive mode cuts tokens ~80%. Optional module, off by default.
+- **Stripe billing & per-user quotas** — Optional Pro-plan upgrade via Stripe Checkout + Customer Portal. Quota chain (per-user override → plan tier → system default) with `0` for unlimited. Admin feature flag gates the entire pipeline; private deployments without Stripe stay clean.
+- **Evaluation Center** — Test-dataset management, parallel eval runs with LLM-graded judgments, per-case pass/fail/latency/token results viewer with auto-polling.
+- **Conversation recovery** — Synthetic `tool_result` rows persist after interrupted turns; clients auto-reconnect dropped SSE streams via `/chat/resume` with exponential backoff and a "Reconnecting…" indicator.
+- **6 languages** — EN, ZH, JA, KO, DE, FR. Translations are [fully automated](https://docs.fim.ai/contributing#i18n) — single glossary drives every LLM translation call (JSON, MDX, README), pre-commit hook refuses manual edits to generated locale files.
+- **First-run setup wizard**, dark/light theme, command palette, streaming SSE, DAG visualization.
 
-> 深入了解：[架构](https://docs.fim.ai/architecture/system-overview) · [钩子系统](https://docs.fim.ai/architecture/hook-system) · [通道](https://docs.fim.ai/configuration/channels/overview) · [执行模式](https://docs.fim.ai/concepts/execution-modes) · [为什么选择 FIM One](https://docs.fim.ai/why) · [竞争格局](https://docs.fim.ai/strategy/competitive-landscape)
+> Deep dive: [Architecture](https://docs.fim.ai/architecture/system-overview) · [Hook System](https://docs.fim.ai/architecture/hook-system) · [Channels](https://docs.fim.ai/configuration/channels/overview) · [Execution Modes](https://docs.fim.ai/concepts/execution-modes) · [Why FIM One](https://docs.fim.ai/why) · [Competitive Landscape](https://docs.fim.ai/strategy/competitive-landscape)
 
-## 架构
+## Architecture
 
 ```mermaid
 graph TB
     subgraph app["Application Layer"]
-        a["Portal · API · iframe · Feishu · Slack · WeCom · DingTalk · Teams · Email · Contract Systems · Custom Webhooks"]
+        a["Portal · API · Feishu · Slack · WeCom · Email · Custom Webhooks"]
     end
     subgraph mid["FIM One"]
         direction LR
-        m1["Connectors<br/>+ MCP Hub"] ~~~ m2["Orch Engine<br/>ReAct / DAG"] ~~~ m3["RAG /<br/>Knowledge"] ~~~ m5["Hook System<br/>+ Channels"] ~~~ m4["Auth /<br/>Admin"]
+        m1["Integrations<br/>API / DB / MCP"] ~~~ m2["Orch Engine<br/>ReAct / DAG"] ~~~ m3["RAG /<br/>Knowledge"] ~~~ m5["Hook System<br/>+ Channels"] ~~~ m4["Auth /<br/>Admin"]
     end
     subgraph biz["Business Systems"]
         b["ERP · CRM · OA · Finance · Databases · Contract Mgmt · Custom APIs"]
@@ -181,7 +181,7 @@ graph TB
     app --> mid --> biz
 ```
 
-每个连接器和通道都是一个标准化的桥接——智能体不知道或不关心它是在与 SAP、自定义合同系统还是飞书群组通信。Hook 系统在 LLM 循环之外运行平台代码以进行审批、审计和速率限制；通道将出站通知和审批卡片传送到外部 IM 平台。详见 [连接器架构](https://docs.fim.ai/architecture/connector-architecture)、[Hook 系统](https://docs.fim.ai/architecture/hook-system) 和[通道](https://docs.fim.ai/configuration/channels/overview)。
+Each connector and channel is a standardized bridge — the agent doesn't know or care whether it's talking to SAP, a custom contract system, or a Feishu group. The Hook System runs platform code outside the LLM loop for approvals, audit, and rate limits; Channels carry outbound notifications and approval cards to external IM platforms. See [Connector Architecture](https://docs.fim.ai/architecture/connector-architecture), [Hook System](https://docs.fim.ai/architecture/hook-system), and [Channels](https://docs.fim.ai/configuration/channels/overview) for details.
 
 ## 配置
 
@@ -205,16 +205,16 @@ JINA_API_KEY=jina_...                       # unlocks web tools + RAG
 
 > 完整参考：[环境变量](https://docs.fim.ai/configuration/environment-variables)
 
-## 技术栈
+## Tech Stack
 
-| 层级       | 技术                                                          |
+| Layer       | Technology                                                          |
 | ----------- | ------------------------------------------------------------------- |
-| 后端     | Python 3.11+, FastAPI, SQLAlchemy, Alembic, asyncio                 |
-| 前端    | Next.js 14, React 18, Tailwind CSS, shadcn/ui, React Flow v12      |
+| Backend     | Python 3.11+, FastAPI, SQLAlchemy, Alembic, asyncio                 |
+| Frontend    | Next.js 15, React 18, Tailwind CSS, shadcn/ui, React Flow v12      |
 | AI / RAG    | OpenAI-compatible LLMs, Jina AI (embed + search), LanceDB          |
-| 数据库    | SQLite (dev) / PostgreSQL (prod)                                    |
-| 消息传递   | `BaseChannel` 抽象（Slack、Teams、Discord、Feishu/Lark、WeCom、DingTalk），Fernet 加密凭证，HMAC 签名验证 |
-| 基础设施       | Docker, uv, pnpm, SSE 流式传输                                    |
+| Database    | SQLite (dev) / PostgreSQL (prod)                                    |
+| Messaging   | `BaseChannel` abstraction (Feishu/Lark shipped), Fernet-encrypted credentials, HMAC signature verification |
+| Infra       | Docker, uv, pnpm, SSE streaming                                    |
 
 ## 开发
 
@@ -235,28 +235,28 @@ bash scripts/setup-hooks.sh    # install git hooks (enables auto i18n)
 
 关于部署、LLM 提供商、系统要求等常见问题 — 请查看 [常见问题](https://docs.fim.ai/faq)。
 
-## 贡献
+## Contributing
 
-我们欢迎各种形式的贡献 — 代码、文档、翻译、错误报告和想法。
+We welcome contributions of all kinds — code, docs, translations, bug reports, and ideas.
 
-> **先锋计划**：前 100 位获得 PR 合并的贡献者将被认可为**创始贡献者**，获得永久署名、徽章和优先问题支持。[了解更多 &rarr;](CONTRIBUTING.md#-pioneer-program)
+> **Pioneer Program**: The first 100 contributors who get a PR merged are recognized as **Founding Contributors** with permanent credits, a badge, and priority issue support. [Learn more &rarr;](CONTRIBUTING.md#-pioneer-program)
 
-**快速链接：**
+**Quick links:**
 
-- [**贡献指南**](CONTRIBUTING.md) — 设置、约定、PR 流程
-- [**开发约定**](https://docs.fim.ai/contributing) — 类型安全、测试和代码质量标准
-- [**好的首个问题**](https://github.com/fim-ai/fim-one/labels/good%20first%20issue) — 为新手精选
-- [**开放问题**](https://github.com/fim-ai/fim-one/issues) — 错误和功能请求
+- [**Contributing Guide**](CONTRIBUTING.md) — setup, conventions, PR process
+- [**Development Conventions**](https://docs.fim.ai/contributing) — type safety, testing, and code quality standards
+- [**Good First Issues**](https://github.com/fim-ai/fim-one/labels/good%20first%20issue) — curated for newcomers
+- [**Open Issues**](https://github.com/fim-ai/fim-one/issues) — bugs & feature requests
 
-**安全性：** 要报告漏洞，请打开一个带有 `[SECURITY]` 标签的 [GitHub issue](https://github.com/fim-ai/fim-one/issues)。对于敏感披露，请通过 Discord DM 与我们联系。
+**Security:** Do not open a public issue for a sensitive vulnerability. Report it privately through [GitHub Security Advisories](https://github.com/fim-ai/fim-one/security/advisories/new) or email security@fim.ai. See [SECURITY.md](SECURITY.md).
 
 ## 活动
 
 ![Alt](https://repobeats.axiom.co/api/embed/49402c7d85e343e9cb5909da7b48db1930c76554.svg "Repobeats analytics image")
 
-## 贡献者
+## Contributors
 
-感谢这些优秀的贡献者（[表情符号说明](https://allcontributors.org/docs/en/emoji-key)）：
+Thanks to these wonderful people ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
 
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
 <!-- prettier-ignore-start -->
@@ -271,6 +271,7 @@ bash scripts/setup-hooks.sh    # install git hooks (enables auto i18n)
       <td align="center" valign="top" width="12.5%"><a href="https://github.com/Joshua-Medvinsky"><img src="https://avatars.githubusercontent.com/u/76570188?v=4?s=80" width="80px;" alt="Joshua Medvinsky"/><br /><sub><b>Joshua Medvinsky</b></sub></a><br /><a href="#security-Joshua-Medvinsky" title="Security">🛡️</a></td>
       <td align="center" valign="top" width="12.5%"><a href="https://github.com/Aryan-theccool"><img src="https://avatars.githubusercontent.com/u/146411259?v=4?s=80" width="80px;" alt="Aryan singh Bhadoria"/><br /><sub><b>Aryan singh Bhadoria</b></sub></a><br /><a href="https://github.com/fim-ai/fim-one/issues?q=author%3AAryan-theccool" title="Bug reports">🐛</a> <a href="https://github.com/fim-ai/fim-one/commits?author=Aryan-theccool" title="Documentation">📖</a> <a href="https://github.com/fim-ai/fim-one/commits?author=Aryan-theccool" title="Tests">⚠️</a> <a href="https://github.com/fim-ai/fim-one/commits?author=Aryan-theccool" title="Code">💻</a></td>
       <td align="center" valign="top" width="12.5%"><a href="https://portfolio-alexgonzalez33.vercel.app/"><img src="https://avatars.githubusercontent.com/u/82875882?v=4?s=80" width="80px;" alt="alexcastgonz"/><br /><sub><b>alexcastgonz</b></sub></a><br /><a href="https://github.com/fim-ai/fim-one/issues?q=author%3Apcbeingused333" title="Bug reports">🐛</a> <a href="https://github.com/fim-ai/fim-one/commits?author=pcbeingused333" title="Documentation">📖</a> <a href="https://github.com/fim-ai/fim-one/commits?author=pcbeingused333" title="Tests">⚠️</a> <a href="https://github.com/fim-ai/fim-one/commits?author=pcbeingused333" title="Code">💻</a></td>
+      <td align="center" valign="top" width="12.5%"><a href="https://github.com/ryangoho"><img src="https://avatars.githubusercontent.com/u/320067612?v=4?s=80" width="80px;" alt="Ryan Goh"/><br /><sub><b>Ryan Goh</b></sub></a><br /><a href="https://github.com/fim-ai/fim-one/issues?q=author%3Aryangoho" title="Bug reports">🐛</a> <a href="https://github.com/fim-ai/fim-one/commits?author=ryangoho" title="Documentation">📖</a> <a href="https://github.com/fim-ai/fim-one/commits?author=ryangoho" title="Tests">⚠️</a> <a href="https://github.com/fim-ai/fim-one/commits?author=ryangoho" title="Code">💻</a></td>
     </tr>
   </tbody>
 </table>
@@ -280,7 +281,7 @@ bash scripts/setup-hooks.sh    # install git hooks (enables auto i18n)
 
 <!-- ALL-CONTRIBUTORS-LIST:END -->
 
-此项目遵循 [all-contributors](https://allcontributors.org/) 规范。欢迎任何形式的贡献！
+This project follows the [all-contributors](https://allcontributors.org/) specification. Contributions of any kind welcome!
 
 ## 关于 FIM
 

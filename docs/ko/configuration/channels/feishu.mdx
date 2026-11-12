@@ -1,12 +1,12 @@
 ---
-title: "飞书 (Lark) 频道"
+title: "Feishu (Lark) Channel"
 icon: "comment-dots"
-description: "将 FIM One 连接到飞书应用，用于出站消息、入站回复和交互式审批卡片。"
+description: "Wire FIM One to a Feishu app for outbound messages and interactive approval cards."
 ---
 
-飞书频道为一个组织中的智能体提供了一条进入飞书群组的单一热线：出站通知、入站回复和交互式的批准/拒绝卡片（通过 `feishu_gate` hook）。
+A Feishu Channel gives agents in one org a single hotline into a Feishu group: outbound notifications and interactive Approve / Reject cards (via the `approval_gate` hook).
 
-本指南介绍端到端的设置步骤。它假设 FIM One 可在稳定的 HTTPS 源访问 — 称之为 `API_BASE_URL`（例如 `https://one.yourdomain.com`）。
+This guide walks through the end-to-end setup. It assumes FIM One is reachable at a stable HTTPS origin — call this `API_BASE_URL` (e.g. `https://one.yourdomain.com`).
 
 ## 1. Feishu 앱 생성
 
@@ -30,38 +30,37 @@ App Secret을 비밀번호처럼 취급하세요. FIM One은 저장 시 암호�
 | `im:chat:readonly` | 그룹 검색을 위한 최소 읽기 액세스 |
 | `im:resource` | (선택사항) 카드에 표시된 이미지/파일 업로드 |
 
-## 3. 이벤트 구독 활성화 (지금은 Request URL을 비워두세요)
+## 3. Enable event subscriptions (leave the Request URL blank for now)
 
-**Event Subscriptions**를 열되, **아직 Request URL을 입력하지 마세요** — 5단계에서 FIM One에서 가져옵니다.
+Open **Event Subscriptions**, but **don't fill in the Request URL yet** — you get it from FIM One in step 5.
 
-다음 이벤트를 구독하세요:
+Subscribe the following events:
 
-- `im.message.receive_v1` — 사용자로부터의 인바운드 메시지
-- `card.action.trigger` — 승인 / 거부 버튼 클릭
+- `card.action.trigger` — Approve / Reject button clicks
 
-동일한 페이지에서 선택적으로 **Verification Token**과 **Encrypt Key**를 설정할 수 있습니다. FIM One은 두 모드를 모두 지원하며 제공된 것을 사용합니다.
+Under the same page, set an **Encrypt Key** (required: FIM One rejects a Feishu channel without one, and uses it to verify and decrypt callbacks) and optionally a **Verification Token**.
 
-## 4. FIM One에서 채널 추가
+## 4. Add the Channel in FIM One
 
-1. **조직 소유자** 또는 **관리자**로 로그인합니다.
-2. **조직 설정 → 채널 → 새 채널**로 이동합니다.
-3. 유형으로 **Feishu**를 선택한 후 다음을 입력합니다:
+1. Sign in as an **Org Owner** or **Admin**.
+2. Go to **Organization Settings → Channels → New Channel**.
+3. Pick **Feishu** as the type, then fill in:
 
-   | 필드 | 출처 |
+   | Field | Source |
    |---|---|
-   | **Name** | 내부 레이블 (예: `Ops team Feishu`) |
-   | **App ID** | 1단계에서 (`cli_xxxxxxxxxxxxxxxx`) |
-   | **App Secret** | 1단계에서 |
-   | **Verification Token** | (선택사항) 3단계에서 |
-   | **Encrypt Key** | (선택사항) 3단계에서 |
+   | **Name** | Any internal label (e.g. `Ops team Feishu`) |
+   | **App ID** | From step 1 (`cli_xxxxxxxxxxxxxxxx`) |
+   | **App Secret** | From step 1 |
+   | **Verification Token** | (Optional) From step 3 |
+   | **Encrypt Key** | Required. From step 3 |
 
-4. **Browse chats**를 클릭합니다 — FIM One이 당신의 자격증명으로 Feishu를 호출하고 봇이 현재 멤버인 모든 그룹을 나열합니다.
+4. Click **Browse chats** — FIM One calls Feishu with your credentials and lists every group the bot is currently a member of.
 
 <Tip>
-목록이 비어 있으면 봇이 아직 어떤 그룹에도 추가되지 않은 것입니다. Feishu를 열어 대상 그룹에 봇을 추가한 후 선택기를 다시 엽니다.
+If the list is empty, the bot hasn't been added to any group yet. Open Feishu, add the bot to the target group, then reopen the picker.
 </Tip>
 
-5. 라우팅할 그룹 채팅을 선택하고 **Save**를 클릭합니다.
+5. Pick the group chat you want to route to, click **Save**.
 
 ## 5. Feishu에 콜백 URL 등록
 
@@ -83,15 +82,15 @@ FIM One 채널 상세 패널로 돌아가서 **Send test message**를 클릭합�
 - **Silent failure** — 봇이 실제로 그룹에 있는지(4단계 선택기) 확인하고 채널 행의 `is_active`가 true인지 확인합니다.
 - **5단계에서 검증 실패** — `API_BASE_URL`이 HTTPS이고 공개적으로 접근 가능한지 확인합니다. Feishu는 비-HTTPS 요청 URL을 거부합니다.
 
-## 7. 智能体 연결 (선택사항 — 승인)
+## 7. Wire up an agent (optional — approvals)
 
-도구 호출을 그룹 승인으로 제어하려면:
+To gate tool calls behind group approval:
 
-1. 도구 / 커넥터 작업에서 **Requires confirmation**을 켭니다.
-2. 智能体에서 **Hooks → Class hooks** 아래에 `feishu_gate`를 추가합니다.
-3. 智能体의 조직이 정확히 하나의 **활성** Feishu 채널을 가지고 있는지 확인합니다 — 훅이 자동으로 라우팅됩니다.
+1. On the tool / connector action, flip **Requires confirmation** on.
+2. In the agent editor's **Approval** section, pick this channel as the **Approval channel** and set the mode to **Auto** or **Channel only**. The gate is attached to every agent automatically; no hook configuration is needed.
+3. Set the **Approver scope** (initiator, agent owner, or any org member). Approvers must have linked their Feishu account to their FIM One user, otherwise their click is ignored.
 
-智能体가 제어된 도구를 실행하려고 할 때, **Approve** / **Reject** 버튼이 있는 대화형 카드가 그룹에 게시됩니다. 도구는 대기 상태(SSE 스트림 일시 중지)이며 멤버가 하나를 탭할 때까지 기다립니다. 결과가 스트림으로 돌아오고 智能体는 완료되거나 중단됩니다.
+When the agent tries to run a gated tool, an interactive card posts to the group with **Approve** / **Reject**. The tool waits (SSE stream pauses) until a permitted approver taps one; the verdict streams back and the agent either completes or aborts.
 
 ## 문제 해결
 
@@ -138,6 +137,6 @@ Feishu 데스크톱 또는 모바일 클라이언트에서 그룹을 열고 → 
 
 웹훅은 이제 첫 번째 결정에서 대체 카드를 반환합니다 — 버튼이 제거되고 카드 헤더가 녹색(승인됨) 또는 빨간색(거부됨)으로 바뀝니다. 첫 번째 클릭 후에도 클릭 가능한 버튼이 보이면 Feishu 클라이언트가 캐시된 복사본을 표시하고 있을 수 있습니다. 채팅을 다시 열면 결정된 카드가 렌더링됩니다.
 
-### 하나의 조직, 두 개의 Feishu 채널
+### One org, two Feishu channels
 
-`feishu_gate`는 찾은 첫 번째 **활성** 채널을 선택합니다. 동일한 조직에서 여러 Feishu 엔드포인트가 필요한 경우(예: 스테이징 vs. 프로덕션 그룹), 하나를 제외한 모두를 비활성화하거나 에이전트 태그로 선택하는 커스텀 훅을 작성하세요.
+An approval goes to the channel chosen as the agent's **Approval channel**, and to no other. Several Feishu channels in one org (staging and production groups, say) coexist; bind each agent to the one it should use. A click counts only on the channel that delivered the card.

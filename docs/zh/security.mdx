@@ -46,22 +46,126 @@ FIM One 非常重视安全性。如果您发现漏洞，我们希望听到您的
 - 没有现实攻击向量的拒绝服务 (DoS)
 - 仅影响演示/云环境而不影响自托管部署的问题
 
-## 自托管安全最佳实践
+## Self-Hosted Security Best Practices
 
-如果您在自己的基础设施上运行 FIM One，请遵循以下建议来加强您的部署。
+If you are running FIM One on your own infrastructure, follow these recommendations to harden your deployment.
 
 <Tip>
-  这些实践适用于生产部署。对于本地开发，默认设置即可。
+  These practices apply to production deployments. For local development, the defaults are fine.
 </Tip>
 
-| 实践 | 详情 |
+| Practice | Details |
 |---|---|
-| **保护 `.env`** | 将其排除在版本控制之外（`.gitignore` 默认包含它）。将文件权限限制为仅应用程序用户。 |
-| **强 `JWT_SECRET_KEY`** | 使用密码学随机值（至少 32 个字符）。切勿在环境之间重复使用密钥。 |
-| **使用 TLS 的反向代理** | 在 nginx、Caddy 或启用 HTTPS 的云负载均衡器后面运行。切勿直接向互联网公开应用程序端口。 |
-| **使用 PostgreSQL** | SQLite 适合开发和单用户设置。对于多用户生产部署，使用 PostgreSQL 以获得适当的并发性和数据完整性。 |
-| **保持更新** | 定期拉取最新版本。安全补丁会尽力向前一个次要版本回溯。 |
-| **限制网络访问** | 将数据库和应用程序端口限制为受信任的网络。使用防火墙规则或安全组。 |
+| **Protect `.env`** | Keep it out of version control (`.gitignore` includes it by default). Restrict file permissions to the application user only. |
+| **Strong `JWT_SECRET_KEY`** | Use a cryptographically random value (at least 32 characters). Never reuse secrets across environments. |
+| **Reverse proxy with TLS** | Run behind nginx, Caddy, or a cloud load balancer with HTTPS enabled. Never expose the application port directly to the internet. |
+| **Use PostgreSQL** | SQLite is suitable for development and single-user setups. For multi-user production deployments, use PostgreSQL for proper concurrency and data integrity. |
+| **Keep up to date** | Regularly pull the latest release. Security patches are backported to the previous minor version on a best-effort basis. |
+| **Limit network access** | Restrict database and application ports to trusted networks. Use firewall rules or security groups. Admin **Security → IP Rules** can also restrict API access by client address; behind a reverse proxy set `FORWARDED_ALLOW_IPS` so the rules see the real client. |
+| **Turn on two-factor authentication** | 2FA applies to password, email-code, and OAuth sign-in alike, and incorrect codes are limited to 5 per 15 minutes per account. |
+| **Scope API keys** | A key with scopes can call only the endpoints those scopes allow. Give integrations the narrowest scope that works. |
+| **Keep outbound-message tools off unless needed** | `send_notification` (`NOTIFICATION_TOOL_ENABLED`) lets a model post to the channels of the calling user's organizations; `email_send` (recipient allowlist or `EMAIL_TOOL_ENABLED`) mails from the instance SMTP account. Move any instance-wide `SLACK_WEBHOOK_URL` / `LARK_WEBHOOK_URL` / `WECOM_WEBHOOK_URL` into an organization's channels: while set, every user of the instance can post to them. |
+
+| **Run code execution in sandbox containers** | Keep `CODE_EXEC_BACKEND=docker` (the default of the bundled `docker-compose.yml`). `local` runs users' code inside the application container. See below. |
+| **Never mount the Docker socket into the application** | Only the `docker-socket-proxy` service holds `/var/run/docker.sock`. Access to it is equivalent to root on the host. |
+| **Leave stdio MCP servers off unless you need one** | `ALLOW_STDIO_MCP=true` lets system administrators run arbitrary commands in the application container. Keep the number of administrators small. |
+
+## Code execution and the Docker socket
+
+Three kinds of code run at a user's request. Where each runs decides what it can reach.
+
+| What | Where it runs | Who can cause it |
+|---|---|---|
+| `python_exec`, `node_exec`, `shell_exec` with `CODE_EXEC_BACKEND=docker` | A throw-away sandbox container: the conversation's own workspace at `/workspace`, no network, memory, CPU and process limits, `no-new-privileges`, not root, no capabilities | Any user whose agent has the tools |
+| The same tools with `CODE_EXEC_BACKEND=local` | Inside the application process and container, as the application's user | Any user whose agent has the tools |
+| A stdio MCP server (`ALLOW_STDIO_MCP=true`) | A child process of the application, in its container | Configured by system administrators only; used by whoever they share it with |
+
+**The Docker socket.** Access to `/var/run/docker.sock` is equivalent to root on the host. The application container never has it, and its image has no Docker CLI. With the `docker` backend the application talks to the `docker-socket-proxy` service, which forwards a request only when it starts a container that:
+
+- is named `fim-sandbox-<hex>` and uses one of the configured sandbox images;
+- mounts nothing but `<data dir>/sandbox/<conversation>/workspace` at `/workspace`;
+- has no network (`none`), or the one egress network you named and labelled (see below);
+- runs as the one non-root user configured on the proxy (`SANDBOX_PROXY_USER`, 10001:10001 by default) with a memory, CPU and process limit within bounds, `no-new-privileges` and every capability dropped, and is removed when it exits;
+- asks for nothing else: no privileged mode, host PID/IPC/UTS/user namespace, host or container network, added capability, device, extra mount, volume, published port, label, custom runtime or other security option.
+
+Listing, inspecting, exec-ing into or stopping any other container, building images, and creating volumes or networks are refused.
+
+The proxy does not pass the application's request on. It parses it strictly, refuses a request that is not in the one form it accepts, and sends the Docker daemon a request it wrote itself from the values it checked. It asks every client for a token: the proxy generates it into a volume only root can read, the application's entrypoint reads it as root and hands it to the API process alone, and the API makes the requests itself, so no child process ever holds the token. The proxy is not published on a host port and refuses everything when `CODE_EXEC_BACKEND` is not `docker`.
+
+**No network in the sandbox.** Code and shell commands alike run without a network. The outbound rules the application applies to its own requests do not apply inside a container, so a sandbox gets no network at all. If shell commands must reach the internet, that is your decision and your firewall:
+
+```bash
+# A network of its own, labelled so the proxy accepts it
+# (inter-container traffic off: sandboxes on it cannot reach each other)
+docker network create --subnet 172.30.250.0/24 \
+  -o com.docker.network.bridge.enable_icc=false \
+  --label fim-one.sandbox-egress=filtered fim-sandbox-egress
+# Drop what a sandbox must never reach: metadata, link-local, private and CGNAT ranges
+for net in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16 100.64.0.0/10 127.0.0.0/8; do
+  iptables -I DOCKER-USER -s 172.30.250.0/24 -d "$net" -j DROP
+done
+# The host itself (its published ports, on any of its addresses) is not forwarded traffic
+iptables -I INPUT -s 172.30.250.0/24 -j DROP
+```
+
+Then set `DOCKER_SHELL_NETWORK=fim-sandbox-egress` in `.env`. The proxy joins `shell_exec` containers to that network only, and only while it carries the label and was created with `enable_icc=false` (a network created without it must be removed and created again: the option cannot be changed later); `bridge`, `host`, the compose network and unlabelled networks are refused. The label is your statement that the rules exist: the proxy cannot see your firewall. Put nothing else on that network (the proxy refuses it while any other container is attached), and keep it IPv4-only: the rules above are IPv4 rules, and the proxy refuses a network with IPv6 enabled. If you need IPv6, write the matching `ip6tables` rules first and run your own proxy policy. The rules must be restored after a reboot (`iptables-persistent` or your firewall manager). Code execution (`python_exec`, `node_exec`) stays without a network either way.
+
+**The workspace is read without trusting it.** The application reads, lists and writes the directory sandboxed code works in (artifacts, offloaded tool output, rendered templates, the file tool, generated images). It opens every path below the workspace without following symlinks and acts only on regular files.
+
+**`local` is not isolation.** The Python restrictions and the shell command word list of the `local` backend are conveniences for the model, not a boundary. A user who can run code with `local` can read and change what the application can: the data volume and other users' uploaded files. If the application container can reach a container runtime (a Docker, Podman or containerd socket, or a `DOCKER_HOST` that is a daemon and not the sandbox proxy), `local` code execution and stdio MCP servers refuse to start.
+
+**Keys.** Setting `JWT_SECRET_KEY` and `CREDENTIAL_ENCRYPTION_KEY` in `.env` is the recommended way. When one is not set, the container's entrypoint reads it, as root, from a key store of its own (`/var/lib/fim-one/secrets`, the `app_secrets` volume in the bundled compose file; back that volume up with your data). A missing key is generated only on a first start, while the database is still empty, and is stored before it is used. If the database already has data and a key is in neither place, the container refuses to start and names the key: stored credentials can only be read with the `CREDENTIAL_ENCRYPTION_KEY` they were written with. `FIM_ALLOW_NEW_KEYS=true` lets it generate new keys once, giving up what the old ones encrypted. A key is generated only into a key store on a mount of its own (a volume or bind mount at `/var/lib/fim-one/secrets` or at a directory above it; a tmpfs does not count): when none is mounted there (a compose file without the `app_secrets` volume), a generated key would live in the container's own filesystem and be gone at the next recreate, so the container refuses to start and says so; mount the volume, or set the keys in `.env`, or set `FIM_ALLOW_UNMOUNTED_KEY_STORE=true` to accept keys that do not survive a recreate. A key set in `.env` that differs from the stored one is used, and the start logs a warning naming it. Before it decides that the database is empty, the entrypoint asks it up to five times (5 seconds each, 3 seconds apart); a database that does not answer stops the start without generating anything. The entrypoint never deletes, moves or replaces key material; a key store that does not look as expected (not root's, writable by others, inside the application's `data/` or uploads directory, or below a directory, from its mount down, that is not root's or that others can write to) also stops the start. The API receives the keys in its environment, which the commands it starts cannot read; the frontend process receives none.
+
+**stdio MCP servers.** A stdio server is a command line. `ALLOWED_STDIO_COMMANDS` does not make that safe: `python -c`, `node -e` and `npx <any package>` run arbitrary code. The rule that protects the container is who may configure one:
+
+- only a system administrator can create, edit, copy or publish a stdio server;
+- a stdio server is started only while its owner is an active system administrator, and "Test connection" starts it too: for a server whose owner is not an active administrator it answers `stdio_mcp_owner_not_admin`, the reason the server list shows. A server created by somebody else, or by an administrator who has since lost the role or been deactivated, stays in the database and is never started. Its owner sees it marked "Not started" and can delete it or turn it into an HTTP server;
+- a user who brings their own credential to a shared stdio server can set only the environment variables the administrator declared on it, and none that change what the process loads, fetches or trusts (`PATH`, `NODE_OPTIONS`, `PYTHONPATH`, `LD_PRELOAD`, proxy and certificate variables, and the like). List every variable users should fill in on the server, with a placeholder value.
+
+Enabling stdio means trusting your administrators with command execution in the application container, and trusting every MCP server they install with the data its tools are handed.
+
+**What remains.** The application process itself is trusted: someone who already controls it (an administrator through a stdio server that attacks the API process, or a vulnerability elsewhere) holds the proxy's token and can ask for a sandbox container whose workspace directory they first replaced with a symlink, and reach the host that way. The proxy keeps users, sandboxed code and the application's child processes away from the Docker daemon; it does not contain a compromised application.
+
+### Upgrading an existing deployment
+
+1. **Before you stop the old container**, if `JWT_SECRET_KEY` and `CREDENTIAL_ENCRYPTION_KEY` are not both in your `.env`: copy them out (`docker compose exec fim-one cat /app/.env`) and put them into `.env`. They were generated inside the old container and do not survive its replacement; without the encryption key, stored connector credentials cannot be read. The new container checks this for you: with data in the database and a key missing, it stops with a message instead of starting with a new key.
+2. **Replace `docker-compose.yml`** with the new one, or copy over the `docker-socket-proxy` service, the `sandbox_proxy_secret` volume (mounted in both services), the `app_secrets` volume, the `DOCKER_HOST` / `CODE_EXEC_BACKEND` / `DOCKER_NODE_IMAGE` / `DOCKER_SHELL_NETWORK` environment entries and the `depends_on` entry, and **delete the `/var/run/docker.sock` line from the `fim-one` service**. Remove any override file that adds or removes that mount.
+3. **Check `CODE_EXEC_BACKEND` in `.env`.** Unset now means `docker` under compose (previously `local`). If it says `local`, every user with the code tools runs commands in the application container: change it to `docker` unless the instance has a single trusted user.
+4. **Rebuild and start**: `docker compose up -d --build`.
+   - **Ownership of the data directories.** The application now runs as uid 10001. On first start the entrypoint, still root at that point, changes the owner of everything under `./data` and `./uploads` to 10001:10001. On a Linux host this is visible on the host: the directories no longer belong to the user who created them, and host-side scripts (backups, imports) that write there must run as uid 10001 or as root. A large tree takes a while, once. If the directories are on a filesystem where root in the container cannot change ownership (NFS with `root_squash`, some CIFS mounts) the change fails and the container stops: `chown -R 10001:10001 data uploads` on the host or the file server first. With SELinux enforcing, the bind mounts need the `:z` label as before.
+   - **Your own compose file** (fixed `container_name`s, services of your own): mount a volume at `/var/lib/fim-one/secrets` in the application service, as the bundled file does with `app_secrets`, or set both keys in `.env`. Without either, a first start refuses to generate keys (see **Keys** above).
+   - **The sandbox user.** Set the application's `DOCKER_SANDBOX_USER` to the proxy's `SANDBOX_PROXY_USER` (the same `uid:gid`; the bundled file derives both from `DOCKER_SANDBOX_USER`, default `10001:10001`). The proxy refuses any other user, so with a compose file that sets `SANDBOX_PROXY_USER` on its own and leaves the application at another value, every code run fails with a `User must be …` message.
+   - **Running the container as another user** (`user:` in compose): the entrypoint then changes nothing and reads no root-only file. Make the data directories writable by that user yourself, and set `JWT_SECRET_KEY`, `CREDENTIAL_ENCRYPTION_KEY` (the container does not start without them in this mode) and a `SANDBOX_PROXY_TOKEN` of your own (at least 32 characters, the same for both services) in `.env`.
+5. **Shell commands have no network.** `shell_exec` containers now run without one, like code execution. See "No network in the sandbox" above if you need egress.
+6. **stdio MCP servers.** If `ALLOW_STDIO_MCP=true`: servers owned by users who are not system administrators stop working (agents and workflows that use them get an error naming the server). To keep one, an administrator recreates it under their own account and shares it. To list the affected rows:
+
+   ```sql
+   SELECT s.id, s.name, s.command, s.args, u.email
+   FROM mcp_servers s LEFT JOIN users u ON u.id = s.user_id
+   WHERE s.transport = 'stdio' AND (u.is_admin IS NOT TRUE OR u.is_active IS NOT TRUE);
+   ```
+
+   Review them before deleting. Users' saved credentials for a shared stdio server that set variables the server does not declare are refused until the administrator declares those names on the server. The `MCP_SERVERS` environment variable is no longer read.
+7. **Verify**: `docker compose exec fim-one ls /var/run/docker.sock` must fail; `docker compose top fim-one` shows the API under uid 10001 and the frontend under uid 10002, nothing under root; a chat that uses a code tool runs, and `docker compose logs docker-socket-proxy` shows no `refused` line for it.
+
+Not using the bundled compose file (Kubernetes, a hand-written unit): run `python /app/docker_proxy.py` from the same image as a separate container or sidecar with the Docker socket, `DOCKER_HOST_DATA_DIR` and a `SANDBOX_PROXY_TOKEN`; give the application the same token and `DOCKER_HOST=tcp://<proxy>:2375`; keep the socket out of the application container.
+
+## Checking Stored Data Before an Upgrade
+
+Some releases tighten what stored settings may do, and rows saved under the earlier rules then stop working. With the new release installed and the same environment as the application (`DATABASE_URL`, `DB_CONNECTOR_ALLOWED_HOSTS`, `REDIS_URL`), run:
+
+```bash
+python -m fim_one.web.services.upgrade_check          # readable list
+python -m fim_one.web.services.upgrade_check --json   # for scripts
+```
+
+The check only reads: it runs `SELECT` statements, resolves host names and prints what it found, without credentials, model keys or stored avatar values. It lists:
+
+| Rows | What happens to them | What to do |
+|---|---|---|
+| Database connectors whose host is refused | They cannot connect. | Add the host or network to `DB_CONNECTOR_ALLOWED_HOSTS` and restart, or point the connector elsewhere. The hosts of the application's own database and Redis cannot be allowed. |
+| Agents with a custom model endpoint (`base_url` in their inline model settings, or a selected model configuration of the owner's with its own `base_url`) | A shared one is refused to everyone but its owner; an endpoint without its own key, or on an internal address, is refused to everyone. | The owner selects a model configured under Admin → Models, or adds a key; an administrator who accepts that members' conversations go to such endpoints sets `shared_custom_model_endpoints`. |
+| Accounts whose stored profile picture is neither a built-in avatar nor an uploaded image | No picture is shown. | The user picks a picture again. |
 
 ## Checking Stored Data Before an Upgrade
 

@@ -1,18 +1,18 @@
 ---
-title: "Architecture des connecteurs"
+title: "Connector Architecture"
 icon: "link"
-description: "Comment FIM One connecte les systèmes hérités via l'IA — de Copilot à Hub."
+description: "How FIM One connects existing systems to agents: API connectors, database connectors, and MCP servers."
 ---
 
 ## Copilot vs Hub
 
-L'architecture prend en charge deux échelles d'intégration :
+The architecture supports two integration scales:
 
 ```mermaid
 flowchart TD
     subgraph Copilot["Copilot (embedded)"]
         subgraph Host["Host System (ERP)"]
-            C["FIM One Copilot<br/>(iframe / widget)"]
+            C["FIM One Copilot<br/>(host UI + API)"]
         end
         C --> DB1["DB"]
         C --> API1["API"]
@@ -29,59 +29,60 @@ flowchart TD
     end
 ```
 
-**Copilot** s'intègre dans l'interface utilisateur d'un système hôte. Les utilisateurs interagissent avec l'IA sans quitter leur interface familière. Il peut utiliser plusieurs connecteurs (DB hôte + service de notification, etc.).
+**Copilot** puts the agent inside a host system's UI, today by having the host page call the FIM One API (a drop-in iframe / widget embed is planned). Users interact with AI without leaving their familiar interface. It can use multiple connectors (host DB + notification service, etc.).
 
-**Hub** est un portail autonome qui connecte tous les systèmes. Il n'est intégré dans aucun système unique -- c'est la couche d'intelligence centrale où les systèmes rencontrent l'IA.
+**Hub** is a standalone portal that connects all systems. It's not embedded in any single system -- it's the central intelligence layer where systems meet AI.
 
-Même architecture de connecteur, livraison différente. Un Copilot utilise le même `ConnectorToolAdapter` qu'un Hub.
+Same connector architecture, different delivery. A Copilot uses the same `ConnectorToolAdapter` as a Hub.
 
 ## Principe fondamental
 
 **Le client ne change aucun code.** FIM One s'intègre proactivement dans leurs systèmes -- en lisant leurs bases de données, en appelant leurs API, en poussant vers leur bus de messages. Le client fournit uniquement les identifiants et l'accès réseau.
 
-## Architecture à trois couches
+## Three-Layer Architecture
 
 ```mermaid
 flowchart TB
-    A["<b>FIM One Platform</b><br/>ReAct / DAG / Portal UI<br/><i>Multi-tenant, scheduling, conversation persistence</i>"]
-    B["<b>Connector Governance Layer</b><br/>audit log, auth passthrough, operation classification<br/><i>read_only enforcement, confirmation gate, circuit breaker</i>"]
-    C["<b>MCP Protocol (Transport)</b><br/>stdio / HTTP transport<br/><i>Standard tool description, process isolation</i>"]
-    D["<b>Legacy System</b><br/>DB / API / MQ<br/><i>Client's existing systems</i>"]
+    A["<b>FIM One Platform</b><br/>ReAct / DAG / Portal UI<br/><i>Multi-tenant, conversation persistence</i>"]
+    B["<b>Connector Governance Layer</b><br/>call log, per-user credentials, confirmation gate<br/><i>read-only SQL, column masking, circuit breaker</i>"]
+    C["<b>Integration adapters</b><br/>API connector (HTTP) · Database connector (SQL drivers) · MCP server (stdio / HTTP)"]
+    D["<b>Existing System</b><br/>API / DB<br/><i>Client's existing systems</i>"]
 
     A --> B --> C --> D
 ```
 
-Chaque couche a une responsabilité distincte :
+Each layer has a distinct responsibility:
 
-| Couche | Responsable de | Change quand... |
+| Layer | Owns | Changes when... |
 |---|---|---|
-| **Plateforme** | Orchestration, multi-tenant, UI | De nouvelles fonctionnalités de plateforme sont déployées |
-| **Couche de gouvernance des connecteurs** | Politiques de gouvernance d'entreprise | Les exigences de sécurité/conformité changent |
-| **Protocole MCP** | Transport, standard d'interface d'outils | Jamais (norme ouverte) |
-| **Système hérité** | Données métier et logique | Jamais (c'est tout l'intérêt) |
+| **Platform** | Orchestration, multi-tenant, UI | New platform features ship |
+| **Connector Governance Layer** | Enterprise governance policies | Security/compliance requirements change |
+| **Integration adapters** | Talking to one kind of system | A new protocol or database driver is added |
+| **Existing System** | Business data and logic | Never (that's the whole point) |
 
-## Pourquoi MCP comme couche de transport
+## Three Integration Types
 
-Les adaptateurs sont implémentés en tant que **Serveurs MCP**. Il s'agit d'un choix architectural délibéré :
+In the portal these live under **Integrations**, with one tab each:
 
-- **Réutilisabilité** : FIM One est déjà livré avec un Client MCP (v0.3). L'ajout d'un adaptateur de système hérité réutilise la même infrastructure que l'ajout de n'importe quel outil MCP.
-- **Protocole standard** : MCP est une norme ouverte. Aucun protocole propriétaire à inventer ou maintenir.
-- **Écosystème** : Les serveurs MCP tiers (bases de données, API, outils SaaS) fonctionnent immédiatement.
-- **Isolation des processus** : Chaque serveur MCP s'exécute en tant que processus distinct. Un adaptateur défaillant ne peut pas faire planter la plateforme.
-
-### Ce que MCP seul ne fournit pas
-
-La **couche de gouvernance des connecteurs** ajoute la gouvernance d’entreprise qui fait défaut à MCP brut :
-
-| Préoccupation | MCP | Couche de gouvernance des connecteurs |
+| Type | What it is | Runs as |
 |---|---|---|
-| Application du mode lecture seule | Non | Indicateur `read_only` sur les opérations ; les écritures sont bloquées par défaut |
-| Journalisation d’audit | Non | Chaque appel d’outil est enregistré (horodatage, utilisateur, outil, paramètres, résultat) |
-| Transmission de l’authentification | Non | L’hôte relaie l’authentification du système ; l’agent agit au nom de l’utilisateur connecté |
-| Confirmation | Non | Les opérations d’écriture nécessitent l’approbation d’un humain (`confirmation_required` via SSE) |
-| Disjoncteur | Non | Une défaillance de connexion déclenche un mode dégradé contrôlé |
-| Classification des opérations | Non | Les opérations sont classées comme lecture/écriture/administration, avec des politiques par niveau |
-| Masquage au niveau des colonnes | Non | Les colonnes de base de données marquées comme contenant des données personnelles renvoient un masque à la place de leurs valeurs |
+| **API connector** | A base URL, an auth method (none, bearer, API key, basic) and a list of actions (method, path, parameter schema). Created by hand, by importing an OpenAPI spec, or with the AI builder | `ConnectorToolAdapter`, an in-process HTTP client that injects the caller's credential |
+| **Database connector** | A connection to PostgreSQL, MySQL, DM, KingbaseES or HighGo, with an introspected and annotatable schema | `DatabaseToolAdapter` over the matching driver; SQL is validated and read-only by default |
+| **MCP server** | Any server speaking the Model Context Protocol, over stdio or HTTP | A separate process (stdio) or remote endpoint, adapted into the same `Tool` protocol |
+
+API and database connectors are records in the database. A connector that is created or edited in the portal is picked up by the next chat request; nothing is redeployed or restarted. MCP is the route for third-party tool servers and for adapters that need their own process.
+
+### What the governance layer adds
+
+| Concern | What FIM One does |
+|---|---|
+| Read-only SQL | Database connectors reject anything but `SELECT` unless the owner switches `read_only` off. The SQL is checked first, and on PostgreSQL, KingbaseES, HighGo and MySQL the query then runs in a read-only transaction, so the database itself refuses a write (MySQL's does not cover `CREATE`/`DROP`/`ALTER`, which the check refuses; DM8 has the check only). The check also refuses functions that act outside the query (`dblink*`, `pg_read_*`, `pg_ls_*`, `lo_import`/`lo_export`, `pg_terminate_backend`, `pg_reload_conf`, `pg_sleep*` and the like). It is a list of known names, not a sandbox: the real fence is the database account. Give the connector an account that can only `SELECT` the tables it should see, with no superuser, file or replication rights |
+| Call log | Every connector, database and MCP call is recorded: time, user, where it came from (chat, a delegated agent, a workflow step), the connector or MCP server, the action or tool, status, duration, and whose credential it used |
+| Per-user credentials | Each user stores their own credential; the owner's is used only when the owner allows fallback (see [Sharing and credentials](/architecture/sharing-and-credentials)) |
+| Confirmation gate | Actions marked `requires_confirmation` (or every tool call, when the agent is set to confirm all) pause for human approval, in chat (`awaiting_confirmation` SSE event) or in a Feishu approval card |
+| Circuit breaker | Repeated failures against a connector stop further calls for a cool-down period |
+| Column-level masking | Database columns marked as personal data return a mask instead of their values |
+| Sharing limits | API connectors and MCP servers can be published to an organization or the Market; database connectors cannot, and their SQL tool is offered only to the owner |
 
 ### Masquage des colonnes de base de données
 
@@ -95,13 +96,16 @@ La correspondance se fait par nom de colonne, qui est le seul identifiant transm
 
 L’espace de requêtes du propriétaire n’est pas masqué. Le masquage régit ce qui est transmis à un agent et à la transcription de la conversation, et non ce que la personne ayant configuré la connexion peut inspecter.
 
-### Pourquoi ne pas inventer un protocole personnalisé
+### Values bound into a workflow step's SQL
 
-Le protocole est une commodité. La valeur technique réside dans les adaptateurs eux-mêmes (connaissance du domaine, mappage de schéma, gestion des cas limites) et la couche de gouvernance (audit, authentification, sécurité). Inventer un protocole de transport ajouterait un coût de maintenance sans ajouter de capacité. Stripe utilise HTTPS ; Docker utilise cgroups ; FIM One utilise MCP.
+A `{{variable}}` in the SQL of a workflow database step is sent to the database as a value, never as SQL text. How it is compared is then up to the database:
 
-## Modèle de déploiement
+- **PostgreSQL, KingbaseES, HighGo, DM8**: a parameter of the type the query expects. Text that is not a number fails the step where a number is expected.
+- **MySQL, MariaDB**: every value is sent as text. Compared with a text column it is compared as text. Compared with a numeric column, MySQL converts the text by its own lenient rule: `'5abc'` counts as 5 and text with no leading digits as 0, with a warning and no error, so `WHERE id = {{v}}` with `abc` matches the row whose id is 0. `CAST({{v}} AS SIGNED)` follows the same rule and does not help. If an input must be a number, check it before the query, in a Condition step ahead of the database step; the Start step records the inputs it is given and does not check their type.
 
-Tout s'exécute dans un seul déploiement Docker Compose. Le client n'installe rien.
+## Deployment Model
+
+Everything runs in a single Docker Compose deployment. The client installs nothing.
 
 ```mermaid
 flowchart TD
@@ -113,43 +117,34 @@ flowchart TD
             G["Connector Governance"]
         end
 
-        subgraph MCP1["MCP Server: Finance DB"]
-            M1["SQL queries (read-only)"]
-        end
+        A1["Database connector<br/>SQL queries (read-only)"]
+        A2["API connector<br/>REST calls"]
+        A3["MCP server<br/>third-party tools"]
 
-        subgraph MCP2["MCP Server: OA System"]
-            M2["REST API calls"]
-        end
-
-        subgraph MCP3["MCP Server: Lark"]
-            M3["Webhook notifications"]
-        end
-
-        Core --> MCP1
-        Core --> MCP2
-        Core --> MCP3
+        Core --> A1
+        Core --> A2
+        Core --> A3
     end
 
-    MCP1 --> Oracle["Client's Oracle DB"]
-    MCP2 --> Seeyon["Client's Seeyon OA"]
-    MCP3 --> Lark["Lark API"]
+    A1 --> PG["Client's finance database"]
+    A2 --> Seeyon["Client's Seeyon OA"]
+    A3 --> Ext["External tool service"]
 ```
 
 <Note>
-Tous fournis par FIM One. Le client fournit uniquement :
-- Les identifiants de base de données (compte en lecture seule recommandé)
-- Les points de terminaison API et les clés (si disponibles)
-- L'accès à la liste blanche du réseau
+All provided by FIM One. Client provides only:
+- Database credentials (read-only account recommended)
+- API endpoints and keys (if available)
+- Network whitelist access
 </Note>
 
-**Hiérarchie d'accès** : FIM One s'adapte à l'accès que le client peut fournir :
+**Access hierarchy**: FIM One adapts to whatever access the client can provide:
 
-| Ce que le client a | Comment FIM One se connecte |
+| What client has | How FIM One connects |
 |---|---|
-| API avec documentation | Adaptateur HTTP API (meilleur cas) |
-| API sans documentation | Adaptateur HTTP API + mappage de schéma manuel |
-| Accès à la base de données uniquement | Adaptateur de base de données (SQL direct, lecture seule par défaut) |
-| Base de données + bus de messages | Adaptateur de base de données + adaptateur de push de messages |
+| API with an OpenAPI spec | API connector, actions imported from the spec (best case) |
+| API without documentation | API connector with actions defined by hand or with the AI builder |
+| Database access only | Database connector (direct SQL, read-only by default) |
 
 ## Découplage Agent-Connecteur
 
@@ -180,19 +175,21 @@ Cela signifie :
 - **Supprimer** un connecteur = supprimer la configuration. Aucune modification de code.
 - Le même agent peut utiliser des outils intégrés et des connecteurs dans une seule tâche.
 
-## Évolution du Hot-Plug
+## Adding a Connector
 
-| Version | Comment ajouter un nouveau connecteur | Redémarrage requis ? |
+No code and no restart are involved. A connector is created in the portal in one of three ways:
+
+| Way | What you provide | Who does it |
 |---|---|---|
-| **v0.6** | Écrire un serveur MCP Python avec couche de gouvernance des connecteurs, ajouter à docker-compose | Redéploiement |
-| **v0.8** | Écrire une config YAML/JSON, la plateforme génère le serveur MCP | Redémarrage |
-| **v1.0** | Télécharger une spécification OpenAPI, l'IA génère la config automatiquement | **Pas de redémarrage (hot-plug)** |
+| **Import an OpenAPI spec** | A YAML / JSON spec or its URL; actions are generated from it | Implementation engineer |
+| **AI builder** | A description of the API in natural language; the builder writes and tests the actions | Implementation engineer, with review |
+| **Manual** | Base URL, auth method, and each action's method, path and parameters | Implementation engineer |
 
-Les déploiements d'entreprise sont « implémenter une fois, exécuter pendant des mois » -- le hot-plug est une commodité de v1.0, pas une exigence de v0.6.
+Database connectors take connection details instead and introspect the schema. Systems that need custom code are wrapped as an MCP server and added under the MCP tab.
 
-## Exemple de flux de données
+## Data Flow Example
 
-Utilisateur : « Vérifier tous les contrats en retard du système financier et envoyer un résumé à Lark. »
+User: "Check all overdue contracts from the finance system and push a summary to Lark."
 
 ```
 1. User sends message via Portal / API
@@ -200,34 +197,25 @@ Utilisateur : « Vérifier tous les contrats en retard du système financier et 
 2. FIM One (ReAct mode):
    Think: I need to query the finance DB for overdue contracts, then push to Lark.
 
-3. Act: contract_query(status="overdue", days_past_due=">30")
-   → Connector Governance: audit log, read_only check (pass)
-   → MCP Server: translates to SQL
-   → Client DB: SELECT * FROM contracts WHERE status='overdue' AND ...
+3. Act: database("query", "finance_db", sql="SELECT ... FROM contracts WHERE status='overdue' AND ...")
+   → Connector Governance: SQL validated as read-only, call logged
+   → Database connector: runs the query on the client DB
    ← Returns 7 overdue contracts
 
 4. Think: Found 7 overdue contracts. I'll summarize and push.
 
 5. Act: lark_push(message="7 overdue contracts found: ...")
-   → Connector Governance: audit log, write operation → confirmation gate
+   → Connector Governance: call logged, action requires confirmation → confirmation gate
    → User approves via Portal
-   → MCP Server: POST to Lark webhook
+   → API connector: POST to Lark webhook
    ← Push successful
 
 6. Answer: "Found 7 overdue contracts. Summary pushed to Lark group."
 ```
 
-## Niveaux de standardisation des connecteurs
+## Relationship to Existing MCP Ecosystem
 
-| Niveau | Version | Approche | Qui le construit |
-|---|---|---|---|
-| **Niveau 1** | v0.6 | Serveur MCP Python avec gouvernance des connecteurs | Développeur FIM One |
-| **Niveau 2** | v0.8 | Configuration YAML/JSON, génération automatique du serveur MCP par la plateforme | Ingénieur d'implémentation (aucune connaissance Python requise) |
-| **Niveau 3** | v1.0 | Télécharger la spécification OpenAPI/Swagger, l'IA génère la configuration | IA (avec révision humaine) |
-
-## Relation avec l'écosystème MCP existant
-
-Le Client MCP de FIM One (livré en v0.3) supporte déjà les serveurs MCP tiers. Les adaptateurs de systèmes hérités sont simplement des **serveurs MCP spécifiques au domaine** construits avec la couche de gouvernance des connecteurs pour la gouvernance d'entreprise.
+FIM One's MCP client supports third-party MCP servers alongside its own API and database connectors. All three end up in the same `ToolRegistry`, so the agent treats them alike.
 
 ```mermaid
 flowchart TB
@@ -238,10 +226,10 @@ flowchart TB
         M4["any community MCP server"]
     end
 
-    subgraph CG["Connector Governance (FIM One)"]
-        C1["read_only enforcement"]
-        C2["audit logging"]
-        C3["auth passthrough"]
+    subgraph CG["API and database connectors (FIM One)"]
+        C1["read-only SQL"]
+        C2["call log"]
+        C3["per-user credentials"]
         C4["confirmation gate"]
     end
 
@@ -250,4 +238,4 @@ flowchart TB
     TR --> Agent["Agent sees all as tools"]
 ```
 
-La couche de gouvernance des connecteurs ne remplace pas MCP -- elle étend MCP avec la couche de gouvernance que l'intégration des systèmes hérités d'entreprise nécessite.
+Connectors do not replace MCP. They cover the common cases (a REST API, a SQL database) with governance built in; MCP covers everything that ships as a tool server. MCP servers carry per-user credentials and the same fallback switch as connectors.

@@ -16,42 +16,42 @@ AIエージェントの風景は2つのキャンプに分かれ、どちらも�
 
 今日、LLM タスク分解の精度は、非自明な目標に対して約70-80%である。それが90%以上に達すると、動的計画の「スイートスポット」は劇的に拡大する -- 昨日は複雑すぎた問題が明日は扱いやすくなる。FIM OneのDAGフレームワークは、配管を書き直すことなく、その拡大する価値をキャプチャするように設計されている。
 
-## ReActとDAGプランニングは廃止されるのか？
+## Will ReAct and DAG planning become obsolete?
 
-ReActは消えることはありません——モデルの中に沈み込むのです。類似例を考えてみてください。TCP ハンドシェイクを手書きすることはありませんが、TCP が消えたわけではなく、オペレーティングシステムに吸収されたのです。モデルが十分に強力になると、思考-行動-観察ループはフレームワークコードの外部ハーネスではなく、モデル内の暗黙的な動作になります。これはすでに起きています。Claude Code は本質的には ReAct エージェントですが、ループはモデル自体によって駆動され、外部ハーネスではなく、モデル自体によって駆動されています。
+ReAct will not disappear -- it will sink into the model. Consider the analogy: you do not hand-write TCP handshakes, but TCP did not go away; it got absorbed into the operating system. When models are strong enough, the think-act-observe loop becomes implicit behavior inside the model, not explicit framework code. This is already happening: Claude Code is essentially a ReAct agent where the loop is driven by the model itself, not by an external harness.
 
-DAG プランニングの永続的な価値は「低能力モデルがタスクを分解するのを支援する」ことではなく、**並行スケジューリング**です。無限に有能なモデルがあっても、物理法則はレイテンシを課します。10 個の LLM 呼び出しの直列チェーンは、3 つの並列ウェーブの 10 倍の時間がかかります。DAG はエンジニアリング問題（物事を高速かつ確実に実行する方法）であり、インテリジェンス問題（何を実行するかを決定する方法）ではありません。リトライロジック、コスト制御、タイムアウト管理、可観測性——これらはモデルがより賢くなっても消えません。
+DAG planning's lasting value is not "helping dumb models decompose tasks" -- it is **concurrent scheduling**. Even with infinitely capable models, physics imposes latency: a serial chain of 10 LLM calls takes 10x longer than 3 parallel waves. DAG is an engineering problem (how to run things fast and reliably), not an intelligence problem (how to decide what to run). Retry logic, cost control, timeout management, observability -- these do not go away when models get smarter.
 
-最終形態：**モデルが「何を」を所有し（プランニングインテリジェンスはモデルに内在化）、フレームワークが「どのように」を所有する（並行処理、リトライ、監視、コスト統治）**。フレームワークの永続的な価値はインテリジェンスではなく、統治です。
+The endgame: **models own the "what" (planning intelligence internalizes into the model), frameworks own the "how" (concurrency, retry, monitoring, cost governance)**. A framework's lasting value is not intelligence -- it is governance.
 
-これは FIM One の残りの部分が下流にある文です。モデルが「何を」を所有すると、耐久的な価値は「どのように」を統治することに移動します——そして、あらゆるエンタープライズにおける最高価値の「どのように」は、互いに通信を拒否するシステムへの*到達*です。コネクタハブはここから 1 つの推論ステップです。歴史がそれを示しています。プロジェクトは DAG オーケストレーションフレームワーク（`fim-agent`）として始まり、1 週間以内にコネクタプラットフォームになりました——書き直しを通じてではなく、この賭けがすでにそれを必要としていたからです。
+This is the sentence the rest of FIM One is downstream of. Once the model owns the "what," durable value moves to governing the "how" -- and the highest-value "how" in any enterprise is *reach* into the systems that refuse to talk to each other. The integration layer is one inferential step from here, and the history shows it: the project began as a DAG orchestration framework (`fim-agent`) and became a connector platform within a single week -- not through a rewrite, but because this bet already required it.
 
-## Difyのワークフローエディタをミラーリングしない理由
+## Why not mirror Dify's workflow editor
 
-自然な質問：DAGが柔軟なケースをカバーするなら、決定論的なケースのために静的ワークフローエディタも構築すべきではないか？
+A natural question: if DAG covers the flexible case, shouldn't we also build a static workflow editor for the deterministic case?
 
-いいえ。その理由は：
+Not as the core. FIM One does ship a visual Workflow editor (9 node types, cron and API triggers), but as an optional module that is off by default. The reasoning for keeping it secondary:
 
-1. **ワークフローは既に他の場所に存在する。** 政府および企業クライアントの固定プロセスは、彼らのOA、ERP、およびレガシーシステムに存在する。彼らはそれらのフローを別のプラットフォームで再構築したくない——彼らが求めるのは、それらのフローが既に実行されているシステムに接続できるAIである。Connector Platform（v0.6）がこれを直接解決する。
+1. **The workflows already exist elsewhere.** Government and enterprise clients' fixed processes live in their OA, ERP, and legacy systems. They don't want to rebuild those flows in yet another platform -- they want AI that can connect to the systems where those flows already run. The Connector Platform (v0.6) solves this directly.
 
-2. **既存の機能が固定パイプラインに組み合わさる。** Scheduled Jobs（v1.0）が固定プロンプトでDAGエージェントをトリガーし、DAGが動的にステップを計画し、Connectors（v0.6）がターゲットシステムに接続する。この組み合わせは静的パイプラインと同等だが、より柔軟である。なぜなら、LLMが遭遇するデータに基づいて計画を調整できるからだ。別のパイプラインDSLは必要ない。
+2. **Existing capabilities compose into fixed pipelines.** Scheduled Jobs (v1.0) trigger a DAG agent with a fixed prompt; the DAG dynamically plans the steps; Connectors (v0.6) connect to the target systems. The combination is equivalent to a static pipeline -- but more flexible, because the LLM can adjust its plan based on the data it encounters. No separate pipeline DSL needed.
 
-3. **投資の不一致。** 本番品質のビジュアルワークフローエディタ（キャンバス、ノードタイプ、変数の受け渡し、デバッグ/リプレイ）は、数ヶ月の専任努力が必要である。その結果は、Difyの120K星のコミュニティが既に保守している低忠実度のコピーになるだろう。その努力は、Connector アーキテクチャに費やす方が良い——競合他社が提供していない機能である。
+3. **Investment mismatch.** A production-quality visual workflow editor (canvas, node types, variable passing, debug/replay) is months of dedicated effort. The result would be a low-fidelity copy of what Dify's 120K-star community already maintains. That effort is better spent on the Connector architecture -- a capability no competitor offers.
 
-戦略的な賭け：**ワークフロー可視化で競争しない。システムがAIと出会うエージェントプラットフォームであることで競争する。** Difyに「AIワークフローを視覚的に構築する」を任せる。FIM Oneは「グローバル×中国企業向けのオールインワンエージェントプラットフォーム」を所有する。
+The strategic bet: **don't compete on workflow visualization; compete on being the agent platform where systems meet AI**. Let Dify own "build AI workflows visually." FIM One owns "the all-in-one agent platform for Global × China enterprises."
 
-## FIM Oneの立場
+## Where FIM One stands
 
-FIM Oneは「AGIタスクスケジューラー」ではなく、静的なワークフローエンジンでもありません。中間領域を占めています：制約のある計画機能、可観測性を備わった並行処理。
+FIM One is not an "AGI task scheduler" and not primarily a static workflow engine. It occupies the middle ground: planning capability with constraints, concurrency with observability.
 
-- **Dify**と比較して：より柔軟性が高い -- 実行時DAG生成対設計時フローチャート。すべての実行パスを事前に予測する必要がありません。ビジュアルワークフロー編集では競争しません。レガシーシステム統合で競争します。
-- **AutoGPT**と比較して：より制御可能 -- 制限された反復、再計画制限、ロードマップ上の人間参加。ガードレール内での自律性。
+- Compared to **Dify**: more flexible -- runtime DAG generation vs. design-time flowcharts. You do not need to anticipate every execution path in advance. Does not compete on visual workflow editing; competes on legacy system integration.
+- Compared to **AutoGPT**: more controlled -- bounded iterations, re-planning limits, with human confirmation gates. Autonomy within guardrails.
 
-戦略は単純です：オーケストレーションフレームワークを今構築し、改善されたモデルが時間とともにそれに機能を満たすようにします。
+The strategy is straightforward: build the orchestration framework now, and let improving models fill it with capability over time.
 
-## FIM Oneの位置付け：計画 × 実行のスペクトラム
+## Where FIM One Sits: Planning x Execution Spectrum
 
-AIによる実行の領域は、2つの軸でマッピングできます。計画の作成方法（静的か動的か）と、計画の実行方法（固定的か適応的か）です。
+The AI execution landscape can be mapped on two axes -- how plans are created (static vs dynamic) and how they are executed (rigid vs adaptive):
 
 ```mermaid
 quadrantChart
@@ -75,30 +75,30 @@ quadrantChart
     classDef highlight color: #0066FF, radius: 12, stroke-color: #0052CC, stroke-width: 2px
 ```
 
-**Dify/n8nが静的計画 + 静的実行である理由**：DAGは設計時に、人間がビジュアルキャンバス上で描画します。各ノードは、固定プロンプトによるLLM呼び出し、HTTPリクエスト、コードブロックなど、固定された処理を実行します。実行時の再計画はありません。ステップが失敗するとワークフロー全体が失敗するか、あらかじめ配線されたエラーブランチに従います。これは、グラフ内のノードがAIになっているだけで、構造的にはBPMと同じです。
+**Why Dify/n8n are Static Planning + Static Execution**: The DAG is drawn by a human on a visual canvas at design time. Each node executes a fixed operation (an LLM call with a fixed prompt, an HTTP request, a code block). There is no runtime replanning -- if a step fails, the workflow fails or follows a pre-wired error branch. This is structurally the same as BPM, just with AI nodes in the graph.
 
-**FIM Oneの位置付け：動的計画 + 動的実行**
+**FIM One's position: Dynamic Planning + Dynamic Execution**
 
-- **DAGのトポロジーは実行時にLLMによって生成される**（動的計画）— 人間がグラフを設計する必要はありません
-- **各DAGノードは完全なReActループを実行する**（動的実行）— ノードは推論し、ツールを使用し、適応します
-- **再計画メカニズム**（実行 → 分析 → 未達成の場合は再計画）
-- ただし、最大3回の再計画ラウンド、tokenバジェット、人間による確認ゲートによって制限されています
+- **DAG topology is generated by LLM at runtime** (dynamic planning) -- no human designs the graph
+- **Each DAG node runs a full ReAct loop** (dynamic execution) -- nodes reason, use tools, and adapt
+- **Re-planning mechanism** (execute → analyze → re-plan if unsatisfied)
+- But bounded: max 3 rounds in total (the first plan plus 2 re-plans), token budgets, human confirmation gates
 
-これにより、FIM OneはAutoGPTと同じ象限に位置付けられますが、暴走を防ぐためのエンジニアリング上の制約を備えています。BPM/Difyより柔軟で、AutoGPTより制御されています。
+This places FIM One in the same quadrant as AutoGPT, but with engineering constraints that prevent runaway behavior. More flexible than BPM/Dify, more controlled than AutoGPT.
 
-## 概念用語集
+## Concept Glossary
 
-このドキュメントで使用される用語に不慣れな読者向け:
+For readers unfamiliar with the terminology used in this document:
 
-| 用語 | 1行説明 | FIM One との関係 |
+| Term | One-line explanation | Relation to FIM One |
 |------|---------------------|----------------------|
-| **BPM** (Business Process Management) | 設計時に完全に固定されたプロセスを厳密に実行。Camunda、Activiti。 | FIM One は **BPM ではない**。固定プロセスエンジンなし。 |
-| **FSM** (Finite State Machine) | システムは常に正確に 1 つの状態にあり、イベントが遷移をトリガー。ループをサポート (却下 → 再送信)。 | ターゲットシステム (ERP、契約システム) は内部で FSM を使用。FIM One は **独自の FSM が不要** -- ターゲットシステムの API を呼び出す。 |
-| **ACM** (Adaptive Case Management) | スケルトンは静的、ブランチは動的。メインフローは事前定義、各ノードは実行時に適応。 | FIM One の DAG + ReAct は自然にこの象限に該当。 |
-| **HTN** (Hierarchical Task Network) | 再帰的タスク分解: 高レベル → サブタスク → アトミック操作。 | DAG 再計画はほとんどのシナリオをカバー; 完全な HTN はまだ不要。 |
-| **iPaaS** (Integration Platform as a Service) | 複数の SaaS/オンプレミスシステムを接続するクラウド統合プラットフォーム。MuleSoft、Zapier。 | FIM One の Hub Mode は **AI ネイティブ iPaaS** のようなもの -- 自然言語がシステム間統合を駆動。 |
-| **MDM** (Master Data Management) | システム全体のエンティティレコードを重複排除して統合し、「ゴールデンレコード」を作成。Reltio、Informatica、Tamr。 | FIM One は **MDM システムに接続**; エンティティ解決は複製しない。 |
-| **Context Layer / System of Context** | AI エージェントに信頼できるビジネスコンテキストを提供する統合エンティティ + 関係グラフ。用語は Reltio (2026) により普及。 | FIM One はこれをアップストリーム MDM/データプラットフォームに委譲。スキルは一般的なケースの軽量集約を提供。 |
+| **BPM** (Business Process Management) | Processes fully fixed at design time, executed rigidly. Camunda, Activiti. | FIM One is **not** BPM. Fixed processes are covered by the optional Workflow module, not the core. |
+| **FSM** (Finite State Machine) | System is in exactly one state at any time; events trigger transitions. Supports loops (reject → resubmit). | Target systems (ERP, contract systems) use FSM internally. FIM One **doesn't need** its own FSM -- it calls the target system's API. |
+| **ACM** (Adaptive Case Management) | Skeleton static, branches dynamic. Main flow pre-defined, each node adapts at runtime. | FIM One's DAG + ReAct naturally falls in this quadrant. |
+| **HTN** (Hierarchical Task Network) | Recursive task decomposition: high-level → subtasks → atomic operations. | DAG re-planning covers most scenarios; full HTN not needed yet. |
+| **iPaaS** (Integration Platform as a Service) | Cloud integration platform connecting multiple SaaS/on-prem systems. MuleSoft, Zapier. | FIM One's integration layer is like **AI-native iPaaS** -- natural language drives cross-system integration. |
+| **MDM** (Master Data Management) | Deduplicates and unifies entity records across systems into a "golden record." Reltio, Informatica, Tamr. | FIM One **connects to** MDM systems; it does not replicate entity resolution. |
+| **Context Layer / System of Context** | Unified entity + relationship graph that gives AI agents trusted business context. Term popularized by Reltio (2026). | FIM One delegates this to upstream MDM/data platforms. Skills provide lightweight aggregation for common cases. |
 
 ## アーキテクチャ境界: FIM One はワークフロー ロジックを複製しない
 
@@ -242,21 +242,21 @@ FIM Oneとコンテキストレイヤーの関係は、SQLAlchemyとデータベ
 
 ## FIM One が AI スタックのどこに位置するか
 
-### レイヤード モデル
+### The Layered Model
 
-有用なメンタルモデル（クレジット [Phil Schmid](https://www.philschmid.de/)）は、AI システムをコンピューティング ハードウェアに類似した 4 層スタックにマッピングします：
+A useful mental model (credit [Phil Schmid](https://www.philschmid.de/)) maps AI systems to a four-layer stack analogous to computing hardware:
 
-| レイヤー | アナロジー | FIM One コンポーネント |
+| Layer | Analogy | FIM One Component |
 |-------|---------|-------------------|
 | **Model** | CPU | ModelRegistry -- any OpenAI-compatible LLM |
 | **Context** | RAM | ContextGuard + Memory (Window / Summary / DB) |
 | **Harness** | Operating System | ReAct Agent + DAG Planner + Hooks + ToolRegistry |
-| **Application** | App | Portal, Copilot, Hub API |
+| **Application** | App | Portal, API |
 
-FIM One は **harness レイヤー** で動作します。モデルと競合するのではなく、適切なツール、制約、フィードバック ループを提供することで、モデルを生産的にします。モデルはインテリジェンスを供給し、ハーネスはガバナンス、並行処理、および信頼性を供給します。
+FIM One operates at the **harness layer** -- it does not compete with models; it makes them productive by providing the right tools, constraints, and feedback loops. The model supplies intelligence; the harness supplies governance, concurrency, and reliability.
 
-### AIエンジニアリングの3つの時代
+### Three Eras of AI Engineering
 
-この分野は、明確に異なる段階を経て進化してきました。**プロンプトエンジニアリング** は、固定されたモデルから正しい動作を引き出すための、より優れた指示の作成に重点を置いていました。**コンテキストエンジニアリング** では、適切な情報を組み立てることに重点が移りました。ドキュメントの検索、ツールの実行結果の注入、メモリの管理などを行い、モデルが適切に推論するために必要な情報を揃えます。**ハーネスエンジニアリング** はさらに進み、決定論的なガードレール、ツールのオーケストレーション、フィードバックループ、コスト管理など、モデルを取り巻く実行環境全体を設計します。
+The discipline has evolved through distinct phases: **Prompt Engineering** focused on crafting better instructions to elicit correct behavior from a fixed model. **Context Engineering** shifted attention to assembling the right information -- retrieving documents, injecting tool results, managing memory -- so the model has what it needs to reason well. **Harness Engineering** goes further: designing the full execution environment around the model, including deterministic guardrails, tool orchestration, feedback loops, and cost controls.
 
-FIM Oneのアーキテクチャは、ハーネスエンジニアリングの原則を体現しています。[フックシステム](/architecture/hook-system)は、明確に定義されたライフサイクル上のタイミングで、LLMループの外部にあるプラットフォームコードを実行します。現在は `FeishuGateHook` が機密性の高いツール呼び出しをインターセプトし、IMチャネル経由で承認を行います。同じ抽象化を、監査ログ、読み取り専用モードの適用、レート制限、結果の切り詰めにも利用できます。これらが必要になった場合に備えた拡張性があります。ContextGuardは、コンテキストウィンドウに何をいつ入れるかを管理します。動的なツール選択（段階的開示を行うメタツール）により、コネクタ数が増えても扱いやすいツール群を維持できます。ReActループの自己内省メカニズムとDAGプランナーの再計画サイクルは、より高性能なモデルを必要とせずに実行品質を高める、構造化されたフィードバックを提供します。
+FIM One's architecture embodies harness engineering principles. The [Hook System](/architecture/hook-system) runs platform code outside the LLM loop at well-defined lifecycle points — today `ApprovalGateHook` intercepts sensitive tool calls and routes approval to an in-portal card or an IM channel, and the same abstraction can carry audit logging, read-only-mode enforcement, rate limits, and result truncation if those are ever needed. ContextGuard manages what enters the context window and when. Dynamic tool selection (progressive-disclosure meta-tools) keeps the tool surface tractable as connector count grows. The ReAct loop's self-reflection mechanism and the DAG planner's re-plan cycle provide structured feedback that improves execution quality without requiring a more capable model.

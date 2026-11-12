@@ -1,12 +1,12 @@
 ---
-title: "飞书（Lark）频道"
+title: "Feishu (Lark) Channel"
 icon: "comment-dots"
-description: "将 FIM One 连接到飞书应用，用于出站消息、入站回复和交互式审批卡片。"
+description: "Wire FIM One to a Feishu app for outbound messages and interactive approval cards."
 ---
 
-飞书频道为一个组织中的智能体提供了一条进入飞书群组的单一热线：出站通知、入站回复和交互式的批准/拒绝卡片（通过 `feishu_gate` hook）。
+A Feishu Channel gives agents in one org a single hotline into a Feishu group: outbound notifications and interactive Approve / Reject cards (via the `approval_gate` hook).
 
-本指南介绍了端到端的设置过程。它假设 FIM One 可以在稳定的 HTTPS 源上访问——称之为 `API_BASE_URL`（例如 `https://one.yourdomain.com`）。
+This guide walks through the end-to-end setup. It assumes FIM One is reachable at a stable HTTPS origin — call this `API_BASE_URL` (e.g. `https://one.yourdomain.com`).
 
 ## 1. Feishuアプリを作成する
 
@@ -30,38 +30,37 @@ App Secretはパスワードのように扱ってください。FIM Oneは保存
 | `im:chat:readonly` | グループ検出の最小読み取りアクセス |
 | `im:resource` | （オプション）カードに表示される画像 / ファイルをアップロード |
 
-## 3. イベントサブスクリプションを有効にする（Request URLは今のところ空白のままにしておく）
+## 3. Enable event subscriptions (leave the Request URL blank for now)
 
-**Event Subscriptions**を開きますが、**Request URLはまだ入力しないでください** — ステップ5でFIM Oneから取得します。
+Open **Event Subscriptions**, but **don't fill in the Request URL yet** — you get it from FIM One in step 5.
 
-以下のイベントをサブスクライブします：
+Subscribe the following events:
 
-- `im.message.receive_v1` — ユーザーからのインバウンドメッセージ
-- `card.action.trigger` — 承認/却下ボタンのクリック
+- `card.action.trigger` — Approve / Reject button clicks
 
-同じページで、オプションとして**Verification Token**と**Encrypt Key**を設定できます。FIM Oneは両方のモードをサポートしており、提供されたものを使用します。
+Under the same page, set an **Encrypt Key** (required: FIM One rejects a Feishu channel without one, and uses it to verify and decrypt callbacks) and optionally a **Verification Token**.
 
-## 4. FIM One でチャネルを追加する
+## 4. Add the Channel in FIM One
 
-1. **組織オーナー**または**管理者**としてサインインします。
-2. **Organization Settings → Channels → New Channel** に移動します。
-3. タイプとして **Feishu** を選択し、以下を入力します：
+1. Sign in as an **Org Owner** or **Admin**.
+2. Go to **Organization Settings → Channels → New Channel**.
+3. Pick **Feishu** as the type, then fill in:
 
-   | フィールド | ソース |
+   | Field | Source |
    |---|---|
-   | **Name** | 任意の内部ラベル（例：`Ops team Feishu`） |
-   | **App ID** | ステップ 1 から（`cli_xxxxxxxxxxxxxxxx`） |
-   | **App Secret** | ステップ 1 から |
-   | **Verification Token** | （オプション）ステップ 3 から |
-   | **Encrypt Key** | （オプション）ステップ 3 から |
+   | **Name** | Any internal label (e.g. `Ops team Feishu`) |
+   | **App ID** | From step 1 (`cli_xxxxxxxxxxxxxxxx`) |
+   | **App Secret** | From step 1 |
+   | **Verification Token** | (Optional) From step 3 |
+   | **Encrypt Key** | Required. From step 3 |
 
-4. **Browse chats** をクリックします — FIM One はあなたの認証情報を使用して Feishu を呼び出し、ボットが現在メンバーであるすべてのグループをリストアップします。
+4. Click **Browse chats** — FIM One calls Feishu with your credentials and lists every group the bot is currently a member of.
 
 <Tip>
-リストが空の場合、ボットはまだどのグループにも追加されていません。Feishu を開き、ボットをターゲットグループに追加してから、ピッカーを再度開いてください。
+If the list is empty, the bot hasn't been added to any group yet. Open Feishu, add the bot to the target group, then reopen the picker.
 </Tip>
 
-5. ルーティング先のグループチャットを選択し、**Save** をクリックします。
+5. Pick the group chat you want to route to, click **Save**.
 
 ## 5. Feishuでコールバック URLを登録する
 
@@ -83,15 +82,15 @@ FIM One チャネル詳細パネルに戻り、**Send test message** をクリ�
 - **Silent failure** — ボットが実際にグループに参加していることを確認し（ステップ4のピッカー）、チャネル行の `is_active` が true であることを確認します。
 - **Verification fails on step 5** — `API_BASE_URL` が HTTPS であり、公開でアクセス可能であることを確認します。Feishu は非 HTTPS リクエスト URL を拒否します。
 
-## 7. 智能体の配線（オプション — 承認）
+## 7. Wire up an agent (optional — approvals)
 
-ツール呼び出しをグループ承認の背後に置くには：
+To gate tool calls behind group approval:
 
-1. ツール / コネクタアクション上で、**Requires confirmation** をオンにします。
-2. 智能体上で、**Hooks → Class hooks** の下に `feishu_gate` を追加します。
-3. 智能体の組織が正確に1つの**アクティブな** Feishuチャネルを持つことを確認します — フックは自動的にそこにルーティングされます。
+1. On the tool / connector action, flip **Requires confirmation** on.
+2. In the agent editor's **Approval** section, pick this channel as the **Approval channel** and set the mode to **Auto** or **Channel only**. The gate is attached to every agent automatically; no hook configuration is needed.
+3. Set the **Approver scope** (initiator, agent owner, or any org member). Approvers must have linked their Feishu account to their FIM One user, otherwise their click is ignored.
 
-智能体がゲートされたツールを実行しようとすると、インタラクティブカードがグループに投稿され、**Approve** / **Reject** が表示されます。ツールは待機し（SSEストリームが一時停止）、メンバーがタップするまで待ちます。判定がストリームバックされ、智能体は完了するか中止します。
+When the agent tries to run a gated tool, an interactive card posts to the group with **Approve** / **Reject**. The tool waits (SSE stream pauses) until a permitted approver taps one; the verdict streams back and the agent either completes or aborts.
 
 ## トラブルシューティング
 
@@ -138,6 +137,6 @@ Feishuクライアントで**承認**または**却下**をクリックすると
 
 webhookは最初の決定時に置き換えカードを返すようになりました — ボタンが削除され、カードヘッダーが緑色（承認）または赤色（却下）に切り替わります。最初のクリック後もクリック可能なボタンが表示される場合は、Feishuクライアントがキャッシュされたコピーを表示している可能性があります。チャットを再度開くと、決定されたカードが正しくレンダリングされます。
 
-### 1つの組織、2つのFeishuチャネル
+### One org, two Feishu channels
 
-`feishu_gate` は最初に見つかった**アクティブな**チャネルを選択します。同じ組織内に複数のFeishuエンドポイントが必要な場合（例：ステージング対本番グループ）、1つを除くすべてを無効にするか、エージェントタグで選択するカスタムフックを作成してください。
+An approval goes to the channel chosen as the agent's **Approval channel**, and to no other. Several Feishu channels in one org (staging and production groups, say) coexist; bind each agent to the one it should use. A click counts only on the channel that delivered the card.

@@ -10,14 +10,14 @@ FIM One は、インスタンスアクセスモデルの背後に完全な Strip
 ソフトウェアのデフォルトは **No subscriptions**（`access_model = off`、`default_token_quota = 0` は無制限を意味します）です。新規インストールと既存のセルフホストはここから始まります。管理者が Stripe の設定を選択するまで、請求 UI は表示されません。
 </Note>
 
-## 何が得られるか
+## What you get
 
-- **3つのアクセスポスチャー**: サブスクリプションなし、含まれている + 有料、または有料のみ
-- **Stripe ホストチェックアウト** — ユーザーはアップグレード時にカード情報があなたのコードに触れることなく完了
-- **カスタマーポータル** — ユーザーは支払い方法の更新、請求書のダウンロード、キャンセルをすべて Stripe の UI で実行
-- **Webhook 駆動ライフサイクル** — サブスクリプションは自動的にプロビジョニングおよび更新され、キャンセルされた有料ユーザーは期間終了時に含まれているティアに戻るか（または有料のみの場合は権利がなくなる）
-- **クォータ強制** — トークン使用量は期間ごとに追跡され、ストリーム中のカットオフと構造化されたアップグレードプロンプト
-- **管理ページ** — プラン CRUD とサブスクリプション監視用
+- **Three access postures**: no subscriptions, included + paid, or paid only
+- **Stripe-hosted Checkout** — users upgrade without your code ever touching card data
+- **Customer Portal** — users update payment methods, download invoices, cancel — all on Stripe's UI
+- **Webhook-driven lifecycle** — subscriptions provision and renew automatically; canceled paid users return to the included tier (or become unentitled in paid-only) at period end
+- **Quota enforcement** — token usage recorded in an append-only ledger and summed per period; mid-stream cutoff with a structured upgrade prompt
+- **Admin pages** for plan CRUD and subscription monitoring
 
 ## 前提条件
 
@@ -147,29 +147,45 @@ Admin → System Settings → Billing で **Enable Stripe Billing** スイッチ
 
 これは、ユーザーが消費できる内容、カウンターがリセットされるタイミング、および解決チェーンがどのように構成されるかを決定するすべての数値ルールの信頼できるリファレンスです。価格設定の変更、クォータの調整、使用状況ダッシュボードの構築、またはv2/v3作業の計画を行う前に、これをお読みください。まだ出荷されていない将来のルールは、予約されたスロットに記載されているため、貢献者は新しいロジックがどこに組み込まれるかを知ることができます。
 
-### 用語集
+### Glossary
 
-| 変数 | ストレージ | セマンティクス | 範囲 |
+| Variable | Storage | Semantics | Range |
 |---|---|---|---|
-| `users.token_quota` | ユーザーごと（オーバーライド） | 3状態オーバーライド。以下のセマンティクスを参照 | `NULL`、`0`、または正の整数 |
-| `users.tokens_used_this_period` | ユーザーごと（カウンター） | 最後のリセット以降の累積トークン | 非負の整数 |
-| `users.quota_reset_at` | ユーザーごと（アンカー） | 有料ユーザーの `Subscription.current_period_end` をミラーリング | タイムスタンプ |
-| `users.plan_id` | ユーザーごと（FK） | アクティブなプラン | FK `billing_plans.id` |
-| `billing_plans.monthly_token_quota` | プランごと | このプランのユーザーのハードキャップ | 非負の整数 |
-| `system_settings.default_token_quota` | シングルトン | プランが適用されない場合の防御的フォールバック | 非負の整数 |
-| `system_settings.default_plan_id` | シングルトン | 新規/未割り当てユーザーの無料プランポインター | FK または `NULL` |
-| `system_settings.billing_enabled` | シングルトン | マスタースイッチ——チェーンのステップ2をゲート | ブール値 |
+| `users.token_quota` | per-user (override) | Three-state override; see semantics below | `NULL`, `0`, or positive int |
+| `usage_ledger` | one row per turn, run or request and model | What was consumed, by whom. Append-only; "used" is the sum of a user's rows since their window began | rows are never updated or deleted |
+| `users.tokens_used_this_period` | per-user | Legacy column. Nothing adds to it and nothing reads it; "used" comes from `usage_ledger` | — |
+| `users.quota_reset_at` | per-user (anchor) | Mirrors `Subscription.current_period_end` for paid users | timestamp |
+| `users.plan_id` | per-user (FK) | Active plan | FK `billing_plans.id` |
+| `billing_plans.monthly_token_quota` | per-plan | Hard cap for users on this plan | non-negative int |
+| `system_settings.default_token_quota` | singleton | Defensive fallback when no plan applies | non-negative int |
+| `system_settings.default_plan_id` | singleton | Free-plan pointer for new/unassigned users | FK or `NULL` |
+| `system_settings.billing_enabled` | singleton | Master switch — gates step 2 of the chain | boolean |
 
-### トークンとしてカウントされるもの
+### What counts as a token
 
-トークン消費はLLMコール層で記録され、すべての完了時にLiteLLMの`usage`オブジェクトから取得されます。
+Token consumption is metered in the model client, from the provider's `usage` object on every call, and written to the **usage ledger** (`usage_ledger`): an append-only table with one row per turn, run or request and model. A user's "used" is the sum of their ledger rows since their window began. The quota check, the Usage card in Settings, Admin → Users and the user export all read that sum. The token figures of the platform statistics (Admin → Overview, Analytics, the metrics API) and of each user's dashboard are read from the same ledger, by the time the usage was recorded; the evaluation center's tokens consumed is the one figure still summed from the evaluation runs.
 
-- **カウント対象**: すべてのモデルコールにおけるプロンプトトークン + 完了トークン
-- **カウント対象**: マルチステップ/ツール使用エージェントフロー内のすべてのラウンドトリップ（各モデルコールは個別の請求）
-- **カウント対象**: 埋め込みリクエスト（KB取り込み、検索スコアリング）
-- **カウント対象外**: モデルに送信されないがステージングされた入力（ユーザーが破棄したアップロードファイルなど）
-- **カウント対象外**: プロバイダーに到達する前に失敗するリクエスト（認証エラー、レート制限事前チェック）
-- **キャッシュされた入力**: v1では全額でカウント（プロバイダーキャッシュ割引は表示されません）。v2ではキャッシュされたプロンプトトークンを別途クレジットする可能性があります。
+- **Counted**: prompt tokens + completion tokens of every model call made on the user's account (the provider's own `total_tokens` when it reports one)
+- **Counted**: every model call of a chat turn, not only the answer: the agent's tool rounds, routing in Auto mode, domain classification, step titles, context compaction, follow-up suggestions, the conversation title, and the calls of an agent the turn delegated to with `call_agent`
+- **Counted**: a turn that was stopped or abandoned and a turn that failed, for what they consumed up to that point. When the provider sends no usage for a call (a stream cut short, or a provider that reports none), the call is estimated and its row is marked `estimated`. The estimate counts the messages sent, the tool calls in their history, the tool definitions sent with the call, a fixed 1,100 tokens per image, and the text, reasoning and tool-call arguments that had come back, and is rounded up. Against OpenAI's `o200k_base` tokenizer it comes within about 10% on a tool-heavy agent call, and between 0.8 and 1.5 times the real count on English, Chinese, Japanese, Korean, Russian, Greek, Arabic, Hebrew, Thai and Hindi text, code, JSON, emoji, base64, hex, random identifiers and whitespace
+- **Counted**: a chat request sent without a `conversation_id`
+- **Counted**: workflow runs, against whoever ran them; a run started by a trigger key or a schedule counts against the workflow's author. Single-step tests count too
+- **Counted**: the model-backed helper endpoints (AI-assisted agent and connector create and refine, connector action generation, database chat and schema annotation, knowledge-base chat), evaluation runs (the agent and the grader), and the vision model reading images and scanned pages while a document is added to a knowledge base
+- **Over quota or without a plan**: adding a document to a knowledge base is not refused, but the document is read without the vision model (text only: no reading of images or scanned pages), the server logs it, and the document shows a warning with the reason; retrying the document once the quota allows reads it with the vision model
+- **Not counted**: embedding, reranking and image generation requests
+- **Counted**: a model call that had been sent but had returned nothing yet when its turn was stopped or abandoned (a call still waiting for its response, a stream before its first chunk, or a tool-call round whose arguments the model was still writing). The provider bills what it was sent, so the prompt is recorded, estimated, plus any tool-call arguments already received; the row is marked `estimated`. The client cannot tell whether the request had reached the provider: a turn stopped while the call is still connecting is counted the same way, though the provider received nothing. During a provider outage, a user who presses Stop is therefore charged the prompt, and one who waits for the error is not
+- **Not counted**: requests that fail before reaching the provider (auth error, rate-limit pre-check, a call still waiting for the local rate limiter), and a call the provider refused or that broke on an error before its first chunk
+- **Cached input**: counted at full price (no provider cache discount is applied). The ledger records cache-read and cache-creation tokens per row for later use.
+
+**Usage never goes down within a window.** Deleting a conversation, a workflow run or a workflow, the retention clean-up of old runs, and deleting an agent leave "used" where it was: the ledger row has no link to what it was recorded for. Usage belongs to the window in which it was recorded, so a turn in a conversation created months ago counts in the current window.
+
+Where each row comes from is on the row: `source_type` (`conversation`, `workflow_run`, `eval_run` or `endpoint`) with the id, `entry` (`chat`, `dag`, `auto`, `background`, a run mode such as `trigger` or `schedule`, `ai_assist.*`, `kb_chat`, `db_chat`, `kb_ingest`, `eval`), the model, and the organization of the agent, workflow, connector or knowledge base it ran through. `conversations.total_tokens` and `workflow_runs.total_tokens` are still kept as "what this conversation / this run reported" and can be lower than the ledger, which also holds interrupted turns, delegated agents and the streamed answer.
+
+Rows are written when a turn, run or request ends, however it ends; a long one is also written as it goes, at most every 30 seconds. If the server process is killed, what its in-flight turns consumed in the last 30 seconds at most is not recorded. A write that fails is retried once and then logged at ERROR with the user and the numbers (`Usage not recorded`), and the turn is not failed for it.
+
+**Upgrading to the release that adds the ledger.** The migration carries every conversation's and run's `total_tokens` into the ledger, so each user's "used" is the same before and after. It then compares the result per user with the source tables once. If an instance of the previous release is still serving and changed a total while the migration ran, each user that differs is carried over again and compared in a single transaction (one snapshot on PostgreSQL), so a writer that keeps running does not stop the migration from finishing. The migration fails only if a user's carry-over does not match the sources it read, which points to a fault, not to a running writer; it resumes where it was when run again. What an old instance writes after that has no ledger row: for a user who was carried over again, what was committed after their carry-over began; for everyone else, what was committed after the comparison, and everything written once the migration has finished. Once the last old instance has stopped, run the top-up command described in the next paragraph.
+
+**After rolling back and upgrading again.** A release older than the ledger keeps adding to `conversations.total_tokens` and `workflow_runs.total_tokens` without writing ledger rows. If you roll back to one and later upgrade again, run `python -m fim_one.core.usage.topup` (with the application's `DATABASE_URL`) to see what the ledger is missing, and again with `--apply` to record it: one `adjustment` row per conversation or run whose ledger rows add up to less than its total. It only adds rows, and a second run finds nothing left. The added usage counts in the window in which the command is run. Run it with the application stopped: against a live one it can count a turn twice whose conversation total was saved a moment before its ledger rows. It compares sums per conversation or run, so where the ledger already holds usage the total never reported (an interrupted turn, a delegated agent), that much of a gap is not recovered: a conversation reporting 180 whose rows add up to 170, 20 of them a delegated agent's, is missing 30 and gets 10.
 
 ### Three-state override semantics
 
@@ -197,18 +213,21 @@ Admin → System Settings → Billing で **Enable Stripe Billing** スイッチ
 
 ステップ4は**サブスクリプションなし**の場合のインスタンス全体の上限です。**有料のみ**の場合、プランのないユーザーは`default_token_quota`が0であっても権限がなく（チャットは402を返します）。
 
-### 期間リセット
+### Period reset
 
-- 有料ユーザーの場合、`quota_reset_at` は `Subscription.current_period_end` と同期します。`invoice.payment_succeeded` ウェブフック ハンドラーは、各更新成功時に `tokens_used_this_period = 0` を設定し、`quota_reset_at` を新しい期間終了日に進めます。
-- 無料ユーザー（Stripe サブスクリプションなし）の場合、時間単位の cron がプラン割り当て日を基準とした暦月の境界で `tokens_used_this_period` を 0 にリセットします。
-- 期間中のプラン変更はカウンターをリセット**しません**——更新時のみリセットされます。これにより、クォータ サイクリング エクスプロイト（「サブスクライブ → Pro クォータを使用 → キャンセル → 再度サブスクライブ」）を防ぎます。
+- "Used" is not a counter that is reset: it is the sum of the user's ledger rows from the start of their current window. A new window starts with nothing in it.
+- For paid users the window is the subscription period: it starts on the monthly anniversary of the subscription and ends at `Subscription.current_period_end` (mirrored on `users.quota_reset_at`), which the `invoice.payment_succeeded` webhook advances on each renewal.
+- For users without a Stripe subscription the window is the calendar month (UTC).
+- Plan changes mid-period **do not** start a new window, only renewals do. This prevents quota-cycling exploits ("subscribe → use Pro quota → cancel → subscribe again").
 
-### ミッドストリーム強制
+### Mid-stream enforcement
 
-- チャット呼び出しエントリでのプリフライトチェック：最も安価なパス、ユーザーが開始できない要求をブロックします。
-- ストリーミング中、実行中のトークンカウントはチャンクごとに再評価されます。上限を超えると、ネットワークエラーではなく**構造化ターミネータフレーム**でストリームを閉じます。
-- フロントエンドはターミネータを解釈し、`/settings?tab=billing`へのディープリンク付きで`<QuotaExceededDialog>`を表示します。
-- ストリーミング以外のレスポンスはHTTP `402`を返し、本文は`{ code: "QUOTA_EXCEEDED", reset_at, upgrade_url }`です。
+- Pre-flight check at chat-call entry: cheapest path, blocks requests the user can't afford to start.
+- While an answer streams, the turn compares what the user had used when it started, plus what the turn itself has consumed so far (the calls that have finished, and an estimate of the answer being written), with the cap, about every 200 characters. No database query is made for this. Crossing the cap closes the stream with a **structured terminator frame**, not a network error. Usage from the same user's other tabs during the turn is seen by the next turn's pre-flight check.
+- The frontend interprets the terminator and surfaces `<QuotaExceededDialog>` with a deep link to `/settings?tab=billing`.
+- An evaluation run and a workflow batch are admitted once, and checked again the same way before each case or item starts: what the user had used when the run or batch started plus what it has consumed since (for an evaluation, its own meter; for a batch, the totals of the items that have finished). Once the cap is reached no further case or item starts; those under way finish. The evaluation run ends `failed` with `token_quota_exceeded` and the number of cases not run in its error; each batch item not started is `failed` with `token_quota_exceeded`. A single workflow run is checked only when it starts (and when it continues after waiting for a decision).
+- A request made when the quota is already used up is refused before any stream starts: HTTP `429` with `error_code` `token_quota_exceeded`. Under **Paid only**, a user with no plan gets HTTP `402` with `error_code` `subscription_required`.
+- The same pre-flight check guards the other endpoints that call a model: AI-assisted agent and connector create and refine, connector action generation, database chat and schema annotation, knowledge-base chat, starting an eval run, and every way of starting a workflow. What they consume counts against the quota like a chat turn does.
 
 ### 請求機能無効時のフォールバック
 

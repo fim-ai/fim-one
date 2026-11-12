@@ -21,38 +21,38 @@ Jedes System ist eine **Informationsinsel**. Daten leben an einem Ort, Workflows
 
 **Jeder Systemanbieter hat jetzt sein eigenes KI-System.** Feishu hat seine KI. Salesforce hat Einstein. SAP hat Joule. Aber jede ist nur **innerhalb ihrer eigenen Mauern** intelligent. Feishu KI kann Ihren ERP-Saldo nicht überprüfen. Salesforce Einstein kann Ihre OA-Genehmigung nicht auslösen. Sie sind von Natur aus domänengebunden – weil die Verbindung zu Konkurrenten gegen ihre geschäftlichen Interessen verstößt.
 
-## Was FIM One leistet
+## What FIM One Does
 
-FIM One ist die **externe, horizontale Plattform eines Drittanbieters**, die all diese Systeme miteinander verbindet.
+FIM One is the **external, third-party, horizontal platform** that connects all of them.
 
-Stell dir Eywa aus *Avatar* vor – das neuronale Netzwerk unterhalb von Pandora, das jeden Baum, jedes Lebewesen und jede Erinnerung zu einem lebendigen System verbindet. Jeder Organismus bleibt unabhängig, aber über Eywa können sie einander wahrnehmen, Informationen austauschen und bei Bedarf gemeinsam handeln. Kein Organismus wird verändert; Eywa macht lediglich die Verbindung möglich.
+Think of Eywa from *Avatar* — the neural network beneath Pandora that connects every tree, every creature, every memory into one living system. Each organism stays independent, but through Eywa they sense each other, share information, and act together when needed. No organism is modified; Eywa simply makes the connection possible.
 
-FIM One ist das Eywa deines Unternehmens. Dein ERP, CRM, OA und deine Datenbanken bleiben genau so, wie sie sind – FIM One spannt das intelligente Netzwerk zwischen ihnen auf, damit sie über AI endlich miteinander kommunizieren können.
+FIM One is your enterprise's Eywa. Your ERP, CRM, OA, and databases remain exactly as they are — FIM One weaves the intelligent network between them, so they can finally talk to each other through AI.
 
 <Tip>
-**Der Client muss keinerlei Code ändern.** FIM One bindet sich proaktiv in bestehende Systeme ein – liest Datenbanken, ruft APIs auf und sendet Benachrichtigungen – und verwendet dabei ausschließlich die von dir bereitgestellten Zugangsdaten und den gewährten Netzwerkzugriff.
+**The client changes zero code.** FIM One bridges into existing systems proactively — reading databases, calling APIs, pushing notifications — using only the credentials and network access you provide.
 </Tip>
 
-Was du bereitstellst:
-- Zugangsdaten für Datenbanken (schreibgeschützte Konten werden empfohlen)
-- API-Endpunkte und Authentifizierungsschlüssel
-- Zugriff über eine Netzwerk-Whitelist
+What you provide:
+- Database credentials (read-only accounts recommended)
+- API endpoints and authentication keys
+- Network whitelist access
 
-Was FIM One liefert:
-- AI, die alle deine Systeme versteht und systemübergreifend orchestriert
-- Jeder Vorgang wird protokolliert, jeder Schreibvorgang durch eine menschliche Bestätigung abgesichert
-- Deine Daten bleiben in deinen Systemen – FIM One stellt die Intelligenzschicht bereit, keinen Data Lake
+What FIM One delivers:
+- AI that understands and orchestrates across **all** your systems
+- Every connector call audited, sensitive actions gated by human confirmation
+- Your data stays in your systems — FIM One provides the intelligence layer, not a data lake
 
-## Zwei Modi, eine Plattform
+## Two Modes, One Platform
 
-| Modus | Was es ist | Hier starten |
+| Mode | What it is | Start here |
 |------|-----------|------------|
-| **Copilot** | KI eingebettet in ein System — arbeitet neben Benutzern in ihrer bestehenden Benutzeroberfläche | Schnell Mehrwert nachweisen: Betten Sie einen „Finance Copilot" in Ihr ERP ein |
-| **Hub** | Zentrales KI-Portal, das alle Systeme verbindet — systemübergreifende Orchestrierung | Mehrwert skalieren: Verbinden Sie ERP + CRM + OA + Lark an einem Ort |
+| **Copilot** | AI embedded inside one system — works alongside users in their existing UI (through the API today; a drop-in embed is planned) | Prove value fast: embed a "Finance Copilot" in your ERP |
+| **Hub** | Central AI portal connecting all systems — cross-system orchestration | Scale value: connect ERP + CRM + OA + Lark in one place |
 
-**Land and Expand**: Beginnen Sie mit einem Copilot in einem System. Benutzer sehen sofort Mehrwert, ohne ein neues Tool erlernen zu müssen. Wenn der ROI nachgewiesen ist, skalieren Sie auf die systemübergreifende Agent-Plattform — ein zentrales Portal, in dem jedes System, das Sie bereits betreiben, über einen Agent-Kern auf KI trifft. Der Copilot läuft weiter; die Plattform fügt systemübergreifende Intelligenz hinzu.
+**Land and Expand**: Start with a Copilot in one system. Users see immediate value without learning a new tool. When the ROI is proven, scale it to the cross-system agent platform — a central portal where every system you already run meets AI through one agent core. The Copilot keeps running; the platform adds cross-system intelligence.
 
-> Copilot beweist Mehrwert in einem System. Die Agent-Plattform erschließt Mehrwert über alle Systeme hinweg.
+> Copilot proves value inside one system. The agent platform unlocks value across all systems.
 
 ## Warum nicht einfach...
 
@@ -78,31 +78,31 @@ Autonome Agenten sind leistungsstark, aber unkontrolliert. Sie verschwenden Toke
 
 Feishu AI funktioniert innerhalb von Feishu. Salesforce Einstein funktioniert innerhalb von Salesforce. Keiner kann die Grenze überschreiten. **Kein Anbieter wird echte systemübergreifende Integration aufbauen** — das widerspricht seinen Lock-in-Anreizen. FIM One ist der einzige Akteur ohne diesen Interessenskonflikt.
 
-## Wie FIM One sich verbindet
+## How FIM One Connects
 
-FIM One nutzt eine dreischichtige Architektur, die Transport von Governance trennt:
+FIM One uses a three-layer architecture that separates transport from governance:
 
 ```
-FIM One Platform (AI-Orchestrierung, Multi-Tenant, UI)
+FIM One Platform (AI orchestration, multi-tenant, UI)
     ↓
-Connector Governance Layer (Audit, Auth, Bestätigungsgate, Circuit Breaker)
+Connector Governance Layer (audit, auth, confirmation gate, circuit breaker)
     ↓
 Connector (API / Database / MCP protocol)
     ↓
 Your Systems (ERP, CRM, OA, databases, custom APIs)
 ```
 
-Die **Governance Layer** macht dies unternehmensreif:
+The **Governance Layer** is what makes this enterprise-ready:
 
-| Fähigkeit | Was sie tut |
+| Capability | What it does |
 |-----------|-------------|
-| **Audit-Protokollierung** | Jeder Tool-Aufruf wird aufgezeichnet — wer, was, wann, Ergebnis |
-| **Menschliche Bestätigung** | Schreibvorgänge erfordern explizite Benutzerbestätigung vor der Ausführung |
-| **Circuit Breaker** | Wenn ein System ausfällt, stoppt FIM One sofort die Wiederholungen, anstatt Token zu verschwenden |
-| **Anmeldedaten-Verschlüsselung** | AES-GCM-Verschlüsselung im Ruhezustand, Isolation von Anmeldedaten pro Benutzer |
-| **Schreibschutz-Durchsetzung** | Standard ist schreibgeschützt; Schreibvorgänge sind explizit kontrolliert |
+| **Audit logging** | Every tool call recorded — who, what, when, result |
+| **Human confirmation** | Actions marked as requiring confirmation (or every tool call, when the agent is set to confirm all) wait for explicit approval before execution |
+| **Circuit breaker** | If a system goes down, FIM One stops retrying immediately instead of burning tokens |
+| **Credential encryption** | Fernet encryption at rest, per-user credential isolation |
+| **Read-only enforcement** | Database connectors default to read-only; the owner must switch writes on |
 
-Der Assistent weiß nicht und kümmert sich nicht darum, ob er mit SAP, einer PostgreSQL-Datenbank oder einer benutzerdefinierten REST-API spricht. Konnektoren sind standardisierte Brücken — das Hinzufügen eines neuen Systems erfordert nur Konnektorkonfiguration, keine Codeänderungen.
+The agent doesn't know or care whether it's talking to SAP, a PostgreSQL database, or a custom REST API. Connectors are standardized bridges — adding a new system requires only connector configuration, not code changes.
 
 ## Drei Möglichkeiten zum Erstellen von Konnektoren
 

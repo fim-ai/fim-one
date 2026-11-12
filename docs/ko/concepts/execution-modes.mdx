@@ -4,17 +4,21 @@ icon: "route"
 description: "Standalone, Copilot, Hub — FIM One을 배포하는 세 가지 방법."
 ---
 
-## 세 가지 모드
+## Three modes
 
-FIM One은 에이전트가 배포되고 사용되는 방식에 따라 결정되는 세 가지 모드로 작동합니다:
+FIM One operates in three modes, determined by how the agent is deployed and used:
 
-| 모드 | 설명 | 전달 방식 | 예시 |
+| Mode | What it is | Delivery | Example |
 |------|-----------|----------|---------|
-| **Standalone** | 범용 AI 어시스턴트 | Portal | 채팅, 검색, 코드 실행, 지식 기반 Q&A |
-| **Copilot** | 호스트 시스템에 내장된 AI | iframe / widget / embed | ERP 웹 UI에 내장된 "Finance Copilot" |
-| **Hub** | 중앙 크로스시스템 오케스트레이션 | Portal / API | 에이전트가 ERP를 쿼리하고, OA 승인을 확인하고, Lark를 통해 알림 |
+| **Standalone** | General-purpose AI assistant | Portal | Chat, search, code execution, knowledge base Q&A |
+| **Copilot** | AI embedded in a host system | API today; iframe / widget embed is planned | "Finance Copilot" embedded in ERP web UI |
+| **Hub** | Central cross-system orchestration | Portal / API | Agent queries ERP, checks OA approvals, notifies via Lark |
 
-진행 과정은 자연스럽습니다: Standalone으로 시작하고, Copilot으로 호스트 시스템에 내장한 다음, 크로스시스템 오케스트레이션을 위해 Hub를 설정합니다. Copilot은 내장된 상태로 계속 실행되며, Hub는 중앙 오케스트레이션 계층을 추가합니다.
+The progression is natural: start standalone, embed into a host system as a Copilot, then set up a Hub for cross-system orchestration. The Copilot keeps running embedded; the Hub adds a central orchestration layer.
+
+<Note>
+FIM One does not ship an embeddable iframe or widget yet. Today a Copilot is built by calling the API from the host system's own UI; the drop-in embed is planned.
+</Note>
 
 ## 모드 세부 정보
 
@@ -29,26 +33,26 @@ FIM One은 에이전트가 배포되고 사용되는 방식에 따라 결정되�
 
 외부 시스템 접근이 필요하지 않습니다. 일반적인 분석, 연구 및 코드 작업에 유용합니다.
 
-### Copilot (내장형)
+### Copilot (embedded)
 
-FIM One을 호스트 시스템의 웹 UI에 내장합니다. 에이전트는 사용자의 익숙한 인터페이스에서 함께 작동하므로 컨텍스트 전환이 필요 없습니다. Copilot 모드는 여러 커넥터를 사용할 수 있습니다(예: 호스트 시스템의 DB + 알림 서비스).
+Put FIM One inside a host system's web UI, today by having the host page call the API. The agent works alongside users in their familiar interface — no context switching required. Copilot mode can use multiple connectors (e.g., the host system's DB + a notification service).
 
 ```mermaid
 flowchart LR
   subgraph Host["Host System (ERP / CRM / OA)"]
-    Copilot["FIM One Copilot<br/>(iframe / widget)"]
+    Copilot["FIM One Copilot<br/>(host UI + API)"]
   end
   Copilot -- Connectors --> DB["DB"]
   Copilot -- Connectors --> API["API"]
   Copilot -- Connectors --> Lark["Lark"]
 ```
 
-예시:
-- **재무 Copilot**: DB 커넥터를 통해 Kingdee(금蝶)에 연결 → 재무제표 조회, 분석 보고서 생성
-- **계약 Copilot**: API 커넥터를 통해 계약 관리 시스템에 연결 → 계약 검색, 조항 추출, 위험 평가
-- **HR Copilot**: API 커넥터를 통해 HR 시스템에 연결 → 직원 정보 조회, 통계 생성
+Examples:
+- **Finance Copilot**: Connected to Kingdee (金蝶) via DB connector → query financial statements, generate analysis reports
+- **Contract Copilot**: Connected to contract management system via API connector → search contracts, extract clauses, assess risk
+- **HR Copilot**: Connected to HR system via API connector → query employee info, generate statistics
 
-에이전트는 Standalone 모드와 동일한 ReAct/DAG 엔진을 사용하지만, 이제 커넥터를 통해 실제 비즈니스 데이터에 액세스할 수 있습니다.
+The agent uses the same ReAct/DAG engine as Standalone mode, but now has access to real business data through the connector.
 
 ### Hub (중앙 오케스트레이션)
 
@@ -71,24 +75,24 @@ flowchart LR
 
 각 커넥터는 독립적인 브릿지입니다. 하나를 추가하거나 제거해도 다른 것에는 영향을 주지 않습니다.
 
-## 전달 방법
+## Delivery methods
 
-| 전달 | 설명 | 일반적인 모드 |
+| Delivery | Description | Typical mode |
 |----------|-------------|-------------|
-| **Portal (Web UI)** | 기본 제공 Next.js 인터페이스 | Standalone, Hub |
-| **API (headless)** | HTTP/SSE 엔드포인트 (`/api/execute`, `/api/stream`) | Hub (프로그래밍 방식 액세스) |
-| **iframe / Embed** | 호스트 시스템 페이지에 주입됨 | Copilot |
+| **Portal (Web UI)** | Built-in Next.js interface | Standalone, Hub |
+| **API (headless)** | HTTP/SSE endpoints (`POST /api/react`, `/api/dag`, `/api/auto`) | Hub (programmatic access), Copilot |
+| **iframe / Embed** | Injected into host system pages (planned, not shipped) | Copilot |
 
-전달 방법과 모드는 관련이 있지만 고정되지 않습니다: Hub에 API를 통해 액세스하거나 Portal을 통해 독립형 에이전트를 사용할 수 있습니다. 하지만 일반적인 패턴은 Hub의 경우 Portal, Copilot의 경우 embed입니다.
+Delivery and mode are related but not locked: you can access a Hub via API, or use a standalone agent through the Portal. But the typical pattern is Portal for Hub and the API for Copilot.
 
-## 실행 엔진 (내부 구현)
+## Execution engines (internal implementation)
 
-내부적으로 FIM One은 두 가지 실행 엔진을 제공합니다:
+Under the hood, FIM One provides two execution engines:
 
-| 엔진 | 최적 사용 사례 | 작동 방식 |
+| Engine | Best for | How it works |
 |--------|----------|-------------|
-| **ReAct** | 단일 복잡한 쿼리 | 도구를 사용한 Reason → Act → Observe 루프 |
-| **DAG Planning** | 다단계 병렬 작업 | LLM이 종속성 그래프를 생성하고 독립적인 단계가 동시에 실행됨 |
+| **ReAct** | Single complex queries | Reason → Act → Observe loop with tools |
+| **DAG Planning** | Multi-step parallel tasks | LLM generates dependency graph, independent steps run concurrently |
 
 ```mermaid
 flowchart TD
@@ -101,23 +105,29 @@ flowchart TD
   step_3 --> ReAct3["ReAct Agent"] --> Tools3["Tools"]
 ```
 
-ReAct는 원자 단위이고 DAG는 오케스트레이션 계층입니다. 두 엔진 모두 세 가지 모드(Standalone, Copilot, Hub)에서 작동합니다. Hub 모드에서는 단일 DAG 단계가 다양한 시스템의 커넥터를 호출할 수 있습니다.
+ReAct is the atomic unit; DAG is the orchestration layer. Both engines work in all three modes (Standalone, Copilot, Hub). In Hub mode, a single DAG step might call connectors to different systems.
 
-## 두 가지 실행 패러다임
+New agents and plain chat run on ReAct by default. DAG can be selected per agent or per message, and Auto lets a fast model pick between the two for each request.
 
-FIM One은 작업을 수행하기 위한 두 가지 상호 보완적인 패러다임을 제공합니다:
+## Two execution paradigms
 
-| 패러다임 | 오케스트레이션 | 최적 사용 사례 |
+FIM One provides two complementary paradigms for getting work done:
+
+| Paradigm | Orchestration | Best for |
 |----------|--------------|----------|
-| **에이전트 (Chat)** | LLM이 다음 단계를 동적으로 결정 (ReAct 또는 DAG) | 탐색적 작업, 대화, 유연한 추론 |
-| **워크플로우** | 설계 시점에 정의된 고정 DAG (비주얼 에디터, 26개 노드 타입) | 승인 체인, 예약된 ETL, 다단계 자동화 |
+| **Agent (Chat)** | LLM decides next step dynamically (ReAct or DAG) | Exploratory tasks, conversations, flexible reasoning |
+| **Workflow** | Fixed DAG defined at design time (visual editor, 9 node types) | Approval chains, scheduled runs, multi-step automations |
 
-**에이전트**는 작업이 개방형일 때 뛰어납니다 — "이번 분기 데이터를 분석하고 조치를 권장하세요." LLM이 즉시 계획하고 적응합니다.
+**Agents** excel when the task is open-ended — "analyze this quarter's data and recommend actions." The LLM plans and adapts on the fly.
 
-**워크플로우**는 프로세스가 알려져 있고 반복 가능할 때 뛰어납니다 — "매주 월요일, ERP에서 송장을 가져오고, 규정 준수 검사를 실행하고, 예외를 검토자에게 라우팅하세요." 비주얼 에디터를 사용하면 노드(에이전트, 커넥터, KB, LLM, HTTP, 코드, 휴먼 승인, 서브워크플로우)를 고정 DAG로 연결할 수 있습니다.
+**Workflows** excel when the process is known and repeatable — "every Monday, pull invoices from ERP, run compliance checks, route exceptions to a reviewer." The visual editor lets you wire nodes (Start, End, LLM, Condition Branch, Agent, Knowledge Retrieval, Connector, MCP, Human Intervention) into a fixed DAG.
 
-두 패러다임은 자연스럽게 구성됩니다: 워크플로우는 고정 파이프라인 내에서 유연한 추론이 필요한 모든 단계에서 에이전트를 호출할 수 있습니다. 에이전트는 워크플로우를 직접 호출할 수 없습니다 — 관계는 일방향입니다.
+**Runs, approvals and inputs.** A run belongs to whoever started it (for a trigger key or a schedule, the workflow's owner) and does not depend on the browser tab that started it: close the tab and it continues; reopen the workflow or its Run History to see where it is. A run that reaches a Human Intervention step, or a Connector step whose action requires confirmation, is stored as *waiting* (encrypted) and takes no server resources while it waits. Whoever may decide (the assignee of an approval step, otherwise the person the run belongs to) finds the request under Workflows → Approvals and approves or rejects it there. The run then continues after the step, or fails at it when the request is rejected or runs out of time, including when the server was restarted in between. Before it continues, the run is checked like a new run would be (accounts, quota, plan) and it takes a concurrent-run slot; what a confirmed connector action sends is exactly what the request showed. The Start step lists the workflow's inputs with a type (Text, Number, Boolean, JSON, List) and whether each is required; with its "Check inputs before a run starts" switch on, a run whose inputs do not fit is refused before any step runs, with an error naming the input. A required input must be given (or have a default); an optional input left empty is not passed to the steps, except a Text input, for which empty text is itself a value. A run that was executing when the server stopped is closed as failed and can be started again.
+
+Workflows are an optional module, off by default. An administrator turns it on under Admin → Settings → Modules; until then the Workflows page, its APIs and triggers are unavailable.
+
+The two paradigms compose in both directions. A Workflow can invoke an Agent at any step that needs flexible reasoning within an otherwise fixed pipeline. An Agent can run a Workflow mid-conversation through the `run_workflow` tool, which is offered for active workflows without a Human Intervention step that the user owns or has subscribed to; the run uses the chatting user's credentials and token quota.
 
 <Tip>
-**어느 것을 선택할지:** 에이전트에 대해 매우 구체적이고 단계별 지침을 작성하고 있다면, 그 프로세스는 아마도 워크플로우에 속할 것입니다. 작업에 판단, 탐색 또는 예상치 못한 데이터에 대한 적응이 필요하면 에이전트로 유지하세요.
+**When to choose which:** If you find yourself writing very specific, step-by-step instructions for an Agent, that process probably belongs in a Workflow. If the task requires judgment, exploration, or adapting to unexpected data, keep it as an Agent.
 </Tip>

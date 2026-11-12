@@ -46,7 +46,6 @@
     "usernamePlaceholder": "Geben Sie einen Benutzernamen ein",
     "usernameMinLength": "Benutzername muss mindestens 2 Zeichen lang sein",
     "usernameSaved": "Benutzername gespeichert",
-    "usernameSaveFailed": "Benutzername konnte nicht gespeichert werden",
     "usernameTaken": "Dieser Benutzername ist bereits vergeben",
     "usernameCooldown": "Der Benutzername kann nur alle 7 Tage geändert werden. Bitte versuchen Sie es in {days} Tagen erneut.",
     "usernameChangeConfirmTitle": "Benutzername ändern?",
@@ -279,7 +278,14 @@
     "dataExportDownloading": "Export wird vorbereitet...",
     "dataExportSuccess": "Datenexport gestartet",
     "dataExportFailed": "Fehler beim Exportieren von Daten",
-    "bindErrorTimeout": "Der Anbieter hat zu lange zum Antworten benötigt. Bitte versuchen Sie es erneut."
+    "bindErrorTimeout": "Der Anbieter hat zu lange zum Antworten benötigt. Bitte versuchen Sie es erneut.",
+    "sessionsPendingSecondFactor": "Awaiting second factor",
+    "securityEventsTitle": "Security Events",
+    "securityEventsDescription": "Changes to your password, two-factor authentication, sign-in providers, API keys and sessions, with where each was made from.",
+    "securityEventsEvent": "Event",
+    "securityEventsByAdministrator": "By an administrator",
+    "securityEventsNoData": "No security events yet",
+    "securityEventsLoadFailed": "Failed to load security events"
   },
   "appearance": {
     "title": "Erscheinungsbild",
@@ -370,7 +376,14 @@
     "tokens": "Token",
     "noQuota": "Kein Kontingentlimit festgelegt",
     "unentitled": "Abonnieren Sie, um fortzufahren",
-    "unentitledHint": "Diese Instanz erfordert einen kostenpflichtigen Plan, bevor Modelle verwendet werden können."
+    "unentitledHint": "Diese Instanz erfordert einen kostenpflichtigen Plan, bevor Modelle verwendet werden können.",
+    "origins": {
+      "direct_chat": "Direct Chat",
+      "workflows": "Workflows",
+      "evaluations": "Evaluations",
+      "ai_assist": "AI assist",
+      "deleted_agents": "Deleted agents"
+    }
   },
   "notifications": {
     "title": "Benachrichtigungen",
