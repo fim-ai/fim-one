@@ -116,6 +116,8 @@ test.describe("backend launcher", () => {
       CREDENTIAL_ENCRYPTION_KEY: "LEAKED-credential-key",
       HTTPS_PROXY: "http://proxy.LEAKED.example:8080",
       SOME_UNRELATED_SECRET: "LEAKED",
+      // No longer read by the app (MCP servers live in the portal): dropped.
+      MCP_SERVERS: '{"leaked": {"url": "https://mcp.LEAKED.example"}}',
     })
     expect(run.status).toBe(0)
     const env = run.env
@@ -148,7 +150,6 @@ test.describe("backend launcher", () => {
       "SMTP_PASS",
       "STRIPE_SECRET_KEY",
       "DOCKER_PYTHON_IMAGE",
-      "MCP_SERVERS",
       "WEB_SEARCH_PROVIDER",
     ]) {
       expect(env[name], name).toBe("")
@@ -161,6 +162,7 @@ test.describe("backend launcher", () => {
     // What the launcher does not know is dropped rather than passed on.
     expect(env).not.toHaveProperty("HTTPS_PROXY")
     expect(env).not.toHaveProperty("SOME_UNRELATED_SECRET")
+    expect(env).not.toHaveProperty("MCP_SERVERS")
     // No value of the shell survives anywhere.
     expect(JSON.stringify(env)).not.toMatch(/LEAKED/)
   })
