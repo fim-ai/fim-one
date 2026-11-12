@@ -9,6 +9,7 @@
   "username_taken": "用户名已被占用。",
   "email_already_registered": "邮箱已注册。",
   "invalid_credentials": "凭证无效。",
+  "too_many_login_attempts": "你所在网络的登录失败次数过多，请稍后再试。",
   "account_disabled": "账户已禁用。",
   "invalid_token_type": "令牌类型无效。",
   "invalid_token_payload": "令牌负载无效。",

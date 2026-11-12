@@ -263,34 +263,36 @@ API を通じて思考をオフにできない場合、native_fc はすべての
 
 行は単一のモデルではなく、プロバイダーのプロトコルを説明しています。1つのファミリー内のモデルが異なる場合（DeepSeek chatと推論器、Kimiは思考をオンにするかオフにするか）、セルはそのことを示しています。
 
-### 表 A: プロトコルのルーティング
+### Table A: Protocol routing
 
-設定された `base_url` と `model` がどのように LiteLLM の呼び出しに変換されるか、また最初に選択したインターフェースが利用できない場合にどうなるかを示します。
+How a configured `base_url` plus `model` becomes a LiteLLM call, and what happens when the first choice of interface is unavailable.
 
-| プロバイダー | 判定条件 | LiteLLM のプレフィックス | インターフェース | フォールバック順序 | コード参照 |
+| Provider | Detected by | LiteLLM prefix | Interface surface | Downgrade chain | Code anchor |
 |---|---|---|---|---|---|
-| **OpenAI** | ドメインが `api.openai.com`、またはモデル設定で `provider` に `openai` が明示的に指定されている | `openai/` | `completions`。GPT-5.x は `responses-native`（`litellm.aresponses`）を使用し、ロールバック用に `responses-bridge`（`openai/responses/<model>`）も利用可能 | GPT-5.x は Responses をネイティブに使用し、404 の場合（エンドポイントとモデルごとに `_RESPONSES_NATIVE_SUPPORT` にキャッシュ）または 400 の場合（キャッシュされない）に `completions` にフォールバックします。`gpt-6.1-*` と `gpt-6-astra` は、`completions` がツールを拒否するため、ツールを含むリクエストで 400 が返ってもフォールバックしません。それ以外のモデルはすべて、直接 `completions` を使用します | `_resolve_litellm_model`、`_should_use_native_responses`、`_dispatch_acompletion` |
-| **Anthropic**（下記の Bedrock に関する注記を参照） | ドメインが `anthropic.com`、パスセグメントに `/claude` または `/anthropic` が含まれる、または `provider` に `anthropic` が明示的に指定されている | `anthropic/` | `anthropic messages` | なし。ネイティブルートは Responses ブリッジを経由しません。プロトコルは `_build_request_kwargs` で構築されます | `_resolve_litellm_model`、`_dispatch_acompletion` |
-| **Gemini** | ドメインが `generativelanguage.googleapis.com`、パスセグメントに `/gemini` が含まれる、または `provider` に `gemini` が明示的に指定されている | `gemini/` | `gemini` | なし。ドメインが一致すると `api_base` も削除されるため、`/v1beta/openai/` のような OpenAI 互換のサフィックスは無視され、ネイティブの Gemini API が呼び出されます | `_resolve_litellm_model` |
-| **xAI (Grok)** | ドメインにもパスにも該当する項目はありません。モデル設定で `provider` が明示的に設定されていない場合、汎用の OpenAI 互換として解決されます | `api_base` を指定した `openai/`、または明示されたプロバイダーのプレフィックス | `completions` | なし | `_resolve_litellm_model` |
-| **DeepSeek** | ドメインが `api.deepseek.com` | `deepseek/` | `completions` | なし | `_resolve_litellm_model` |
-| **Qwen**（DashScope） | 汎用のフォールバック | `api_base` を指定した `openai/` | `completions` | なし | `_resolve_litellm_model` |
-| **GLM**（Zhipu、Z.AI） | 汎用のフォールバック | `api_base` を指定した `openai/` | `completions` | なし | `_resolve_litellm_model` |
-| **MiniMax** | 汎用のフォールバック | `api_base` を指定した `openai/` | `completions` | なし | `_resolve_litellm_model` |
-| **Kimi**（Moonshot） | 汎用のフォールバック | `api_base` を指定した `openai/` | `completions` | なし | `_resolve_litellm_model` |
-| **Doubao**（Volcengine） | 汎用のフォールバック | `api_base` を指定した `openai/` | `completions` | なし | `_resolve_litellm_model` |
-| **Mistral** | ドメインが `api.mistral.ai` | `mistral/` | `completions` | なし | `_resolve_litellm_model` |
-| **Ollama / ローカル** | 汎用のフォールバック。通常は `http://localhost:11434/v1` | `api_base` を指定した `openai/` | `completions` | なし | `_resolve_litellm_model` |
-| **リレー / プロキシ** | まずパスのヒントを確認し、次に汎用のフォールバックを使用します。モデル設定で明示された `provider` は、どちらよりも優先されます | ヒントで指定されたプロバイダーのプレフィックス。なければ `openai/`。いずれの場合も `api_base` はリレーを指します | 解決されたプレフィックスが示すインターフェース | 解決されたプレフィックス以外へのフォールバックはありません。リレーに関する注意点は下記を参照してください | `_resolve_litellm_model` |
+| **OpenAI** | Domain `api.openai.com`, or an explicit `provider` of `openai` on the model config | `openai/` | `completions`. GPT-5.x uses `responses-native` (`litellm.aresponses`), with `responses-bridge` (`openai/responses/<model>`) retained as a rollback | GPT-5.x talks Responses natively, falls back to `completions` on a 404 (cached per endpoint and model in `_RESPONSES_NATIVE_SUPPORT`) or on a 400 (not cached). `gpt-6.1-*` and `gpt-6-astra` keep a 400 on a request with tools instead of falling back, since their `completions` rejects tools. Every other model goes straight to `completions` | `_resolve_litellm_model`, `_should_use_native_responses`, `_dispatch_acompletion` |
+| **Anthropic** (Bedrock note below) | Domain `anthropic.com`, path segment `/claude` or `/anthropic`, or an explicit `provider` of `anthropic` | `anthropic/` | `anthropic messages` | None. Native routes never enter the Responses bridge; their protocol is built in `_build_request_kwargs` | `_resolve_litellm_model`, `_dispatch_acompletion` |
+| **Gemini** | Domain `generativelanguage.googleapis.com`, path segment `/gemini`, or an explicit `provider` of `gemini` | `gemini/` | `gemini` | None. A domain match also drops `api_base`, so an OpenAI-compat suffix such as `/v1beta/openai/` is ignored and the call goes to the native Gemini API | `_resolve_litellm_model` |
+| **xAI (Grok)** | No domain or path entry. Resolves as generic OpenAI-compatible unless `provider` is set explicitly on the model config | `openai/` with `api_base`, or the explicit provider prefix | `completions` | None | `_resolve_litellm_model` |
+| **DeepSeek** | Domain `api.deepseek.com` | `deepseek/` | `completions` | None | `_resolve_litellm_model` |
+| **Qwen** (DashScope) | Generic fallback | `openai/` with `api_base` | `completions` | None | `_resolve_litellm_model` |
+| **GLM** (Zhipu, Z.AI) | Generic fallback | `openai/` with `api_base` | `completions` | None | `_resolve_litellm_model` |
+| **MiniMax** | Generic fallback | `openai/` with `api_base` | `completions` | None | `_resolve_litellm_model` |
+| **Kimi** (Moonshot) | Generic fallback | `openai/` with `api_base` | `completions` | None | `_resolve_litellm_model` |
+| **Doubao** (Volcengine) | Generic fallback | `openai/` with `api_base` | `completions` | None | `_resolve_litellm_model` |
+| **Mistral** | Domain `api.mistral.ai` | `mistral/` | `completions` | None | `_resolve_litellm_model` |
+| **Ollama / local** | Generic fallback, typically `http://localhost:11434/v1` | `openai/` with `api_base` | `completions` | None | `_resolve_litellm_model` |
+| **Relay / proxy** | Path hint first, then the generic fallback. An explicit `provider` on the model config outranks both | The hinted provider prefix, else `openai/`, always with `api_base` pointing at the relay | Whatever the resolved prefix implies | None beyond the resolved prefix. See the relay gotchas below | `_resolve_litellm_model` |
 
-**GPT-5.x がプロトコルを選択する方法。** `FIM_GPT5_RESPONSES_MODE` で選択します。`native`（デフォルト）は `litellm.aresponses` 経由で `/v1/responses` を直接使用し、`bridge` は LiteLLM の chat-completions 変換を使用し、`off` は通常の chat completions を強制します。ブリッジは重要な箇所で情報を失うため、ネイティブパスが用意されています。ブリッジは推論アイテムを破棄するため、GPT-5.x のエージェントはツールを呼び出すたびに思考の連鎖を再導出します。プロトコルを直接使用すれば、これらのアイテムを再生できます。`reasoning_effort=None` を明示的に渡す呼び出しは、`structured_llm_call` や終了シグナルのプローブが行う呼び出しと同様に、chat completions を使用します。思考を必要としない呼び出しには、保持すべき推論状態がないためです。ただし、推論をオフにできないモデル（`gpt-6.1-*`、`gpt-6-astra`）は例外です。これらのモデルでは、`reasoning_effort` の値にかかわらず chat completions が関数ツールを拒否するため、そのような呼び出しは `/v1/responses` を使用し、最も低い推論強度である `low` で実行されます。同じ理由から、`off` を設定するか、`/v1/responses` のないエンドポイントを使うと、これらのモデルではツール呼び出しができなくなります。
+**How GPT-5.x picks a protocol.** `FIM_GPT5_RESPONSES_MODE` selects it: `native` (the default) talks `/v1/responses` directly through `litellm.aresponses`, `bridge` uses LiteLLM's chat-completions translation, and `off` forces plain chat completions. The native path exists because the bridge is lossy in the one place that matters: it discards the reasoning items, so a GPT-5.x agent re-derives its chain of thought on every tool round. Talking the protocol directly lets those items be replayed. A call that explicitly passes `reasoning_effort=None`, which is what `structured_llm_call` and the finish-signal probes do, stays on chat completions, because a call that wants no thinking has no reasoning state to preserve. The exception is models that cannot switch reasoning off (`gpt-6.1-*`, `gpt-6-astra`): their chat completions reject function tools at any `reasoning_effort`, so those calls stay on `/v1/responses` and run at the lowest effort, `low`. For the same reason `off`, or an endpoint without `/v1/responses`, leaves these models without tool calls.
 
-このネイティブリクエストには、挙動を左右する、間違えやすい重要なプロパティが 2 つあります。
+Two properties of that native request are load-bearing and easy to get wrong:
 
-- `store=false` にすると、上流では会話がステートレスに保たれ、`include=["reasoning.encrypted_content"]` を指定すると、暗号化されたペイロードが返されるよう要求できます。`include` がない場合、推論アイテムは空で返され、再生しても何も起きないままになります。
-- 再生する推論アイテムでは、サーバー側の `id` を削除する必要があります。`store=false` では上流に何も保存されないため、id をそのまま返すと `Item with id 'rs_...' not found. Items are not persisted when 'store' is set to false` というエラーになります。`encrypted_content` のデータ自体に状態が含まれているため、id を削除しても問題ありません（`sanitize_reasoning_item`）。
+- `store=false` keeps the conversation stateless upstream, and `include=["reasoning.encrypted_content"]` asks for the encrypted payload to be returned. Without the include, the reasoning items arrive empty and replay silently becomes a no-op.
+- A replayed reasoning item must have its server-side `id` stripped. With `store=false` nothing is persisted upstream, so echoing the id back earns `Item with id 'rs_...' not found. Items are not persisted when 'store' is set to false`. The `encrypted_content` blob carries the state on its own, so dropping the id costs nothing (`sanitize_reasoning_item`).
 
-**Bedrock。** Bedrock でホストされる Claude は、Bedrock がホストしているかどうかではなく、解決先の行に従います。`anthropic/` にルーティングされるリレー経由でアクセスすると、Anthropic のプロトコル動作を引き継ぎます。これには、より新しい Bedrock バージョンで拒否される LiteLLM の json-mode assistant prefill も含まれます。OpenAI 互換のゲートウェイ経由でアクセスすると、`openai/` として解決され、prefill は挿入されず、`json_mode_enabled` を有効のままにできます。
+**User-supplied endpoints.** The table describes endpoints an operator configured (environment variables, Admin → Models). An endpoint that comes from a user, i.e. `base_url` in an agent's inline model settings, does not go through LiteLLM at all (`OpenAICompatibleLLM(untrusted_endpoint=True)`, `_call_pinned`). It must come with its own `api_key`: the platform's keys are never used for it, and an empty key is refused. It is called as OpenAI-compatible chat completions at the URL as typed, by the OpenAI SDK on a dedicated HTTP client that refuses private, loopback, link-local and metadata addresses when it connects and does not follow redirects. The model name is sent as a field of the request and selects no route, provider or protocol; there is no path hint, no `provider`, no Responses route. When such an endpoint fails, the error names the kind of failure and the HTTP status, not the response body. Models on internal networks, or that need a provider's native protocol, are added by an administrator under Admin → Models and selected by the agent.
+
+**Bedrock.** Bedrock-hosted Claude follows the row it resolves to, not the fact that Bedrock is hosting it. Reached through an `anthropic/`-routed relay it inherits Anthropic protocol behaviour, including LiteLLM's json-mode assistant prefill, which newer Bedrock versions reject. Reached through an OpenAI-compatible gateway it resolves as `openai/`, no prefill is injected, and `json_mode_enabled` can stay on.
 
 ### Table B: 競合と回避策
 

@@ -359,6 +359,38 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
     await shutdown_db()
 
 
+async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:  # noqa: ARG001
+    """422 with the location and message of each error.
+
+    The submitted value (``input``) is not echoed back: it may be a password,
+    and it may hold characters that cannot be encoded as JSON text.
+    """
+
+    def _safe_errors(errors: Sequence[Any]) -> list[dict[str, Any]]:
+        """Stringify any non-serializable values (e.g. Pydantic v2 ctx exception objects)."""
+        safe = []
+        for err in errors:
+            err = dict(err)
+            err.pop("input", None)
+            if "ctx" in err and isinstance(err["ctx"], dict):
+                err["ctx"] = {
+                    k: str(v) if isinstance(v, Exception) else v
+                    for k, v in err["ctx"].items()
+                }
+            safe.append(err)
+        return safe
+
+    errs = _safe_errors(exc.errors())
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": errs,
+            "error_code": "validation_error",
+            "error_args": {"errors": errs},
+        },
+    )
+
+
 def create_app() -> FastAPI:
     """Create and configure a :class:`FastAPI` application.
 
@@ -540,32 +572,7 @@ def create_app() -> FastAPI:
             },
         )
 
-    @app.exception_handler(RequestValidationError)
-    async def validation_error_handler(
-        request: Request, exc: RequestValidationError
-    ) -> JSONResponse:  # noqa: ARG001
-        def _safe_errors(errors: Sequence[Any]) -> list[dict[str, Any]]:
-            """Stringify any non-serializable values (e.g. Pydantic v2 ctx exception objects)."""
-            safe = []
-            for err in errors:
-                err = dict(err)
-                if "ctx" in err and isinstance(err["ctx"], dict):
-                    err["ctx"] = {
-                        k: str(v) if isinstance(v, Exception) else v
-                        for k, v in err["ctx"].items()
-                    }
-                safe.append(err)
-            return safe
-
-        errs = _safe_errors(exc.errors())
-        return JSONResponse(
-            status_code=422,
-            content={
-                "detail": errs,
-                "error_code": "validation_error",
-                "error_args": {"errors": errs},
-            },
-        )
+    app.add_exception_handler(RequestValidationError, validation_error_handler)  # type: ignore[arg-type]
 
     # -- CORS ---------------------------------------------------------------
     # Do NOT include "*" alongside allow_credentials=True — browsers reject

@@ -304,11 +304,26 @@ async def take_from_window(
     """
     if limit <= 0:
         return True
+    return await claim_from_window(db, scope=scope, key=key, limit=limit, window=window) is not None
+
+
+def _window_row(scope: str, key: str, window: timedelta) -> tuple[str, datetime, datetime]:
     seconds = max(1, int(window.total_seconds()))
     now = datetime.now(UTC)
     start = int(now.timestamp()) // seconds * seconds
     row_id = str(uuid.uuid5(_RATE_NAMESPACE, f"{scope}|{key}|{seconds}|{start}"))
-    ends = datetime.fromtimestamp(start + seconds, UTC)
+    return row_id, datetime.fromtimestamp(start + seconds, UTC), now
+
+
+async def claim_from_window(
+    db: AsyncSession, *, scope: str, key: str, limit: int, window: timedelta
+) -> str | None:
+    """Like :func:`take_from_window`; returns the window's row id, or ``None``.
+
+    The id lets the caller hand the unit back with :func:`release_to_window`
+    (a request that turned out not to count).  ``limit`` must be positive.
+    """
+    row_id, ends, now = _window_row(scope, key, window)
 
     dialect = db.get_bind().dialect.name
     insert_stmt: Any = (pg_insert if dialect == "postgresql" else sqlite_insert)(EmailVerification)
@@ -338,7 +353,17 @@ async def take_from_window(
         .execution_options(synchronize_session=False)
     )
     await db.commit()
-    return bool(getattr(taken, "rowcount", 0) == 1)
+    return row_id if getattr(taken, "rowcount", 0) == 1 else None
+
+
+async def release_to_window(db: AsyncSession, row_id: str) -> None:
+    """Hand back a unit taken with :func:`claim_from_window` (not committed)."""
+    await db.execute(
+        update(EmailVerification)
+        .where(EmailVerification.id == row_id, EmailVerification.attempts > 0)
+        .values(attempts=EmailVerification.attempts - 1)
+        .execution_options(synchronize_session=False)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -423,3 +448,143 @@ async def take_after_cooldown(
             return None
     # Others are taking codes for this key at this very moment.
     return COOLDOWN_STEP
+
+
+# ---------------------------------------------------------------------------
+# Password sign-in failures per account
+# ---------------------------------------------------------------------------
+# One row per account (in the verification table, under a purpose of its
+# own).  ``attempts`` counts the password attempts taken in the current
+# stretch, ``expires_at`` ends that stretch, ``verified_at`` holds the end of
+# a lock, and ``code`` the number of locks in a row (each lock is twice as
+# long as the one before).  Attempts are taken before the password is
+# compared, with conditional single-statement updates, so requests arriving
+# together cannot share one count.
+
+LOGIN_LOCK_PURPOSE = "login_lock"
+# The same namespace as the cooldown rows (whose names have another form), so
+# that lock rows written by earlier releases keep their ids.
+_LOGIN_NAMESPACE = _COOLDOWN_NAMESPACE
+MAX_LOGIN_LOCK = timedelta(hours=24)
+
+
+def _login_row_id(user_id: str) -> str:
+    return str(uuid.uuid5(_LOGIN_NAMESPACE, f"login-lock:{user_id}"))
+
+
+def _not_locked(now: datetime) -> Any:
+    return (EmailVerification.verified_at == None) | (  # noqa: E711
+        EmailVerification.verified_at <= now
+    )
+
+
+async def claim_password_attempt(
+    db: AsyncSession, *, user_id: str, email: str, limit: int, window: timedelta
+) -> bool:
+    """Atomically take one of the account's password attempts.
+
+    Returns ``False`` while the account is locked, and when simultaneous
+    requests have taken the attempts left in this stretch.  Committed.
+    """
+    row_id = _login_row_id(user_id)
+    now = datetime.now(UTC)
+
+    async def _take() -> bool:
+        result = await db.execute(
+            update(EmailVerification)
+            .where(
+                EmailVerification.id == row_id,
+                EmailVerification.expires_at > now,
+                EmailVerification.attempts < limit,
+                _not_locked(now),
+            )
+            .values(attempts=EmailVerification.attempts + 1)
+            .execution_options(synchronize_session=False)
+        )
+        await db.commit()
+        return bool(getattr(result, "rowcount", 0) == 1)
+
+    # 1. A running stretch with attempts left.
+    if await _take():
+        return True
+    # 2. A stretch that is over (and no lock running): start a new one.
+    restarted = await db.execute(
+        update(EmailVerification)
+        .where(
+            EmailVerification.id == row_id,
+            EmailVerification.expires_at <= now,
+            _not_locked(now),
+        )
+        .values(attempts=1, expires_at=now + window)
+        .execution_options(synchronize_session=False)
+    )
+    await db.commit()
+    if getattr(restarted, "rowcount", 0) == 1:
+        return True
+    # 3. No row yet.
+    dialect = db.get_bind().dialect.name
+    insert_stmt: Any = (pg_insert if dialect == "postgresql" else sqlite_insert)(EmailVerification)
+    created = await db.execute(
+        insert_stmt.values(
+            id=row_id,
+            email=email[:255],
+            code="0",
+            purpose=LOGIN_LOCK_PURPOSE,
+            attempts=1,
+            expires_at=now + window,
+        ).on_conflict_do_nothing(index_elements=["id"])
+    )
+    await db.commit()
+    if getattr(created, "rowcount", 0) == 1:
+        return True
+    # 4. Someone else started it meanwhile: take what is left.
+    return await _take()
+
+
+async def record_password_failure(
+    db: AsyncSession, *, user_id: str, limit: int, lock: timedelta
+) -> datetime | None:
+    """After a wrong password: lock the account once *limit* attempts failed.
+
+    Returns the end of the lock when this failure started one.  The lock
+    doubles with each lock in a row (``lock``, ``2 * lock`` ...) up to
+    :data:`MAX_LOGIN_LOCK`; the series starts again once a day has passed
+    since the last lock ended.  Committed.
+    """
+    row_id = _login_row_id(user_id)
+    now = datetime.now(UTC)
+    row = (
+        await db.execute(
+            select(EmailVerification.code, EmailVerification.verified_at).where(
+                EmailVerification.id == row_id
+            )
+        )
+    ).one_or_none()
+    if row is None:
+        return None
+    previous_locks = int(row.code) if (row.code or "").isdigit() else 0
+    last_end = row.verified_at
+    if last_end is not None and _aware(last_end) < now - timedelta(days=1):
+        previous_locks = 0
+    duration = min(lock * (2 ** min(previous_locks, 16)), MAX_LOGIN_LOCK)
+    until = now + duration
+    locked = await db.execute(
+        update(EmailVerification)
+        .where(EmailVerification.id == row_id, EmailVerification.attempts >= limit)
+        .values(
+            attempts=0,
+            verified_at=until,
+            expires_at=until,
+            code=str(min(previous_locks + 1, 99)),
+        )
+        .execution_options(synchronize_session=False)
+    )
+    await db.commit()
+    return until if getattr(locked, "rowcount", 0) == 1 else None
+
+
+async def clear_password_failures(db: AsyncSession, *, user_id: str) -> None:
+    """A successful sign-in: forget the failures and the lock series (not committed)."""
+    await db.execute(
+        delete(EmailVerification).where(EmailVerification.id == _login_row_id(user_id))
+    )

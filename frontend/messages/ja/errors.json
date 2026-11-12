@@ -9,6 +9,7 @@
   "username_taken": "ユーザー名は既に使用されています。",
   "email_already_registered": "メールアドレスは既に登録されています。",
   "invalid_credentials": "認証情報が無効です。",
+  "too_many_login_attempts": "お使いのネットワークからのサインイン失敗が多すぎます。しばらくしてから再度お試しください。",
   "account_disabled": "アカウントが無効です。",
   "invalid_token_type": "無効なトークンタイプです。",
   "invalid_token_payload": "無効なトークンペイロードです。",

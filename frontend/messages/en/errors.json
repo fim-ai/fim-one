@@ -13,6 +13,7 @@
   "username_empty": "Username cannot be empty.",
   "email_already_registered": "Email already registered.",
   "invalid_credentials": "Invalid credentials.",
+  "too_many_login_attempts": "Too many failed sign-in attempts from your network. Try again later.",
   "ip_not_allowed": "Access from your IP address is not allowed. Contact your administrator.",
   "ip_rule_self_lockout": "This change would block your own address ({ip}), so it was not saved.",
   "2fa_too_many_attempts": "Too many incorrect codes. Wait 15 minutes and sign in again.",

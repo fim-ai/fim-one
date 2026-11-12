@@ -9,6 +9,7 @@
   "username_taken": "Nom d'utilisateur déjà pris.",
   "email_already_registered": "Email déjà enregistré.",
   "invalid_credentials": "Identifiants invalides.",
+  "too_many_login_attempts": "Trop de tentatives de connexion échouées depuis votre réseau. Réessayez plus tard.",
   "account_disabled": "Compte désactivé.",
   "invalid_token_type": "Type de jeton invalide.",
   "invalid_token_payload": "Charge utile du jeton invalide.",

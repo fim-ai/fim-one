@@ -45,6 +45,7 @@ from fim_one.web.schemas.common import ApiResponse, PaginatedResponse
 from fim_one.web.schemas.model_config import ModelConfigResponse
 from fim_one.web.services.call_log_stats import any_database, is_mcp, kind_of
 from fim_one.web.services.user_deletion import is_reserved_username, purge_user_data
+from fim_one.web.services.verification_codes import clear_password_failures
 
 # ---------------------------------------------------------------------------
 # Settings helpers (delegated to admin_utils, re-exported for compatibility)
@@ -802,6 +803,7 @@ async def reset_password(
     target_user.refresh_token = None
     target_user.refresh_token_expires_at = None
     target_user.tokens_invalidated_at = datetime.now(timezone.utc)
+    await clear_password_failures(db, user_id=target_user.id)
     await db.flush()
     await stage_audit(
         db, current_user, "user.reset_password",

@@ -9,7 +9,8 @@ import re
 
 from pydantic import BaseModel, Field, field_validator
 
-_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+# Not whitespace, "@", NUL or a lone surrogate (neither can be stored).
+_EMAIL_RE = re.compile(r"^[^\s@\x00\ud800-\udfff]+@[^\s@\x00\ud800-\udfff]+\.[^\s@\x00\ud800-\udfff]+$")
 
 
 def normalize_email(value: str) -> str:
@@ -119,6 +120,15 @@ class LoginRequest(BaseModel):
     # for a failed attempt, recorded.
     email: str = Field(..., max_length=255)
     password: str = Field(..., max_length=1000)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        # Only values no account can hold are refused here (422), since they
+        # cannot be stored or looked up.
+        if "\x00" in v or any("\ud800" <= ch <= "\udfff" for ch in v):
+            raise ValueError("Invalid email address")
+        return v
 
 
 class TokenResponse(BaseModel):

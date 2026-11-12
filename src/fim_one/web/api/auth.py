@@ -6,6 +6,7 @@ from dataclasses import replace
 from typing import Any
 
 import hmac
+import logging
 import os
 import secrets
 import uuid
@@ -44,8 +45,13 @@ from fim_one.web.services.default_plan import get_default_plan_id
 from fim_one.web.services.verification_codes import (
     check_emailed_code,
     window_seconds_left,
+    claim_from_window,
+    claim_password_attempt,
     claim_second_factor_attempt,
+    clear_password_failures,
+    record_password_failure,
     release_second_factor_attempt,
+    release_to_window,
     take_after_cooldown,
     take_from_window,
 )
@@ -57,6 +63,7 @@ from fim_one.web.auth import (
     create_access_token,
     create_refresh_token,
     decode_token,
+    dummy_password_hash,
     get_current_user,
     hash_password,
     hash_password_async,
@@ -107,6 +114,8 @@ from fim_one.web.schemas.auth import (
 )
 from fim_one.web.schemas.common import ApiResponse
 from fim_one.web.platform import ensure_market_org
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -316,6 +325,36 @@ async def _admit_code_check(db: AsyncSession, request: Request) -> None:
         limit=_limit("AUTH_CODE_CHECKS_PER_IP_HOUR", 60), window=timedelta(hours=1),
     ):
         raise _rate_limited(window_seconds_left(timedelta(hours=1)))
+
+
+def _account_password_rule() -> tuple[int, timedelta]:
+    """``(failures, minutes)`` of the per-account rule; ``(0, …)`` when it is off."""
+    limit = _limit("AUTH_LOGIN_FAILURES_PER_ACCOUNT", 5)
+    minutes = _limit("AUTH_LOGIN_LOCK_MINUTES", 15)
+    if not limit or not minutes:
+        return 0, timedelta(0)
+    return limit, timedelta(minutes=minutes)
+
+
+async def _admit_password_attempt_from_client(db: AsyncSession, request: Request) -> str | None:
+    """Take one of the client address's password attempts for this hour.
+
+    ``AUTH_LOGIN_FAILURES_PER_IP_HOUR`` failed attempts per client address
+    and clock hour; over it the address is answered 429 until the hour is
+    over.  The attempt is taken before anything is looked up (so requests
+    arriving together cannot share one count) and handed back when the
+    password turns out right; the returned id is what to hand back.
+    """
+    limit = _limit("AUTH_LOGIN_FAILURES_PER_IP_HOUR", 20)
+    if not limit:
+        return None
+    unit = await claim_from_window(
+        db, scope="login-ip", key=_client_key(request), limit=limit, window=timedelta(hours=1)
+    )
+    if unit is None:
+        logger.warning("Password sign-in refused for client %s: too many failed attempts", _client_key(request))
+        raise AppError("too_many_login_attempts", status_code=429)
+    return unit
 
 
 async def _first_proof_of_address(
@@ -696,28 +735,73 @@ async def login(
     request: Request,
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> TokenResponse | JSONResponse:
+    # Failed password attempts are limited per client address and per
+    # account.  Every refusal below runs a password hash comparison, and a
+    # locked account is answered exactly like a wrong password, so neither
+    # the answer nor its timing tells whether an address has an account.
+    ip_unit = await _admit_password_attempt_from_client(db, request)
+
     candidates = (
         await db.scalars(
             _by_email(body.email).options(selectinload(User.oauth_bindings)).limit(5)
         )
     ).all()
     if not candidates:
+        await verify_password_async(body.password, dummy_password_hash())
         await _record_login(db, request, None, method="password", success=False, failure_reason="user_not_found", email=body.email)
         raise AppError("invalid_credentials", status_code=401)
 
     # Where two accounts hold the address, a password signs in to the
-    # account it was set on, and to no other.
-    user = candidates[0]
+    # account it was set on, and to no other.  Each account with a password
+    # spends one of its attempts before its password is compared; a locked
+    # account is skipped as if its password were wrong.
+    account_limit, account_window = _account_password_rule()
+    matched: User | None = None
+    tried: list[User] = []
+    locked: list[User] = []
     for candidate in candidates:
-        if candidate.password_hash is not None and await verify_password_async(
-            body.password, candidate.password_hash
+        if candidate.password_hash is None:
+            continue
+        if account_limit and not await claim_password_attempt(
+            db, user_id=candidate.id, email=candidate.email or body.email,
+            limit=account_limit, window=account_window,
         ):
-            user = candidate
+            await verify_password_async(body.password, dummy_password_hash())
+            locked.append(candidate)
+            continue
+        tried.append(candidate)
+        if await verify_password_async(body.password, candidate.password_hash):
+            matched = candidate
             break
 
-    if user.password_hash is None or not await verify_password_async(body.password, user.password_hash):
-        await _record_login(db, request, user, method="password", success=False, failure_reason="wrong_password")
+    if matched is None:
+        if not tried and not locked:
+            # No account here has a password: compare anyway.
+            await verify_password_async(body.password, dummy_password_hash())
+            await _record_login(db, request, candidates[0], method="password", success=False, failure_reason="wrong_password")
+        for candidate in locked:
+            await _record_login(db, request, candidate, method="password", success=False, failure_reason="account_locked")
+        for candidate in tried:
+            await _record_login(db, request, candidate, method="password", success=False, failure_reason="wrong_password")
+            if not account_limit:
+                continue
+            until = await record_password_failure(
+                db, user_id=candidate.id, limit=account_limit, lock=account_window
+            )
+            if until is not None:
+                logger.warning(
+                    "Password sign-in locked for account %s until %s after %d failed attempts",
+                    candidate.id, until.isoformat(), account_limit,
+                )
+                await _record_login(db, request, candidate, method="password", success=False, failure_reason="account_locked_now")
         raise AppError("invalid_credentials", status_code=401)
+
+    user = matched
+    # The password is right: this attempt is not a failure.
+    if ip_unit is not None:
+        await release_to_window(db, ip_unit)
+    await clear_password_failures(db, user_id=user.id)
+    await db.commit()
 
     if not user.is_active:
         await _record_login(db, request, user, method="password", success=False, failure_reason="account_disabled")
@@ -760,13 +844,11 @@ async def send_login_code(
         raise AppError("smtp_not_configured", status_code=503)
     await _admit_code_send(db, request, address=body.email, purpose="login")
 
-    # Email MUST be registered (opposite of send-verification-code)
+    # Answered the same whether or not the address has an account: a code
+    # is issued either way (keeping the resend interval below identical) and
+    # mailed only to an active account's address.
     user = await db.scalar(_by_email(body.email).limit(1))
-    if user is None:
-        raise AppError("email_not_registered", status_code=404)
-
-    if not user.is_active:
-        raise AppError("account_disabled", status_code=403)
+    deliver = user is not None and user.is_active
 
     # Rate limit: no new code if one was sent < 60s ago for same email+purpose
     recent = await db.execute(
@@ -792,7 +874,8 @@ async def send_login_code(
     db.add(verification)
     await db.commit()
 
-    await send_verification_email(body.email, code, purpose="login", locale=body.locale or "en")
+    if deliver:
+        await send_verification_email(body.email, code, purpose="login", locale=body.locale or "en")
 
     return {
         "message": "Login code sent",
@@ -813,14 +896,10 @@ async def login_with_code(
     user = await db.scalar(
         _by_email(body.email).options(selectinload(User.oauth_bindings)).limit(1)
     )
-    if user is None:
-        await _record_login(db, request, None, method="email_code", success=False, failure_reason="email_not_registered", email=body.email)
-        raise AppError("email_not_registered", status_code=404)
 
-    if not user.is_active:
-        await _record_login(db, request, user, method="email_code", success=False, failure_reason="account_disabled")
-        raise AppError("account_disabled", status_code=403)
-
+    # The code is checked before anything is said about the account: an
+    # address without an account (or a disabled one) is issued codes that
+    # are never mailed, so its answers are those of a wrong code.
     # Find the latest unexpired, unverified code for this email+purpose
     verif_result = await db.execute(
         select(EmailVerification)
@@ -835,19 +914,30 @@ async def login_with_code(
     verif = verif_result.scalar_one_or_none()
 
     if verif is None:
-        await _record_login(db, request, user, method="email_code", success=False, failure_reason="verification_code_expired")
+        await _record_login(db, request, user, method="email_code", success=False, failure_reason="verification_code_expired", email=body.email)
         raise AppError("verification_code_expired")
 
     if verif.expires_at.replace(tzinfo=UTC) < datetime.now(UTC):
-        await _record_login(db, request, user, method="email_code", success=False, failure_reason="verification_code_expired")
+        await _record_login(db, request, user, method="email_code", success=False, failure_reason="verification_code_expired", email=body.email)
         raise AppError("verification_code_expired")
 
     # Spends an attempt atomically, then compares; marks the code used.
     try:
         await check_emailed_code(db, verif, body.code, **_client_tries(request))
     except AppError as exc:
-        await _record_login(db, request, user, method="email_code", success=False, failure_reason=exc.error_code)
+        await _record_login(db, request, user, method="email_code", success=False, failure_reason=exc.error_code, email=body.email)
         raise
+
+    if user is None:
+        await db.rollback()
+        await _record_login(db, request, None, method="email_code", success=False, failure_reason="email_not_registered", email=body.email)
+        raise AppError("verification_code_invalid")
+    if not user.is_active:
+        await _record_login(db, request, user, method="email_code", success=False, failure_reason="account_disabled")
+        raise AppError("account_disabled", status_code=403)
+
+    # The address is proven: earlier failed password attempts are forgotten.
+    await clear_password_failures(db, user_id=user.id)
 
     if not user.email_verified:
         await _first_proof_of_address(db, user, keep_password=False, issues_session=True)
@@ -1607,6 +1697,7 @@ async def reset_password(
     if not user.email_verified:
         await _first_proof_of_address(db, user, keep_password=True, issues_session=False)
     user.password_hash = await hash_password_async(body.new_password)
+    await clear_password_failures(db, user_id=user.id)
     await record_account(db, user, actions.AUTH_PASSWORD_RESET, detail="emailed code, signed in")
     await db.commit()
 
@@ -1624,13 +1715,10 @@ async def send_forgot_code(
         raise AppError("smtp_not_configured", status_code=503)
     await _admit_code_send(db, request, address=body.email, purpose="reset_password")
 
-    # Email must belong to an existing user
+    # Answered the same whether or not the address has an account (see
+    # ``send_login_code``).
     user = await db.scalar(_by_email(body.email).limit(1))
-    if user is None:
-        raise AppError("email_not_registered", status_code=404)
-
-    if not user.is_active:
-        raise AppError("account_disabled", status_code=403)
+    deliver = user is not None and user.is_active
 
     # Rate limit: no new code if one was sent < 60s ago
     recent = await db.execute(
@@ -1656,7 +1744,8 @@ async def send_forgot_code(
     db.add(verification)
     await db.commit()
 
-    await send_verification_email(body.email, code, purpose="reset_password", locale=body.locale or "en")
+    if deliver:
+        await send_verification_email(body.email, code, purpose="reset_password", locale=body.locale or "en")
 
     return {
         "message": "Reset code sent",
@@ -1672,13 +1761,8 @@ async def verify_forgot_code(
 ) -> ApiResponse:
     """Verify OTP code for forgot-password flow. Returns a reset_token for the next step."""
     await _admit_code_check(db, request)
-    # Verify user exists
+    # The account is looked at after the code (see ``login_with_code``).
     user = await db.scalar(_by_email(body.email).limit(1))
-    if user is None:
-        raise AppError("email_not_registered", status_code=404)
-
-    if not user.is_active:
-        raise AppError("account_disabled", status_code=403)
 
     # Find the latest unverified code for this email+purpose
     verif_result = await db.execute(
@@ -1705,6 +1789,12 @@ async def verify_forgot_code(
     await check_emailed_code(
         db, verif, body.code, reset_token=reset_token, **_client_tries(request)
     )
+    if user is None:
+        await db.rollback()
+        raise AppError("verification_code_invalid")
+    if not user.is_active:
+        await db.rollback()
+        raise AppError("account_disabled", status_code=403)
     await db.commit()
 
     return ApiResponse(data={"reset_token": reset_token})
@@ -1718,13 +1808,8 @@ async def forgot_password(
 ) -> ApiResponse:
     """Reset password using a verified reset token (from verify-forgot-code)."""
     await _admit_code_check(db, request)
-    # Verify user exists
+    # The account is looked at after the code (see ``login_with_code``).
     user = await db.scalar(_by_email(body.email).limit(1))
-    if user is None:
-        raise AppError("email_not_registered", status_code=404)
-
-    if not user.is_active:
-        raise AppError("account_disabled", status_code=403)
 
     # Find the verified record with matching reset_token
     verif_result = await db.execute(
@@ -1747,11 +1832,17 @@ async def forgot_password(
     if verif.verified_at is None or verif.verified_at.replace(tzinfo=UTC) < datetime.now(UTC) - timedelta(minutes=10):
         raise AppError("verification_code_expired")
 
+    if user is None:
+        raise AppError("verification_code_expired")
+    if not user.is_active:
+        raise AppError("account_disabled", status_code=403)
+
     if not user.email_verified:
         await _first_proof_of_address(db, user, keep_password=True, issues_session=False)
 
     # Set new password
     user.password_hash = await hash_password_async(body.new_password)
+    await clear_password_failures(db, user_id=user.id)
     # Clear the reset token so it can't be reused
     verif.reset_token = None
     # Nobody is signed in here: the emailed code is what proved the account.

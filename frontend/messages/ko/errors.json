@@ -9,6 +9,7 @@
   "username_taken": "이미 사용 중인 사용자명입니다.",
   "email_already_registered": "이미 등록된 이메일입니다.",
   "invalid_credentials": "잘못된 자격증명입니다.",
+  "too_many_login_attempts": "사용 중인 네트워크에서 로그인 실패가 너무 많습니다. 잠시 후 다시 시도하세요.",
   "account_disabled": "계정이 비활성화되었습니다.",
   "invalid_token_type": "잘못된 토큰 유형입니다.",
   "invalid_token_payload": "잘못된 토큰 페이로드입니다.",

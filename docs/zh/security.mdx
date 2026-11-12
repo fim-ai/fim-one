@@ -63,6 +63,23 @@ FIM One 非常重视安全性。如果您发现漏洞，我们希望听到您的
 | **保持更新** | 定期拉取最新版本。安全补丁会尽力向前一个次要版本回溯。 |
 | **限制网络访问** | 将数据库和应用程序端口限制为受信任的网络。使用防火墙规则或安全组。 |
 
+## Checking Stored Data Before an Upgrade
+
+Some releases tighten what stored settings may do, and rows saved under the earlier rules then stop working. With the new release installed and the same environment as the application (`DATABASE_URL`, `DB_CONNECTOR_ALLOWED_HOSTS`, `REDIS_URL`), run:
+
+```bash
+python -m fim_one.web.services.upgrade_check          # readable list
+python -m fim_one.web.services.upgrade_check --json   # for scripts
+```
+
+The check only reads: it runs `SELECT` statements, resolves host names and prints what it found, without credentials, model keys or stored avatar values. It lists:
+
+| Rows | What happens to them | What to do |
+|---|---|---|
+| Database connectors whose host is refused | They cannot connect. | Add the host or network to `DB_CONNECTOR_ALLOWED_HOSTS` and restart, or point the connector elsewhere. The hosts of the application's own database and Redis cannot be allowed. |
+| Agents with a custom model endpoint (`base_url` in their inline model settings) | An endpoint without its own key, or on an internal address, is refused. | The owner selects a model configured under Admin → Models, or adds a key. |
+| Accounts whose stored profile picture is neither a built-in avatar nor an uploaded image | No picture is shown. | The user picks a picture again. |
+
 ## 安全名人堂
 
 我们感谢所有已确认的漏洞报告者（除非他们选择保持匿名）。报告者还可以获得[先锋计划](/contributing)的资格。

@@ -300,9 +300,12 @@ class TestAnAccountThatDoesNotExist:
         assert await world.logins() == []
 
     async def test_rows_for_unknown_accounts_from_one_address_are_bounded(
-        self, world: World
+        self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from fim_one.core.audit import refusals
+
+        # More failures than one client address is allowed in an hour.
+        monkeypatch.setenv("AUTH_LOGIN_FAILURES_PER_IP_HOUR", "0")
 
         for n in range(25):
             await world.call(
@@ -319,8 +322,12 @@ class TestAnAccountThatDoesNotExist:
         assert summary.detail is not None and summary.detail.startswith("15 more")
 
     async def test_failures_for_an_account_that_exists_are_all_recorded(
-        self, world: World
+        self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # Without the sign-in limits, which lock the account after 5 failures
+        # (their records are tested in test_password_login_limits.py).
+        monkeypatch.setenv("AUTH_LOGIN_FAILURES_PER_ACCOUNT", "0")
+        monkeypatch.setenv("AUTH_LOGIN_FAILURES_PER_IP_HOUR", "0")
         alice = await world.user("alice", password=PASSWORD)
 
         for _ in range(15):

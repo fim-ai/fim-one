@@ -9,6 +9,7 @@
   "username_taken": "Benutzername bereits vergeben.",
   "email_already_registered": "E-Mail bereits registriert.",
   "invalid_credentials": "Ungültige Anmeldedaten.",
+  "too_many_login_attempts": "Zu viele fehlgeschlagene Anmeldeversuche aus Ihrem Netzwerk. Versuchen Sie es später erneut.",
   "account_disabled": "Konto deaktiviert.",
   "invalid_token_type": "Ungültiger Token-Typ.",
   "invalid_token_payload": "Ungültige Token-Nutzlast.",

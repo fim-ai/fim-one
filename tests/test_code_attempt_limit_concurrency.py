@@ -478,11 +478,15 @@ class TestIssuanceAndCheckWindows:
 
         assert sum(await asyncio.gather(*[_one() for _ in range(_BURST)])) == 7
 
-    async def test_the_limit_does_not_depend_on_the_address_existing(self, env: _Env) -> None:
-        known = [await self._send(env, self._SEND["login"]) for _ in range(5)]
-        unknown = [await self._send(env, self._SEND["login"], "nobody@example.com") for _ in range(5)]
-        assert known[3:] == unknown[3:] == [429, 429]
-        assert set(unknown[:3]) == {404}  # the answer before the limit is unchanged
+    @pytest.mark.parametrize("flow", ["login", "forgot"])
+    async def test_the_answer_does_not_depend_on_the_address_existing(
+        self, env: _Env, flow: str
+    ) -> None:
+        known = [await self._send(env, self._SEND[flow]) for _ in range(5)]
+        unknown = [await self._send(env, self._SEND[flow], "nobody@example.com") for _ in range(5)]
+        assert known == unknown == [200] * 3 + [429] * 2
+        # Nothing is mailed to an address without an account.
+        assert len(env.sent) == 3  # type: ignore[attr-defined]
 
     async def test_purposes_and_the_signed_in_path_are_counted_apart(self, env: _Env) -> None:
         assert [await self._send(env, self._SEND["forgot"]) for _ in range(6)][-1] == 429

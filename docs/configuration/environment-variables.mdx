@@ -466,6 +466,18 @@ Emailed codes (sign-in, registration, password reset) allow five tries each. The
 
 Addresses are compared without case and without a trailing dot of the domain (`name@example.com.` counts as `name@example.com`). A request over a limit is answered with HTTP 429 (`verification_rate_limited`) before the address is looked up, so the answer is the same whether or not the address has an account. A signed-in request for a reset code is counted under the account, separately from anonymous requests for the same address. The client address is the one the application server sees: behind a reverse proxy, run the server so that it trusts the proxy's forwarded address, otherwise all clients share one count.
 
+Requests for a sign-in or reset code are answered the same way whether or not the address has an account; a code is mailed only to an active account's address.
+
+### Password sign-in limits
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `AUTH_LOGIN_FAILURES_PER_ACCOUNT` | No | `5` | Failed password attempts for one account within `AUTH_LOGIN_LOCK_MINUTES` before password sign-in to it is refused |
+| `AUTH_LOGIN_LOCK_MINUTES` | No | `15` | Length of the first lock (and of the counting period); each further lock in a row lasts twice as long, up to 24 hours |
+| `AUTH_LOGIN_FAILURES_PER_IP_HOUR` | No | `20` | Failed password attempts per client address and clock hour; further attempts get HTTP 429 (`too_many_login_attempts`) until the hour ends |
+
+`0` switches a rule off. A locked account answers a password attempt exactly as a wrong password does; the lock is written to the server log and to the login history (`account_locked_now`, then `account_locked` for each refused attempt). A successful password or emailed-code sign-in, and any password reset (by the user, through the forgotten-password flow or by an administrator), clears the count; signing in with an emailed code is not blocked by a lock.
+
 ---
 
 ## Connectors
