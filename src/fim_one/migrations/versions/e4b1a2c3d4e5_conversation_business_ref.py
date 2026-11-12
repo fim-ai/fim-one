@@ -8,6 +8,9 @@ so "this user's conversations for reference X" is an index lookup.
 
 Existing rows keep ``NULL``. Safe to run again: each step checks first.
 
+On PostgreSQL the index is built without ``CONCURRENTLY``: writes to
+``conversations`` are blocked for as long as the build takes.
+
 Downgrade drops the index and the column; the references stored are lost.
 
 Revision ID: e4b1a2c3d4e5

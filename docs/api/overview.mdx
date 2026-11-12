@@ -163,8 +163,9 @@ Resume is stateless — it replays from the assistant message's stored `sse_even
 
 A system that embeds FIM One can tag each conversation with the id of the business object it is about, such as a contract number or a ticket id, and later reopen the latest conversation for that object.
 
-- `business_ref` is optional text of at most 200 characters. Surrounding whitespace is trimmed; an empty value means no reference. Values longer than 200 characters or containing control characters are refused with `422` (`invalid_business_ref` for query parameters). The value is stored as given: it is not unique, not interpreted, and never passed to the model.
-- A reference belongs to the conversation's owner. Filters and lookups only ever consider the caller's own conversations, and administrator lists and exports do not show it. The owner's data export (`GET /api/auth/me/export`) includes it.
+- `business_ref` is optional text. It is normalized to Unicode NFC, then surrounding whitespace is trimmed; an empty value means no reference. A value longer than 200 characters after normalization, or one containing control characters (C0 or C1), zero-width or other format characters, or the line and paragraph separators U+2028 and U+2029, is refused with `422` (`invalid_business_ref` for query parameters). The value is otherwise stored as given: it is not unique, not interpreted, and never passed to the model.
+- Filters and lookups match exactly and case-sensitively, after the same NFC normalization: `HT-1` does not find `ht-1`, while a reference sent in decomposed form finds the one stored in composed form.
+- A reference belongs to the conversation's owner. Filters and lookups only ever consider the caller's own conversations, and administrator lists and exports do not show it. The administrators' full backup (`GET /api/admin/export/full-backup`) leaves it out, so anything rebuilt from that backup has no references. The owner's data export (`GET /api/auth/me/export`) includes it.
 
 ```bash
 # Start a conversation for contract HT-2026-0042
@@ -188,7 +189,7 @@ curl -X PATCH "https://your-domain.com/api/conversations/<id>" \
   -d '{"business_ref": null}'
 ```
 
-`GET /api/conversations/latest` orders by the newest message, falling back to the creation time, and considers active conversations unless `status=archived` is given. The list keeps its own order (starred first, then newest created). In the portal, opening `/new?business_ref=<id>` lists only that reference's conversations in the sidebar, resumes the latest one, and otherwise starts a new conversation carrying the reference with the first message.
+`GET /api/conversations/latest` orders by the newest message, falling back to the creation time, and considers active conversations unless `status=archived` is given. The list keeps its own order (starred first, then newest created).
 
 ## Rate Limiting
 
