@@ -195,6 +195,8 @@ class MCPClient:
         which keeps it with the other failures. The task is still marked as
         being cancelled, and a cancellation is raised whatever *exc* was:
         "skip this server" must not carry on a turn that was stopped.
+        A task whose cancellation count is not zero is treated as being
+        cancelled, however it came to be so.
 
         *previous* is the session registered under *name* before this
         attempt (a second connection under a name already in use).
