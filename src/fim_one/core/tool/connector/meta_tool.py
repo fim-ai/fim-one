@@ -21,6 +21,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from fim_one.core.security.ssrf import UnreachableHostError
 from fim_one.core.tool.base import BaseTool
 from fim_one.core.tool.connector.adapter import ConnectorToolAdapter, connector_tool_prefix
 
@@ -314,6 +315,9 @@ class ConnectorMetaTool(BaseTool):
                 on_call_complete=self._on_call_complete,
             )
             return await adapter.run(**parameters)
+        except UnreachableHostError as exc:
+            # The answer the adapter gives when it refuses the host itself.
+            return f"[Error] {exc}"
         except ValueError as exc:
             return f"[Error] Configuration error: {exc}"
         except Exception as exc:

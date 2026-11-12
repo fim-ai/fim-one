@@ -95,12 +95,11 @@ class ConnectorToolAdapter(BaseTool):
         self._method = action_method.upper()
         self._base_url = connector_base_url.rstrip("/")
 
-        try:
-            validate_url(connector_base_url, allow_dns_failure=True)
-        except ValueError as exc:
-            raise ValueError(
-                f"Connector base URL blocked by SSRF policy: {exc}"
-            ) from exc
+        # The host is checked as it is at request time (``run``): an internal
+        # host and one that does not resolve are both refused here, with the
+        # same message (``UnreachableHostError``; the address goes to the
+        # log), so neither builds a tool the other would not.
+        validate_url(connector_base_url)
 
         self._path = action_path
         self._parameters_schema_val = action_parameters_schema or {
@@ -217,7 +216,8 @@ class ConnectorToolAdapter(BaseTool):
         try:
             validate_url(url)
         except ValueError as exc:
-            return f"[Error] SSRF blocked: {exc}"
+            # The message says what was refused (as ``http_request`` reports it).
+            return f"[Error] {exc}"
 
         # 2. Build headers with auth
         headers: dict[str, str] = {"Accept": "application/json"}

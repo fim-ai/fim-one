@@ -108,6 +108,14 @@ def is_private_ip(ip_str: str) -> bool:
     return any(addr in net for net in _BLOCKED_IPV6_NETWORKS)
 
 
+class UnreachableHostError(ValueError):
+    """A host name refused for an outbound request.
+
+    Raised whether the name resolves to an internal address or does not
+    resolve at all, with the same message (:func:`unreachable_host_message`).
+    """
+
+
 def unreachable_host_message(hostname: str) -> str:
     """What the caller is told of a host name that may not be reached.
 
@@ -118,19 +126,19 @@ def unreachable_host_message(hostname: str) -> str:
     return f"SSRF blocked: the host '{hostname}' does not resolve to a public address."
 
 
-def _internal_host_refusal(hostname: str, ip: str) -> ValueError:
+def _internal_host_refusal(hostname: str, ip: str) -> UnreachableHostError:
     """The refusal for a name that resolves to an internal address.
 
     The address it resolved to is logged and never returned to the caller.
     """
     logger.warning("Outbound request refused: %r resolves to internal address %s", hostname, ip)
-    return ValueError(unreachable_host_message(hostname))
+    return UnreachableHostError(unreachable_host_message(hostname))
 
 
-def _unresolved_host_refusal(hostname: str, reason: object) -> ValueError:
+def _unresolved_host_refusal(hostname: str, reason: object) -> UnreachableHostError:
     """The refusal for a name that does not resolve; the same message as above."""
     logger.info("Outbound request refused: %r did not resolve (%s)", hostname, reason)
-    return ValueError(unreachable_host_message(hostname))
+    return UnreachableHostError(unreachable_host_message(hostname))
 
 
 def resolve_and_check(hostname: str) -> None:
