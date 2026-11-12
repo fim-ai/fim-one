@@ -1481,8 +1481,8 @@ export interface AdminAnalyticsByAgent {
 }
 export interface AdminAnalyticsByConnector {
   kind?: CallLogKind
-  connector_name: string; total_calls: number; success_rate: number
-  avg_response_time_ms: number; error_count: number
+  connector_name: string; total_calls: number; success_rate: number | null
+  avg_response_time_ms: number | null; error_count: number
 }
 export interface AdminAnalyticsByWorkflow {
   workflow_id: string; workflow_name: string; owner_id: string | null
