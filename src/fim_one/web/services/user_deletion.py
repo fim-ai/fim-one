@@ -227,8 +227,7 @@ async def _deidentify_records(
 
     Rows are kept, with the user id. In ``login_history`` the username and
     email become the deleted-user label and the address and device are
-    cleared, on the account's rows and on attempts with one of its
-    addresses that were not matched to it. In ``audit_logs`` the same is done to the rows the user is the
+    cleared. In ``audit_logs`` the same is done to the rows the user is the
     actor of; rows the user is the target of get the label as the target's
     name, and their recorded old and new names (``username``, ``email``,
     ``display_name`` in ``changes``) become ``{"changed": true}``. In
@@ -269,13 +268,12 @@ async def _deidentify_records(
     )
     # A sign-in attempt with one of the account's addresses that was not
     # matched to it (before the account existed, typed in another case,
-    # or after the address was changed) is relabelled the same way: once
-    # the address reads as the label, an address and device left on the
-    # row would be kept under the deleted user's name.
+    # or after the address was changed): the address typed is the user's,
+    # where it came from is not known to be.
     await db.execute(
         update(LoginHistory)
         .where(LoginHistory.user_id.is_(None), func.lower(LoginHistory.email).in_(lowered))
-        .values(email=label, ip_address=None, user_agent=None)
+        .values(email=label)
     )
     await db.execute(
         update(AuditLog)
