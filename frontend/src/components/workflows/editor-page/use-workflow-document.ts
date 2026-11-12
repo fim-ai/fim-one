@@ -155,6 +155,9 @@ export function useWorkflowDocument({
   const epochRef = useRef(0)
   // No save starts while this is set.
   const suspendedRef = useRef(false)
+  // The document does not save itself while this is set (a question whose
+  // answer may be to give the edits up is open).
+  const autoSaveHeldRef = useRef(false)
   // Manual saves waiting or in flight (drives the "Saving..." indicator).
   const manualSavesRef = useRef(0)
 
@@ -219,7 +222,7 @@ export function useWorkflowDocument({
   /** (Re)start the pause after which the document saves itself. */
   const scheduleAutoSave = useCallback(() => {
     cancelAutoSave()
-    if (suspendedRef.current) return
+    if (suspendedRef.current || autoSaveHeldRef.current) return
     autoSaveTimerRef.current = setTimeout(() => {
       autoSaveTimerRef.current = null
       void runSaveRef.current("auto")
@@ -688,6 +691,23 @@ export function useWorkflowDocument({
     return hasUnsavedEdits()
   }, [absorbCanvas, noteEdit, hasUnsavedEdits])
 
+  /**
+   * The user is being asked whether to leave and give up the unsaved edits.
+   * Until they answer, the document does not save itself: an auto-save that
+   * went out while the question was open made "Discard & Leave" keep the
+   * edits. A save the user asks for still goes out.
+   */
+  const holdAutoSave = useCallback(() => {
+    autoSaveHeldRef.current = true
+    cancelAutoSave()
+  }, [cancelAutoSave])
+
+  /** The question was answered: saving resumes, including what was pending. */
+  const resumeAutoSave = useCallback(() => {
+    autoSaveHeldRef.current = false
+    if (!suspendedRef.current) noteEdit()
+  }, [noteEdit])
+
   /** Give up the unsaved edits: nothing is saved from here on (the page is being left). */
   const discardChanges = useCallback(() => {
     suspendedRef.current = true
@@ -775,6 +795,8 @@ export function useWorkflowDocument({
     duplicate,
     deleteWorkflow,
     hasUnsavedChanges,
+    holdAutoSave,
+    resumeAutoSave,
     discardChanges,
     beginRestore,
     cancelRestore,

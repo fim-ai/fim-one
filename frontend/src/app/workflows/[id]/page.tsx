@@ -100,6 +100,15 @@ export default function WorkflowEditorPage() {
   const publishing = useWorkflowPublishing(workflow, setWorkflow)
   // With unsaved changes, a link to another page asks before it is followed.
   const leaveGuard = useLeaveGuard(doc.hasUnsavedChanges)
+  // While the "Unsaved changes" question is open the document does not save
+  // itself; "Stay" resumes it, "Discard & Leave" gives the edits up.
+  const { holdAutoSave, resumeAutoSave } = doc
+  const leaveQuestionOpen = leaveGuard.pendingHref !== null
+  useEffect(() => {
+    if (!leaveQuestionOpen) return
+    holdAutoSave()
+    return resumeAutoSave
+  }, [leaveQuestionOpen, holdAutoSave, resumeAutoSave])
 
   usePageTitle(workflow?.name)
 
