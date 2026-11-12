@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 from typing import Any
@@ -72,14 +73,23 @@ class _Contexts:
         self._entered.append(context)
         return value
 
-    async def aclose(self) -> None:
+    def mark(self) -> int:
+        """Where the stack stands now, for :meth:`close_back_to`."""
+        return len(self._entered)
+
+    async def close_back_to(self, mark: int) -> list[BaseException]:
+        """Close what was entered since *mark*, newest first; what failed, in that order."""
         failures: list[BaseException] = []
-        while self._entered:
+        while len(self._entered) > mark:
             context = self._entered.pop()
             try:
                 await context.__aexit__(None, None, None)
             except BaseException as exc:
                 failures.append(exc)
+        return failures
+
+    async def aclose(self) -> None:
+        failures = await self.close_back_to(0)
         if not failures:
             return
         # A transport whose server refused it cancels its own session, which
@@ -96,6 +106,25 @@ class _Contexts:
                 )
         # Outside the handler above, so that it is linked to nothing.
         raise raised
+
+
+class MCPConnectionError(ConnectionError):
+    """An MCP server could not be connected.
+
+    The message names the kind of failure only (also in ``kind``); the
+    failure itself, which can quote the server's URL, is the ``__cause__``.
+    """
+
+    def __init__(self, name: str, kind: str) -> None:
+        super().__init__(f"MCP server {name!r} could not be connected ({kind})")
+        self.kind = kind
+
+
+def _first_cause(exc: BaseException) -> BaseException:
+    """The first error inside *exc* when it is a group of them, else *exc*."""
+    while isinstance(exc, BaseExceptionGroup) and exc.exceptions:
+        exc = exc.exceptions[0]
+    return exc
 
 
 def _traceback_without_url_secrets(exc: BaseException) -> str:
@@ -142,6 +171,59 @@ class MCPClient:
     # ------------------------------------------------------------------
     # Connection methods
     # ------------------------------------------------------------------
+
+    async def _give_up_connecting(
+        self, name: str, mark: int, exc: BaseException, previous: Any
+    ) -> None:
+        """Close what connecting to *name* had opened, after *exc* ended it.
+
+        Returns for the caller to re-raise *exc*, unless *exc* is not what
+        happened.
+
+        A transport whose server cannot be reached does not raise the reason
+        where the connection is being made: it cancels the task that is
+        making it, and the reason comes out when the transport is closed.
+        Left as a cancellation it would end the caller's whole request or
+        chat turn, for one server that is down. Once the transport is closed
+        that cancellation is withdrawn; if the task is then not being
+        cancelled by anyone else, the reason is raised in its place as
+        :class:`MCPConnectionError`.
+
+        The other way round: a cancellation from outside (the user stopped
+        the turn, a time limit ran out) can arrive while the failed
+        connection is being closed. It is delivered once, into the close,
+        which keeps it with the other failures. The task is still marked as
+        being cancelled, and a cancellation is raised whatever *exc* was:
+        "skip this server" must not carry on a turn that was stopped.
+        A task whose cancellation count is not zero is treated as being
+        cancelled, however it came to be so.
+
+        *previous* is the session registered under *name* before this
+        attempt (a second connection under a name already in use).
+        """
+        if previous is None:
+            self._sessions.pop(name, None)
+        else:
+            self._sessions[name] = previous
+        failures = await self._exit_stack.close_back_to(mark)
+        reasons = [f for f in failures if isinstance(f, Exception)]
+        task = asyncio.current_task()
+        being_cancelled = task is not None and task.cancelling() > 0
+        by_the_transport = isinstance(exc, asyncio.CancelledError) and not being_cancelled
+        for reason in reasons[1:] if by_the_transport else reasons:
+            # Not ``exc_info``: a connection error quotes the URL it
+            # failed for, which can carry a credential.
+            logger.warning(
+                "An MCP connection that failed did not close cleanly\n%s",
+                _traceback_without_url_secrets(reason),
+            )
+        if being_cancelled:
+            if isinstance(exc, asyncio.CancelledError):
+                return
+            raise asyncio.CancelledError()
+        if by_the_transport and reasons:
+            cause = _first_cause(reasons[0])
+            raise MCPConnectionError(name, type(cause).__name__) from reasons[0]
 
     async def connect_stdio(
         self,
@@ -203,17 +285,23 @@ class MCPClient:
 
         # Enter the stdio_client and ClientSession context managers via the
         # exit stack so they stay alive until disconnect_all() is called.
-        read, write = await self._exit_stack.enter_async_context(
-            stdio_client(server_params)
-        )
-        session: ClientSession = await self._exit_stack.enter_async_context(
-            ClientSession(read, write)
-        )
-        await session.initialize()
-        self._sessions[name] = session
+        mark = self._exit_stack.mark()
+        previous = self._sessions.get(name)
+        try:
+            read, write = await self._exit_stack.enter_async_context(
+                stdio_client(server_params)
+            )
+            session: ClientSession = await self._exit_stack.enter_async_context(
+                ClientSession(read, write)
+            )
+            await session.initialize()
+            self._sessions[name] = session
 
-        # Discover tools exposed by the server.
-        tools_result = await session.list_tools()
+            # Discover tools exposed by the server.
+            tools_result = await session.list_tools()
+        except BaseException as exc:
+            await self._give_up_connecting(name, mark, exc, previous)
+            raise
 
         adapters: list[Tool] = []
         for tool in tools_result.tools:
@@ -276,16 +364,22 @@ class MCPClient:
 
         logger.info("Connecting to MCP server %r via SSE: %s", name, _loggable_url(url))
 
-        read, write = await self._exit_stack.enter_async_context(
-            sse_client(url, headers=headers or {})
-        )
-        session: ClientSession = await self._exit_stack.enter_async_context(
-            ClientSession(read, write)
-        )
-        await session.initialize()
-        self._sessions[name] = session
+        mark = self._exit_stack.mark()
+        previous = self._sessions.get(name)
+        try:
+            read, write = await self._exit_stack.enter_async_context(
+                sse_client(url, headers=headers or {})
+            )
+            session: ClientSession = await self._exit_stack.enter_async_context(
+                ClientSession(read, write)
+            )
+            await session.initialize()
+            self._sessions[name] = session
 
-        tools_result = await session.list_tools()
+            tools_result = await session.list_tools()
+        except BaseException as exc:
+            await self._give_up_connecting(name, mark, exc, previous)
+            raise
 
         adapters: list[Tool] = []
         for tool in tools_result.tools:
@@ -360,17 +454,23 @@ class MCPClient:
             headers=headers or {},
             timeout=httpx2.Timeout(30.0, read=300.0),
         )
-        await self._exit_stack.enter_async_context(http_client)
-        read, write = await self._exit_stack.enter_async_context(
-            streamable_http_client(url, http_client=http_client)
-        )
-        session: ClientSession = await self._exit_stack.enter_async_context(
-            ClientSession(read, write)
-        )
-        await session.initialize()
-        self._sessions[name] = session
+        mark = self._exit_stack.mark()
+        previous = self._sessions.get(name)
+        try:
+            await self._exit_stack.enter_async_context(http_client)
+            read, write = await self._exit_stack.enter_async_context(
+                streamable_http_client(url, http_client=http_client)
+            )
+            session: ClientSession = await self._exit_stack.enter_async_context(
+                ClientSession(read, write)
+            )
+            await session.initialize()
+            self._sessions[name] = session
 
-        tools_result = await session.list_tools()
+            tools_result = await session.list_tools()
+        except BaseException as exc:
+            await self._give_up_connecting(name, mark, exc, previous)
+            raise
 
         adapters: list[Tool] = []
         for tool in tools_result.tools:
@@ -399,8 +499,8 @@ class MCPClient:
 
         .. note::
 
-            :class:`contextlib.AsyncExitStack` does not support removing
-            individual async contexts.  The actual transport cleanup happens
+            Connections are closed last-in first-out, not one in the
+            middle.  The actual transport cleanup happens
             when :meth:`disconnect_all` is called.
         """
         if name in self._sessions:

@@ -1248,7 +1248,16 @@ async def list_step_mcp_tools(
         ) from None
     except Exception as exc:
         from fim_one.core.assembly.mcp_address import traceback_without_url_secrets
+        from fim_one.core.mcp import MCPConnectionError
 
+        if isinstance(exc, MCPConnectionError):
+            if exc.__cause__ is not None:
+                logger.warning(
+                    "MCP server %r could not be connected\n%s",
+                    server_name,
+                    traceback_without_url_secrets(exc.__cause__),
+                )
+            raise _unavailable(f"the connection failed ({exc.kind})") from None
         # Not ``exc_info``: the error can quote the server's URL.
         logger.warning(
             "Listing the tools of MCP server %r failed\n%s",

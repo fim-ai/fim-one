@@ -12,7 +12,7 @@ so the rest of the framework works without it installed.
 from __future__ import annotations
 
 from .adapter import MCPToolAdapter
-from .client import MCPClient
+from .client import MCPClient, MCPConnectionError
 from .meta_tool import (
     MCPServerMetaTool,
     MCPServerStub,
@@ -23,6 +23,7 @@ from .meta_tool import (
 
 __all__ = [
     "MCPClient",
+    "MCPConnectionError",
     "MCPServerMetaTool",
     "MCPServerStub",
     "MCPToolAdapter",
