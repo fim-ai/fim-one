@@ -704,3 +704,49 @@ async def test_search_counts_each_conversation_once(client: AsyncClient) -> None
     page = await _list(client, h, q="hello")
     assert page["total"] == 1
     assert [c["id"] for c in page["items"]] == [conv["id"]]
+
+
+# ---------------------------------------------------------------------------
+# API keys
+# ---------------------------------------------------------------------------
+
+
+async def test_api_key_scopes_cover_the_lookup(client: AsyncClient) -> None:
+    import hashlib
+
+    from fim_one.db.models import ApiKey
+
+    user, session_headers = await _user()
+    cid = (await _create(client, session_headers, business_ref=REF))["id"]
+    keys: dict[str, str] = {}
+    session = create_session()
+    try:
+        for scope in ("chat", "agents"):
+            raw = f"fim_{uuid.uuid4().hex}"
+            session.add(
+                ApiKey(
+                    id=str(uuid.uuid4()),
+                    key_hash=hashlib.sha256(raw.encode()).hexdigest(),
+                    user_id=user.id,
+                    name=scope,
+                    key_prefix=raw[:8],
+                    is_active=True,
+                    total_requests=0,
+                    scopes=scope,
+                )
+            )
+            keys[scope] = raw
+        await session.commit()
+    finally:
+        await session.close()
+
+    chat = {"Authorization": f"Bearer {keys['chat']}"}
+    assert (await _latest(client, chat, REF))["id"] == cid
+    created = await _create(client, chat, business_ref="via-key")
+    assert created["business_ref"] == "via-key"
+
+    agents_only = {"Authorization": f"Bearer {keys['agents']}"}
+    resp = await client.get(
+        "/api/conversations/latest", headers=agents_only, params={"business_ref": REF}
+    )
+    assert resp.status_code == 403

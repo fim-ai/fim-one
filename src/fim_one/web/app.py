@@ -120,6 +120,7 @@ _PUBLIC_API: frozenset[tuple[str, str]] = frozenset({
     ("POST", "/api/chat/inject"),
     ("GET", "/api/conversations"),
     ("POST", "/api/conversations"),
+    ("GET", "/api/conversations/latest"),
     ("GET", "/api/conversations/{conversation_id}"),
     ("PATCH", "/api/conversations/{conversation_id}"),
     ("DELETE", "/api/conversations/{conversation_id}"),

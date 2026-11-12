@@ -54,6 +54,7 @@ _RULES: tuple[_Rule, ...] = (
     _rule("chat", {"POST"}, "/api/chat/inject/recall"),
     _rule("chat", {"POST"}, "/api/chat/resume"),
     _rule("chat", {"GET", "POST"}, "/api/conversations"),
+    _rule("chat", {"GET"}, "/api/conversations/latest"),
     _rule("chat", {"GET", "PATCH", "DELETE"}, "/api/conversations/{conversation_id}"),
     # agents — read-only.
     _rule("agents", {"GET"}, "/api/agents"),

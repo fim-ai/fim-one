@@ -233,6 +233,22 @@
               ],
               "title": "Q"
             }
+          },
+          {
+            "name": "business_ref",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Business Ref"
+            }
           }
         ],
         "responses": {
@@ -242,6 +258,64 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PaginatedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/conversations/latest": {
+      "get": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Latest Conversation For Ref",
+        "description": "The caller's most recently active conversation for *business_ref*.\n\n``data`` is ``null`` when the caller has none, so a host system can\nresume it or start a new one carrying the reference. Activity is the\nnewest message, or the creation time of a conversation without any.\nOnly the caller's own conversations are considered.",
+        "operationId": "latest_conversation_for_ref_api_conversations_latest_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "business_ref",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Business Ref"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "active",
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
                 }
               }
             }
@@ -1000,6 +1074,17 @@
               }
             ],
             "title": "Model Name"
+          },
+          "business_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Ref"
           }
         },
         "type": "object",
@@ -1043,6 +1128,17 @@
               }
             ],
             "title": "Starred"
+          },
+          "business_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Ref"
           }
         },
         "type": "object",
