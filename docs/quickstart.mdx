@@ -110,6 +110,35 @@ docker compose logs -f         # view logs
 docker compose down            # stop all services
 ```
 
+#### ARM64 Hosts
+
+The images build for both `linux/amd64` and `linux/arm64` (e.g. Kunpeng servers) from the same `Dockerfile` and `Dockerfile.sandbox`. Every base image is multi-arch and every Python dependency in `uv.lock` ships a Linux ARM64 wheel, so nothing is compiled from source. On an ARM64 host, `docker compose up --build -d` or `./deploy.sh` builds ARM64 images with no extra steps.
+
+To build on one machine and run on another, for example ARM64 images for an offline server, use `scripts/build-images.sh` (requires `docker buildx`):
+
+```bash
+scripts/build-images.sh --platform arm64 --save ./images   # or amd64, or all
+# → fim-one:latest-arm64, fim-sandbox:python-arm64, ./images/fim-one-latest-arm64.tar
+```
+
+A non-native architecture is built under QEMU emulation and takes several times longer. Docker Desktop includes QEMU; on Linux, register it once with `docker run --privileged --rm tonistiigi/binfmt --install arm64` (or `amd64`). The container is privileged because it registers the emulator in the host kernel.
+
+On the target host, load the archive and give the images the names Docker Compose uses, then start without rebuilding. `docker compose config --images` prints those names; the app image is `<project>-fim-one`, where `<project>` is the Compose project name (the checkout directory name, lowercased and without characters such as dots).
+
+```bash
+docker load -i fim-one-latest-arm64.tar
+docker compose config --images          # e.g. fim-one-fim-one, fim-sandbox:python, ...
+docker tag fim-one:latest-arm64 <project>-fim-one:latest
+docker tag fim-sandbox:python-arm64 fim-sandbox:python
+docker compose up -d --no-build
+```
+
+On a host without internet access:
+
+- `postgres:16-alpine` and `redis:7-alpine` are not in the archive. Pull them for the target architecture on a connected machine and transfer them with `docker save` / `docker load`.
+- With `CODE_EXEC_BACKEND=docker`, JavaScript execution uses `node:20-slim`, which is not in the archive either. Transfer it the same way, or the first JavaScript run fails on the image pull.
+- Do not use `./deploy.sh` there: it always rebuilds (`up -d --build`), which needs the network. Use `docker compose up -d --no-build`.
+
 #### Scaling with Workers
 
 By default, the API runs with a single worker process. To handle more concurrent users, increase workers via `.env`:
