@@ -214,7 +214,7 @@ async def analytics_by_connector(
         success = row.success_count or 0
         errors = row.error_count or 0
         rate = round((success / total) * 100, 1) if total > 0 else None
-        avg_rt = round(float(row.avg_response_time_ms), 1) if row.avg_response_time_ms else None
+        avg_rt = round(float(row.avg_response_time_ms), 1) if row.avg_response_time_ms is not None else None
         items.append(
             ConnectorAnalyticsItem(
                 kind=kind_of(row.mcp_flag, row.database_flag),
@@ -281,7 +281,7 @@ async def analytics_by_workflow(
         total = row.total_runs
         success = row.success_count
         rate = round((success / total) * 100, 1) if total > 0 else None
-        avg_dur = round(float(row.avg_duration_ms), 1) if row.avg_duration_ms else None
+        avg_dur = round(float(row.avg_duration_ms), 1) if row.avg_duration_ms is not None else None
         items.append(
             WorkflowAnalyticsItem(
                 workflow_id=row.id,

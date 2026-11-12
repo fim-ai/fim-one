@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, type ReactNode } from "react"
 import { useTranslations } from "next-intl"
 import {
   BarChart3,
@@ -57,6 +57,16 @@ type SubTab = "analytics" | "byAgent" | "byConnector" | "byWorkflow" | "costProj
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
+
+/**
+ * A figure the API may leave out (null: nothing to average over, e.g. after
+ * the conversations or runs were deleted) is shown as a dash, not as 0.
+ */
+function orDash(value: number | null | undefined, format: (v: number) => string): ReactNode {
+  return value === null || value === undefined
+    ? <span className="text-muted-foreground/50">&mdash;</span>
+    : format(value)
+}
 
 export function AdminAnalytics() {
   const t = useTranslations("admin.analytics")
@@ -427,7 +437,7 @@ function ByAgentSection({
                   <td className="px-4 py-3 text-muted-foreground">{item.owner_username || "--"}</td>
                   <td className="px-4 py-3 text-right tabular-nums">{(item.total_conversations ?? 0).toLocaleString()}</td>
                   <td className="px-4 py-3 text-right tabular-nums">{formatTokens(item.total_tokens ?? 0)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{formatTokens(item.avg_tokens_per_conversation ?? 0)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{orDash(item.avg_tokens_per_conversation, formatTokens)}</td>
                 </tr>
               ))}
             </tbody>
@@ -519,10 +529,10 @@ function ByConnectorSection({
                           style={{ width: `${item.success_rate ?? 0}%` }}
                         />
                       </div>
-                      <span className="text-xs tabular-nums">{(item.success_rate ?? 0).toFixed(1)}%</span>
+                      <span className="text-xs tabular-nums">{orDash(item.success_rate, (v) => `${v.toFixed(1)}%`)}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums">{Math.round(item.avg_response_time_ms ?? 0)}ms</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{orDash(item.avg_response_time_ms, (v) => `${Math.round(v)}ms`)}</td>
                   <td className="px-4 py-3 text-right tabular-nums text-red-600 dark:text-red-400">{item.error_count ?? 0}</td>
                 </tr>
               ))}
@@ -612,10 +622,10 @@ function ByWorkflowSection({
                           style={{ width: `${item.success_rate ?? 0}%` }}
                         />
                       </div>
-                      <span className="text-xs tabular-nums">{(item.success_rate ?? 0).toFixed(1)}%</span>
+                      <span className="text-xs tabular-nums">{orDash(item.success_rate, (v) => `${v.toFixed(1)}%`)}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums">{Math.round(item.avg_duration_ms ?? 0)}ms</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{orDash(item.avg_duration_ms, (v) => `${Math.round(v)}ms`)}</td>
                 </tr>
               ))}
             </tbody>

@@ -426,6 +426,36 @@ class TestReadersCopeWithARowThatHasNoConnector:
             ("connector", "conn-1", 3, 1),
         ]
 
+    async def test_an_average_of_zero_is_zero_not_missing(
+        self, factory: async_sessionmaker[AsyncSession], world: SimpleNamespace
+    ) -> None:
+        """Calls that finish within a millisecond are recorded as 0 ms.
+
+        The page shows a dash for a missing average; an average that is
+        really 0 has to stay a number.
+        """
+        from fim_one.web.api.admin_analytics import analytics_by_connector
+
+        record = call_recorder(_ctx(), kind="mcp")
+        for _ in range(3):
+            await record(
+                mcp_server_id="srv-fast",
+                connector_name="fast",
+                action_name="ping",
+                request_method="MCP",
+                request_url="mcp://fast/ping",
+                response_time_ms=0,
+                success=True,
+            )
+        async with factory() as db:
+            items = await analytics_by_connector(
+                period="7d", top_n=20, current_user=SimpleNamespace(id=USER), db=db
+            )
+
+        assert [(i.connector_id, i.total_calls, i.avg_response_time_ms) for i in items] == [
+            ("srv-fast", 3, 0.0)
+        ]
+
     async def test_metrics_connector_usage(
         self, factory: async_sessionmaker[AsyncSession], world: SimpleNamespace
     ) -> None:

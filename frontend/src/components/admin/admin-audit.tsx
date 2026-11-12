@@ -170,8 +170,8 @@ function ReviewLogPanel() {
   const [orgs, setOrgs] = useState<Array<{ id: string; name: string }>>([])
 
   useEffect(() => {
-    adminApi.listOrganizations(1, 200).then((res) => {
-      setOrgs(res.items.map((o: AdminOrganization) => ({ id: o.id, name: o.name })))
+    adminApi.listAllOrganizations().then((items) => {
+      setOrgs(items.map((o: AdminOrganization) => ({ id: o.id, name: o.name })))
     }).catch(() => {
       // silently fail — org filter will just be empty
     })
@@ -389,8 +389,8 @@ export function AdminAudit() {
   }, [])
 
   useEffect(() => {
-    adminApi.listOrganizations(1, 200).then((res) => {
-      setOrgs(res.items.map((o: AdminOrganization) => ({ id: o.id, name: o.name })))
+    adminApi.listAllOrganizations().then((items) => {
+      setOrgs(items.map((o: AdminOrganization) => ({ id: o.id, name: o.name })))
     }).catch(() => {
       // The filter stays empty and the column shows the id.
     })

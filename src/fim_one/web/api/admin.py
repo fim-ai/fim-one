@@ -377,9 +377,10 @@ async def get_stats(
         if usage_slice.background:
             total_fast_llm_tokens += usage_slice.total_tokens
         else:
-            token_label_counts[_model_label(usage_slice.model or "Unknown")] += (
-                usage_slice.total_tokens
-            )
+            # Per-model slices carry the model's plain name: a turn run on
+            # FAST_LLM_MODEL is not the background work, and labelling it
+            # "Fast LLM (...)" gave two slices the same name.
+            token_label_counts[usage_slice.model or "Unknown"] += usage_slice.total_tokens
     # A slice is negative where adjustments outweigh usage; it stays in, so
     # the slices add up to the total. Only the totals are clamped.
     tokens_by_model = [

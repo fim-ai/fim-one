@@ -1,3 +1,4 @@
+import { fetchAllPages } from "./paginate"
 import { getApiBaseUrl, ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, USER_KEY, MARKET_ORG_ID } from "./constants"
 import type { UserInfo, TokenResponse, LoginRequest, LoginWithCodeRequest, RegisterRequest, ChangePasswordRequest, SetPasswordRequest, SetupRequest } from "@/types/auth"
 import type { WorkflowResponse, WorkflowCreate, WorkflowUpdate, WorkflowRunResponse, WorkflowStats, WorkflowTemplate, NodeStatsResponse, WorkflowValidateResponse, WorkflowVersionResponse, WorkflowAnalyticsResponse, WorkflowScheduleResponse, WorkflowScheduleUpdate, WorkflowBatchRunResponse, WorkflowImportResult, NodeTestRequest, NodeTestResponse, ApprovalInboxItem } from "@/types/workflow"
@@ -1480,8 +1481,8 @@ export interface AdminAnalyticsByAgent {
 }
 export interface AdminAnalyticsByConnector {
   kind?: CallLogKind
-  connector_name: string; total_calls: number; success_rate: number
-  avg_response_time_ms: number; error_count: number
+  connector_name: string; total_calls: number; success_rate: number | null
+  avg_response_time_ms: number | null; error_count: number
 }
 export interface AdminAnalyticsByWorkflow {
   workflow_id: string; workflow_name: string; owner_id: string | null
@@ -1870,6 +1871,16 @@ export const adminApi = {
     const sp = new URLSearchParams({ page: String(page), size: String(size) })
     if (q) sp.set('q', q)
     return apiFetch<{ items: AdminOrganization[]; total: number; page: number; size: number; pages: number }>(`/api/admin/organizations?${sp}`)
+  },
+  /** Every organization, read page by page within the endpoint's size cap (100). */
+  listAllOrganizations: async () => {
+    const rows = await fetchAllPages<AdminOrganization>((page, size) =>
+      apiFetch<{ items: AdminOrganization[]; total: number; pages: number }>(
+        `/api/admin/organizations?${new URLSearchParams({ page: String(page), size: String(size) })}`,
+      ),
+    )
+    // Offset paging over a list that can change mid-read may repeat a row.
+    return [...new Map(rows.map((o) => [o.id, o])).values()]
   },
   adminDeleteOrganization: (orgId: string) =>
     apiFetch(`/api/admin/organizations/${orgId}`, { method: 'DELETE' }),
