@@ -63,6 +63,23 @@ FIM One はセキュリティを真摯に受け止めています。脆弱性を
 | **最新の状態を保つ** | 定期的に最新リリースをプルしてください。セキュリティパッチはベストエフォート基準で前のマイナーバージョンにバックポートされます。 |
 | **ネットワークアクセスを制限する** | データベースとアプリケーションポートを信頼できるネットワークに制限してください。ファイアウォールルールまたはセキュリティグループを使用してください。 |
 
+## Checking Stored Data Before an Upgrade
+
+Some releases tighten what stored settings may do, and rows saved under the earlier rules then stop working. With the new release installed and the same environment as the application (`DATABASE_URL`, `DB_CONNECTOR_ALLOWED_HOSTS`, `REDIS_URL`), run:
+
+```bash
+python -m fim_one.web.services.upgrade_check          # readable list
+python -m fim_one.web.services.upgrade_check --json   # for scripts
+```
+
+The check only reads: it runs `SELECT` statements, resolves host names and prints what it found, without credentials, model keys or stored avatar values. It lists:
+
+| Rows | What happens to them | What to do |
+|---|---|---|
+| Database connectors whose host is refused | They cannot connect. | Add the host or network to `DB_CONNECTOR_ALLOWED_HOSTS` and restart, or point the connector elsewhere. The hosts of the application's own database and Redis cannot be allowed. |
+| Agents with a custom model endpoint (`base_url` in their inline model settings) | An endpoint without its own key, or on an internal address, is refused. | The owner selects a model configured under Admin → Models, or adds a key. |
+| Accounts whose stored profile picture is neither a built-in avatar nor an uploaded image | No picture is shown. | The user picks a picture again. |
+
 ## セキュリティ殿堂
 
 確認された脆弱性報告者全員にクレジットを付与します（匿名を希望する場合を除く）。報告者は[パイオニアプログラム](/contributing)の対象にもなります。

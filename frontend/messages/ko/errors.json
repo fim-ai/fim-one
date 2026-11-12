@@ -94,5 +94,7 @@
   "ip_not_allowed": "귀하의 IP 주소에서의 액세스는 허용되지 않습니다. 관리자에게 문의하세요.",
   "ip_rule_self_lockout": "이 변경 사항은 귀하의 주소({ip})를 차단하므로 저장되지 않았습니다.",
   "2fa_too_many_attempts": "잘못된 코드가 너무 많습니다. 15분 후에 다시 로그인하세요.",
-  "approval_channel_denied": "승인 채널은 귀하가 속한 조직에 속해야 합니다."
+  "approval_channel_denied": "승인 채널은 귀하가 속한 조직에 속해야 합니다.",
+  "too_many_login_attempts": "Too many failed sign-in attempts from your network. Try again later.",
+  "db_target_not_allowed": "{reason}"
 }

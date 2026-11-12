@@ -94,5 +94,7 @@
   "ip_not_allowed": "Der Zugriff von Ihrer IP-Adresse ist nicht zulässig. Wenden Sie sich an Ihren Administrator.",
   "ip_rule_self_lockout": "Diese Änderung würde Ihre eigene Adresse ({ip}) blockieren, daher wurde sie nicht gespeichert.",
   "2fa_too_many_attempts": "Zu viele falsche Codes. Warten Sie 15 Minuten und melden Sie sich erneut an.",
-  "approval_channel_denied": "Der Genehmigungskanal muss zu einer Organisation gehören, deren Mitglied Sie sind."
+  "approval_channel_denied": "Der Genehmigungskanal muss zu einer Organisation gehören, deren Mitglied Sie sind.",
+  "too_many_login_attempts": "Too many failed sign-in attempts from your network. Try again later.",
+  "db_target_not_allowed": "{reason}"
 }

@@ -94,5 +94,7 @@
   "ip_not_allowed": "あなたのIPアドレスからのアクセスは許可されていません。管理者に連絡してください。",
   "ip_rule_self_lockout": "この変更はあなた自身のアドレス({ip})をブロックするため、保存されませんでした。",
   "2fa_too_many_attempts": "不正なコードが多すぎます。15分待ってからもう一度サインインしてください。",
-  "approval_channel_denied": "審批通道は、あなたが所属する組織に属している必要があります。"
+  "approval_channel_denied": "審批通道は、あなたが所属する組織に属している必要があります。",
+  "too_many_login_attempts": "Too many failed sign-in attempts from your network. Try again later.",
+  "db_target_not_allowed": "{reason}"
 }

@@ -361,66 +361,120 @@ Reranker는 검색된 문서를 다시 점수 매겨 관련성을 개선합니�
 
 ---
 
-## 이메일 (SMTP) (권장)
+## Email (SMTP) (Recommended)
 
-로그인 코드 및 이메일 알림에 사용됩니다. `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`가 설정되고 **동시에** 수신자 허용 목록(`SMTP_ALLOWED_DOMAINS` 또는 `SMTP_ALLOWED_ADDRESSES`)이 구성되거나 `EMAIL_TOOL_ENABLED=true`일 때 `email_send` 기본 제공 도구가 제공됩니다. 둘 다 없으면 모든 사용자가 이 계정에서 모든 주소로 메일을 보낼 수 있으므로 도구가 제공되지 않습니다.
+Used for login codes and email notifications. The `email_send` built-in tool is offered when `SMTP_HOST`, `SMTP_USER`, and `SMTP_PASS` are set **and** a recipient allowlist (`SMTP_ALLOWED_DOMAINS` or `SMTP_ALLOWED_ADDRESSES`) is configured, or `EMAIL_TOOL_ENABLED=true`. Without either, any user could mail any address from this account, so the tool is not offered.
 
-| 변수 | 필수 | 기본값 | 설명 |
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| `SMTP_HOST` | 조건부 | — | SMTP 서버 호스트명 |
-| `SMTP_PORT` | 아니오 | `465` | SMTP 포트 |
-| `SMTP_SSL` | 아니오 | `ssl` | TLS 모드: `ssl` (포트 465) / `tls` (STARTTLS, 포트 587) / `none` 또는 `""` (평문, 자격증명이 평문으로 전송됨). 다른 값은 평문으로 자동 폴백되지 않고 거부됩니다. |
-| `SMTP_USER` | 조건부 | — | SMTP 로그인 사용자명 |
-| `SMTP_PASS` | 조건부 | — | SMTP 로그인 비밀번호 |
-| `SMTP_FROM` | 아니오 | *(uses `SMTP_USER`)* | From 헤더에 표시되는 발신자 주소 |
-| `SMTP_FROM_NAME` | 아니오 | — | From 헤더에 표시되는 표시 이름 |
-| `SMTP_REPLY_TO` | 아니오 | — | Reply-To 주소; 회신이 `SMTP_FROM` 대신 여기로 전송됨 |
-| `SMTP_ALLOWED_DOMAINS` | 아니오 | — | 쉼표로 구분된 도메인 허용 목록 (예: `example.com,corp.io`); 나열된 도메인 외의 수신자를 차단함 |
-| `SMTP_ALLOWED_ADDRESSES` | 아니오 | — | 쉼표로 구분된 정확한 주소 허용 목록; `SMTP_ALLOWED_DOMAINS`과 결합됨. `send_notification`을 통해 전송된 이메일에도 적용됨 |
-| `EMAIL_TOOL_ENABLED` | 아니오 | `false` | 수신자 허용 목록 없이 `email_send`를 제공함. 이 인스턴스의 모든 사용자가 이 계정에서 모든 주소로 메일을 보낼 수 있을 때만 활성화하세요 |
-| `NOTIFICATION_TOOL_ENABLED` | 아니오 | `false` | `send_notification` 에이전트 도구를 제공함. 인스턴스 전체 Slack / Lark / WeCom 웹훅 및 SMTP 계정에 게시함. 이 인스턴스의 모든 사용자가 해당 채널에 게시할 수 있을 때만 활성화하세요 |
+| `SMTP_HOST` | Cond. | — | SMTP server hostname |
+| `SMTP_PORT` | No | `465` | SMTP port |
+| `SMTP_SSL` | No | `ssl` | TLS mode: `ssl` (port 465) / `tls` (STARTTLS, port 587) / `none` or `""` (plain, credentials sent in cleartext). Any other value is rejected rather than silently falling back to plain. |
+| `SMTP_USER` | Cond. | — | SMTP login username |
+| `SMTP_PASS` | Cond. | — | SMTP login password |
+| `SMTP_FROM` | No | *(uses `SMTP_USER`)* | Sender address shown in From header |
+| `SMTP_FROM_NAME` | No | — | Display name shown in From header |
+| `SMTP_REPLY_TO` | No | — | Reply-To address; replies go here instead of `SMTP_FROM` |
+| `SMTP_ALLOWED_DOMAINS` | No | — | Comma-separated domain allowlist (e.g. `example.com,corp.io`); blocks recipients outside listed domains |
+| `SMTP_ALLOWED_ADDRESSES` | No | — | Comma-separated exact-address allowlist; combined with `SMTP_ALLOWED_DOMAINS`. Also applies to email sent through `send_notification` |
+| `EMAIL_TOOL_ENABLED` | No | `false` | Offer `email_send` with no recipient allowlist. Enable only when every user of this instance may mail any address from this account |
+| `NOTIFICATION_TOOL_ENABLED` | No | `false` | Offer the `send_notification` agent tool, which posts to the instance-wide Slack / Lark / WeCom webhooks and the SMTP account. Enable only when every user of this instance may post to those channels |
 
-## 커넥터
+### Verification code limits
 
-| 변수 | 필수 | 기본값 | 설명 |
+Emailed codes (sign-in, registration, password reset) allow five tries each. These settings bound how many codes are issued and tried; `0` switches a rule off. Counting is done in the database, so the limits hold across workers and under simultaneous requests. Windows are aligned to the clock.
+
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| `CONNECTOR_RESPONSE_MAX_CHARS` | 아니오 | `50000` | 배열이 아닌 JSON / 일반 텍스트 커넥터 응답의 최대 문자 수 |
-| `CONNECTOR_RESPONSE_MAX_ITEMS` | 아니오 | `10` | 커넥터 응답이 JSON 배열일 때 유지할 최대 배열 항목 수 |
-| `CREDENTIAL_ENCRYPTION_KEY` | 아니오 | _(설정되지 않음)_ | 커넥터 자격증명 blob에 대한 Fernet 암호화 키. 설정되면 `connector_credentials`에 저장된 인증 토큰이 저장 시 암호화됩니다. 설정되지 않으면 자격증명이 일반 텍스트 JSON으로 저장됩니다(하위 호환성). 이 키를 변경하면 기존의 모든 암호화된 자격증명이 무효화됩니다. |
-| `CONNECTOR_TOOL_MODE` | 아니오 | `progressive` | 커넥터 도구가 에이전트에 노출되는 방식. `progressive`: `discover`/`execute` 하위 명령이 있는 단일 `ConnectorMetaTool`(커넥터당 ~30 토큰). `classic`: 작업당 하나의 도구(레거시, 작업당 ~250 토큰). |
-| `DATABASE_TOOL_MODE` | 아니오 | `progressive` | 데이터베이스 커넥터 도구가 에이전트에 노출되는 방식. `progressive`: `list_tables`/`discover`/`query` 하위 명령이 있는 단일 `DatabaseMetaTool`. `legacy`: 데이터베이스 커넥터당 작업당 하나의 도구(각 3개 도구). |
-| `MCP_TOOL_MODE` | 아니오 | `progressive` | MCP 서버 도구가 에이전트에 노출되는 방식. `progressive`: `discover`/`call` 하위 명령이 있는 단일 `MCPServerMetaTool`. `legacy`: MCP 서버 작업당 하나의 도구(원본 개별 도구). |
+| `AUTH_CODE_SENDS_PER_ADDRESS_HOUR` | No | `5` | Codes issued per address and purpose per hour |
+| `AUTH_CODE_SENDS_PER_ADDRESS_DAY` | No | `20` | Codes issued per address and purpose per day |
+| `AUTH_CODE_SENDS_PER_IP_HOUR` | No | `30` | Anonymous requests for a code per client address per hour |
+| `AUTH_CODE_CHECKS_PER_IP_HOUR` | No | `60` | Anonymous attempts to use a code per client address per hour |
+
+A request over a limit is answered with HTTP 429 (`verification_rate_limited`) before the address is looked up, so the answer is the same whether or not the address has an account. A signed-in request for a reset code is counted under the account, separately from anonymous requests for the same address. The client address is the one the application server sees: behind a reverse proxy, run the server so that it trusts the proxy's forwarded address, otherwise all clients share one count.
+
+Only codes that are actually issued count toward the per-address limits: a request inside the one-minute resend interval is refused and not counted. Requests for a sign-in or reset code are answered the same way whether or not the address has an account; a code is mailed only to an active account's address.
+
+### Password sign-in limits
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `AUTH_LOGIN_FAILURES_PER_ACCOUNT` | No | `5` | Failed password attempts for one account within `AUTH_LOGIN_LOCK_MINUTES` before password sign-in to it is refused |
+| `AUTH_LOGIN_LOCK_MINUTES` | No | `15` | Length of the first lock (and of the counting period); each further lock in a row lasts twice as long, up to 24 hours |
+| `AUTH_LOGIN_FAILURES_PER_IP_HOUR` | No | `20` | Failed password attempts per client address and clock hour; further attempts get HTTP 429 (`too_many_login_attempts`) until the hour ends |
+
+`0` switches a rule off. A locked account answers a password attempt exactly as a wrong password does; the lock is written to the server log and to the login history (`account_locked_now`, then `account_locked` for each refused attempt). A successful password or emailed-code sign-in clears the count; signing in with an emailed code is not blocked by a lock.
 
 ---
 
-## 플랫폼
+## Connectors
 
-| 변수 | 필수 | 기본값 | 설명 |
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| `DATABASE_URL` | 아니오 | `sqlite+aiosqlite:///./data/fim_one.db` | 데이터베이스 연결 문자열. **SQLite** (설정 불필요): `sqlite+aiosqlite:///./data/fim_one.db`. **PostgreSQL** (프로덕션): `postgresql+asyncpg://user:pass@localhost:5432/fim_one`. Docker Compose는 PostgreSQL을 자동으로 설정합니다. |
-| `JWT_SECRET_KEY` | 아니오 | `CHANGE_ME` | JWT 토큰 서명용 비밀 키. 플레이스홀더 값 `CHANGE_ME`(또는 기타 레거시 기본값)는 첫 시작 시 안전한 256비트 난수 키를 자동으로 생성하여 `.env`에 기록합니다. 프로덕션에서는 명시적으로 설정하여 재시작 및 복제본 간에 토큰이 유효하게 유지되도록 합니다. |
-| `FIM_BCRYPT_COST` | 아니오 | `12` | 비밀번호 해싱을 위한 bcrypt 작업 계수(4-31로 제한됨). 기본값 12는 최신 CPU에서 해시당 약 200ms가 소요됩니다. 약한 하드웨어에서는 낮추고, 보안 강화 배포에서는 높입니다. |
-| `CORS_ORIGINS` | 아니오 | — | 기본 localhost 항목 외에 허용되는 추가 CORS 원본의 쉼표 구분 목록. 프론트엔드가 비localhost 도메인에서 실행될 때 필수입니다(예: `https://app.example.com`). |
-| `IP_RULES_ENFORCED` | 아니오 | `true` | 관리자 보안의 IP 규칙을 API 요청에 적용합니다. 거부 규칙은 일치하는 클라이언트를 차단하고, 활성 허용 규칙이 있으면 일치하지 않는 모든 클라이언트를 차단합니다. 규칙을 삭제하지 않고 관리자를 잠그는 규칙에서 복구하려면 `false`로 설정합니다. |
-| `FORWARDED_ALLOW_IPS` | 아니오 | `127.0.0.1` | uvicorn에서 읽음: `X-Forwarded-For`를 신뢰할 프록시 주소 또는 CIDR. 리버스 프록시가 Docker 네트워크를 통해 컨테이너에 도달하는 경우 해당 네트워크를 추가합니다(예: `127.0.0.1,172.16.0.0/12`). 그렇지 않으면 모든 요청이 프록시에서 오는 것으로 나타나고, IP 규칙이 프록시와 일치하며, 로그인 기록에 기록됩니다. |
-| `UPLOADS_DIR` | 아니오 | `./uploads` | 업로드된 파일용 디렉토리 |
-| `EXPORT_FONT_DIR` | 아니오 | *(자동 감지)* | PDF 내보내기용 `NotoSansSC-Regular.ttf` / `NotoSansSC-Bold.ttf`를 포함하는 디렉토리. `python scripts/fetch_export_fonts.py`로 가져오기; Docker 이미지는 이미 번들로 포함되어 있습니다. 포함 가능한 TrueType CJK 글꼴이 없으면 PDF 내보내기는 포함되지 않은 CID 글꼴로 폴백되어 간격이 저하되고 굵게가 지원되지 않습니다. |
-| `MAX_UPLOAD_SIZE_MB` | 아니오 | `50` | 최대 파일 업로드 크기(메가바이트, 백엔드 적용) |
-| `NEXT_PUBLIC_MAX_UPLOAD_SIZE_MB` | 아니오 | `50` | 프론트엔드 UI에 표시되는 최대 파일 업로드 크기. **빌드 시간 변수** — `MAX_UPLOAD_SIZE_MB`와 일치해야 합니다. |
-| `MCP_SERVERS` | 아니오 | — | MCP 서버 설정의 JSON 배열(`uv sync --extra mcp` 필요) |
-| `ALLOW_STDIO_MCP` | 아니오 | `false` | stdio MCP 서버 허용. 신뢰할 수 있는 로컬 배포에서만 `true`로 설정합니다. |
-| `ALLOWED_STDIO_COMMANDS` | 아니오 | `npx,uvx,node,python,python3,deno,bun` | stdio MCP 서버에 허용되는 기본 명령의 쉼표 구분 목록. `ALLOW_STDIO_MCP=true`일 때만 적용됩니다. |
-| `LOG_LEVEL` | 아니오 | `INFO` | 로깅 수준: `DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` |
-| `REDIS_URL` | 아니오 | — | 워커 간 인터럽트 릴레이용 Redis 연결 URL. **`WORKERS>1`일 때 필수** — 없으면 스트림 중 인터럽트/주입 요청이 다른 워커에 도달하여 자동으로 실패할 수 있습니다. Docker Compose에서 자동으로 설정됩니다. |
-| `WORKERS` | 아니오 | `1` | Uvicorn 워커 프로세스. `1`은 안전하며 외부 서비스가 필요하지 않습니다. 프로덕션 멀티 워커의 경우 PostgreSQL을 사용합니다(SQLite는 단일 쓰기). SQLite는 가벼운 로드 하에서 로컬 개발에 적합합니다. 인증, OAuth 및 파일 작업은 완전히 멀티 워커 안전합니다(JWT 기반). Docker Compose는 PostgreSQL과 Redis를 자동으로 설정합니다. |
+| `CONNECTOR_RESPONSE_MAX_CHARS` | No | `50000` | Max characters for non-array JSON / plain-text connector responses |
+| `CONNECTOR_RESPONSE_MAX_ITEMS` | No | `10` | Max array items to keep when connector response is a JSON array |
+| `CREDENTIAL_ENCRYPTION_KEY` | No | _(unset)_ | Fernet encryption key for connector credential blobs. When set, auth tokens stored in `connector_credentials` are encrypted at rest. If unset, credentials are stored as plaintext JSON (backward-compatible). Changing this key invalidates all existing encrypted credentials. |
+| `CONNECTOR_TOOL_MODE` | No | `progressive` | How connector tools are exposed to agents. `progressive`: single `ConnectorMetaTool` with `discover`/`execute` subcommands (~30 tokens/connector). `classic`: one tool per action (legacy, ~250 tokens/action). |
+| `DATABASE_TOOL_MODE` | No | `progressive` | How database connector tools are exposed to agents. `progressive`: single `DatabaseMetaTool` with `list_tables`/`discover`/`query` subcommands. `legacy`: one tool per action per database connector (3 tools each). |
+| `DB_CONNECTOR_ALLOWED_HOSTS` | No | *(empty)* | Internal database hosts that database connectors may connect to. By default a database connector can only reach public addresses: private, loopback, link-local, shared-address and cloud-metadata ranges are refused, judged on the address the host name resolves to, on every connection. List the internal databases your deployment needs as comma-separated entries: an IP address (`10.20.30.40`), a CIDR network (`10.20.0.0/16`), a host name (`db.corp.internal`) or a wildcard (`*.rds.internal`), each optionally limited to a port (`db.corp.internal:5432`, `[fd00::5]:5432`). The hosts of the application's own database and Redis (`DATABASE_URL`, `REDIS_URL`) are never allowed, on any port. An entry that cannot be parsed makes every database connector fail, public targets included, until it is corrected; the entry is written to the server log, not shown to users. Do not use `0.0.0.0/0` or `::/0`: they allow cloud metadata addresses and every internal service. See [Database connectors on internal networks](#database-connectors-on-internal-networks). |
+| `MCP_TOOL_MODE` | No | `progressive` | How MCP server tools are exposed to agents. `progressive`: single `MCPServerMetaTool` with `discover`/`call` subcommands. `legacy`: one tool per MCP server action (original individual tools). |
+
+---
+
+### Database connectors on internal networks
+
+A database connector dials the host and port its creator entered, from the application server. So that a connector cannot be pointed at the application's own database, at other services on the server's network or at a cloud metadata address, the host is resolved by the application and every address it resolves to must be public. The check runs when a connector is saved, when a connection is tested and each time a connection pool is opened, and the driver then connects to the address that was checked.
+
+Private deployments usually do need internal databases. Allow them explicitly:
+
+```bash
+# one database
+DB_CONNECTOR_ALLOWED_HOSTS=10.20.30.40:5432
+# a database subnet and one named host
+DB_CONNECTOR_ALLOWED_HOSTS=10.20.0.0/16,erp-db.corp.internal:3306
+```
+
+- An address or network entry allows a target when all the internal addresses it resolves to fall inside the entry.
+- A host-name entry allows that name as it is typed in the connector, whatever it resolves to. `*.suffix` matches any name ending in `.suffix`.
+- A `:port` suffix limits the entry to that port.
+- The rule applies to every user, administrators included: the allow-list is the one place where internal reach is granted.
+- The hosts of `DATABASE_URL` and of `REDIS_URL` (also a `?host=` parameter and each host of a multi-host URL) are refused on every port, even when an entry covers them. They are compared by the addresses they resolve to; if one of them cannot be resolved, every database connector is refused and the server log names the host.
+- One entry that cannot be parsed refuses every database connector, public targets included, until it is corrected. Users are told that the setting is invalid; the entry itself is written to the server log.
+- List the networks and hosts your databases are on. An entry such as `0.0.0.0/0` or `::/0` allows every internal address, cloud metadata addresses included, and turns the check off.
+
+After an upgrade, existing connectors that point at internal hosts answer "This database host is on an internal network" until the host is added here and the application restarted. The host field itself takes a bare host name or IP address: no `user:password@`, port, path or list of hosts.
+
+## Platform
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `DATABASE_URL` | No | `sqlite+aiosqlite:///./data/fim_one.db` | Database connection string. **SQLite** (zero-config): `sqlite+aiosqlite:///./data/fim_one.db`. **PostgreSQL** (production): `postgresql+asyncpg://user:pass@localhost:5432/fim_one`. Docker Compose auto-sets PostgreSQL. |
+| `JWT_SECRET_KEY` | No | `CHANGE_ME` | Secret key for JWT token signing. Placeholder value `CHANGE_ME` (or any legacy default) triggers auto-generation of a secure 256-bit random key on first start, which is written back to `.env`. Set explicitly in production to keep tokens valid across restarts and replicas. |
+| `FIM_BCRYPT_COST` | No | `12` | bcrypt work factor for password hashing, clamped to 4-31. Default 12 costs roughly 200ms per hash on modern CPUs; lower it on weak hardware, raise it for security-hardened deployments. |
+| `CORS_ORIGINS` | No | — | Comma-separated list of extra allowed CORS origins beyond the default localhost entries. Required when the frontend runs on a non-localhost domain (e.g. `https://app.example.com`). |
+| `IP_RULES_ENFORCED` | No | `true` | Apply the IP rules under admin Security to API requests. A deny rule blocks matching clients; any active allow rule blocks every client that matches none. Set `false` to recover from a rule that locks administrators out, without deleting rules |
+| `FORWARDED_ALLOW_IPS` | No | `127.0.0.1` | Read by uvicorn: proxy addresses or CIDRs whose `X-Forwarded-For` is trusted. Behind a reverse proxy that reaches the container over a Docker network, add that network (e.g. `127.0.0.1,172.16.0.0/12`); otherwise every request appears to come from the proxy, IP rules match the proxy, and login history records it |
+| `UPLOADS_DIR` | No | `./uploads` | Directory for uploaded files |
+| `EXPORT_FONT_DIR` | No | *(auto-detected)* | Directory holding `NotoSansSC-Regular.ttf` / `NotoSansSC-Bold.ttf` for PDF export. Fetch with `python scripts/fetch_export_fonts.py`; Docker images already bundle it. Without an embeddable TrueType CJK font, PDF export falls back to a non-embedded CID font with degraded spacing and no bold. |
+| `MAX_UPLOAD_SIZE_MB` | No | `50` | Max file upload size in megabytes (backend enforcement) |
+| `NEXT_PUBLIC_MAX_UPLOAD_SIZE_MB` | No | `50` | Max file upload size shown in frontend UI. **Build-time variable** — must match `MAX_UPLOAD_SIZE_MB`. |
+| `MCP_SERVERS` | No | — | JSON array of MCP server configs (requires `uv sync --extra mcp`) |
+| `SSRF_ALLOW_FAKE_IP_RANGE` | No | `false` | Outbound requests made for users (web fetch, HTTP request, connectors, URL import, database connectors) refuse internal addresses. `198.18.0.0/15` counts as internal. Set to `true` only on a machine whose DNS proxy (Surge, Clash and similar "fake-IP" modes) resolves public host names into that range; it opens that range and nothing else. |
+| `ALLOW_STDIO_MCP` | No | `false` | Allow stdio MCP servers. Set `true` only for trusted local deployments |
+| `ALLOWED_STDIO_COMMANDS` | No | `npx,uvx,node,python,python3,deno,bun` | Comma-separated list of allowed base commands for stdio MCP servers. Only effective when `ALLOW_STDIO_MCP=true` |
+| `LOG_LEVEL` | No | `INFO` | Logging level: `DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` |
+| `REDIS_URL` | No | — | Redis connection URL for cross-worker interrupt relay. **Required when `WORKERS>1`** — without it, mid-stream interrupt/inject requests may hit a different worker and silently fail. Auto-configured by Docker Compose. |
+| `WORKERS` | No | `1` | Uvicorn worker processes. `1` is safe and needs no external services. For production multi-worker, use PostgreSQL (SQLite is single-writer). SQLite works for local dev under light load. Auth, OAuth, and file operations are fully multi-worker safe (JWT-based). Docker Compose auto-configures both PostgreSQL and Redis. |
 
 <Warning>
-**멀티 워커 체크리스트** (`WORKERS>1`):
-- **중지(스트림 중단)** — 항상 작동하며 추가 설정이 필요하지 않습니다(신호는 동일한 TCP 연결을 통해 이동).
-- **주입(스트림 중 후속)** — **`REDIS_URL` 필수**. Redis 없으면 주입 요청이 실행 중인 실행에 대한 지식이 없는 다른 워커에 도달하여 자동으로 실패할 수 있습니다.
-- **프로덕션**: PostgreSQL(`DATABASE_URL`) 사용. SQLite의 단일 쓰기 잠금은 동시 쓰기 시 경합을 유발할 수 있습니다.
-- **로컬 개발**: SQLite + 멀티 워커는 가벼운 사용에 적합합니다. 주입 기능을 사용하는 경우 `REDIS_URL`을 추가하면 됩니다.
+**Multi-worker checklist** (`WORKERS>1`):
+- **Stop (abort streaming)** — always works, no extra config needed (signal travels on the same TCP connection).
+- **Inject (mid-stream follow-up)** — **requires `REDIS_URL`**. Without Redis, the inject request may land on a different worker that has no knowledge of the running execution, causing it to silently fail.
+- **Production**: use PostgreSQL (`DATABASE_URL`). SQLite's single-writer lock can cause contention under concurrent writes.
+- **Local dev**: SQLite + multi-worker is fine for light usage; just add `REDIS_URL` if you use the inject feature.
 </Warning>
+
+---
 
 ## 워크플로우 실행 보관
 

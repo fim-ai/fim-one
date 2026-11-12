@@ -361,66 +361,120 @@ FIM One从`LLM_BASE_URL`解析提供商（加上配置时的显式提供商字�
 
 ---
 
-## 电子邮件（SMTP）（推荐）
+## Email (SMTP) (Recommended)
 
-用于登录码和电子邮件通知。当设置了 `SMTP_HOST`、`SMTP_USER` 和 `SMTP_PASS` **且** 配置了收件人允许列表（`SMTP_ALLOWED_DOMAINS` 或 `SMTP_ALLOWED_ADDRESSES`），或设置 `EMAIL_TOOL_ENABLED=true` 时，提供 `email_send` 内置工具。否则，任何用户都可能从此账户向任何地址发送邮件，因此不提供该工具。
+Used for login codes and email notifications. The `email_send` built-in tool is offered when `SMTP_HOST`, `SMTP_USER`, and `SMTP_PASS` are set **and** a recipient allowlist (`SMTP_ALLOWED_DOMAINS` or `SMTP_ALLOWED_ADDRESSES`) is configured, or `EMAIL_TOOL_ENABLED=true`. Without either, any user could mail any address from this account, so the tool is not offered.
 
-| 变量 | 必需 | 默认值 | 描述 |
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| `SMTP_HOST` | 条件 | — | SMTP 服务器主机名 |
-| `SMTP_PORT` | 否 | `465` | SMTP 端口 |
-| `SMTP_SSL` | 否 | `ssl` | TLS 模式：`ssl`（端口 465）/ `tls`（STARTTLS，端口 587）/ `none` 或 `""`（明文，凭证以明文发送）。其他任何值都会被拒绝，而不是静默回退到明文。 |
-| `SMTP_USER` | 条件 | — | SMTP 登录用户名 |
-| `SMTP_PASS` | 条件 | — | SMTP 登录密码 |
-| `SMTP_FROM` | 否 | *（使用 `SMTP_USER`）* | From 头中显示的发件人地址 |
-| `SMTP_FROM_NAME` | 否 | — | From 头中显示的显示名称 |
-| `SMTP_REPLY_TO` | 否 | — | Reply-To 地址；回复将发送到此处而不是 `SMTP_FROM` |
-| `SMTP_ALLOWED_DOMAINS` | 否 | — | 逗号分隔的域名允许列表（例如 `example.com,corp.io`）；阻止列表外域名的收件人 |
-| `SMTP_ALLOWED_ADDRESSES` | 否 | — | 逗号分隔的精确地址允许列表；与 `SMTP_ALLOWED_DOMAINS` 结合使用。也适用于通过 `send_notification` 发送的电子邮件 |
-| `EMAIL_TOOL_ENABLED` | 否 | `false` | 提供 `email_send` 且不设置收件人允许列表。仅当此实例的每个用户都可能从此账户向任何地址发送邮件时才启用 |
-| `NOTIFICATION_TOOL_ENABLED` | 否 | `false` | 提供 `send_notification` 智能体工具，该工具发送到实例范围的 Slack / Lark / WeCom webhook 和 SMTP 账户。仅当此实例的每个用户都可能发送到这些通道时才启用 |
+| `SMTP_HOST` | Cond. | — | SMTP server hostname |
+| `SMTP_PORT` | No | `465` | SMTP port |
+| `SMTP_SSL` | No | `ssl` | TLS mode: `ssl` (port 465) / `tls` (STARTTLS, port 587) / `none` or `""` (plain, credentials sent in cleartext). Any other value is rejected rather than silently falling back to plain. |
+| `SMTP_USER` | Cond. | — | SMTP login username |
+| `SMTP_PASS` | Cond. | — | SMTP login password |
+| `SMTP_FROM` | No | *(uses `SMTP_USER`)* | Sender address shown in From header |
+| `SMTP_FROM_NAME` | No | — | Display name shown in From header |
+| `SMTP_REPLY_TO` | No | — | Reply-To address; replies go here instead of `SMTP_FROM` |
+| `SMTP_ALLOWED_DOMAINS` | No | — | Comma-separated domain allowlist (e.g. `example.com,corp.io`); blocks recipients outside listed domains |
+| `SMTP_ALLOWED_ADDRESSES` | No | — | Comma-separated exact-address allowlist; combined with `SMTP_ALLOWED_DOMAINS`. Also applies to email sent through `send_notification` |
+| `EMAIL_TOOL_ENABLED` | No | `false` | Offer `email_send` with no recipient allowlist. Enable only when every user of this instance may mail any address from this account |
+| `NOTIFICATION_TOOL_ENABLED` | No | `false` | Offer the `send_notification` agent tool, which posts to the instance-wide Slack / Lark / WeCom webhooks and the SMTP account. Enable only when every user of this instance may post to those channels |
 
-## 连接器
+### Verification code limits
 
-| 变量 | 必需 | 默认值 | 描述 |
+Emailed codes (sign-in, registration, password reset) allow five tries each. These settings bound how many codes are issued and tried; `0` switches a rule off. Counting is done in the database, so the limits hold across workers and under simultaneous requests. Windows are aligned to the clock.
+
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| `CONNECTOR_RESPONSE_MAX_CHARS` | 否 | `50000` | 非数组 JSON / 纯文本连接器响应的最大字符数 |
-| `CONNECTOR_RESPONSE_MAX_ITEMS` | 否 | `10` | 当连接器响应为 JSON 数组时保留的最大数组项数 |
-| `CREDENTIAL_ENCRYPTION_KEY` | 否 | _(未设置)_ | 用于连接器凭证 blob 的 Fernet 加密密钥。设置后，存储在 `connector_credentials` 中的身份验证令牌将被加密存储。如果未设置，凭证将以纯文本 JSON 形式存储（向后兼容）。更改此密钥将使所有现有加密凭证失效。 |
-| `CONNECTOR_TOOL_MODE` | 否 | `progressive` | 连接器工具如何暴露给智能体。`progressive`：单个 `ConnectorMetaTool`，带有 `discover`/`execute` 子命令（~30 tokens/连接器）。`classic`：每个操作一个工具（旧版，~250 tokens/操作）。 |
-| `DATABASE_TOOL_MODE` | 否 | `progressive` | 数据库连接器工具如何暴露给智能体。`progressive`：单个 `DatabaseMetaTool`，带有 `list_tables`/`discover`/`query` 子命令。`legacy`：每个数据库连接器每个操作一个工具（3 个工具）。 |
-| `MCP_TOOL_MODE` | 否 | `progressive` | MCP 服务器工具如何暴露给智能体。`progressive`：单个 `MCPServerMetaTool`，带有 `discover`/`call` 子命令。`legacy`：每个 MCP 服务器操作一个工具（原始单个工具）。 |
+| `AUTH_CODE_SENDS_PER_ADDRESS_HOUR` | No | `5` | Codes issued per address and purpose per hour |
+| `AUTH_CODE_SENDS_PER_ADDRESS_DAY` | No | `20` | Codes issued per address and purpose per day |
+| `AUTH_CODE_SENDS_PER_IP_HOUR` | No | `30` | Anonymous requests for a code per client address per hour |
+| `AUTH_CODE_CHECKS_PER_IP_HOUR` | No | `60` | Anonymous attempts to use a code per client address per hour |
+
+A request over a limit is answered with HTTP 429 (`verification_rate_limited`) before the address is looked up, so the answer is the same whether or not the address has an account. A signed-in request for a reset code is counted under the account, separately from anonymous requests for the same address. The client address is the one the application server sees: behind a reverse proxy, run the server so that it trusts the proxy's forwarded address, otherwise all clients share one count.
+
+Only codes that are actually issued count toward the per-address limits: a request inside the one-minute resend interval is refused and not counted. Requests for a sign-in or reset code are answered the same way whether or not the address has an account; a code is mailed only to an active account's address.
+
+### Password sign-in limits
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `AUTH_LOGIN_FAILURES_PER_ACCOUNT` | No | `5` | Failed password attempts for one account within `AUTH_LOGIN_LOCK_MINUTES` before password sign-in to it is refused |
+| `AUTH_LOGIN_LOCK_MINUTES` | No | `15` | Length of the first lock (and of the counting period); each further lock in a row lasts twice as long, up to 24 hours |
+| `AUTH_LOGIN_FAILURES_PER_IP_HOUR` | No | `20` | Failed password attempts per client address and clock hour; further attempts get HTTP 429 (`too_many_login_attempts`) until the hour ends |
+
+`0` switches a rule off. A locked account answers a password attempt exactly as a wrong password does; the lock is written to the server log and to the login history (`account_locked_now`, then `account_locked` for each refused attempt). A successful password or emailed-code sign-in clears the count; signing in with an emailed code is not blocked by a lock.
 
 ---
+
+## Connectors
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `CONNECTOR_RESPONSE_MAX_CHARS` | No | `50000` | Max characters for non-array JSON / plain-text connector responses |
+| `CONNECTOR_RESPONSE_MAX_ITEMS` | No | `10` | Max array items to keep when connector response is a JSON array |
+| `CREDENTIAL_ENCRYPTION_KEY` | No | _(unset)_ | Fernet encryption key for connector credential blobs. When set, auth tokens stored in `connector_credentials` are encrypted at rest. If unset, credentials are stored as plaintext JSON (backward-compatible). Changing this key invalidates all existing encrypted credentials. |
+| `CONNECTOR_TOOL_MODE` | No | `progressive` | How connector tools are exposed to agents. `progressive`: single `ConnectorMetaTool` with `discover`/`execute` subcommands (~30 tokens/connector). `classic`: one tool per action (legacy, ~250 tokens/action). |
+| `DATABASE_TOOL_MODE` | No | `progressive` | How database connector tools are exposed to agents. `progressive`: single `DatabaseMetaTool` with `list_tables`/`discover`/`query` subcommands. `legacy`: one tool per action per database connector (3 tools each). |
+| `DB_CONNECTOR_ALLOWED_HOSTS` | No | *(empty)* | Internal database hosts that database connectors may connect to. By default a database connector can only reach public addresses: private, loopback, link-local, shared-address and cloud-metadata ranges are refused, judged on the address the host name resolves to, on every connection. List the internal databases your deployment needs as comma-separated entries: an IP address (`10.20.30.40`), a CIDR network (`10.20.0.0/16`), a host name (`db.corp.internal`) or a wildcard (`*.rds.internal`), each optionally limited to a port (`db.corp.internal:5432`, `[fd00::5]:5432`). The hosts of the application's own database and Redis (`DATABASE_URL`, `REDIS_URL`) are never allowed, on any port. An entry that cannot be parsed makes every database connector fail, public targets included, until it is corrected; the entry is written to the server log, not shown to users. Do not use `0.0.0.0/0` or `::/0`: they allow cloud metadata addresses and every internal service. See [Database connectors on internal networks](#database-connectors-on-internal-networks). |
+| `MCP_TOOL_MODE` | No | `progressive` | How MCP server tools are exposed to agents. `progressive`: single `MCPServerMetaTool` with `discover`/`call` subcommands. `legacy`: one tool per MCP server action (original individual tools). |
+
+---
+
+### Database connectors on internal networks
+
+A database connector dials the host and port its creator entered, from the application server. So that a connector cannot be pointed at the application's own database, at other services on the server's network or at a cloud metadata address, the host is resolved by the application and every address it resolves to must be public. The check runs when a connector is saved, when a connection is tested and each time a connection pool is opened, and the driver then connects to the address that was checked.
+
+Private deployments usually do need internal databases. Allow them explicitly:
+
+```bash
+# one database
+DB_CONNECTOR_ALLOWED_HOSTS=10.20.30.40:5432
+# a database subnet and one named host
+DB_CONNECTOR_ALLOWED_HOSTS=10.20.0.0/16,erp-db.corp.internal:3306
+```
+
+- An address or network entry allows a target when all the internal addresses it resolves to fall inside the entry.
+- A host-name entry allows that name as it is typed in the connector, whatever it resolves to. `*.suffix` matches any name ending in `.suffix`.
+- A `:port` suffix limits the entry to that port.
+- The rule applies to every user, administrators included: the allow-list is the one place where internal reach is granted.
+- The hosts of `DATABASE_URL` and of `REDIS_URL` (also a `?host=` parameter and each host of a multi-host URL) are refused on every port, even when an entry covers them. They are compared by the addresses they resolve to; if one of them cannot be resolved, every database connector is refused and the server log names the host.
+- One entry that cannot be parsed refuses every database connector, public targets included, until it is corrected. Users are told that the setting is invalid; the entry itself is written to the server log.
+- List the networks and hosts your databases are on. An entry such as `0.0.0.0/0` or `::/0` allows every internal address, cloud metadata addresses included, and turns the check off.
+
+After an upgrade, existing connectors that point at internal hosts answer "This database host is on an internal network" until the host is added here and the application restarted. The host field itself takes a bare host name or IP address: no `user:password@`, port, path or list of hosts.
 
 ## Platform
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `DATABASE_URL` | No | `sqlite+aiosqlite:///./data/fim_one.db` | 数据库连接字符串。**SQLite**（零配置）：`sqlite+aiosqlite:///./data/fim_one.db`。**PostgreSQL**（生产环境）：`postgresql+asyncpg://user:pass@localhost:5432/fim_one`。Docker Compose 自动配置 PostgreSQL。 |
-| `JWT_SECRET_KEY` | No | `CHANGE_ME` | JWT 令牌签名的密钥。占位符值 `CHANGE_ME`（或任何旧版默认值）在首次启动时触发自动生成安全的 256 位随机密钥，该密钥会写回到 `.env`。在生产环境中显式设置，以保持令牌在重启和副本间的有效性。 |
-| `FIM_BCRYPT_COST` | No | `12` | bcrypt 工作因子用于密码哈希，范围限制在 4-31。默认值 12 在现代 CPU 上每次哈希耗时约 200ms；在弱硬件上降低该值，在安全加固的部署中提高该值。 |
-| `CORS_ORIGINS` | No | — | 逗号分隔的额外允许 CORS 源列表，超出默认的 localhost 条目。当前端运行在非 localhost 域上时需要（例如 `https://app.example.com`）。 |
-| `IP_RULES_ENFORCED` | No | `true` | 对 API 请求应用管理员安全下的 IP 规则。拒绝规则阻止匹配的客户端；任何活跃的允许规则阻止不匹配任何规则的每个客户端。设置为 `false` 可在规则锁定管理员时恢复，无需删除规则。 |
-| `FORWARDED_ALLOW_IPS` | No | `127.0.0.1` | uvicorn 读取：代理地址或 CIDR，其 `X-Forwarded-For` 被信任。在反向代理通过 Docker 网络到达容器时，添加该网络（例如 `127.0.0.1,172.16.0.0/12`）；否则每个请求都显示来自代理，IP 规则匹配代理，登录历史记录它。 |
-| `UPLOADS_DIR` | No | `./uploads` | 上传文件的目录 |
-| `EXPORT_FONT_DIR` | No | *（自动检测）* | 存放 `NotoSansSC-Regular.ttf` / `NotoSansSC-Bold.ttf` 用于 PDF 导出的目录。使用 `python scripts/fetch_export_fonts.py` 获取；Docker 镜像已包含。没有可嵌入的 TrueType CJK 字体时，PDF 导出会回退到非嵌入式 CID 字体，间距降级且无粗体。 |
-| `MAX_UPLOAD_SIZE_MB` | No | `50` | 最大文件上传大小（以 MB 为单位，后端强制执行） |
-| `NEXT_PUBLIC_MAX_UPLOAD_SIZE_MB` | No | `50` | 前端 UI 中显示的最大文件上传大小。**构建时变量** —— 必须与 `MAX_UPLOAD_SIZE_MB` 匹配。 |
-| `MCP_SERVERS` | No | — | MCP 服务器配置的 JSON 数组（需要 `uv sync --extra mcp`） |
-| `ALLOW_STDIO_MCP` | No | `false` | 允许 stdio MCP 服务器。仅在受信任的本地部署中设置为 `true`。 |
-| `ALLOWED_STDIO_COMMANDS` | No | `npx,uvx,node,python,python3,deno,bun` | stdio MCP 服务器允许的基础命令的逗号分隔列表。仅在 `ALLOW_STDIO_MCP=true` 时有效。 |
-| `LOG_LEVEL` | No | `INFO` | 日志级别：`DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` |
-| `REDIS_URL` | No | — | Redis 连接 URL 用于跨工作进程中断中继。**当 `WORKERS>1` 时必需** —— 没有它，中流中断/注入请求可能会命中不同的工作进程并静默失败。由 Docker Compose 自动配置。 |
-| `WORKERS` | No | `1` | Uvicorn 工作进程数。`1` 是安全的，无需外部服务。对于生产多工作进程，使用 PostgreSQL（SQLite 是单写入器）。SQLite 在轻负载下适合本地开发。身份验证、OAuth 和文件操作完全支持多工作进程（基于 JWT）。Docker Compose 自动配置 PostgreSQL 和 Redis。 |
+| `DATABASE_URL` | No | `sqlite+aiosqlite:///./data/fim_one.db` | Database connection string. **SQLite** (zero-config): `sqlite+aiosqlite:///./data/fim_one.db`. **PostgreSQL** (production): `postgresql+asyncpg://user:pass@localhost:5432/fim_one`. Docker Compose auto-sets PostgreSQL. |
+| `JWT_SECRET_KEY` | No | `CHANGE_ME` | Secret key for JWT token signing. Placeholder value `CHANGE_ME` (or any legacy default) triggers auto-generation of a secure 256-bit random key on first start, which is written back to `.env`. Set explicitly in production to keep tokens valid across restarts and replicas. |
+| `FIM_BCRYPT_COST` | No | `12` | bcrypt work factor for password hashing, clamped to 4-31. Default 12 costs roughly 200ms per hash on modern CPUs; lower it on weak hardware, raise it for security-hardened deployments. |
+| `CORS_ORIGINS` | No | — | Comma-separated list of extra allowed CORS origins beyond the default localhost entries. Required when the frontend runs on a non-localhost domain (e.g. `https://app.example.com`). |
+| `IP_RULES_ENFORCED` | No | `true` | Apply the IP rules under admin Security to API requests. A deny rule blocks matching clients; any active allow rule blocks every client that matches none. Set `false` to recover from a rule that locks administrators out, without deleting rules |
+| `FORWARDED_ALLOW_IPS` | No | `127.0.0.1` | Read by uvicorn: proxy addresses or CIDRs whose `X-Forwarded-For` is trusted. Behind a reverse proxy that reaches the container over a Docker network, add that network (e.g. `127.0.0.1,172.16.0.0/12`); otherwise every request appears to come from the proxy, IP rules match the proxy, and login history records it |
+| `UPLOADS_DIR` | No | `./uploads` | Directory for uploaded files |
+| `EXPORT_FONT_DIR` | No | *(auto-detected)* | Directory holding `NotoSansSC-Regular.ttf` / `NotoSansSC-Bold.ttf` for PDF export. Fetch with `python scripts/fetch_export_fonts.py`; Docker images already bundle it. Without an embeddable TrueType CJK font, PDF export falls back to a non-embedded CID font with degraded spacing and no bold. |
+| `MAX_UPLOAD_SIZE_MB` | No | `50` | Max file upload size in megabytes (backend enforcement) |
+| `NEXT_PUBLIC_MAX_UPLOAD_SIZE_MB` | No | `50` | Max file upload size shown in frontend UI. **Build-time variable** — must match `MAX_UPLOAD_SIZE_MB`. |
+| `MCP_SERVERS` | No | — | JSON array of MCP server configs (requires `uv sync --extra mcp`) |
+| `SSRF_ALLOW_FAKE_IP_RANGE` | No | `false` | Outbound requests made for users (web fetch, HTTP request, connectors, URL import, database connectors) refuse internal addresses. `198.18.0.0/15` counts as internal. Set to `true` only on a machine whose DNS proxy (Surge, Clash and similar "fake-IP" modes) resolves public host names into that range; it opens that range and nothing else. |
+| `ALLOW_STDIO_MCP` | No | `false` | Allow stdio MCP servers. Set `true` only for trusted local deployments |
+| `ALLOWED_STDIO_COMMANDS` | No | `npx,uvx,node,python,python3,deno,bun` | Comma-separated list of allowed base commands for stdio MCP servers. Only effective when `ALLOW_STDIO_MCP=true` |
+| `LOG_LEVEL` | No | `INFO` | Logging level: `DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` |
+| `REDIS_URL` | No | — | Redis connection URL for cross-worker interrupt relay. **Required when `WORKERS>1`** — without it, mid-stream interrupt/inject requests may hit a different worker and silently fail. Auto-configured by Docker Compose. |
+| `WORKERS` | No | `1` | Uvicorn worker processes. `1` is safe and needs no external services. For production multi-worker, use PostgreSQL (SQLite is single-writer). SQLite works for local dev under light load. Auth, OAuth, and file operations are fully multi-worker safe (JWT-based). Docker Compose auto-configures both PostgreSQL and Redis. |
 
 <Warning>
-**多工作进程检查清单**（`WORKERS>1`）：
-- **停止（中止流式传输）** —— 始终有效，无需额外配置（信号在同一 TCP 连接上传输）。
-- **注入（中流后续）** —— **需要 `REDIS_URL`**。没有 Redis，注入请求可能会落在没有运行执行知识的不同工作进程上，导致静默失败。
-- **生产环境**：使用 PostgreSQL（`DATABASE_URL`）。SQLite 的单写入器锁在并发写入下可能导致争用。
-- **本地开发**：SQLite + 多工作进程在轻使用下没问题；如果使用注入功能，只需添加 `REDIS_URL`。
+**Multi-worker checklist** (`WORKERS>1`):
+- **Stop (abort streaming)** — always works, no extra config needed (signal travels on the same TCP connection).
+- **Inject (mid-stream follow-up)** — **requires `REDIS_URL`**. Without Redis, the inject request may land on a different worker that has no knowledge of the running execution, causing it to silently fail.
+- **Production**: use PostgreSQL (`DATABASE_URL`). SQLite's single-writer lock can cause contention under concurrent writes.
+- **Local dev**: SQLite + multi-worker is fine for light usage; just add `REDIS_URL` if you use the inject feature.
 </Warning>
+
+---
 
 ## 工作流运行保留
 

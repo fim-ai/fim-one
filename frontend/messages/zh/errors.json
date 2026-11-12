@@ -94,5 +94,7 @@
   "ip_not_allowed": "不允许从您的IP地址访问。请联系您的管理员。",
   "ip_rule_self_lockout": "此更改将阻止您自己的地址（{ip}），因此未保存。",
   "2fa_too_many_attempts": "验证码错误次数过多。请等待15分钟后重新登录。",
-  "approval_channel_denied": "审批通道必须属于您所在的组织。"
+  "approval_channel_denied": "审批通道必须属于您所在的组织。",
+  "too_many_login_attempts": "Too many failed sign-in attempts from your network. Try again later.",
+  "db_target_not_allowed": "{reason}"
 }
