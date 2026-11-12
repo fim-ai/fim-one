@@ -1,4 +1,4 @@
-"""Built-in tool that converts any file or URL into clean Markdown.
+"""Built-in tool that converts an uploaded file or a web URL into Markdown.
 
 This is the Agent-facing "thin shell" over the shared
 :func:`fim_one.core.document.markitdown_core.convert_with_markitdown`
@@ -9,6 +9,12 @@ agent-specific concerns:
 * Stringly-typed error messages the LLM can read
 * Asyncio dispatch (the kernel is sync so we wrap it with
   :func:`asyncio.to_thread` to avoid stalling the event loop)
+* **Deciding what may be read.** The arguments are model-supplied, so
+  the tool never treats one as a filesystem path: a local file is only
+  reachable as a ``file_id`` looked up in the calling user's own upload
+  index, and a remote document only as an ``http(s)`` URL downloaded
+  through the SSRF-safe client (every redirect hop re-checked) before
+  the bytes are handed to the kernel.
 
 Vision LLM is **injected at construction time** by ``_resolve_tools`` in
 :mod:`fim_one.web.api.chat`, not pulled from environment variables at
@@ -24,12 +30,21 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import re
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import unquote, urlsplit
+
+import httpx
 
 from fim_one.core.document.markitdown_core import (
+    ArchiveLimitError,
     MarkItDownNotInstalledError,
+    convert_bytes_with_markitdown,
     convert_with_markitdown,
 )
+from fim_one.core.security import get_safe_async_client, validate_url
 
 from ..base import BaseTool, ToolResult
 
@@ -38,6 +53,22 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# For the whole download, redirects included, not per read.
+_DOWNLOAD_TIMEOUT_SECONDS = 60
+_MAX_REDIRECTS = 5
+_FILENAME_RE = re.compile(r'filename\*?=(?:UTF-8\'\')?"?([^";]+)"?', re.IGNORECASE)
+
+
+def _max_download_bytes() -> int:
+    try:
+        return max(1, int(os.environ.get("MARKITDOWN_MAX_DOWNLOAD_BYTES", "")))
+    except ValueError:
+        return 50 * 1024 * 1024
+
+
+class _SourceRefused(ValueError):
+    """The requested source is not one this tool may read."""
+
 
 class MarkItDownTool(BaseTool):
     """Convert any document, URL, or media file into clean Markdown.
@@ -45,8 +76,8 @@ class MarkItDownTool(BaseTool):
     Supported sources (delegated to Microsoft's ``markitdown`` library):
     PDF, Word (.docx), Excel (.xlsx / .xls), PowerPoint (.pptx), HTML,
     JSON, CSV, XML, ZIP, EPUB, images (EXIF + OCR), audio (speech → text),
-    YouTube URLs, Outlook (.msg) files. Accepts local paths, http(s) URLs,
-    ``file://`` and ``data:`` URIs.
+    YouTube URLs, Outlook (.msg) files. Accepts the ``file_id`` of one of
+    the calling user's uploads, or an ``http(s)`` URL.
 
     When a vision-capable LLM is injected at construction time, the
     official ``markitdown-ocr`` plugin automatically OCRs embedded images
@@ -97,12 +128,14 @@ class MarkItDownTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Convert any file or URL into clean Markdown suitable for LLM "
-            "consumption. Supports PDF, Word (.docx), Excel (.xlsx/.xls), "
-            "PowerPoint (.pptx), HTML, JSON, CSV, XML, ZIP, EPUB, images "
-            "(EXIF + OCR), audio (speech → text), YouTube URLs, and Outlook "
-            ".msg files. Accepts local paths, http://, https://, file://, "
-            "and data: URIs. When the workspace has a vision-capable model "
+            "Convert an uploaded file or a web URL into clean Markdown "
+            "suitable for LLM consumption. Supports PDF, Word (.docx), Excel "
+            "(.xlsx/.xls), PowerPoint (.pptx), HTML, JSON, CSV, XML, ZIP, "
+            "EPUB, images (EXIF + OCR), audio (speech → text), YouTube URLs, "
+            "and Outlook .msg files. Pass `file_id` for a file the user "
+            "uploaded, or `uri` with an http:// or https:// URL. Local "
+            "paths and other URI schemes are not accepted. "
+            "When the workspace has a vision-capable model "
             "configured, embedded images and scanned PDF pages are OCR'd "
             "automatically. Returns the full Markdown as a string."
         )
@@ -115,11 +148,11 @@ class MarkItDownTool(BaseTool):
                 "uri": {
                     "type": "string",
                     "description": (
-                        "The source to convert. Can be a local file path "
-                        "('/tmp/report.pdf'), an http(s) URL "
-                        "('https://example.com/deck.pptx'), a YouTube link "
-                        "('https://www.youtube.com/watch?v=...'), a file:// "
-                        "URI, or a data: URI. Not needed when file_id is "
+                        "An http(s) URL to download and convert "
+                        "('https://example.com/deck.pptx'), or a YouTube "
+                        "link ('https://www.youtube.com/watch?v=...'). "
+                        "Local file paths are not accepted — use file_id "
+                        "for uploaded files. Not needed when file_id is "
                         "provided."
                     ),
                 },
@@ -127,8 +160,7 @@ class MarkItDownTool(BaseTool):
                     "type": "string",
                     "description": (
                         "The ID of an uploaded file to convert. Preferred "
-                        "over uri for user-uploaded files — resolves the "
-                        "correct local path automatically."
+                        "The only way to convert a user-uploaded file."
                     ),
                 },
             },
@@ -151,53 +183,147 @@ class MarkItDownTool(BaseTool):
         return True, None
 
     async def run(self, **kwargs: Any) -> str | ToolResult:  # type: ignore[override]
-        file_id = (kwargs.get("file_id") or "").strip()
-        uri = (kwargs.get("uri") or "").strip()
+        file_id = str(kwargs.get("file_id") or "").strip()
+        uri = str(kwargs.get("uri") or "").strip()
 
-        # Resolve file_id → local path (same pattern as ReadUploadedFileTool)
-        if file_id and self._user_id:
-            try:
-                from fim_one.web.api.files import _load_index, _user_dir
-
-                index = _load_index(self._user_id)
-                meta = index.get(file_id)
-                if meta is not None:
-                    user_dir = _user_dir(self._user_id)
-                    file_path = user_dir / str(meta["stored_name"])
-                    if file_path.exists():
-                        uri = str(file_path.resolve())
-                        logger.info("Resolved file_id %s → %s", file_id, uri)
-                    else:
-                        return (
-                            f"[Error] File {meta.get('filename', file_id)} "
-                            "not found on disk."
-                        )
-                else:
-                    return f"[Error] file_id '{file_id}' not found in upload index."
-            except Exception as exc:
-                logger.warning(
-                    "Failed to resolve file_id %r: %s", file_id, exc
-                )
-                return f"[Error] Failed to resolve file_id: {exc}"
-
-        if not uri:
+        if not file_id and not uri:
             return "[Error] Either `uri` or `file_id` is required."
 
-        # The kernel is sync (MarkItDown itself is sync; some sources
-        # block on disk / network / subprocess). Dispatch to a worker
-        # thread so we don't stall the event loop for the whole agent.
+        label = file_id or uri
         try:
-            content = await asyncio.to_thread(
-                convert_with_markitdown,
-                uri,
-                vision_llm=self._vision_llm,
-            )
-        except MarkItDownNotInstalledError as exc:
+            if file_id:
+                # An uploaded file wins over ``uri`` when both are given.
+                local_path, label = self._resolve_upload(file_id)
+                # The kernel is sync (MarkItDown itself is sync; some
+                # sources block on disk / subprocess). Dispatch to a
+                # worker thread so we don't stall the event loop.
+                content = await asyncio.to_thread(
+                    convert_with_markitdown,
+                    local_path,
+                    vision_llm=self._vision_llm,
+                )
+            else:
+                data, final_url, mimetype, charset, filename = await self._download(uri)
+                content = await asyncio.to_thread(
+                    convert_bytes_with_markitdown,
+                    data,
+                    filename=filename,
+                    mimetype=mimetype,
+                    charset=charset,
+                    url=final_url,
+                    vision_llm=self._vision_llm,
+                )
+        except _SourceRefused as exc:
+            return f"[Error] {exc}"
+        except (MarkItDownNotInstalledError, ArchiveLimitError) as exc:
             return f"[Error] {exc}"
         except Exception as exc:
-            logger.warning("MarkItDown conversion failed for %r", uri, exc_info=True)
-            return f"[Error] Failed to convert {uri!r}: {exc}"
+            logger.warning("MarkItDown conversion failed for %r", label, exc_info=True)
+            return f"[Error] Failed to convert {label!r}: {exc}"
 
         if not content.strip():
-            return f"[Warning] No extractable content found in {uri!r}."
+            return f"[Warning] No extractable content found in {label!r}."
         return ToolResult(content=content, content_type="markdown")
+
+    # ------------------------------------------------------------------
+    # Source resolution
+    # ------------------------------------------------------------------
+
+    def _resolve_upload(self, file_id: str) -> tuple[Path, str]:
+        """Map *file_id* to a file inside the calling user's upload directory.
+
+        Returns ``(path, display_name)``.  The lookup goes through the
+        user's own upload index; the stored name is then confined to that
+        user's directory, so neither the id nor a tampered index entry can
+        name a file elsewhere.
+        """
+        if not self._user_id:
+            raise _SourceRefused(
+                "Uploaded files are not available in this context."
+            )
+        try:
+            from fim_one.web.api.files import _load_index, _user_dir
+
+            meta = _load_index(self._user_id).get(file_id)
+            user_dir = _user_dir(self._user_id)
+        except Exception as exc:
+            logger.warning("Failed to resolve file_id %r: %s", file_id, exc)
+            raise _SourceRefused(f"Failed to resolve file_id: {exc}") from exc
+
+        if not isinstance(meta, dict) or not meta.get("stored_name"):
+            raise _SourceRefused(f"file_id '{file_id}' not found in upload index.")
+
+        display = str(meta.get("filename") or file_id)
+        root = user_dir.resolve()
+        candidate = (user_dir / str(meta["stored_name"])).resolve()
+        if candidate == root or not candidate.is_relative_to(root):
+            raise _SourceRefused(f"file_id '{file_id}' not found in upload index.")
+        if not candidate.is_file():
+            raise _SourceRefused(f"File {display} not found on disk.")
+        return candidate, display
+
+    @staticmethod
+    async def _download(
+        uri: str,
+    ) -> tuple[bytes, str, str | None, str | None, str | None]:
+        """Fetch *uri* through the SSRF-safe client.
+
+        Returns ``(body, final_url, mimetype, charset, filename)``.
+        """
+        parts = urlsplit(uri)
+        if parts.scheme.lower() not in ("http", "https") or not parts.hostname:
+            raise _SourceRefused(
+                "`uri` must be an http:// or https:// URL. Local paths and "
+                "other URI schemes are not accepted; use `file_id` for "
+                "uploaded files."
+            )
+        try:
+            # Fast, readable refusal for the first hop; the transport
+            # re-resolves and re-checks this and every redirect hop.
+            await asyncio.to_thread(validate_url, uri)
+        except ValueError as exc:
+            raise _SourceRefused(f"URL not allowed: {exc}") from exc
+
+        limit = _max_download_bytes()
+        chunks: list[bytes] = []
+        size = 0
+        try:
+            async with asyncio.timeout(_DOWNLOAD_TIMEOUT_SECONDS), get_safe_async_client(
+                timeout=_DOWNLOAD_TIMEOUT_SECONDS,
+                follow_redirects=True,
+                max_redirects=_MAX_REDIRECTS,
+                headers={"User-Agent": "FIM-One/convert_to_markdown"},
+            ) as client:
+                async with client.stream("GET", uri) as resp:
+                    resp.raise_for_status()
+                    async for chunk in resp.aiter_bytes():
+                        size += len(chunk)
+                        if size > limit:
+                            raise _SourceRefused(
+                                f"Download exceeds the {limit}-byte limit."
+                            )
+                        chunks.append(chunk)
+                    final_url = str(resp.url)
+                    content_type = resp.headers.get("content-type", "")
+                    disposition = resp.headers.get("content-disposition", "")
+                    charset = resp.charset_encoding
+        except _SourceRefused:
+            raise
+        except TimeoutError as exc:
+            raise _SourceRefused(
+                f"Download did not finish within {_DOWNLOAD_TIMEOUT_SECONDS} seconds."
+            ) from exc
+        except ValueError as exc:
+            # Raised by the transport when a hop resolves to a blocked address.
+            raise _SourceRefused(f"URL not allowed: {exc}") from exc
+        except httpx.HTTPError as exc:
+            raise _SourceRefused(f"Download failed: {exc}") from exc
+
+        mimetype = content_type.split(";", 1)[0].strip().lower() or None
+        filename: str | None = None
+        match = _FILENAME_RE.search(disposition)
+        if match:
+            filename = Path(unquote(match.group(1).strip())).name or None
+        if not filename:
+            filename = Path(unquote(urlsplit(final_url).path)).name or None
+        return b"".join(chunks), final_url, mimetype, charset, filename

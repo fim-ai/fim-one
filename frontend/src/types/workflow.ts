@@ -24,6 +24,7 @@ export interface WorkflowResponse {
   schedule_inputs?: Record<string, unknown> | null
   schedule_timezone?: string
   has_api_key: boolean
+  access_suspended_at?: string | null
   forked_from: string | null
   total_runs: number
   last_run_at: string | null

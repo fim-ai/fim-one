@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.core.audit import actions
+from fim_one.core.security.redact import redact_secrets
 from fim_one.db import get_session
 from fim_one.web.audit_events import record_resource
 from fim_one.web.auth import get_current_user
@@ -120,8 +121,11 @@ async def create_builder_session(
             f"- Execution mode: {target.execution_mode}\n"
             f"- Tool categories: {target.tool_categories or []}\n"
             f"- Connected connectors: {target.connector_ids or []}\n"
-            f"- Model config: {target.model_config_json or '(default)'}\n"
-            f"- Status: {target.status}\n"
+            f"- Model config: {redact_secrets(target.model_config_json) or '(default)'}\n"
+            f"- Status: {target.status}\n\n"
+            f"Secret values in the model config (such as api_key) are shown as '****': "
+            f"the value is stored on the server and is not shown here. Never ask the user "
+            f"to paste it.\n"
         )
     elif body.target_type == "connector_db":
         result = await db.execute(

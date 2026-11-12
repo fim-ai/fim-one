@@ -67,6 +67,8 @@ class WorkflowResponse(BaseModel):
     schedule_timezone: str = "UTC"
     has_api_key: bool = False
     api_key_prefix: str | None = None
+    # Set while the webhook and trigger key are suspended (owner only).
+    access_suspended_at: str | None = None
     total_runs: int = 0
     last_run_at: str | None = None
     success_rate: float | None = None

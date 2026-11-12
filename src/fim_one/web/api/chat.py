@@ -1363,7 +1363,9 @@ async def _resolve_llm(
         cfg = agent_cfg.get("model_config_json") or {}
         model_config_id = cfg.get("model_config_id") if isinstance(cfg, dict) else None
         if model_config_id:
-            llm = await get_llm_by_config_id(db, model_config_id)
+            llm = await get_llm_by_config_id(
+                db, model_config_id, owner_id=agent_cfg.get("owner_user_id")
+            )
             if llm is not None:
                 return llm
         # Inline custom parameters (legacy path, kept for compatibility)
@@ -1392,7 +1394,9 @@ async def _resolve_fast_llm(
         cfg = agent_cfg.get("model_config_json") or {}
         fast_id = cfg.get("fast_model_config_id") if isinstance(cfg, dict) else None
         if fast_id:
-            llm = await get_llm_by_config_id(db, fast_id)
+            llm = await get_llm_by_config_id(
+                db, fast_id, owner_id=agent_cfg.get("owner_user_id")
+            )
             if llm is not None:
                 return llm
     # Model Group -> ENV fallback (Group-aware registry)
@@ -1418,9 +1422,13 @@ async def _resolve_model_supports_vision(
         cfg = agent_cfg.get("model_config_json") or {}
         model_config_id = cfg.get("model_config_id") if isinstance(cfg, dict) else None
         if model_config_id:
+            owner_id = agent_cfg.get("owner_user_id")
             stmt = sa_select(ModelConfigORM.supports_vision).where(
                 ModelConfigORM.id == model_config_id,
                 ModelConfigORM.is_active == True,  # noqa: E712
+                (ModelConfigORM.user_id.is_(None) | (ModelConfigORM.user_id == owner_id))
+                if owner_id
+                else ModelConfigORM.user_id.is_(None),
             )
             result = await db.execute(stmt)
             val = result.scalar_one_or_none()

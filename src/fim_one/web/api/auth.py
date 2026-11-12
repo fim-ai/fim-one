@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
+import hmac
 import os
 import secrets
 import uuid
@@ -13,10 +14,18 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 
 from fim_one.core.utils import spawn_background
 from fim_one.web.admin_notify import notify_admins
+from fim_one.web.avatars import (
+    AVATAR_ALLOWED_EXTENSIONS,
+    avatars_dir,
+    public_avatar_value,
+    remove_uploaded_avatars,
+    uploaded_avatar_name,
+    uploaded_avatar_path,
+)
 from fim_one.web.audit_events import record_account
 from fim_one.web.email import _smtp_configured, send_verification_email
 from fim_one.web.exceptions import AppError
@@ -30,7 +39,16 @@ from fim_one.web.api.admin import (
     SETTING_REGISTRATION_ENABLED,
 )
 from fim_one.web.api.admin_utils import get_setting
+from fim_one.web.services.address_claim import notice_for_display
 from fim_one.web.services.default_plan import get_default_plan_id
+from fim_one.web.services.verification_codes import (
+    check_emailed_code,
+    window_seconds_left,
+    claim_second_factor_attempt,
+    release_second_factor_attempt,
+    take_after_cooldown,
+    take_from_window,
+)
 from fim_one.db.models.email_verification import EmailVerification
 from fim_one.db.models.invite_code import InviteCode
 from fim_one.web.auth import (
@@ -82,7 +100,9 @@ from fim_one.web.schemas.auth import (
     SetupRequest,
     TokenResponse,
     UpdateProfileRequest,
+    SecurityNoticeRestoreRequest,
     UserInfo,
+    normalize_email,
     VerifyForgotCodeRequest,
 )
 from fim_one.web.schemas.common import ApiResponse
@@ -120,7 +140,7 @@ def _build_user_info(
         has_password=user.password_hash is not None,
         oauth_bindings=bindings,
         onboarding_completed=user.onboarding_completed,
-        avatar=user.avatar,
+        avatar=public_avatar_value(user.id, user.avatar),
         has_connector=has_connector,
         has_agent=has_agent,
         has_conversation=has_conversation,
@@ -130,6 +150,7 @@ def _build_user_info(
         default_exec_mode=user.default_exec_mode,
         default_reasoning=user.default_reasoning,
         totp_enabled=user.totp_enabled,
+        security_notice=notice_for_display(user),
     )
 
 
@@ -191,6 +212,255 @@ async def _record_login(
     await db.commit()
 
 
+def _limit(name: str, default: int) -> int:
+    """A rate setting from the environment; ``0`` switches the rule off."""
+    try:
+        return max(0, int(os.environ.get(name, "")))
+    except ValueError:
+        return default
+
+
+def _rate_limited(wait: timedelta) -> AppError:
+    """The 429 for a request over a limit, with the whole seconds to wait."""
+    seconds = max(1, int(wait.total_seconds() + 0.999))
+    return AppError(
+        "verification_rate_limited",
+        status_code=429,
+        detail=f"Please wait {seconds} seconds before trying again.",
+        detail_args={"seconds": seconds},
+    )
+
+
+def _seconds_until_next_code(last: EmailVerification) -> timedelta:
+    """How long until another code may be sent after *last* (one a minute)."""
+    sent = last.created_at if last.created_at.tzinfo else last.created_at.replace(tzinfo=UTC)
+    return sent + timedelta(seconds=VERIFICATION_CODE_RATE_LIMIT_SECONDS) - datetime.now(UTC)
+
+
+def _client_key(request: Request) -> str:
+    """The client address a request is counted under."""
+    return (request.client.host if request.client else "") or "unknown"
+
+
+async def _admit_code_send(
+    db: AsyncSession,
+    request: Request,
+    *,
+    address: str,
+    purpose: str,
+    signed_in_user_id: str | None = None,
+) -> None:
+    """Count one request for an emailed code; refuse it over the limits.
+
+    Counted before anything is looked up, so the answer does not depend on
+    whether the address belongs to an account.
+
+    * Per client address (anonymous requests): ``AUTH_CODE_SENDS_PER_IP_HOUR``.
+    * Per address and purpose: the first ``AUTH_CODE_SENDS_BEFORE_COOLDOWN``
+      codes of a day (UTC) are issued at once; after that each code waits
+      for a cooldown that starts at one minute and doubles with every code,
+      up to ``AUTH_CODE_SEND_COOLDOWN_MAX_MINUTES``.  The ceiling bounds the
+      codes issued per address a day (about 30 with the defaults).  The
+      wait is shared by everyone asking for the address, so requests by
+      others can delay the owner's code.  Five tries per code (at most
+      ``AUTH_CODE_TRIES_PER_CLIENT`` of them from one client) times the
+      codes issued is the number of guesses an address is exposed to.
+
+    Addresses are counted in the form :func:`normalize_email` gives them.
+
+    A signed-in request is counted under the account, not the address: what
+    a stranger uses up for an address does not take the signed-in owner's
+    own path away.
+    """
+    if signed_in_user_id is None:
+        if not await take_from_window(
+            db, scope="send-ip", key=_client_key(request),
+            limit=_limit("AUTH_CODE_SENDS_PER_IP_HOUR", 30), window=timedelta(hours=1),
+        ):
+            raise _rate_limited(window_seconds_left(timedelta(hours=1)))
+        key = f"{purpose}|{normalize_email(address)}"
+    else:
+        key = f"{purpose}|user:{signed_in_user_id}"
+    wait = await take_after_cooldown(
+        db,
+        scope="send-address",
+        key=key,
+        free=_limit("AUTH_CODE_SENDS_BEFORE_COOLDOWN", 3),
+        longest=timedelta(minutes=_limit("AUTH_CODE_SEND_COOLDOWN_MAX_MINUTES", 60)),
+    )
+    if wait is not None:
+        raise _rate_limited(wait)
+
+
+def _client_tries(request: Request) -> dict[str, Any]:
+    """How many tries of one code an anonymous client may make.
+
+    ``AUTH_CODE_TRIES_PER_CLIENT`` (default 3 of a code's 5): a client
+    that guesses cannot use up a code sent to the address's owner.
+    """
+    return {
+        "client": _client_key(request),
+        "tries_per_client": _limit("AUTH_CODE_TRIES_PER_CLIENT", 3),
+    }
+
+
+async def _admit_code_check(db: AsyncSession, request: Request) -> None:
+    """Count one anonymous attempt to use a code, per client address.
+
+    ``AUTH_CODE_CHECKS_PER_IP_HOUR``.  The tries of one code are limited per
+    code; this limits how many codes, of however many addresses, one client
+    can try in an hour.
+    """
+    if not await take_from_window(
+        db, scope="check-ip", key=_client_key(request),
+        limit=_limit("AUTH_CODE_CHECKS_PER_IP_HOUR", 60), window=timedelta(hours=1),
+    ):
+        raise _rate_limited(window_seconds_left(timedelta(hours=1)))
+
+
+async def _first_proof_of_address(
+    db: AsyncSession, user: User, *, keep_password: bool, issues_session: bool
+) -> None:
+    """An emailed code was just accepted for an account whose address was unproven.
+
+    Until now nothing showed that whoever set the account up owns the
+    address; the person holding the code does. With email verification
+    off, that person is usually the one who set the account up, so this
+    step loses nothing: sign-in material is replaced, and whatever was set
+    up to act or send data without the holder present is switched off by a
+    flag the holder can turn back on.
+
+    Closed (sign-in):
+
+    * the password, unless this request is replacing it (*keep_password*);
+      the holder sets a new one;
+    * the refresh token and every access token issued so far;
+    * the second factor and the linked provider sign-ins, which were
+      enrolled by whoever held the account before; the holder enrolls and
+      links them again;
+    * API keys created so far are deactivated; the holder turns each back
+      on in Settings.
+
+    Switched off by a flag (rows created before now; see
+    :mod:`fim_one.web.services.address_claim`):
+
+    * workflow schedules; completion webhooks and trigger keys are
+      suspended with their URL and key kept;
+    * agents whose model settings name a custom endpoint, model
+      configurations with their own ``base_url``, connectors, MCP servers
+      and channels the account created (``is_active``);
+    * completion notifications of the account's agents
+      (``notifications.on_complete.enabled``);
+    * the personal system instructions and the default agent, which are
+      kept in the notice and restored from it.
+
+    Ended: the account's workflow runs and confirmation requests still
+    open are cancelled or closed.
+
+    Deleted: the account's stored credentials on connectors and MCP
+    servers of other users or of organizations (third-party tokens of the
+    earlier holder). The holder authorises those tools again.
+
+    Unchanged: the account's content and its organization memberships and
+    roles, which the notice lists.
+
+    The holder sees a notice (``security_notice`` of ``/api/auth/me``)
+    listing all of this until they dismiss it. Not committed here; the
+    caller commits with the rest of its work.
+    """
+    from fim_one.db.models import ApiKey, UserOAuthBinding
+    from fim_one.web.services.address_claim import switch_off_earlier_setup
+
+    now = datetime.now(UTC)
+    user.email_verified = True
+    had_password = user.password_hash is not None
+    if not keep_password:
+        user.password_hash = None
+    user.refresh_token = None
+    user.refresh_token_expires_at = None
+    # Tokens carry their issue time in whole seconds and one issued in the
+    # second of the cut-off counts as older.  A request that goes on to
+    # issue a session therefore cuts off one second earlier.
+    user.tokens_invalidated_at = (
+        now.replace(microsecond=0) - timedelta(seconds=1) if issues_session else now
+    )
+    had_second_factor = bool(user.totp_enabled)
+    user.totp_enabled = False
+    user.totp_secret = None
+    user.totp_backup_codes = None
+    user.oauth_provider = None
+    user.oauth_id = None
+    api_keys = (
+        await db.execute(
+            select(ApiKey.id, ApiKey.name).where(
+                ApiKey.user_id == user.id,
+                ApiKey.is_active.is_(True),
+                ApiKey.created_at <= now,
+            )
+        )
+    ).all()
+    if api_keys:
+        await db.execute(
+            update(ApiKey)
+            .where(ApiKey.id.in_([k.id for k in api_keys]))
+            .values(is_active=False)
+            .execution_options(synchronize_session=False)
+        )
+    providers = list(
+        (
+            await db.scalars(
+                select(UserOAuthBinding.provider).where(
+                    UserOAuthBinding.user_id == user.id, UserOAuthBinding.bound_at <= now
+                )
+            )
+        ).all()
+    )
+    await db.execute(
+        delete(UserOAuthBinding)
+        .where(UserOAuthBinding.user_id == user.id, UserOAuthBinding.bound_at <= now)
+        .execution_options(synchronize_session=False)
+    )
+    notice = await switch_off_earlier_setup(
+        db,
+        user,
+        now,
+        sign_in={
+            "password_removed": had_password and not keep_password,
+            "second_factor_removed": had_second_factor,
+            "providers_unlinked": sorted(set(providers)),
+            "api_keys": [{"id": k.id, "name": k.name} for k in api_keys],
+        },
+    )
+    switched = ", ".join(f"{i['kind']}={i['count']}" for i in notice["items"]) or "nothing"
+    await record_account(
+        db,
+        user,
+        actions.AUTH_SESSIONS_REVOKE,
+        detail=(
+            "address proven by emailed code; earlier sessions, second factor and "
+            f"provider sign-ins removed, {len(api_keys)} API keys deactivated; "
+            f"switched off or listed: {switched}"
+        ),
+        auth="email_code",
+    )
+
+
+def _by_email(email: str) -> Any:
+    """Accounts holding *email*, the one whose address is proven first.
+
+    Two accounts can hold one address: an account whose address was never
+    confirmed is not merged with a later sign-in that proves the address
+    (see ``web/api/oauth.py``), so that sign-in gets an account of its own.
+    Every lookup by address therefore names its order: a proven address
+    outranks an unproven one, then the older account.
+    """
+    return (
+        select(User)
+        .where(User.email == email)
+        .order_by(User.email_verified.desc(), User.created_at.asc(), User.id.asc())
+    )
+
+
 @router.get("/registration-status")
 async def registration_status(
     db: AsyncSession = Depends(get_session),  # noqa: B008
@@ -212,21 +482,22 @@ async def registration_status(
 
 VERIFICATION_CODE_EXPIRY_MINUTES = 5
 VERIFICATION_CODE_RATE_LIMIT_SECONDS = 60
-VERIFICATION_MAX_ATTEMPTS = 5
 
 
 @router.post("/send-verification-code")
 async def send_verification_code(
     body: SendVerificationCodeRequest,
+    request: Request,
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> dict[str, Any]:
     """Send a 6-digit verification code to the given email address."""
     if not _smtp_configured():
         raise AppError("smtp_not_configured", status_code=503)
+    await _admit_code_send(db, request, address=body.email, purpose="register")
 
     # Check email not already registered
-    existing = await db.execute(select(User).where(User.email == body.email))
-    if existing.scalar_one_or_none() is not None:
+    existing = await db.execute(_by_email(body.email).limit(1))
+    if existing.scalars().first() is not None:
         raise AppError("email_already_registered", status_code=409)
 
     # Rate limit: no new code if one was sent < 60s ago for same email+purpose
@@ -240,8 +511,8 @@ async def send_verification_code(
         .order_by(EmailVerification.created_at.desc())
         .limit(1)
     )
-    if recent.scalar_one_or_none() is not None:
-        raise AppError("verification_rate_limited", status_code=429)
+    if (last := recent.scalar_one_or_none()) is not None:
+        raise _rate_limited(_seconds_until_next_code(last))
 
     code = f"{secrets.randbelow(1000000):06d}"
     verification = EmailVerification(
@@ -264,11 +535,13 @@ async def send_verification_code(
 @router.post("/register", response_model=TokenResponse)
 async def register(
     body: RegisterRequest,
+    request: Request,
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> TokenResponse:
     # Check if registration is enabled (first user is always allowed as bootstrap)
     user_count_check = await db.execute(select(func.count(User.id)))
     is_first_user_check = user_count_check.scalar_one() == 0
+    reg_mode = ""
     if not is_first_user_check:
         # Try new registration_mode first, fall back to legacy registration_enabled
         reg_mode = await get_setting(db, "registration_mode", "")
@@ -281,53 +554,21 @@ async def register(
         elif reg_mode == "invite":
             if not body.invite_code:
                 raise AppError("invite_code_required")
-                # Atomic increment: the UPDATE only succeeds when the code exists,
-            # is active, has not expired, and still has remaining uses.
-            # This prevents the non-atomic read-modify-write race condition where
-            # two concurrent requests both pass the use_count check before either
-            # commits.
-            now_utc = datetime.now(UTC)
-            invite_result = await db.execute(
-                update(InviteCode)
-                .where(
-                    InviteCode.code == body.invite_code,
-                    InviteCode.is_active == True,  # noqa: E712
-                    InviteCode.use_count < InviteCode.max_uses,
-                    (InviteCode.expires_at == None)  # noqa: E711
-                    | (InviteCode.expires_at > now_utc),
-                )
-                .values(use_count=InviteCode.use_count + 1)
-                .returning(InviteCode)
-            )
-            invite = invite_result.scalar_one_or_none()
-            if invite is None:
-                # Distinguish the failure reason with a second read (read-only,
-                # no TOCTOU risk here — we are only producing a helpful error
-                # message after the atomic operation already rejected the request).
-                diag_result = await db.execute(
-                    select(InviteCode).where(InviteCode.code == body.invite_code)
-                )
-                diag = diag_result.scalar_one_or_none()
-                if diag is None or not diag.is_active:
-                    raise AppError("invite_code_invalid")
-                elif diag.expires_at and diag.expires_at.replace(tzinfo=UTC) < now_utc:
-                    raise AppError("invite_code_expired")
-                else:
-                    raise AppError("invite_code_exhausted")
-            await db.flush()
 
     # Check email uniqueness
-    email_result = await db.execute(
-        select(User).where(User.email == body.email)
-    )
-    if email_result.scalar_one_or_none() is not None:
+    email_result = await db.execute(_by_email(body.email).limit(1))
+    if email_result.scalars().first() is not None:
         raise AppError("email_already_registered", status_code=409)
+
+    # Whether this request proved that the address belongs to its sender.
+    address_proven = False
 
     # Validate email verification code if email verification is enabled AND SMTP is available
     email_verif_enabled = await get_setting(db, "email_verification_enabled", default="false")
     if email_verif_enabled.lower() == "true" and _smtp_configured() and not is_first_user_check:
         if not body.verification_code:
             raise AppError("email_verification_required")
+        await _admit_code_check(db, request)
         # Find the latest unexpired, unverified code for this email
         verif_result = await db.execute(
             select(EmailVerification)
@@ -343,14 +584,46 @@ async def register(
         verif = verif_result.scalar_one_or_none()
         if verif is None:
             raise AppError("verification_code_expired")
-        if verif.attempts >= VERIFICATION_MAX_ATTEMPTS:
-            raise AppError("verification_code_too_many_attempts")
-        if verif.code != body.verification_code:
-            verif.attempts += 1
-            await db.commit()
-            raise AppError("verification_code_invalid")
-        # Mark as verified
-        verif.verified_at = datetime.now(UTC)
+        # Spends an attempt atomically, then compares; marks the code used.
+        await check_emailed_code(db, verif, body.verification_code, **_client_tries(request))
+        address_proven = True
+
+    # The invite is consumed last, after the address has passed its own
+    # check, so that a wrong verification code does not use up an invite.
+    if not is_first_user_check and reg_mode == "invite":
+        # Atomic increment: the UPDATE only succeeds when the code exists,
+        # is active, has not expired, and still has remaining uses.
+        # This prevents the non-atomic read-modify-write race condition where
+        # two concurrent requests both pass the use_count check before either
+        # commits.
+        now_utc = datetime.now(UTC)
+        invite_result = await db.execute(
+            update(InviteCode)
+            .where(
+                InviteCode.code == body.invite_code,
+                InviteCode.is_active == True,  # noqa: E712
+                InviteCode.use_count < InviteCode.max_uses,
+                (InviteCode.expires_at == None)  # noqa: E711
+                | (InviteCode.expires_at > now_utc),
+            )
+            .values(use_count=InviteCode.use_count + 1)
+            .returning(InviteCode)
+        )
+        invite = invite_result.scalar_one_or_none()
+        if invite is None:
+            # Distinguish the failure reason with a second read (read-only,
+            # no TOCTOU risk here — we are only producing a helpful error
+            # message after the atomic operation already rejected the request).
+            diag_result = await db.execute(
+                select(InviteCode).where(InviteCode.code == body.invite_code)
+            )
+            diag = diag_result.scalar_one_or_none()
+            if diag is None or not diag.is_active:
+                raise AppError("invite_code_invalid")
+            elif diag.expires_at and diag.expires_at.replace(tzinfo=UTC) < now_utc:
+                raise AppError("invite_code_expired")
+            else:
+                raise AppError("invite_code_exhausted")
         await db.flush()
 
     # First registered user automatically becomes admin.
@@ -362,12 +635,13 @@ async def register(
     user = User(
         password_hash=await hash_password_async(body.password),
         email=body.email,
-        # The address cleared whatever proof this deployment requires: either
-        # the OTP block above validated it, or the operator turned
-        # ``email_verification_enabled`` off and accepts addresses at face
-        # value. Either way it is this system's own decision, unlike a
-        # third-party provider telling us an address was never confirmed.
-        email_verified=True,
+        # Proven only by the emailed code checked above.  A deployment that
+        # registers without one accepts the address at face value for
+        # signing in, but an unproven address is never a match target for a
+        # provider sign-in (see the auto-bind gate in ``web/api/oauth.py``),
+        # so a provider sign-in for the address never lands in this account.
+        # The first account is the installer's own, as in ``/setup``.
+        email_verified=address_proven or is_first_user_check,
         is_admin=is_first_user_check,
         privacy_accepted_at=datetime.now(UTC) if body.privacy_accepted else None,
         plan_id=default_plan_id,
@@ -422,12 +696,24 @@ async def login(
     request: Request,
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> TokenResponse | JSONResponse:
-    user = await db.scalar(
-        select(User).options(selectinload(User.oauth_bindings)).where(User.email == body.email)
-    )
-    if user is None:
+    candidates = (
+        await db.scalars(
+            _by_email(body.email).options(selectinload(User.oauth_bindings)).limit(5)
+        )
+    ).all()
+    if not candidates:
         await _record_login(db, request, None, method="password", success=False, failure_reason="user_not_found", email=body.email)
         raise AppError("invalid_credentials", status_code=401)
+
+    # Where two accounts hold the address, a password signs in to the
+    # account it was set on, and to no other.
+    user = candidates[0]
+    for candidate in candidates:
+        if candidate.password_hash is not None and await verify_password_async(
+            body.password, candidate.password_hash
+        ):
+            user = candidate
+            break
 
     if user.password_hash is None or not await verify_password_async(body.password, user.password_hash):
         await _record_login(db, request, user, method="password", success=False, failure_reason="wrong_password")
@@ -466,14 +752,16 @@ async def login(
 @router.post("/send-login-code")
 async def send_login_code(
     body: SendLoginCodeRequest,
+    request: Request,
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> dict[str, Any]:
     """Send a 6-digit OTP code for passwordless login."""
     if not _smtp_configured():
         raise AppError("smtp_not_configured", status_code=503)
+    await _admit_code_send(db, request, address=body.email, purpose="login")
 
     # Email MUST be registered (opposite of send-verification-code)
-    user = await db.scalar(select(User).where(User.email == body.email))
+    user = await db.scalar(_by_email(body.email).limit(1))
     if user is None:
         raise AppError("email_not_registered", status_code=404)
 
@@ -491,8 +779,8 @@ async def send_login_code(
         .order_by(EmailVerification.created_at.desc())
         .limit(1)
     )
-    if recent.scalar_one_or_none() is not None:
-        raise AppError("verification_rate_limited", status_code=429)
+    if (last := recent.scalar_one_or_none()) is not None:
+        raise _rate_limited(_seconds_until_next_code(last))
 
     code = f"{secrets.randbelow(1000000):06d}"
     verification = EmailVerification(
@@ -519,8 +807,11 @@ async def login_with_code(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> TokenResponse | JSONResponse:
     """Passwordless login using an email OTP code."""
+    await _admit_code_check(db, request)
+    # A code proves the address, so it signs in to the account whose address
+    # is proven, when two accounts hold it.
     user = await db.scalar(
-        select(User).options(selectinload(User.oauth_bindings)).where(User.email == body.email)
+        _by_email(body.email).options(selectinload(User.oauth_bindings)).limit(1)
     )
     if user is None:
         await _record_login(db, request, None, method="email_code", success=False, failure_reason="email_not_registered", email=body.email)
@@ -551,19 +842,16 @@ async def login_with_code(
         await _record_login(db, request, user, method="email_code", success=False, failure_reason="verification_code_expired")
         raise AppError("verification_code_expired")
 
-    if verif.attempts >= VERIFICATION_MAX_ATTEMPTS:
-        await _record_login(db, request, user, method="email_code", success=False, failure_reason="verification_code_too_many_attempts")
-        raise AppError("verification_code_too_many_attempts")
+    # Spends an attempt atomically, then compares; marks the code used.
+    try:
+        await check_emailed_code(db, verif, body.code, **_client_tries(request))
+    except AppError as exc:
+        await _record_login(db, request, user, method="email_code", success=False, failure_reason=exc.error_code)
+        raise
 
-    if verif.code != body.code:
-        verif.attempts += 1
-        await db.commit()
-        await _record_login(db, request, user, method="email_code", success=False, failure_reason="verification_code_invalid")
-        raise AppError("verification_code_invalid")
-
-    # Mark as verified
-    verif.verified_at = datetime.now(UTC)
-    await db.flush()
+    if not user.email_verified:
+        await _first_proof_of_address(db, user, keep_password=False, issues_session=True)
+        db.expire(user, ["oauth_bindings"])
 
     # 2FA check, same as /login: the email code replaces the password, not
     # the second factor.
@@ -670,6 +958,44 @@ async def me(
     ).model_dump())
 
 
+@router.post("/me/security-notice/dismiss", response_model=ApiResponse)
+async def dismiss_security_notice(
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Hide the notice; what it keeps for restoring stays restorable."""
+    user = await db.get(User, current_user.id)
+    assert user is not None
+    notice = user.security_notice
+    if isinstance(notice, dict) and not notice.get("dismissed_at"):
+        user.security_notice = {**notice, "dismissed_at": datetime.now(UTC).isoformat()}
+        await db.commit()
+    return ApiResponse(data={"dismissed": True})
+
+
+@router.post("/me/security-notice/restore", response_model=ApiResponse)
+async def restore_from_security_notice(
+    body: SecurityNoticeRestoreRequest,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Put back the system instructions or default agent the notice kept."""
+    user = await db.get(User, current_user.id)
+    assert user is not None
+    notice = user.security_notice if isinstance(user.security_notice, dict) else {}
+    saved = dict(notice.get("saved") or {})
+    value = saved.pop(body.item, None)
+    if not value:
+        raise AppError("security_notice_nothing_to_restore", status_code=404)
+    if body.item == "system_instructions":
+        user.system_instructions = value
+    else:
+        user.default_agent_id = value
+    user.security_notice = {**notice, "saved": saved}
+    await db.commit()
+    return ApiResponse(data={"restored": body.item})
+
+
 def _dt(v: datetime | None) -> str | None:
     """Serialize a datetime to ISO 8601 string or None."""
     return v.isoformat() if v else None
@@ -696,7 +1022,7 @@ async def export_my_data(
         "is_admin": user.is_admin,
         "preferred_language": user.preferred_language,
         "onboarding_completed": user.onboarding_completed,
-        "avatar": user.avatar,
+        "avatar": public_avatar_value(user.id, user.avatar),
         "oauth_provider": user.oauth_provider,
         "system_instructions": user.system_instructions,
         "privacy_accepted_at": _dt(getattr(user, "privacy_accepted_at", None)),
@@ -994,7 +1320,10 @@ async def update_profile(
     if body.onboarding_completed is not None:
         user.onboarding_completed = body.onboarding_completed
     if body.avatar is not None:
+        # The schema only lets a built-in token (or "" to clear) through;
+        # an uploaded image is set by POST /avatar alone.
         user.avatar = body.avatar or None
+        remove_uploaded_avatars(user.id)
     if body.timezone is not None:
         user.timezone = body.timezone or None
     if body.default_agent_id is not None:
@@ -1057,7 +1386,6 @@ async def update_profile(
 
 
 AVATAR_MAX_SIZE = 5 * 1024 * 1024  # 5MB
-AVATAR_ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 
 
 @router.post("/avatar", response_model=ApiResponse)
@@ -1077,27 +1405,25 @@ async def upload_avatar(
     if len(content) > AVATAR_MAX_SIZE:
         raise AppError("avatar_too_large", status_code=400)
 
-    # Save to uploads/avatars/{user_id}{ext}
-    uploads_dir = Path(os.environ.get("UPLOADS_DIR", "uploads"))
-    avatar_dir = uploads_dir / "avatars"
+    # Save to uploads/avatars/{user_id}_{ts}{ext}.  The name is built from
+    # the server-side user id and a validated extension only.
+    avatar_dir = avatars_dir()
     avatar_dir.mkdir(parents=True, exist_ok=True)
 
-    # Remove old avatar file if exists (may have different extension/timestamp)
-    for old_file in avatar_dir.glob(f"{current_user.id}_*"):
-        old_file.unlink(missing_ok=True)
-    # Also clean up legacy files without timestamp
-    for old_file in avatar_dir.glob(f"{current_user.id}.*"):
-        old_file.unlink(missing_ok=True)
+    # Remove this user's previous avatar files (any extension / timestamp).
+    remove_uploaded_avatars(current_user.id)
 
     ts = int(datetime.now(UTC).timestamp())
     avatar_filename = f"{current_user.id}_{ts}{ext}"
-    avatar_path = avatar_dir / avatar_filename
-    avatar_path.write_bytes(content)
+    stored_value = f"avatars/{avatar_filename}"
+    if uploaded_avatar_name(current_user.id, stored_value) is None:
+        raise AppError("avatar_invalid_format", status_code=400)
+    (avatar_dir / avatar_filename).write_bytes(content)
 
     # Update user record
     result = await db.execute(select(User).where(User.id == current_user.id))
     user = result.scalar_one()
-    user.avatar = f"avatars/{avatar_filename}"
+    user.avatar = stored_value
     await db.commit()
 
     # Reload with oauth_bindings for response serialization
@@ -1117,11 +1443,9 @@ async def delete_avatar(
     result = await db.execute(select(User).where(User.id == current_user.id))
     user = result.scalar_one()
 
-    # Delete file if it's an uploaded avatar
-    if user.avatar and not user.avatar.startswith("builtin:"):
-        uploads_dir = Path(os.environ.get("UPLOADS_DIR", "uploads"))
-        avatar_path = uploads_dir / user.avatar
-        avatar_path.unlink(missing_ok=True)
+    # Only files this application wrote for this user are ever removed; the
+    # stored value is never used as a path.
+    remove_uploaded_avatars(user.id)
 
     user.avatar = None
     await db.commit()
@@ -1142,17 +1466,16 @@ async def get_avatar(
     """Serve a user's uploaded avatar image (public, no auth required)."""
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
-    if user is None or not user.avatar or user.avatar.startswith("builtin:"):
+    if user is None:
         raise AppError("avatar_not_found", status_code=404)
 
-    uploads_dir = Path(os.environ.get("UPLOADS_DIR", "uploads"))
-    avatar_path = (uploads_dir / user.avatar).resolve()
-    if not avatar_path.is_relative_to(uploads_dir.resolve()):
-        raise AppError("avatar_not_found", status_code=404)
-    if not avatar_path.exists():
+    # A stored value that is not this user's own uploaded image (including
+    # values written before the field was validated) is treated as unset.
+    avatar_path = uploaded_avatar_path(user.id, user.avatar)
+    if avatar_path is None:
         raise AppError("avatar_not_found", status_code=404)
 
-    return FileResponse(avatar_path)
+    return FileResponse(avatar_path, headers={"X-Content-Type-Options": "nosniff"})
 
 
 @router.post("/change-password", response_model=ApiResponse)
@@ -1199,6 +1522,7 @@ async def set_password(
 @router.post("/send-reset-code")
 async def send_reset_code(
     body: SendResetCodeRequest,
+    request: Request,
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> dict[str, Any]:
@@ -1208,6 +1532,10 @@ async def send_reset_code(
 
     if not current_user.email:
         raise AppError("email_not_set", status_code=400)
+    await _admit_code_send(
+        db, request, address=current_user.email, purpose="reset_password",
+        signed_in_user_id=current_user.id,
+    )
 
     # Rate limit: no new code if one was sent < 60s ago for same email+purpose
     recent = await db.execute(
@@ -1220,8 +1548,8 @@ async def send_reset_code(
         .order_by(EmailVerification.created_at.desc())
         .limit(1)
     )
-    if recent.scalar_one_or_none() is not None:
-        raise AppError("verification_rate_limited", status_code=429)
+    if (last := recent.scalar_one_or_none()) is not None:
+        raise _rate_limited(_seconds_until_next_code(last))
 
     code = f"{secrets.randbelow(1000000):06d}"
     verification = EmailVerification(
@@ -1270,21 +1598,14 @@ async def reset_password(
     if verif.expires_at.replace(tzinfo=UTC) < datetime.now(UTC):
         raise AppError("verification_code_expired")
 
-    if verif.attempts >= VERIFICATION_MAX_ATTEMPTS:
-        raise AppError("verification_code_too_many_attempts")
-
-    if verif.code != body.code:
-        verif.attempts += 1
-        await db.commit()
-        raise AppError("verification_code_invalid")
-
-    # Mark as verified
-    verif.verified_at = datetime.now(UTC)
-    await db.flush()
+    # Spends an attempt atomically, then compares; marks the code used.
+    await check_emailed_code(db, verif, body.code)
 
     # Set new password
     result = await db.execute(select(User).where(User.id == current_user.id))
     user = result.scalar_one()
+    if not user.email_verified:
+        await _first_proof_of_address(db, user, keep_password=True, issues_session=False)
     user.password_hash = await hash_password_async(body.new_password)
     await record_account(db, user, actions.AUTH_PASSWORD_RESET, detail="emailed code, signed in")
     await db.commit()
@@ -1295,14 +1616,16 @@ async def reset_password(
 @router.post("/send-forgot-code")
 async def send_forgot_code(
     body: SendForgotCodeRequest,
+    request: Request,
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> dict[str, Any]:
     """Send a 6-digit OTP for password reset (unauthenticated — login page)."""
     if not _smtp_configured():
         raise AppError("smtp_not_configured", status_code=503)
+    await _admit_code_send(db, request, address=body.email, purpose="reset_password")
 
     # Email must belong to an existing user
-    user = await db.scalar(select(User).where(User.email == body.email))
+    user = await db.scalar(_by_email(body.email).limit(1))
     if user is None:
         raise AppError("email_not_registered", status_code=404)
 
@@ -1320,8 +1643,8 @@ async def send_forgot_code(
         .order_by(EmailVerification.created_at.desc())
         .limit(1)
     )
-    if recent.scalar_one_or_none() is not None:
-        raise AppError("verification_rate_limited", status_code=429)
+    if (last := recent.scalar_one_or_none()) is not None:
+        raise _rate_limited(_seconds_until_next_code(last))
 
     code = f"{secrets.randbelow(1000000):06d}"
     verification = EmailVerification(
@@ -1344,11 +1667,13 @@ async def send_forgot_code(
 @router.post("/verify-forgot-code", response_model=ApiResponse)
 async def verify_forgot_code(
     body: VerifyForgotCodeRequest,
+    request: Request,
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     """Verify OTP code for forgot-password flow. Returns a reset_token for the next step."""
+    await _admit_code_check(db, request)
     # Verify user exists
-    user = await db.scalar(select(User).where(User.email == body.email))
+    user = await db.scalar(_by_email(body.email).limit(1))
     if user is None:
         raise AppError("email_not_registered", status_code=404)
 
@@ -1374,30 +1699,27 @@ async def verify_forgot_code(
     if verif.expires_at.replace(tzinfo=UTC) < datetime.now(UTC):
         raise AppError("verification_code_expired")
 
-    if verif.attempts >= VERIFICATION_MAX_ATTEMPTS:
-        raise AppError("verification_code_too_many_attempts")
-
-    if verif.code != body.code:
-        verif.attempts += 1
-        await db.commit()
-        raise AppError("verification_code_invalid")
-
-    # Mark as verified and generate reset token
-    verif.verified_at = datetime.now(UTC)
-    verif.reset_token = str(uuid.uuid4())
+    # Spends an attempt atomically, then compares; marks the code used and
+    # stores the reset token with it.
+    reset_token = str(uuid.uuid4())
+    await check_emailed_code(
+        db, verif, body.code, reset_token=reset_token, **_client_tries(request)
+    )
     await db.commit()
 
-    return ApiResponse(data={"reset_token": verif.reset_token})
+    return ApiResponse(data={"reset_token": reset_token})
 
 
 @router.post("/forgot-password", response_model=ApiResponse)
 async def forgot_password(
     body: ForgotPasswordRequest,
+    request: Request,
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     """Reset password using a verified reset token (from verify-forgot-code)."""
+    await _admit_code_check(db, request)
     # Verify user exists
-    user = await db.scalar(select(User).where(User.email == body.email))
+    user = await db.scalar(_by_email(body.email).limit(1))
     if user is None:
         raise AppError("email_not_registered", status_code=404)
 
@@ -1424,6 +1746,9 @@ async def forgot_password(
     # Check the verification is still recent (within 10 minutes of verification)
     if verif.verified_at is None or verif.verified_at.replace(tzinfo=UTC) < datetime.now(UTC) - timedelta(minutes=10):
         raise AppError("verification_code_expired")
+
+    if not user.email_verified:
+        await _first_proof_of_address(db, user, keep_password=True, issues_session=False)
 
     # Set new password
     user.password_hash = await hash_password_async(body.new_password)
@@ -1821,17 +2146,30 @@ async def verify_2fa_login(
     # Failed codes are counted per user, not per temp token: password, email
     # code and OAuth sign-in can each mint a fresh token, so a per-token count
     # would reset on every new sign-in.
-    window_start = datetime.now(UTC) - timedelta(minutes=_2FA_FAILURE_WINDOW_MINUTES)
-    recent_failures = await db.scalar(
-        select(func.count())
-        .select_from(LoginHistory)
-        .where(
-            LoginHistory.user_id == user.id,
-            LoginHistory.failure_reason == "2fa_code_invalid",
-            LoginHistory.created_at >= window_start,
+    window = timedelta(minutes=_2FA_FAILURE_WINDOW_MINUTES)
+    recent_failures = (
+        await db.scalars(
+            select(LoginHistory.created_at).where(
+                LoginHistory.user_id == user.id,
+                LoginHistory.failure_reason == "2fa_code_invalid",
+                LoginHistory.created_at >= datetime.now(UTC) - window,
+            )
         )
-    )
-    if (recent_failures or 0) >= _2FA_MAX_FAILURES:
+    ).all()
+    if len(recent_failures) >= _2FA_MAX_FAILURES:
+        raise AppError("2fa_too_many_attempts", status_code=429)
+    # The count above is read before this attempt's own failure is written, so
+    # requests arriving together would all read the same number.  The attempt
+    # is therefore taken atomically from the account's counter before the code
+    # is looked at; a request that gets none is refused unseen.
+    if not await claim_second_factor_attempt(
+        db,
+        user_id=user.id,
+        email=user.email,
+        limit=_2FA_MAX_FAILURES,
+        window=window,
+        recent_failures=recent_failures,
+    ):
         raise AppError("2fa_too_many_attempts", status_code=429)
 
     # Try TOTP code first
@@ -1841,20 +2179,33 @@ async def verify_2fa_login(
     # If TOTP didn't match, try backup codes
     if not code_valid and user.totp_backup_codes:
         code_hash = _hash_backup_code(body.code)
+        stored_raw = user.totp_backup_codes
         try:
-            stored_codes: list[str] = json.loads(user.totp_backup_codes)
+            stored_codes: list[str] = json.loads(stored_raw)
         except (json.JSONDecodeError, TypeError):
             stored_codes = []
 
-        if code_hash in stored_codes:
-            code_valid = True
-            # Remove used backup code
+        if any(hmac.compare_digest(code_hash, stored) for stored in stored_codes if isinstance(stored, str)):
+            # Remove the used backup code, on the condition that the stored
+            # list is still the one that was read: of two simultaneous uses
+            # of one backup code, one wins.
             stored_codes.remove(code_hash)
-            user.totp_backup_codes = json.dumps(stored_codes)
+            claimed = await db.execute(
+                update(User)
+                .where(User.id == user.id, User.totp_backup_codes == stored_raw)
+                .values(totp_backup_codes=json.dumps(stored_codes))
+                .execution_options(synchronize_session=False)
+            )
+            if getattr(claimed, "rowcount", 0) == 1:
+                code_valid = True
+                user.totp_backup_codes = json.dumps(stored_codes)
 
     if not code_valid:
         await _record_login(db, request, user, method=method, success=False, failure_reason="2fa_code_invalid")
         raise AppError("2fa_code_invalid", status_code=401)
+
+    # A right code is not a failure: its attempt goes back.
+    await release_second_factor_attempt(db, user_id=user.id)
 
     # Issue tokens (same as normal login)
     access = create_access_token(user.id, user.email)
@@ -1903,8 +2254,8 @@ async def request_email_change(
         raise AppError("current_password_incorrect")
 
     # Check new_email not already taken
-    existing = await db.execute(select(User).where(User.email == body.new_email))
-    if existing.scalar_one_or_none() is not None:
+    existing = await db.execute(select(User).where(User.email == body.new_email).limit(1))
+    if existing.scalars().first() is not None:
         raise AppError("email_already_registered", status_code=409)
 
     # Rate limit
@@ -1918,8 +2269,8 @@ async def request_email_change(
         .order_by(EmailVerification.created_at.desc())
         .limit(1)
     )
-    if recent.scalar_one_or_none() is not None:
-        raise AppError("verification_rate_limited", status_code=429)
+    if (last := recent.scalar_one_or_none()) is not None:
+        raise _rate_limited(_seconds_until_next_code(last))
 
     code = f"{secrets.randbelow(1000000):06d}"
     verification = EmailVerification(
@@ -1969,22 +2320,14 @@ async def confirm_email_change(
     if verif.expires_at.replace(tzinfo=UTC) < datetime.now(UTC):
         raise AppError("verification_code_expired")
 
-    if verif.attempts >= VERIFICATION_MAX_ATTEMPTS:
-        raise AppError("verification_code_too_many_attempts")
-
-    if verif.code != body.code:
-        verif.attempts += 1
-        await db.commit()
-        raise AppError("verification_code_invalid")
-
-    # Mark as verified
-    verif.verified_at = datetime.now(UTC)
+    # Spends an attempt atomically, then compares; marks the code used.
+    await check_emailed_code(db, verif, body.code)
 
     # Check the new email is still available (race condition guard)
     existing = await db.execute(
-        select(User).where(User.email == body.new_email, User.id != current_user.id)
+        select(User).where(User.email == body.new_email, User.id != current_user.id).limit(1)
     )
-    if existing.scalar_one_or_none() is not None:
+    if existing.scalars().first() is not None:
         await db.commit()
         raise AppError("email_already_registered", status_code=409)
 

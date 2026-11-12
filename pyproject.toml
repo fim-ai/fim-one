@@ -73,6 +73,9 @@ files = [
     # OCR to embedded images inside DOCX/PPTX/XLSX and full-page OCR for
     # scanned PDFs without pulling in Tesseract or any ML binary.
     "markitdown-ocr>=0.0.1",
+    # Used by MarkItDown for .docx. 1.11.0 is the first release that does
+    # not read files a document links to unless the caller asks for it.
+    "mammoth>=1.11.0",
     "Markdown>=3.4",
     "reportlab>=4.0",
     "PyMuPDF>=1.25",

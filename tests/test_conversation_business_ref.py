@@ -732,11 +732,12 @@ def test_the_model_and_the_migration_agree() -> None:
     assert [c.name for c in index.columns] == ["user_id", "business_ref"]
 
 
-def test_it_chains_after_c2p4_and_leaves_one_head() -> None:
+def test_it_chains_after_c2p4_on_the_single_line() -> None:
     script = ScriptDirectory(str(Path(fim_one.__file__).parent / "migrations"))
-    assert script.get_heads() == ["e4b1a2c3d4e5"]
+    (head,) = script.get_heads()
     revision = script.get_revision("e4b1a2c3d4e5")
     assert revision is not None and revision.down_revision == "c2p4a1b2c3d4"
+    assert "e4b1a2c3d4e5" in {r.revision for r in script.iterate_revisions(head, "base")}
 
 
 # ---------------------------------------------------------------------------

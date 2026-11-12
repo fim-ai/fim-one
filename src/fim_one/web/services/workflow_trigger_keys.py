@@ -48,8 +48,9 @@ class TriggerKeyRejectedError(Exception):
     """The presented key does not authorize a run.
 
     ``error_code`` is ``invalid_api_key`` for an unknown key and
-    ``workflow_owner_inactive`` when the workflow's author is disabled. Both
-    map to 401. ``workflow`` is the workflow a valid key belongs to.
+    ``workflow_owner_inactive`` when the workflow's author is disabled, or
+    ``workflow_trigger_suspended`` while the workflow's access is suspended
+    (``Workflow.access_suspended_at``). All map to 401. ``workflow`` is the workflow a valid key belongs to.
     """
 
     def __init__(self, error_code: str, detail: str, workflow: Workflow | None = None) -> None:
@@ -76,6 +77,12 @@ async def resolve_trigger_key(raw_key: str | None, db: AsyncSession) -> Workflow
     if wf is None or not hmac.compare_digest(wf.api_key_hash or "", key_hash):
         raise TriggerKeyRejectedError("invalid_api_key", "Invalid API key")
 
+    if wf.access_suspended_at is not None:
+        raise TriggerKeyRejectedError(
+            "workflow_trigger_suspended",
+            "The workflow's trigger key is suspended; its owner can turn it back on",
+            wf,
+        )
     owner_active = (
         await db.execute(select(User.is_active).where(User.id == wf.user_id))
     ).scalar_one_or_none()

@@ -102,6 +102,8 @@ The script reads the provider keys through the ORM and writes them straight to t
 
 The `convert_to_markdown` built-in tool and the RAG ingestion pipeline both use Microsoft's [MarkItDown](https://github.com/microsoft/markitdown) + the official [`markitdown-ocr`](https://github.com/microsoft/markitdown/tree/main/packages/markitdown-ocr) plugin to extract text from documents — including OCR on embedded images and scanned PDF pages when a vision-capable LLM is available.
 
+The tool reads two kinds of source: a file the calling user uploaded, named by its `file_id`, and an `http://` or `https://` URL. URLs are downloaded with the same restrictions as `web_fetch` and `http_request` (no private, loopback, link-local or metadata addresses, redirects included). Local paths, `file://`, `data:` and other schemes are refused.
+
 **Vision LLM resolution order** (first match wins):
 
 | # | Source | Priority rationale |
@@ -396,6 +398,9 @@ Size limits for files produced by tool execution (code execution, template rende
 |---|---|---|---|
 | `MAX_ARTIFACT_SIZE` | No | `10485760` (10 MB) | Max single artifact file size in bytes |
 | `MAX_ARTIFACTS_TOTAL` | No | `52428800` (50 MB) | Max total artifact size per session in bytes |
+| `TEMPLATE_RENDER_TIMEOUT_SECONDS` | No | `10` | Wall-clock limit for one `template_render` call (1–120). The template is rendered in a separate process, which is stopped when the limit is reached. |
+| `TEMPLATE_RENDER_MEMORY_MB` | No | `256` | Memory limit for that process (64–4096). A render that grows beyond it is stopped. |
+| `TEMPLATE_RENDER_CONCURRENCY` | No | `4` | How many templates are rendered at the same time (1–64); further calls wait up to the time limit. |
 
 ---
 
@@ -447,6 +452,20 @@ Used for login codes and email notifications. The `email_send` built-in tool is 
 | `WECOM_WEBHOOK_URL` | No | — | **Deprecated, removed in the next release.** Instance-wide WeCom group-bot webhook URL, same paths, offered as `instance:wecom`. Create a WeCom webhook channel instead |
 | `APP_NAME` | No | `FIM One` | Product name used in system emails (login codes, admin notifications) |
 
+### Verification code limits
+
+Emailed codes (sign-in, registration, password reset) allow five tries each. These settings bound how many codes are issued and tried; `0` switches a rule off. Counting is done in the database, so the limits hold across workers and under simultaneous requests. Windows are aligned to the clock.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `AUTH_CODE_SENDS_BEFORE_COOLDOWN` | No | `3` | Codes issued per address and purpose each day (UTC) before a wait applies |
+| `AUTH_CODE_SEND_COOLDOWN_MAX_MINUTES` | No | `60` | Longest wait between codes for one address and purpose. The wait starts at one minute after the codes above and doubles with each code up to this value, which also bounds the codes per address a day (about 30 with the defaults). The wait is shared by everyone requesting codes for the address. `0` switches the wait off |
+| `AUTH_CODE_SENDS_PER_IP_HOUR` | No | `30` | Anonymous requests for a code per client address per hour |
+| `AUTH_CODE_CHECKS_PER_IP_HOUR` | No | `60` | Anonymous attempts to use a code per client address per hour |
+| `AUTH_CODE_TRIES_PER_CLIENT` | No | `3` | Anonymous tries of one code from one client address, of the code's five |
+
+Addresses are compared without case and without a trailing dot of the domain (`name@example.com.` counts as `name@example.com`). A request over a limit is answered with HTTP 429 (`verification_rate_limited`) before the address is looked up, so the answer is the same whether or not the address has an account. A signed-in request for a reset code is counted under the account, separately from anonymous requests for the same address. The client address is the one the application server sees: behind a reverse proxy, run the server so that it trusts the proxy's forwarded address, otherwise all clients share one count.
+
 ---
 
 ## Connectors
@@ -458,6 +477,7 @@ Used for login codes and email notifications. The `email_send` built-in tool is 
 | `CREDENTIAL_ENCRYPTION_KEY` | No | *(auto-generated)* | Secret from which the Fernet key for connector and MCP credential blobs is derived. Credentials are always encrypted at rest: when the variable is unset, a random key is generated on first start and written to `.env`. Back it up and set it explicitly for multi-replica deployments; changing or losing it makes all stored credentials unreadable. In the Docker image the generated key is kept in the key store (`/var/lib/fim-one/secrets`, the `app_secrets` volume) instead of `.env`, it is generated only while the database is empty, and the container refuses to start when the database has data and the key is in neither place. |
 | `CONNECTOR_TOOL_MODE` | No | `progressive` | How connector tools are exposed to agents. `progressive`: single `ConnectorMetaTool` with `discover`/`execute` subcommands (~30 tokens/connector). `classic`: one tool per action (legacy, ~250 tokens/action). |
 | `DATABASE_TOOL_MODE` | No | `progressive` | How database connector tools are exposed to agents. `progressive`: single `DatabaseMetaTool` with `list_tables`/`discover`/`query` subcommands. `legacy`: one tool per action per database connector (3 tools each). |
+| `DB_CONNECTOR_ALLOWED_HOSTS` | No | *(empty)* | Internal database hosts that database connectors may connect to. By default a database connector can only reach public addresses: private, loopback, link-local, shared-address and cloud-metadata ranges are refused, judged on the address the host name resolves to, on every connection. List the internal databases your deployment needs as comma-separated entries: an IP address (`10.20.30.40`), a CIDR network (`10.20.0.0/16`), a host name (`db.corp.internal`) or a wildcard (`*.rds.internal`), each optionally limited to a port (`db.corp.internal:5432`, `[fd00::5]:5432`). The hosts of the application's own database and Redis (`DATABASE_URL`, `REDIS_URL`) are never allowed, on any port. An entry that cannot be parsed makes every database connector fail, public targets included, until it is corrected; the entry is written to the server log, not shown to users. Do not use `0.0.0.0/0` or `::/0`: they allow cloud metadata addresses and every internal service. See [Database connectors on internal networks](#database-connectors-on-internal-networks). |
 | `MCP_TOOL_MODE` | No | `progressive` | How MCP server tools are exposed to agents. `progressive`: single `MCPServerMetaTool` with `discover`/`call` subcommands. `legacy`: one tool per MCP server action (original individual tools). |
 | `SKILL_TOOL_MODE` | No | `progressive` | How Skills reach the agent. `progressive`: stub listing in the system prompt plus `read_skill` on demand. `inline`: full Skill content in the system prompt. Only applies while the Skills module is enabled |
 | `CONNECTOR_DISCOVER_INDENT` | No | `2` | JSON indent of the API connector meta-tool's `discover` output. Lower values use fewer tokens |
@@ -468,6 +488,29 @@ Used for login codes and email notifications. The `email_send` built-in tool is 
 | `COMPACT_SCHEMA_DESC_LENGTH` | No | `200` | Characters of each tool description in compact tool schemas |
 
 ---
+
+### Database connectors on internal networks
+
+A database connector dials the host and port its creator entered, from the application server. So that a connector cannot be pointed at the application's own database, at other services on the server's network or at a cloud metadata address, the host is resolved by the application and every address it resolves to must be public. The check runs when a connector is saved, when a connection is tested and each time a connection pool is opened, and the driver then connects to the address that was checked.
+
+Private deployments usually do need internal databases. Allow them explicitly:
+
+```bash
+# one database
+DB_CONNECTOR_ALLOWED_HOSTS=10.20.30.40:5432
+# a database subnet and one named host
+DB_CONNECTOR_ALLOWED_HOSTS=10.20.0.0/16,erp-db.corp.internal:3306
+```
+
+- An address or network entry allows a target when all the internal addresses it resolves to fall inside the entry.
+- A host-name entry allows that name as it is typed in the connector, whatever it resolves to. `*.suffix` matches any name ending in `.suffix`.
+- A `:port` suffix limits the entry to that port.
+- The rule applies to every user, administrators included: the allow-list is the one place where internal reach is granted.
+- The hosts of `DATABASE_URL` and of `REDIS_URL` (also a `?host=` parameter and each host of a multi-host URL) are refused on every port, even when an entry covers them. They are compared by the addresses they resolve to; if one of them cannot be resolved, every database connector is refused and the server log names the host.
+- One entry that cannot be parsed refuses every database connector, public targets included, until it is corrected. Users are told that the setting is invalid; the entry itself is written to the server log.
+- List the networks and hosts your databases are on. An entry such as `0.0.0.0/0` or `::/0` allows every internal address, cloud metadata addresses included, and turns the check off.
+
+After an upgrade, existing connectors that point at internal hosts answer "This database host is on an internal network" until the host is added here and the application restarted. The host field itself takes a bare host name or IP address: no `user:password@`, port, path or list of hosts.
 
 ## Platform
 
@@ -489,6 +532,11 @@ Used for login codes and email notifications. The `email_send` built-in tool is 
 | `EXPORT_FONT_DIR` | No | *(auto-detected)* | Directory holding `NotoSansSC-Regular.ttf` / `NotoSansSC-Bold.ttf` for PDF export. Fetch with `python scripts/fetch_export_fonts.py`; Docker images already bundle it. Without an embeddable TrueType CJK font, PDF export falls back to a non-embedded CID font with degraded spacing and no bold. |
 | `MAX_UPLOAD_SIZE_MB` | No | `50` | Max file upload size in megabytes (backend enforcement) |
 | `NEXT_PUBLIC_MAX_UPLOAD_SIZE_MB` | No | `50` | Max file upload size shown in frontend UI. **Build-time variable** — must match `MAX_UPLOAD_SIZE_MB`. |
+| `MARKITDOWN_MAX_DOWNLOAD_BYTES` | No | `52428800` | Largest document, in bytes, the `convert_to_markdown` tool downloads from a URL. Larger responses are refused, and a download that has not finished after 60 seconds is stopped. |
+| `MARKITDOWN_MAX_UNPACKED_BYTES` | No | `268435456` | Largest total uncompressed size, in bytes, of a ZIP-based document (`.zip`, Word, Excel, PowerPoint, EPUB) that is converted to Markdown, counted over every member of every nested archive. Applies to `convert_to_markdown`, knowledge-base ingestion and upload previews; a larger document is refused before it is unpacked. |
+| `MARKITDOWN_MAX_ARCHIVE_MEMBERS` | No | `5000` | Most files a ZIP-based document may hold, nested archives included. |
+| `MARKITDOWN_MAX_ARCHIVE_DEPTH` | No | `3` | How deep archives inside a ZIP-based document may be nested; the outer archive counts as 1. |
+| `SSRF_ALLOW_FAKE_IP_RANGE` | No | `false` | Outbound requests made for users (web fetch, HTTP request, connectors, URL import, database connectors) refuse internal addresses. `198.18.0.0/15` counts as internal. Set to `true` only on a machine whose DNS proxy (Surge, Clash and similar "fake-IP" modes) resolves public host names into that range; it opens that range and nothing else. |
 | `ALLOW_STDIO_MCP` | No | `false` | Allow stdio MCP servers. A stdio server is a command run inside the application container: with `true`, **system administrators can run arbitrary commands there**. Only administrators can create, edit, copy, test or publish a stdio server, and one whose owner is not an active administrator is never started; other users can use a stdio server an administrator shared |
 | `ALLOWED_STDIO_COMMANDS` | No | `npx,uvx,node,python,python3,deno,bun` | Base names an administrator may use as a stdio server's command. A guard against typos, **not a security boundary**: `python -c`, `node -e` and `npx <any package>` run arbitrary code. Only effective when `ALLOW_STDIO_MCP=true` |
 | `LOG_LEVEL` | No | `INFO` | Logging level: `DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` |

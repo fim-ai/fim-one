@@ -70,6 +70,14 @@ class LiteLLMOpenAIShim:
     """
 
     def __init__(self, llm: "OpenAICompatibleLLM") -> None:
+        # This shim calls LiteLLM synchronously on the default HTTP stack.
+        # A user-supplied endpoint must go through the address-checking
+        # async client, which this path cannot provide, so it is refused
+        # (document conversion then runs without OCR).
+        if getattr(llm, "uses_pinned_client", False) is True:
+            raise ValueError(
+                "A user-supplied model endpoint cannot be used for document OCR."
+            )
         self._llm = llm
         self.chat: _Chat = _Chat(llm)
 

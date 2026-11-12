@@ -8,7 +8,6 @@ import io
 import json
 import math
 import os
-import re
 import secrets
 import shutil
 import string
@@ -165,9 +164,6 @@ class UpdateAdminRequest(BaseModel):
     is_admin: bool
 
 
-_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
-
-
 class AdminCreateUserRequest(BaseModel):
     username: str | None = Field(None, min_length=2, max_length=50)
     password: str = Field(min_length=6, max_length=100)
@@ -178,9 +174,9 @@ class AdminCreateUserRequest(BaseModel):
     @field_validator("email")
     @classmethod
     def validate_email(cls, v: str) -> str:
-        if not _EMAIL_RE.match(v):
-            raise ValueError("Invalid email address")
-        return v.lower()
+        from fim_one.web.schemas.auth import valid_email
+
+        return valid_email(v)
 
 
 class AdminUpdateUserRequest(BaseModel):
@@ -681,8 +677,8 @@ async def create_user(
         if result.scalar_one_or_none() is not None:
             raise AppError("username_taken", status_code=409)
     # Check email uniqueness
-    result = await db.execute(select(User).where(User.email == body.email))
-    if result.scalar_one_or_none() is not None:
+    result = await db.execute(select(User).where(User.email == body.email).limit(1))
+    if result.scalars().first() is not None:
         raise AppError("email_already_registered", status_code=409)
 
     user = User(
@@ -728,9 +724,9 @@ async def update_user(
         if body.email:
             # Check email uniqueness (exclude self)
             email_result = await db.execute(
-                select(User).where(User.email == body.email, User.id != user_id)
+                select(User).where(User.email == body.email, User.id != user_id).limit(1)
             )
-            if email_result.scalar_one_or_none() is not None:
+            if email_result.scalars().first() is not None:
                 raise AppError("email_already_registered", status_code=409)
         target_user.email = body.email or None  # type: ignore[assignment]
 
@@ -895,6 +891,9 @@ class SystemSettingsResponse(BaseModel):
     # "workflows". Admin toggles these in the Modules card; the frontend
     # hides nav + routes for disabled modules.
     modules: dict[str, bool] = {}
+    # Published agents whose inline model settings name their own endpoint
+    # may be used by others (their conversations go to that endpoint).
+    shared_custom_model_endpoints: bool = False
 
 
 class UpdateSystemSettingsRequest(BaseModel):
@@ -908,6 +907,7 @@ class UpdateSystemSettingsRequest(BaseModel):
     disabled_builtin_tools: list[str] | None = None
     # Per-module enable flags — only the keys present are updated.
     modules: dict[str, bool] | None = None
+    shared_custom_model_endpoints: bool | None = None
 
 
 class BillingActivationResponse(BaseModel):
@@ -965,6 +965,9 @@ async def _load_all_settings(db: AsyncSession) -> SystemSettingsResponse:
     from fim_one.web.services.feature_flags import are_features_enabled
     modules = await are_features_enabled(db)
 
+    from fim_one.core.assembly.model_endpoint import shared_custom_endpoints_allowed
+    shared_endpoints = await shared_custom_endpoints_allowed(db)
+
     return SystemSettingsResponse(
         registration_enabled=reg.lower() != "false",
         registration_mode=reg_mode,
@@ -979,6 +982,7 @@ async def _load_all_settings(db: AsyncSession) -> SystemSettingsResponse:
         access_model=access_model,
         stripe_configured=stripe_ok,
         modules=modules,
+        shared_custom_model_endpoints=shared_endpoints,
     )
 
 
@@ -1060,6 +1064,16 @@ async def update_system_settings(
                 )
             await set_setting(db, _setting_key, "true" if _enabled else "false", commit=False)
             changed.append(f"module.{_mod_name}={_enabled}")
+    if body.shared_custom_model_endpoints is not None:
+        from fim_one.core.assembly.model_endpoint import SETTING_SHARED_CUSTOM_MODEL_ENDPOINTS
+
+        await set_setting(
+            db,
+            SETTING_SHARED_CUSTOM_MODEL_ENDPOINTS,
+            "true" if body.shared_custom_model_endpoints else "false",
+            commit=False,
+        )
+        changed.append(f"shared_custom_model_endpoints={body.shared_custom_model_endpoints}")
     if changed:
         # One commit for every setting of this save and its record: a save
         # that is refused part-way, or whose record cannot be written,

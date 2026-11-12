@@ -10,6 +10,7 @@ import re
 import time
 from collections.abc import Awaitable, Callable
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -43,6 +44,19 @@ def connector_tool_prefix(connector_name: str) -> str:
     made when connectors are bound to an agent.
     """
     return re.sub(r"[^a-zA-Z0-9]", "_", connector_name.lower()).strip("_")
+
+
+def _origin(url: str) -> tuple[str, str, int | None] | None:
+    """``(scheme, host, port)`` of *url*, or ``None`` when it has none."""
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname
+        port = parts.port
+    except ValueError:
+        return None
+    if not parts.scheme or not host:
+        return None
+    return parts.scheme.lower(), host.lower(), port
 
 
 class ConnectorToolAdapter(BaseTool):
@@ -179,13 +193,26 @@ class ConnectorToolAdapter(BaseTool):
         for param in path_params:
             if param in kwargs:
                 value = str(kwargs.pop(param))
-                if "/" in value or "\\" in value or ".." in value:
+                if (
+                    "/" in value
+                    or "\\" in value
+                    or ".." in value
+                    or "?" in value
+                    or "#" in value
+                    or any(ch.isspace() or ord(ch) < 0x20 or ord(ch) == 0x7F for ch in value)
+                ):
                     raise ValueError(
                         f"Path parameter '{param}' contains invalid characters."
                     )
                 path = path.replace(f"{{{param}}}", value)
 
         url = f"{self._base_url}{path}"
+
+        # A path parameter fills in a path, never the authority: the request
+        # (and the credentials injected below) must go to the host the
+        # connector was configured with.
+        if _origin(url) != _origin(self._base_url):
+            return "[Error] Path parameters may not change the request host."
 
         try:
             validate_url(url)

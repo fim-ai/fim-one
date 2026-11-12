@@ -74,6 +74,8 @@ class DM8Driver(DatabaseDriver):
 
     placeholder_style = "qmark"
 
+    default_port = 5236
+
     def __init__(self, config: dict[str, Any]) -> None:
         super().__init__(config)
         self._conn: Any | None = None

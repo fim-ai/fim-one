@@ -140,6 +140,17 @@ Names are read word by word (split at `-`, `_`, `.` and camelCase), so `--keyboa
 
 Other members never see a shared server's URL, command or launch arguments, with fallback on or off.
 
+### Agents with a custom model endpoint are the owner's
+
+An agent normally selects a model an administrator configured under Admin → Models. Its inline model settings (`model_config_json`, set through the API) may instead name an endpoint of their own: a `base_url` with the `api_key` that goes with it. Every turn of a conversation with such an agent, the user's messages and files included, is sent to that address. Selecting a model configuration the agent's owner created with a `base_url` of its own (`model_config_id` or `fast_model_config_id`) counts the same. An agent uses only model configurations an administrator created or its owner created; one that names another user's configuration falls back to the default model.
+
+By default such an agent is used by its owner only:
+
+- it cannot be published or resubmitted for review, and a shared agent cannot be given a `base_url` (`agent_model_endpoint_not_shareable`, 400);
+- an agent that was shared before it had to follow this rule stays published, but everyone except its owner is refused with `agent_model_endpoint_private` (403), in chat, when another agent delegates to it and in a workflow Agent step, and it is not offered for delegation. Its owner can remove the `base_url` and select a configured model, which makes it usable by subscribers again.
+
+A platform administrator who accepts that members' conversations go to the endpoints authors choose sets `shared_custom_model_endpoints` to `true` with `PATCH /api/admin/settings`; publishing such agents is then allowed and subscribers use them as before. The setting is off unless it has been set.
+
 <Info>
 Credential fallback only applies after a member subscribes to the resource. The fallback mechanism determines how credentials are resolved at runtime, not whether the resource is accessible.
 </Info>

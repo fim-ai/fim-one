@@ -254,6 +254,17 @@ export async function apiFetch<T>(
 
 // --- Auth API ---
 export const authApi = {
+  dismissSecurityNotice: () =>
+    apiFetch<ApiResponse<{ dismissed: boolean }>>("/api/auth/me/security-notice/dismiss", {
+      method: "POST",
+    }),
+
+  restoreFromSecurityNotice: (item: "system_instructions" | "default_agent") =>
+    apiFetch<ApiResponse<{ restored: string }>>("/api/auth/me/security-notice/restore", {
+      method: "POST",
+      body: JSON.stringify({ item }),
+    }),
+
   login: (body: LoginRequest) =>
     apiFetch<TokenResponse>("/api/auth/login", {
       method: "POST",
@@ -1233,6 +1244,11 @@ export const workflowApi = {
     ).then((r) => r.data),
 
   // --- API Key ---
+  resumeAccess: (id: string) =>
+    apiFetch<ApiResponse<WorkflowResponse>>(`/api/workflows/${id}/resume-access`, {
+      method: "POST",
+    }).then((r) => r.data),
+
   generateApiKey: (id: string) =>
     apiFetch<ApiResponse<{ api_key: string; workflow_id: string }>>(
       `/api/workflows/${id}/generate-api-key`,

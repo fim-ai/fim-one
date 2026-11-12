@@ -25,6 +25,7 @@ import { ChatSearchDialog } from "@/components/layout/chat-search-dialog"
 import { UserMenu } from "@/components/layout/user-menu"
 import { NavigationProgress } from "@/components/layout/navigation-progress"
 import { GettingStartedCard } from "@/components/layout/getting-started-card"
+import { SecurityNoticeBanner } from "@/components/layout/security-notice-banner"
 import { useModuleFlags } from "@/lib/module-flags"
 
 /** Wraps children in a right-side tooltip when the sidebar is collapsed. */
@@ -572,6 +573,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         {/* Main area */}
         <div className="flex flex-1 flex-col overflow-hidden">
+          <SecurityNoticeBanner />
           <AnnouncementBanner />
           <main className="flex-1 flex flex-col min-h-0 overflow-hidden">{children}</main>
         </div>

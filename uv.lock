@@ -1037,6 +1037,7 @@ dev = [
     { name = "ruff" },
 ]
 files = [
+    { name = "mammoth" },
     { name = "markdown" },
     { name = "markitdown", extra = ["audio-transcription", "docx", "outlook", "pdf", "pptx", "xls", "xlsx", "youtube-transcription"] },
     { name = "markitdown-ocr" },
@@ -1094,6 +1095,7 @@ requires-dist = [
     { name = "jmespath", specifier = ">=1.0.1" },
     { name = "lancedb", marker = "extra == 'rag'", specifier = ">=0.6" },
     { name = "litellm", specifier = ">=1.106.5" },
+    { name = "mammoth", marker = "extra == 'files'", specifier = ">=1.11.0" },
     { name = "markdown", marker = "extra == 'files'", specifier = ">=3.4" },
     { name = "markitdown", extras = ["docx", "xlsx", "pptx", "pdf", "xls", "outlook", "audio-transcription", "youtube-transcription"], marker = "extra == 'files'", specifier = ">=0.1.5" },
     { name = "markitdown-ocr", marker = "extra == 'files'", specifier = ">=0.0.1" },

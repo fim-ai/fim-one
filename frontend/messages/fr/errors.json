@@ -37,6 +37,7 @@
   "conversation_not_found": "Conversation non trouvée.",
   "agent_config_error": "Erreur de configuration de l'agent : {reason}.",
   "connector_not_found": "Connecteur non trouvé.",
+  "db_target_not_allowed": "Les paramètres de connexion à la base de données ont été refusés : {reason}",
   "action_not_found": "Action non trouvée.",
   "spec_fetch_failed": "Échec de la récupération de la spécification OpenAPI : {reason}.",
   "spec_input_required": "Fournissez spec, spec_url ou spec_raw.",
@@ -74,7 +75,7 @@
   "verification_code_invalid": "Code de vérification incorrect.",
   "verification_code_expired": "Le code de vérification a expiré. Veuillez en demander un nouveau.",
   "verification_code_too_many_attempts": "Trop de tentatives incorrectes. Veuillez demander un nouveau code.",
-  "verification_rate_limited": "Veuillez attendre avant de demander un autre code.",
+  "verification_rate_limited": "Trop de requêtes. Veuillez patienter {seconds} secondes avant de réessayer.",
   "email_not_registered": "Aucun compte trouvé avec cette adresse e-mail.",
   "sensitive_word_blocked": "Votre message a été bloqué car il contient du contenu restreint.",
   "sensitive_word_duplicate": "Ce mot sensible existe déjà.",
@@ -94,5 +95,9 @@
   "ip_not_allowed": "L'accès depuis votre adresse IP n'est pas autorisé. Contactez votre administrateur.",
   "ip_rule_self_lockout": "Cette modification bloquerait votre propre adresse ({ip}), elle n'a donc pas été enregistrée.",
   "2fa_too_many_attempts": "Trop de codes incorrects. Attendez 15 minutes et reconnectez-vous.",
-  "approval_channel_denied": "Le canal d'approbation doit appartenir à une organisation dont vous êtes membre."
+  "approval_channel_denied": "Le canal d'approbation doit appartenir à une organisation dont vous êtes membre.",
+  "agent_model_endpoint_private": "Seul le propriétaire peut utiliser cet agent : ses paramètres de modèle envoient les conversations vers un point de terminaison personnalisé. Un administrateur peut l'autoriser dans les paramètres système.",
+  "agent_model_endpoint_not_shareable": "Cet agent ne peut pas être publié tant que ses paramètres de modèle indiquent un point de terminaison personnalisé. Choisissez un modèle configuré par un administrateur, ou demandez à un administrateur d'autoriser les agents partagés avec un point de terminaison personnalisé.",
+  "workflow_trigger_suspended": "La clé de déclenchement de ce workflow est suspendue. Son propriétaire peut la réactiver.",
+  "security_notice_nothing_to_restore": "Aucun élément conservé à restaurer."
 }

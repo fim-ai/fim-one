@@ -2113,6 +2113,9 @@ class WorkflowRunService:
         url = getattr(workflow, "webhook_url", None)
         if not url or out.status not in ("completed", "failed"):
             return
+        if isinstance(getattr(workflow, "access_suspended_at", None), datetime):
+            # Suspended until the owner turns it back on; the URL is kept.
+            return
         payload: dict[str, Any] = {
             "event": "run_completed" if out.status == "completed" else "run_failed",
             "workflow_id": workflow.id,

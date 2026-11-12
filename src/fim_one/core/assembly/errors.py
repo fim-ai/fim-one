@@ -6,6 +6,7 @@ from typing import Any
 
 __all__ = [
     "ACCOUNT_DISABLED",
+    "AGENT_MODEL_ENDPOINT_PRIVATE",
     "AGENT_UNAVAILABLE",
     "APPROVAL_ASSIGNEE_NOT_IN_ORG",
     "AUTHENTICATION_REQUIRED",
@@ -42,6 +43,7 @@ CONFIRMATION_FORBIDDEN = "confirmation_forbidden"
 CONFIRMATION_ALREADY_DECIDED = "confirmation_already_decided"
 APPROVAL_ASSIGNEE_NOT_IN_ORG = "approval_assignee_not_in_org"
 AGENT_UNAVAILABLE = "agent_unavailable"
+AGENT_MODEL_ENDPOINT_PRIVATE = "agent_model_endpoint_private"
 SUBSCRIPTION_REQUIRED = "subscription_required"
 TOKEN_QUOTA_EXCEEDED = "token_quota_exceeded"
 QUOTA_UNAVAILABLE = "quota_unavailable"

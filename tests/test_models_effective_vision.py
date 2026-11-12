@@ -157,7 +157,10 @@ async def test_agent_model_config_wins_over_system_default(client, user, db_sess
     db_session.add(vision_cfg)
     await db_session.commit()
 
-    agent_cfg = {"model_config_json": {"model_config_id": vision_cfg.id}}
+    agent_cfg = {
+        "model_config_json": {"model_config_id": vision_cfg.id},
+        "owner_user_id": user.id,
+    }
     with patch(
         "fim_one.web.api.chat._resolve_agent_config",
         new=lambda *a, **kw: _as_coroutine(agent_cfg),

@@ -25,7 +25,13 @@ from fim_one.db import create_session, get_session
 from fim_one.web.auth import get_current_user
 from fim_one.web.services.quota_enforcer import get_quota_checked_user
 from fim_one.core.assembly.sandbox import eval_run_sandbox_id, release_sandbox, sandbox_root
-from fim_one.web.deps import get_effective_fast_llm, get_effective_llm, get_llm_from_config, get_tools
+from fim_one.web.deps import (
+    InlineModelConfigError,
+    get_effective_fast_llm,
+    get_effective_llm,
+    get_llm_from_config,
+    get_tools,
+)
 from fim_one.web.exceptions import AppError
 from fim_one.db.models.agent import Agent
 from fim_one.db.models.eval import EvalCase, EvalCaseResult, EvalDataset, EvalRun
@@ -369,7 +375,15 @@ async def create_run(
     ]
 
     # Build LLMs while we still have a DB session for system model config lookup
-    llm = get_llm_from_config(agent.model_config_json or {})
+    try:
+        llm = get_llm_from_config(agent.model_config_json or {})
+    except InlineModelConfigError as exc:
+        raise AppError(
+            "agent_config_error",
+            status_code=400,
+            detail=str(exc),
+            detail_args={"reason": str(exc).rstrip(".")},
+        ) from exc
     if llm is None:
         llm = await get_effective_llm(db)
     grader_llm = await get_effective_fast_llm(db)

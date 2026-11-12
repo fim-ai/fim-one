@@ -52,6 +52,8 @@ class MySQLDriver(DatabaseDriver):
     enforces_read_only = True
     sql_dialect = "mysql"
 
+    default_port = 3306
+
     def __init__(self, config: dict[str, Any]) -> None:
         super().__init__(config)
         self._pool: aiomysql.Pool | None = None

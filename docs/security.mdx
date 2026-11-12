@@ -150,6 +150,23 @@ Enabling stdio means trusting your administrators with command execution in the 
 
 Not using the bundled compose file (Kubernetes, a hand-written unit): run `python /app/docker_proxy.py` from the same image as a separate container or sidecar with the Docker socket, `DOCKER_HOST_DATA_DIR` and a `SANDBOX_PROXY_TOKEN`; give the application the same token and `DOCKER_HOST=tcp://<proxy>:2375`; keep the socket out of the application container.
 
+## Checking Stored Data Before an Upgrade
+
+Some releases tighten what stored settings may do, and rows saved under the earlier rules then stop working. With the new release installed and the same environment as the application (`DATABASE_URL`, `DB_CONNECTOR_ALLOWED_HOSTS`, `REDIS_URL`), run:
+
+```bash
+python -m fim_one.web.services.upgrade_check          # readable list
+python -m fim_one.web.services.upgrade_check --json   # for scripts
+```
+
+The check only reads: it runs `SELECT` statements, resolves host names and prints what it found, without credentials, model keys or stored avatar values. It lists:
+
+| Rows | What happens to them | What to do |
+|---|---|---|
+| Database connectors whose host is refused | They cannot connect. | Add the host or network to `DB_CONNECTOR_ALLOWED_HOSTS` and restart, or point the connector elsewhere. The hosts of the application's own database and Redis cannot be allowed. |
+| Agents with a custom model endpoint (`base_url` in their inline model settings, or a selected model configuration of the owner's with its own `base_url`) | A shared one is refused to everyone but its owner; an endpoint without its own key, or on an internal address, is refused to everyone. | The owner selects a model configured under Admin → Models, or adds a key; an administrator who accepts that members' conversations go to such endpoints sets `shared_custom_model_endpoints`. |
+| Accounts whose stored profile picture is neither a built-in avatar nor an uploaded image | No picture is shown. | The user picks a picture again. |
+
 ## Security Hall of Fame
 
 We credit all confirmed vulnerability reporters (unless they prefer to remain anonymous). Reporters also qualify for the [Pioneer Program](/contributing).

@@ -146,10 +146,14 @@ def before(database_url: str) -> Iterator[sa.Engine]:
     _alembic("upgrade", _BEFORE)
     engine = sa.create_engine(database_url)
     with Session(engine) as session:
-        session.add(User(id="u-1", email="ada@x.io", username="ada", password_hash="x"))
-        session.flush()
-        # Written as rows, not ORM objects: the model may have columns
-        # that later migrations add (``conversations.business_ref``).
+        # Inserted as rows that name only the columns that existed then: an
+        # ORM insert would name every column the model has today (later
+        # migrations add ``conversations.business_ref`` and user columns).
+        session.execute(
+            sa.insert(User.__table__).values(
+                id="u-1", email="ada@x.io", username="ada", password_hash="x"
+            )
+        )
         insert_conversation = text(
             "INSERT INTO conversations (id, user_id, title, mode, status, starred,"
             " total_tokens, fast_llm_tokens, created_at, updated_at)"
@@ -171,8 +175,9 @@ def before(database_url: str) -> Iterator[sa.Engine]:
             insert_conversation,
             {"id": "conv-quiet", "title": "q", "created": _at("2026-10-01"), "updated": None},
         )
-        session.add(Workflow(id="wf-1", user_id="u-1", name="w", blueprint={}))
-        session.flush()
+        session.execute(
+            sa.insert(Workflow.__table__).values(id="wf-1", user_id="u-1", name="w", blueprint={})
+        )
         # Created and started 2 October, finished 3 October.
         session.add(
             WorkflowRun(
@@ -257,11 +262,11 @@ class TestMigration:
         assert _created_at(before) == dated
 
 
-def test_it_chains_after_the_usage_ledger_with_one_head() -> None:
+def test_it_follows_the_usage_ledger_on_the_single_line() -> None:
     from alembic.script import ScriptDirectory
 
     script = ScriptDirectory(str(Path(fim_one.__file__).parent / "migrations"))
-    assert len(script.get_heads()) == 1
-    assert "c2p4a1b2c3d4" in {r.revision for r in script.walk_revisions()}
+    (head,) = script.get_heads()
     revision = script.get_revision("c2p4a1b2c3d4")
     assert revision is not None and revision.down_revision == _BEFORE
+    assert "c2p4a1b2c3d4" in {r.revision for r in script.iterate_revisions(head, "base")}

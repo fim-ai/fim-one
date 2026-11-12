@@ -151,6 +151,8 @@ When a user signs in through a provider that is not linked to any account yet:
 2. If a match is found, the provider is linked to that existing FIM account and the user is logged in.
 3. Otherwise a new FIM account is created with whatever email the provider returned (none, if it returned none). This is refused with `registration_disabled` when registration is disabled or invite-only.
 
+**When is an account's email verified?** When it was registered with the emailed verification code (`email_verification_enabled` on and SMTP configured), when an administrator created it, when it is the first account of the installation, or when it was created by a provider sign-in whose provider reported the address as verified. An account registered with an email and a password on a deployment that does not send verification codes holds an **unverified** address: a provider sign-in for that address is not linked to it and creates a separate account instead, so two accounts can then hold the same address. A password signs in to the account it was set on; an emailed sign-in or reset code goes to the account whose address is verified. To use one account with both, sign in with the password first and link the provider under Settings → Account, instead of using the provider's button on the sign-in page.
+
 If the matched or linked account has two-factor authentication enabled, the sign-in stops at the 2FA step before a session is issued.
 
 ---

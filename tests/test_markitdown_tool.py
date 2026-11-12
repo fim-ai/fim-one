@@ -33,15 +33,22 @@ def fake_markitdown(monkeypatch: pytest.MonkeyPatch) -> type:
             pass
 
         def convert(self, uri: str) -> _FakeResult:
+            raise AssertionError("convert() dereferences URIs and must not be used")
+
+        def convert_local(self, path: str, **_: Any) -> _FakeResult:
             if _FakeMarkItDown.should_raise is not None:
                 raise _FakeMarkItDown.should_raise
             return _FakeResult(_FakeMarkItDown.return_value)
+
+        def convert_stream(self, stream: Any, **_: Any) -> _FakeResult:
+            return self.convert_local("<stream>")
 
     _FakeMarkItDown.return_value = "# Fake Markdown"
     _FakeMarkItDown.should_raise = None
 
     fake_module = types.ModuleType("markitdown")
     fake_module.MarkItDown = _FakeMarkItDown  # type: ignore[attr-defined]
+    fake_module.StreamInfo = lambda **kw: kw  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "markitdown", fake_module)
     yield _FakeMarkItDown
 
@@ -100,6 +107,17 @@ class TestMarkItDownToolAvailability:
         assert "markitdown" in msg.lower()
 
 
+async def _run_url(url: str = "https://example.com/report.pdf") -> Any:
+    """Run the tool on a URL with the download step stubbed out."""
+    from fim_one.core.tool.builtin.markitdown_tool import MarkItDownTool
+
+    async def _fake_download(uri: str) -> tuple[bytes, str, str | None, str | None, str | None]:
+        return b"%PDF-fake", uri, "application/pdf", None, "report.pdf"
+
+    with patch.object(MarkItDownTool, "_download", staticmethod(_fake_download)):
+        return await MarkItDownTool().run(uri=url)
+
+
 class TestMarkItDownToolRun:
     """Async run() method — exercise the thin-shell error/happy paths."""
 
@@ -126,7 +144,7 @@ class TestMarkItDownToolRun:
         from fim_one.core.tool.builtin.markitdown_tool import MarkItDownTool
 
         fake_markitdown.return_value = "# Converted\n\nBody text."
-        result = await MarkItDownTool().run(uri="/tmp/report.pdf")
+        result = await _run_url()
         assert result.content == "# Converted\n\nBody text."
 
     async def test_run_empty_content_returns_warning(
@@ -135,7 +153,7 @@ class TestMarkItDownToolRun:
         from fim_one.core.tool.builtin.markitdown_tool import MarkItDownTool
 
         fake_markitdown.return_value = ""
-        result = await MarkItDownTool().run(uri="/tmp/blank.pdf")
+        result = await _run_url()
         assert result.startswith("[Warning]")
         assert "no extractable content" in result.lower()
 
@@ -145,7 +163,7 @@ class TestMarkItDownToolRun:
         from fim_one.core.tool.builtin.markitdown_tool import MarkItDownTool
 
         fake_markitdown.should_raise = RuntimeError("corrupted PDF")
-        result = await MarkItDownTool().run(uri="/tmp/broken.pdf")
+        result = await _run_url()
         assert result.startswith("[Error]")
         assert "corrupted PDF" in result
 
@@ -156,7 +174,7 @@ class TestMarkItDownToolRun:
         from fim_one.core.tool.builtin.markitdown_tool import MarkItDownTool
 
         monkeypatch.setitem(sys.modules, "markitdown", None)
-        result = await MarkItDownTool().run(uri="/tmp/report.pdf")
+        result = await _run_url()
         assert result.startswith("[Error]")
         assert "markitdown" in result.lower()
 
@@ -251,17 +269,16 @@ class TestMarkItDownToolFileIdResolution:
         assert result.startswith("[Error]")
         assert "not found on disk" in result
 
-    async def test_file_id_without_user_id_falls_through_to_uri(
+    async def test_file_id_without_user_id_is_refused(
         self, fake_markitdown: type
     ) -> None:
-        """file_id with no user_id should not attempt resolution."""
+        """file_id with no user_id is refused; it never falls back to uri."""
         from fim_one.core.tool.builtin.markitdown_tool import MarkItDownTool
 
-        # No user_id means resolution is skipped; no uri means error
         tool = MarkItDownTool(user_id=None)
-        result = await tool.run(file_id="some-id")
+        result = await tool.run(file_id="some-id", uri="/etc/hosts")
         assert result.startswith("[Error]")
-        assert "uri" in result.lower() or "file_id" in result.lower()
+        assert "not available" in result.lower()
 
     async def test_file_id_takes_priority_over_uri(
         self, fake_markitdown: type, tmp_path: Path

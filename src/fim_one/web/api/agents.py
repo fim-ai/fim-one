@@ -351,6 +351,67 @@ def _binding_changed(new: list[str] | None, stored: Any) -> bool:
 _completion_channel_id = completion_channel_id
 
 
+def _model_routing(model_config_json: Any) -> dict[str, Any]:
+    """The keys of a model config that decide the endpoint and its key."""
+    if not isinstance(model_config_json, dict):
+        return {}
+    return {
+        key: model_config_json.get(key)
+        for key in ("base_url", "api_key", "provider")
+        if model_config_json.get(key)
+    }
+
+
+async def _refuse_shared_custom_endpoint(db: AsyncSession, model_config_json: Any) -> None:
+    """Refuse to share an agent whose model settings name their own endpoint.
+
+    Allowed when an administrator turns on
+    ``agents.shared_custom_model_endpoints``.
+    """
+    from fim_one.core.assembly.model_endpoint import (
+        names_custom_model_endpoint,
+        shared_custom_endpoints_allowed,
+    )
+
+    if await names_custom_model_endpoint(
+        db, model_config_json
+    ) and not await shared_custom_endpoints_allowed(db):
+        raise AppError(
+            "agent_model_endpoint_not_shareable",
+            status_code=400,
+            detail=(
+                "This agent's model settings name a custom endpoint (base_url, or "
+                "a model configuration of the owner's with its own base_url). Only "
+                "its owner can use such an agent, so it cannot be published. Select "
+                "a model an administrator configured, or remove base_url."
+            ),
+        )
+
+
+async def _validate_model_endpoint(model_config_json: Any) -> None:
+    """Refuse inline model settings that break the custom-endpoint rules.
+
+    A custom ``base_url`` needs its own ``api_key`` and must resolve to
+    public addresses; see :func:`fim_one.web.deps.check_inline_model_config`.
+    """
+    import asyncio
+
+    from fim_one.web.deps import InlineModelConfigError, check_inline_model_config
+
+    if model_config_json is None:
+        return
+    try:
+        # Resolves the host; keep it off the event loop.
+        await asyncio.to_thread(check_inline_model_config, model_config_json, resolve=True)
+    except InlineModelConfigError as exc:
+        raise AppError(
+            "agent_config_error",
+            status_code=400,
+            detail=str(exc),
+            detail_args={"reason": str(exc).rstrip(".")},
+        ) from exc
+
+
 @router.post("", response_model=ApiResponse)
 async def create_agent(
     body: AgentCreate,
@@ -368,6 +429,7 @@ async def create_agent(
     await _validate_distinct_tool_names(
         db, connector_ids=body.connector_ids, mcp_server_ids=body.mcp_server_ids
     )
+    await _validate_model_endpoint(body.model_config_json)
     agent = Agent(
         user_id=current_user.id,
         name=body.name,
@@ -484,6 +546,15 @@ async def update_agent(
     before = agent_state(agent)
 
     update_data = body.model_dump(exclude_unset=True)
+    # Checked when the endpoint settings change: the settings form sends the
+    # whole model config with every save, and an agent whose stored endpoint
+    # no longer passes must stay editable otherwise (it is refused at run time).
+    if "model_config_json" in update_data and _model_routing(
+        update_data["model_config_json"]
+    ) != _model_routing(agent.model_config_json):
+        await _validate_model_endpoint(update_data["model_config_json"])
+        if agent.visibility != "personal" or agent.org_id:
+            await _refuse_shared_custom_endpoint(db, update_data["model_config_json"])
     # Checked when it changes: the settings form sends the whole model config
     # with every save, and a channel that was deleted since must not block
     # saving something else (it is skipped at send time).
@@ -570,6 +641,7 @@ async def publish_agent(
 ) -> ApiResponse:
     """Publish agent to personal, org, or global scope."""
     agent = await _get_owned_agent(agent_id, current_user.id, db)
+    await _refuse_shared_custom_endpoint(db, agent.model_config_json)
 
     if body.scope == "org":
         if not body.org_id:
@@ -642,6 +714,7 @@ async def resubmit_agent(
     agent = await _get_owned_agent(agent_id, current_user.id, db)
     if agent.publish_status != "rejected":
         raise AppError("not_rejected", status_code=400)
+    await _refuse_shared_custom_endpoint(db, agent.model_config_json)
     agent.publish_status = "pending_review"
     agent.reviewed_by = None
     agent.reviewed_at = None

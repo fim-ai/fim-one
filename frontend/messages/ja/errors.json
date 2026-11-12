@@ -37,6 +37,7 @@
   "conversation_not_found": "会話が見つかりません。",
   "agent_config_error": "エージェント設定エラー: {reason}。",
   "connector_not_found": "コネクタが見つかりません。",
+  "db_target_not_allowed": "データベース接続の設定は許可されませんでした：{reason}",
   "action_not_found": "アクションが見つかりません。",
   "spec_fetch_failed": "OpenAPI仕様の取得に失敗しました: {reason}。",
   "spec_input_required": "spec、spec_url、またはspec_rawを指定してください。",
@@ -74,7 +75,7 @@
   "verification_code_invalid": "認証コードが正しくありません。",
   "verification_code_expired": "認証コードの有効期限が切れています。新しいコードをリクエストしてください。",
   "verification_code_too_many_attempts": "試行回数が多すぎます。新しいコードをリクエストしてください。",
-  "verification_rate_limited": "別のコードをリクエストする前にお待ちください。",
+  "verification_rate_limited": "リクエストが多すぎます。{seconds} 秒待ってから再試行してください。",
   "email_not_registered": "このメールアドレスで登録されたアカウントが見つかりません。",
   "sensitive_word_blocked": "制限されたコンテンツが含まれているため、メッセージがブロックされました。",
   "sensitive_word_duplicate": "この機密ワードは既に存在します。",
@@ -94,5 +95,9 @@
   "ip_not_allowed": "あなたのIPアドレスからのアクセスは許可されていません。管理者に連絡してください。",
   "ip_rule_self_lockout": "この変更はあなた自身のアドレス({ip})をブロックするため、保存されませんでした。",
   "2fa_too_many_attempts": "不正なコードが多すぎます。15分待ってからもう一度サインインしてください。",
-  "approval_channel_denied": "審批通道は、あなたが所属する組織に属している必要があります。"
+  "approval_channel_denied": "審批通道は、あなたが所属する組織に属している必要があります。",
+  "agent_model_endpoint_private": "このエージェントは所有者のみが使用できます。モデル設定により会話がカスタムエンドポイントに送信されるためです。管理者はシステム設定でこれを許可できます。",
+  "agent_model_endpoint_not_shareable": "モデル設定でカスタムエンドポイントが指定されている間は、このエージェントを公開できません。管理者が設定したモデルを選択するか、カスタムエンドポイントを持つ共有エージェントの許可を管理者に依頼してください。",
+  "workflow_trigger_suspended": "このワークフローのトリガーキーは停止中です。所有者が再び有効にできます。",
+  "security_notice_nothing_to_restore": "復元できる保存内容はありません。"
 }

@@ -19,6 +19,7 @@ from fim_one.core.tool.connector.database.base import (
     DatabaseDriver,
     QueryResult,
     TableInfo,
+    tls_context_for,
 )
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,13 @@ class PostgreSQLDriver(DatabaseDriver):
     async def connect(self) -> None:
         """Create an asyncpg connection pool."""
         ssl_mode = self._config.get("ssl", False)
-        ssl_arg: Any = "require" if ssl_mode else False
+        ssl_arg: Any = False
+        if ssl_mode:
+            # ``host`` below is the checked address, not the name (see
+            # ``DatabaseDriver._authorize_target``).  The TLS handshake still
+            # names the configured host, which SNI-routed services need.
+            # Same verification level as asyncpg's ``ssl="require"``.
+            ssl_arg = tls_context_for(self._tls_server_name())
 
         self._pool = await asyncpg.create_pool(
             host=self._config.get("host", "localhost"),

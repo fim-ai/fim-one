@@ -3,12 +3,32 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any, Literal
 
 import re
 
 from pydantic import BaseModel, Field, field_validator
 
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+def normalize_email(value: str) -> str:
+    """The form an address is stored, looked up and counted in.
+
+    Lower case, without surrounding space and without the trailing dot(s)
+    of a fully qualified domain (``a@example.com.`` reaches the same
+    mailbox as ``a@example.com``).
+    """
+    local, at, domain = value.strip().lower().rpartition("@")
+    return f"{local}{at}{domain.rstrip('.')}" if at else value.strip().lower()
+
+
+def valid_email(value: str) -> str:
+    """*value* normalised; ``ValueError`` when it is not an address."""
+    normalized = normalize_email(value)
+    if not _EMAIL_RE.match(normalized):
+        raise ValueError("Invalid email address")
+    return normalized
 
 
 class OAuthBindingInfo(BaseModel):
@@ -41,6 +61,13 @@ class UserInfo(BaseModel):
     default_exec_mode: str | None = None
     default_reasoning: bool | None = None
     totp_enabled: bool = False
+    # What was switched off when the address was first proven by an emailed
+    # code, until dismissed (see ``web/services/address_claim.py``).
+    security_notice: dict[str, Any] | None = None
+
+
+class SecurityNoticeRestoreRequest(BaseModel):
+    item: Literal["system_instructions", "default_agent"]
 
 
 class RegisterRequest(BaseModel):
@@ -53,9 +80,7 @@ class RegisterRequest(BaseModel):
     @field_validator("email")
     @classmethod
     def validate_email(cls, v: str) -> str:
-        if not _EMAIL_RE.match(v):
-            raise ValueError("Invalid email address")
-        return v.lower()
+        return valid_email(v)
 
 
 class SendVerificationCodeRequest(BaseModel):
@@ -65,9 +90,7 @@ class SendVerificationCodeRequest(BaseModel):
     @field_validator("email")
     @classmethod
     def validate_email(cls, v: str) -> str:
-        if not _EMAIL_RE.match(v):
-            raise ValueError("Invalid email address")
-        return v.lower()
+        return valid_email(v)
 
 
 
@@ -78,9 +101,7 @@ class SendLoginCodeRequest(BaseModel):
     @field_validator("email")
     @classmethod
     def validate_email(cls, v: str) -> str:
-        if not _EMAIL_RE.match(v):
-            raise ValueError("Invalid email address")
-        return v.lower()
+        return valid_email(v)
 
 
 class LoginWithCodeRequest(BaseModel):
@@ -90,9 +111,7 @@ class LoginWithCodeRequest(BaseModel):
     @field_validator("email")
     @classmethod
     def validate_email(cls, v: str) -> str:
-        if not _EMAIL_RE.match(v):
-            raise ValueError("Invalid email address")
-        return v.lower()
+        return valid_email(v)
 
 
 class LoginRequest(BaseModel):
@@ -115,7 +134,14 @@ class UpdateProfileRequest(BaseModel):
     system_instructions: str | None = Field(None, max_length=2000)
     preferred_language: str | None = Field(None, pattern=r"^(auto|en|zh|ja|ko|de|fr)$")
     onboarding_completed: bool | None = None
-    avatar: str | None = None  # "builtin:cat", "builtin:star", etc. or None to remove
+    # A built-in avatar token ("builtin:cat", "builtin:cat:blue") or "" to
+    # remove.  Uploaded images are set by POST /api/auth/avatar only, so this
+    # field can never name a file.
+    avatar: str | None = Field(
+        None,
+        max_length=80,
+        pattern=r"^(builtin:[a-z0-9][a-z0-9_-]{0,31}(:[a-z0-9][a-z0-9_-]{0,31})?)?$",
+    )
     username: str | None = Field(None, min_length=2, max_length=50)
     # Personal settings
     timezone: str | None = Field(None, max_length=50)
@@ -153,9 +179,7 @@ class SendForgotCodeRequest(BaseModel):
     @field_validator("email")
     @classmethod
     def validate_email(cls, v: str) -> str:
-        if not _EMAIL_RE.match(v):
-            raise ValueError("Invalid email address")
-        return v.lower()
+        return valid_email(v)
 
 
 class VerifyForgotCodeRequest(BaseModel):
@@ -166,9 +190,7 @@ class VerifyForgotCodeRequest(BaseModel):
     @field_validator("email")
     @classmethod
     def validate_email(cls, v: str) -> str:
-        if not _EMAIL_RE.match(v):
-            raise ValueError("Invalid email address")
-        return v.lower()
+        return valid_email(v)
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -180,9 +202,7 @@ class ForgotPasswordRequest(BaseModel):
     @field_validator("email")
     @classmethod
     def validate_email(cls, v: str) -> str:
-        if not _EMAIL_RE.match(v):
-            raise ValueError("Invalid email address")
-        return v.lower()
+        return valid_email(v)
 
 
 class RefreshRequest(BaseModel):
@@ -196,6 +216,4 @@ class SetupRequest(BaseModel):
     @field_validator("email")
     @classmethod
     def validate_email(cls, v: str) -> str:
-        if not _EMAIL_RE.match(v):
-            raise ValueError("Invalid email address")
-        return v.lower()
+        return valid_email(v)

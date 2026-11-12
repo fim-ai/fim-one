@@ -332,6 +332,7 @@ AUDITED: dict[Route, tuple[str, ...]] = {
     ("POST", "/api/workflows/import"): ("workflow.create",),
     ("DELETE", "/api/workflows/{workflow_id}"): ("workflow.delete",),
     ("PUT", "/api/workflows/{workflow_id}"): ("workflow.update",),
+    ("POST", "/api/workflows/{workflow_id}/resume-access"): ("workflow.update",),
     ("DELETE", "/api/workflows/{workflow_id}/api-key"): ("workflow.trigger_key_revoke",),
     ("PUT", "/api/workflows/{workflow_id}/env"): ("workflow.env_update",),
     ("POST", "/api/workflows/{workflow_id}/fork"): ("workflow.create",),
@@ -369,6 +370,8 @@ EXEMPT: dict[Route, str] = {
     # content
     ("DELETE", "/api/auth/avatar"): CONTENT,
     ("POST", "/api/auth/avatar"): CONTENT,
+    ("POST", "/api/auth/me/security-notice/dismiss"): CONTENT,
+    ("POST", "/api/auth/me/security-notice/restore"): CONTENT,
     ("POST", "/api/confirmations/{confirmation_id}/answer"): CONTENT,
     ("POST", "/api/conversations"): CONTENT,
     ("DELETE", "/api/conversations/batch"): CONTENT,
@@ -675,6 +678,10 @@ OTHER_WRITERS: dict[str, str] = {
         "billing.activate / enable / disable"
     ),
     "web/services/subscription_lifecycle.py": "records billing.plan_change",
+    "web/services/verification_codes.py": (
+        "the attempt counters of verification codes and of the second factor: "
+        "counters, by design; the sign-in routes that call it record the outcome"
+    ),
 }
 # Command-line scripts for developers that write to the database with no
 # user and no request (``scripts/``). Not recorded: they are run by whoever

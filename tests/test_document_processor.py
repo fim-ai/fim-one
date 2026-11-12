@@ -170,7 +170,7 @@ class TestExtractTextSync:
         mock_result = MagicMock()
         mock_result.text_content = "Document content"
         mock_converter = MagicMock()
-        mock_converter.convert.return_value = mock_result
+        mock_converter.convert_local.return_value = mock_result
 
         mock_module = MagicMock()
         mock_module.MarkItDown.return_value = mock_converter
@@ -1251,7 +1251,7 @@ class TestAllowedExtensions:
         mock_result = MagicMock()
         mock_result.text_content = "Legacy doc"
         mock_converter = MagicMock()
-        mock_converter.convert.return_value = mock_result
+        mock_converter.convert_local.return_value = mock_result
         mock_module = MagicMock()
         mock_module.MarkItDown.return_value = mock_converter
 
@@ -1265,7 +1265,7 @@ class TestAllowedExtensions:
         mock_result = MagicMock()
         mock_result.text_content = "Legacy ppt"
         mock_converter = MagicMock()
-        mock_converter.convert.return_value = mock_result
+        mock_converter.convert_local.return_value = mock_result
         mock_module = MagicMock()
         mock_module.MarkItDown.return_value = mock_converter
 

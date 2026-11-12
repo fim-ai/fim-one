@@ -347,6 +347,17 @@ class TestModeratingResources:
             "workflow.cleanup_runs", "workflow.admin_batch_delete", "workflow.admin_delete",
         )  # fmt: skip
 
+    async def test_a_suspended_workflow_turned_back_on(self, world: World, root: Any) -> None:
+        from datetime import UTC, datetime
+
+        bob = await world.user("bob")
+        await world.add(
+            Workflow(id="wf-s", user_id=bob.id, name="S", blueprint={"nodes": []},
+                     webhook_url="https://hooks.example.test/x", access_suspended_at=datetime.now(UTC))
+        )
+        await world.call("POST", "/api/workflows/wf-s/resume-access", by=bob)
+        await _wrote(world, "workflow.update")
+
     async def test_eval_data_and_workflow_templates(self, world: World, root: Any) -> None:
         bob = await world.user("bob")
         await world.add(Agent(id="ag-1", user_id=bob.id, name="A1"))

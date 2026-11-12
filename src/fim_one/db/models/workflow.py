@@ -78,6 +78,13 @@ class Workflow(UUIDPKMixin, TimestampMixin, Base):
     )
     api_key_prefix: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
+    # While set, the completion webhook is not called and the trigger key is
+    # refused; both are kept. Set when an unverified address is first proven
+    # (see ``web/services/address_claim.py``); the owner clears it.
+    access_suspended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # Encrypted env vars for workflow (stored as encrypted JSON)
     env_vars_blob: Mapped[str | None] = mapped_column(Text, nullable=True)
 

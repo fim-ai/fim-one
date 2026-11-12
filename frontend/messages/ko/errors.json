@@ -37,6 +37,7 @@
   "conversation_not_found": "대화를 찾을 수 없습니다.",
   "agent_config_error": "에이전트 구성 오류: {reason}.",
   "connector_not_found": "커넥터를 찾을 수 없습니다.",
+  "db_target_not_allowed": "데이터베이스 연결 설정이 거부되었습니다: {reason}",
   "action_not_found": "작업을 찾을 수 없습니다.",
   "spec_fetch_failed": "OpenAPI 스펙을 가져오지 못했습니다: {reason}.",
   "spec_input_required": "spec, spec_url 또는 spec_raw를 제공하세요.",
@@ -74,7 +75,7 @@
   "verification_code_invalid": "인증 코드가 올바르지 않습니다.",
   "verification_code_expired": "인증 코드가 만료되었습니다. 새로운 코드를 요청해주세요.",
   "verification_code_too_many_attempts": "시도 횟수가 너무 많습니다. 새로운 코드를 요청해주세요.",
-  "verification_rate_limited": "다시 요청하기 전에 잠시 기다려주세요.",
+  "verification_rate_limited": "요청이 너무 많습니다. {seconds}초 후에 다시 시도해 주세요.",
   "email_not_registered": "이 이메일 주소로 등록된 계정이 없습니다.",
   "sensitive_word_blocked": "제한된 콘텐츠가 포함되어 있어 메시지가 차단되었습니다.",
   "sensitive_word_duplicate": "이 민감한 단어는 이미 존재합니다.",
@@ -94,5 +95,9 @@
   "ip_not_allowed": "귀하의 IP 주소에서의 액세스는 허용되지 않습니다. 관리자에게 문의하세요.",
   "ip_rule_self_lockout": "이 변경 사항은 귀하의 주소({ip})를 차단하므로 저장되지 않았습니다.",
   "2fa_too_many_attempts": "잘못된 코드가 너무 많습니다. 15분 후에 다시 로그인하세요.",
-  "approval_channel_denied": "승인 채널은 귀하가 속한 조직에 속해야 합니다."
+  "approval_channel_denied": "승인 채널은 귀하가 속한 조직에 속해야 합니다.",
+  "agent_model_endpoint_private": "이 에이전트는 소유자만 사용할 수 있습니다. 모델 설정이 대화를 사용자 지정 엔드포인트로 보내기 때문입니다. 관리자가 시스템 설정에서 허용할 수 있습니다.",
+  "agent_model_endpoint_not_shareable": "모델 설정에 사용자 지정 엔드포인트가 지정되어 있는 동안에는 이 에이전트를 게시할 수 없습니다. 관리자가 구성한 모델을 선택하거나, 사용자 지정 엔드포인트가 있는 공유 에이전트를 허용하도록 관리자에게 요청하세요.",
+  "workflow_trigger_suspended": "이 워크플로의 트리거 키가 일시 중지되었습니다. 소유자가 다시 켤 수 있습니다.",
+  "security_notice_nothing_to_restore": "복원할 저장된 내용이 없습니다."
 }

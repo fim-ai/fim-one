@@ -60,6 +60,7 @@
   "channel_type_unsupported": "This channel type is no longer supported. Create a new channel instead.",
 
   "connector_not_found": "Connector not found.",
+  "db_target_not_allowed": "The database connection settings were refused: {reason}",
   "db_password_required": "The connection settings changed. Enter the password again to test.",
   "action_not_found": "Action not found.",
   "spec_fetch_failed": "Failed to fetch OpenAPI spec: {reason}.",
@@ -118,6 +119,8 @@
   "resource_inactive": "This resource has been switched off by its owner.",
   "agent_unavailable": "The agent this conversation uses is no longer available to you: it was unpublished, your subscription was removed, or it was switched off. Start a new conversation to continue.",
   "owner_only": "Only the owner can use this resource.",
+  "agent_model_endpoint_private": "Only the owner can use this agent: its model settings send conversations to a custom endpoint. An administrator can allow this under system settings.",
+  "agent_model_endpoint_not_shareable": "This agent cannot be published while its model settings name a custom endpoint. Select a model configured by an administrator, or ask an administrator to allow shared agents with custom endpoints.",
   "mcp_tools_unavailable": "MCP server \"{name}\" did not answer ({reason}).",
   "mcp_tools_busy": "Too many MCP servers are being asked for their tools at once. Wait for one to answer and try again.",
   "credential_required": "This resource needs your own credentials: its owner has switched fallback off. Save your own credentials for it.",
@@ -134,7 +137,7 @@
   "verification_code_invalid": "Incorrect verification code.",
   "verification_code_expired": "Verification code has expired. Please request a new one.",
   "verification_code_too_many_attempts": "Too many incorrect attempts. Please request a new code.",
-  "verification_rate_limited": "Please wait before requesting another code.",
+  "verification_rate_limited": "Too many requests. Please wait {seconds} seconds and try again.",
 
   "email_not_registered": "No account found with this email address.",
 
@@ -190,5 +193,7 @@
   "invalid_scope": "Unknown publish scope.",
   "not_rejected": "Only a rejected submission can be resubmitted.",
 
-  "someFilesFailedUpload": "Some files failed to upload. Remove them or retry before sending."
+  "someFilesFailedUpload": "Some files failed to upload. Remove them or retry before sending.",
+  "workflow_trigger_suspended": "This workflow's trigger key is suspended. Its owner can turn it back on.",
+  "security_notice_nothing_to_restore": "There is nothing kept to restore."
 }

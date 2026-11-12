@@ -632,7 +632,8 @@ async def validate_assignee(
     """The id of the user *assignee* names; refuses one the run cannot have.
 
     *assignee* is a user id, a username or an email address (the address
-    regardless of case) and must name exactly one active user. With the
+    regardless of case) and must name exactly one active user; with email
+    verification on, an address names only an account that has proven it. With the
     workflow in an organization (*org_id*), that user must be a member of
     it. A workflow with no organization is personal: the assignee must
     share an organization with the user the run belongs to, and a user in
@@ -654,27 +655,41 @@ async def validate_assignee(
     name = (assignee or "").strip()
     if not name:
         raise refuse("is empty")
-    matches = (
-        (
-            await db.execute(
-                select(User.id).where(
-                    User.is_active.is_(True),
-                    or_(
-                        User.id == name,
-                        User.username == name,
-                        func.lower(User.email) == name.lower(),
-                    ),
-                )
+    rows = (
+        await db.execute(
+            select(User.id, User.username, User.email, User.email_verified)
+            .where(
+                User.is_active.is_(True),
+                or_(
+                    User.id == name,
+                    User.username == name,
+                    func.lower(User.email) == name.lower(),
+                ),
             )
+            .order_by(User.created_at.asc(), User.id.asc())
         )
-        .scalars()
-        .all()
-    )
-    if not matches:
+    ).all()
+    if not rows:
         raise refuse("is not an active user")
-    if len(matches) > 1:
+    # An id or a user name is one account.  An address can be held by two
+    # (an unproven one is never merged with a sign-in that proves it): it
+    # then names the account whose address is proven.
+    exact = [row for row in rows if name in (row[0], row[1])]
+    if exact:
+        candidates = exact
+    else:
+        proven = [row for row in rows if row[3]]
+        if not proven:
+            # With email verification on, an address names only an account
+            # that has proven it.
+            from fim_one.core.security.address_proof import address_proof_required
+
+            if await address_proof_required(db):
+                raise refuse("is not an active user")
+        candidates = proven[:1] if proven else rows
+    if len({row[0] for row in candidates}) > 1:
         raise refuse("matches more than one user")
-    user_id = str(matches[0])
+    user_id = str(candidates[0][0])
     assignee_orgs = set(await user_org_ids(db, user_id))
     if org_id:
         if org_id not in assignee_orgs:

@@ -370,11 +370,9 @@ class PurgedUser(dict[str, int]):
             shutil.rmtree(_vector_store_base() / f"user_{self.user_id}", ignore_errors=True)
             shutil.rmtree(uploads_base / f"user_{self.user_id}", ignore_errors=True)
 
-            avatar_dir = uploads_base / "avatars"
-            if avatar_dir.exists():
-                for pattern in (f"{self.user_id}_*", f"{self.user_id}.*"):
-                    for avatar_file in avatar_dir.glob(pattern):
-                        avatar_file.unlink(missing_ok=True)
+            from fim_one.web.avatars import remove_uploaded_avatars
+
+            remove_uploaded_avatars(self.user_id)
         except Exception:
             logger.error(
                 "Files of deleted user %s could not all be removed", self.user_id, exc_info=True

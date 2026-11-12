@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -72,6 +72,11 @@ class User(UUIDPKMixin, TimestampMixin, Base):
         Boolean, default=False, nullable=False, server_default=sa.text("FALSE")
     )
     totp_backup_codes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # What was switched off when the address was first proven by an emailed
+    # code, shown to the holder until dismissed; see
+    # ``web/services/address_claim.py``.
+    security_notice: Mapped[dict[str, Any] | None] = mapped_column(sa.JSON, nullable=True)
 
     # Stripe billing (v1 MVP). ``token_quota`` above stays as the legacy
     # admin-override knob; v2 will migrate that semantic into the plan layer.

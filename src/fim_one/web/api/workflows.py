@@ -246,6 +246,12 @@ def _workflow_to_response(wf: Workflow, *, is_owner: bool) -> WorkflowResponse:
         schedule_timezone=getattr(wf, "schedule_timezone", "UTC") or "UTC",
         has_api_key=bool(wf.api_key_hash),
         api_key_prefix=wf.api_key_prefix if is_owner else None,
+        access_suspended_at=(
+            suspended.isoformat()
+            if is_owner
+            and isinstance(suspended := getattr(wf, "access_suspended_at", None), datetime)
+            else None
+        ),
         forked_from=getattr(wf, "forked_from", None),
         created_at=wf.created_at.isoformat() if wf.created_at else "",
         updated_at=wf.updated_at.isoformat() if wf.updated_at else None,
@@ -306,7 +312,7 @@ def _version_to_response(v: WorkflowVersion) -> WorkflowVersionResponse:
 # What an audit record compares of a workflow: whether it may run, and
 # whether the address its completion webhook posts to changed (the address
 # itself is not recorded). Its steps are content.
-WORKFLOW_AUDITED_FIELDS = ("is_active", "status", "webhook_url")
+WORKFLOW_AUDITED_FIELDS = ("is_active", "status", "webhook_url", "access_suspended_at")
 
 
 async def _get_owned_workflow(
@@ -3482,6 +3488,31 @@ async def update_workflow_env(
 # ---------------------------------------------------------------------------
 # API key management (for public trigger endpoint)
 # ---------------------------------------------------------------------------
+
+
+@router.post("/{workflow_id}/resume-access", response_model=ApiResponse)
+async def resume_workflow_access(
+    workflow_id: str,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Turn the suspended webhook and trigger key back on, as they were."""
+    wf = await _get_owned_workflow(workflow_id, current_user.id, db)
+    if wf.access_suspended_at is not None:
+        before = snapshot(wf, WORKFLOW_AUDITED_FIELDS)
+        wf.access_suspended_at = None
+        await record_resource_change(
+            db,
+            current_user,
+            actions.WORKFLOW_UPDATE,
+            "workflow",
+            wf,
+            before,
+            secret_fields=("webhook_url",),
+        )
+        await db.commit()
+        await db.refresh(wf)
+    return ApiResponse(data=_workflow_to_response(wf, is_owner=True).model_dump())
 
 
 @router.post("/{workflow_id}/generate-api-key", response_model=ApiResponse)

@@ -568,40 +568,154 @@ def get_tools(
     return registry
 
 
+class InlineModelConfigError(ValueError):
+    """An agent's inline model settings may not be used as written."""
+
+
+# Keys of ``model_config_json`` that choose where a request goes and what
+# authenticates it.  Everything else in the dict is tuning.
+_INLINE_ROUTING_KEYS = ("base_url", "api_key", "provider", "model_name", "model")
+
+
+def _inline_providers() -> frozenset[str]:
+    """Wire protocols an inline config may name (all take the key we pass)."""
+    from fim_one.core.model.openai_compatible import KNOWN_DOMAINS, PATH_PROVIDER_HINTS
+
+    return frozenset(KNOWN_DOMAINS.values()) | frozenset(PATH_PROVIDER_HINTS.values())
+
+
+def check_inline_model_config(config: Any, *, resolve: bool = False) -> None:
+    """Validate the endpoint-related keys of an agent's ``model_config_json``.
+
+    The rule: **an endpoint the user supplies is only ever called with a key
+    the user supplies.**  ``base_url`` therefore requires ``api_key``; it must
+    be a plain http(s) URL without embedded credentials; and with
+    ``resolve=True`` (used when the setting is saved) its host must resolve
+    to public addresses only.  The same address check is repeated by the
+    HTTP transport on every connection.
+
+    Raises:
+        InlineModelConfigError: with a message suitable for the API client.
+    """
+    if config is None:
+        return
+    if not isinstance(config, dict):
+        raise InlineModelConfigError("model_config_json must be an object.")
+    for key in _INLINE_ROUTING_KEYS:
+        value = config.get(key)
+        if value is not None and not isinstance(value, str):
+            raise InlineModelConfigError(f"model_config_json.{key} must be a string.")
+
+    base_url = (config.get("base_url") or "").strip()
+    api_key = (config.get("api_key") or "").strip()
+    provider = (config.get("provider") or "").strip()
+
+    if provider and provider not in _inline_providers():
+        raise InlineModelConfigError(
+            "model_config_json.provider is not supported; use one of: "
+            + ", ".join(sorted(_inline_providers()))
+            + "."
+        )
+    if not base_url:
+        return
+    if not api_key:
+        raise InlineModelConfigError(
+            "A custom base_url requires its own api_key: the platform's model "
+            "credentials are never sent to a user-supplied endpoint. Supply "
+            "api_key, or pick a model an administrator configured."
+        )
+    from fim_one.core.model.openai_compatible import (
+        UntrustedEndpointError,
+        check_untrusted_endpoint_url,
+    )
+
+    try:
+        check_untrusted_endpoint_url(base_url)
+    except UntrustedEndpointError as exc:
+        raise InlineModelConfigError(f"model_config_json.base_url: {exc}") from exc
+    if resolve:
+        from fim_one.core.security import validate_url
+
+        try:
+            validate_url(base_url)
+        except ValueError as exc:
+            raise InlineModelConfigError(
+                "model_config_json.base_url is not reachable as a public "
+                f"endpoint: {exc} Endpoints on internal networks have to be "
+                "added by an administrator under Admin → Models."
+            ) from exc
+
+
 def get_llm_from_config(config: dict[str, Any]) -> OpenAICompatibleLLM | None:
     """Build an LLM from an agent's ``model_config_json`` dict.
 
-    Accepts either inline config (``model_name``, ``base_url``, ``api_key``)
-    or falls back to env-based defaults for any missing field.
+    Two shapes are accepted:
+
+    * ``model_name`` only (optionally with the user's own ``api_key``): the
+      platform's endpoint is used.
+    * ``model_name`` + ``base_url`` + ``api_key``: the user's endpoint, called
+      with the user's key through the address-checking client.  The
+      platform's credentials are never combined with a user-supplied URL.
 
     Returns ``None`` when ``config`` is empty or has no usable model info.
+
+    Raises:
+        InlineModelConfigError: when the stored settings break the rules of
+            :func:`check_inline_model_config` (for example a ``base_url``
+            saved without a key before that rule existed).
     """
     if not config:
         return None
     model_name = config.get("model_name") or config.get("model")
     if not model_name:
         return None
+    check_inline_model_config(config)
     ctx_size = config.get("context_size")
-    return OpenAICompatibleLLM(
-        api_key=str(config.get("api_key", "")) or _api_key(),
-        base_url=str(config.get("base_url", "")) or _base_url(),
+    user_base_url = str(config.get("base_url") or "").strip()
+    user_api_key = str(config.get("api_key") or "").strip()
+    common: dict[str, Any] = dict(
         model=str(model_name),
         default_temperature=float(config.get("temperature", 0) or _temperature()),
         default_max_tokens=int(config.get("max_output_tokens", 0) or _main_max_output()),
         reasoning_effort=_reasoning_effort(),
         reasoning_budget_tokens=_reasoning_budget_tokens(),
-        provider=str(config.get("provider", "")) or None,
         json_mode_enabled=_json_mode_enabled(),
         tool_choice_enabled=_tool_choice_enabled(),
         context_size=int(ctx_size) if ctx_size else None,
+    )
+    if user_base_url:
+        # User endpoint + user key.  No fallback to platform credentials.
+        return OpenAICompatibleLLM(
+            api_key=user_api_key,
+            base_url=user_base_url,
+            untrusted_endpoint=True,
+            **common,
+        )
+    return OpenAICompatibleLLM(
+        api_key=user_api_key or _api_key(),
+        base_url=_base_url(),
+        provider=str(config.get("provider") or "").strip() or None,
+        **common,
     )
 
 
 async def get_llm_by_config_id(
     db: "AsyncSession",
     config_id: str,
+    *,
+    owner_id: str | None,
 ) -> OpenAICompatibleLLM | None:
-    """Look up a ModelConfig by id and build an LLM instance."""
+    """Look up a ModelConfig by id and build an LLM instance.
+
+    Only a row an administrator created (``user_id IS NULL``) or one owned
+    by *owner_id* (the agent's owner) is used; any other row is treated as
+    not found.
+
+    A row an administrator created is trusted: its endpoint may be internal
+    and may use the platform key.  A row owned by a user is a user-supplied
+    endpoint and follows the same rules as inline settings: its own key or
+    nothing, and the address-checking client.
+    """
     from sqlalchemy import select
     from fim_one.db.models.model_config import ModelConfig as ModelConfigORM
 
@@ -613,18 +727,36 @@ async def get_llm_by_config_id(
     cfg = result.scalar_one_or_none()
     if cfg is None:
         return None
-    return OpenAICompatibleLLM(
-        api_key=cfg.api_key or _api_key(),
-        base_url=cfg.base_url or _base_url(),
+    if cfg.user_id is not None and (owner_id is None or cfg.user_id != owner_id):
+        return None
+    common: dict[str, Any] = dict(
         model=cfg.model_name,
         default_temperature=cfg.temperature if cfg.temperature is not None else _temperature(),
         default_max_tokens=cfg.max_output_tokens or _main_max_output(),
         reasoning_effort=_reasoning_effort(),
         reasoning_budget_tokens=_reasoning_budget_tokens(),
-        provider=cfg.provider or None,
         json_mode_enabled=_json_mode_enabled(),
         tool_choice_enabled=_tool_choice_enabled(),
         context_size=cfg.context_size,
+    )
+    if cfg.user_id is not None and (cfg.base_url or "").strip():
+        if not (cfg.api_key or "").strip():
+            raise InlineModelConfigError(
+                "This model configuration has a custom endpoint and no API key "
+                "of its own; the platform's credentials are never sent to a "
+                "user-supplied endpoint."
+            )
+        return OpenAICompatibleLLM(
+            api_key=str(cfg.api_key),
+            base_url=str(cfg.base_url),
+            untrusted_endpoint=True,
+            **common,
+        )
+    return OpenAICompatibleLLM(
+        api_key=cfg.api_key or _api_key(),
+        base_url=cfg.base_url or _base_url(),
+        provider=cfg.provider or None,
+        **common,
     )
 
 

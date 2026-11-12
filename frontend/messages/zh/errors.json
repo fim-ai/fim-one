@@ -37,6 +37,7 @@
   "conversation_not_found": "对话未找到。",
   "agent_config_error": "agent配置错误：{reason}。",
   "connector_not_found": "connector未找到。",
+  "db_target_not_allowed": "数据库连接设置未通过检查：{reason}",
   "action_not_found": "操作未找到。",
   "spec_fetch_failed": "获取OpenAPI规范失败：{reason}。",
   "spec_input_required": "提供spec、spec_url或spec_raw。",
@@ -74,7 +75,7 @@
   "verification_code_invalid": "验证码不正确。",
   "verification_code_expired": "验证码已过期。请请求新的验证码。",
   "verification_code_too_many_attempts": "尝试次数过多。请请求新的验证码。",
-  "verification_rate_limited": "请等待后再请求另一个验证码。",
+  "verification_rate_limited": "请求过于频繁，请等待 {seconds} 秒后重试。",
   "email_not_registered": "未找到使用此电子邮件地址的账户。",
   "sensitive_word_blocked": "您的消息因包含受限内容而被阻止。",
   "sensitive_word_duplicate": "此敏感词已存在。",
@@ -94,5 +95,9 @@
   "ip_not_allowed": "不允许从您的IP地址访问。请联系您的管理员。",
   "ip_rule_self_lockout": "此更改将阻止您自己的地址（{ip}），因此未保存。",
   "2fa_too_many_attempts": "验证码错误次数过多。请等待15分钟后重新登录。",
-  "approval_channel_denied": "审批通道必须属于您所在的组织。"
+  "approval_channel_denied": "审批通道必须属于您所在的组织。",
+  "agent_model_endpoint_private": "只有所有者可以使用此智能体：其模型设置会将对话发送到自定义端点。管理员可在系统设置中允许。",
+  "agent_model_endpoint_not_shareable": "模型设置指定了自定义端点时，此智能体无法发布。请选择管理员配置的模型，或请管理员允许共享带自定义端点的智能体。",
+  "workflow_trigger_suspended": "此工作流的触发密钥已暂停，所有者可以重新启用。",
+  "security_notice_nothing_to_restore": "没有可恢复的保存内容。"
 }

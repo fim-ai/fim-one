@@ -127,13 +127,30 @@ class TestResolveAndCheck:
         import socket as _socket
 
         with patch("socket.getaddrinfo", side_effect=_socket.gaierror("nope")):
-            with pytest.raises(ValueError, match="DNS resolution failed"):
+            with pytest.raises(ValueError, match="does not resolve to a public address"):
                 resolve_and_check("nonexistent.invalid")
 
     def test_no_results_raises(self) -> None:
         with patch("socket.getaddrinfo", return_value=[]):
-            with pytest.raises(ValueError, match="no results"):
+            with pytest.raises(ValueError, match="does not resolve to a public address"):
                 resolve_and_check("empty.example.com")
+
+    def test_internal_and_unresolvable_names_get_one_answer(self) -> None:
+        """A different answer for each would tell which internal names exist."""
+        import socket as _socket
+
+        answers = []
+        for outcome in (
+            {"return_value": [(2, 1, 6, "", ("10.1.2.3", 0))]},
+            {"side_effect": _socket.gaierror("nope")},
+            {"return_value": []},
+        ):
+            with patch("socket.getaddrinfo", **outcome):
+                with pytest.raises(ValueError) as refused:
+                    resolve_and_check("db.corp.example")
+            answers.append(str(refused.value))
+        assert len(set(answers)) == 1
+        assert "10.1.2.3" not in answers[0] and "nope" not in answers[0]
 
 
 # ======================================================================
@@ -509,7 +526,7 @@ class TestErrorHandling:
             result = await tool.run(url="https://nonexistent.invalid")
 
         assert "[Error]" in result
-        assert "DNS resolution failed" in result
+        assert "does not resolve to a public address" in result
 
 
 # ======================================================================

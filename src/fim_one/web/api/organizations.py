@@ -20,6 +20,7 @@ from fim_one.core.audit import writer as audit
 from fim_one.core.audit.redact import diff_changes
 from fim_one.db import get_session
 from fim_one.web.audit_events import label_of
+from fim_one.web.avatars import public_avatar_value
 from fim_one.web.auth import (
     get_current_admin,
     get_current_user,
@@ -186,7 +187,7 @@ async def _membership_to_response(
         username=user.username if user else None,
         email=user.email if user else "",
         display_name=user.display_name if user else None,
-        avatar=user.avatar if user else None,
+        avatar=public_avatar_value(user.id, user.avatar) if user else None,
         role=membership.role,
         invited_by=membership.invited_by,
         created_at=membership.created_at.isoformat() if membership.created_at else "",
@@ -574,10 +575,28 @@ async def add_member(
     if body.email:
         conditions.append(User.email == body.email)
 
-    user_result = await db.execute(select(User).where(or_(*conditions)))
-    target_user = user_result.scalar_one_or_none()
+    # Two accounts can hold one address (an unproven one is never merged with
+    # a sign-in that proves it); the account whose address is proven is the
+    # one an address names.
+    user_result = await db.execute(
+        select(User)
+        .where(or_(*conditions))
+        .order_by(User.email_verified.desc(), User.created_at.asc(), User.id.asc())
+        .limit(1)
+    )
+    target_user = user_result.scalars().first()
     if target_user is None:
         raise AppError("user_not_found", status_code=404)
+    # With email verification on, an address names only an account that
+    # has proven it.
+    if (
+        not (body.username and target_user.username == body.username)
+        and not target_user.email_verified
+    ):
+        from fim_one.core.security.address_proof import address_proof_required
+
+        if await address_proof_required(db):
+            raise AppError("user_not_found", status_code=404)
 
     # Check if already a member
     existing = await db.execute(

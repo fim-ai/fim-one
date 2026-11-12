@@ -37,6 +37,7 @@
   "conversation_not_found": "Konversation nicht gefunden.",
   "agent_config_error": "Agent-Konfigurationsfehler: {reason}.",
   "connector_not_found": "Connector nicht gefunden.",
+  "db_target_not_allowed": "Die Datenbankverbindung wurde abgelehnt: {reason}",
   "action_not_found": "Aktion nicht gefunden.",
   "spec_fetch_failed": "OpenAPI-Spezifikation konnte nicht abgerufen werden: {reason}.",
   "spec_input_required": "Geben Sie spec, spec_url oder spec_raw an.",
@@ -74,7 +75,7 @@
   "verification_code_invalid": "Ungültiger Verifizierungscode.",
   "verification_code_expired": "Verifizierungscode ist abgelaufen. Bitte fordern Sie einen neuen an.",
   "verification_code_too_many_attempts": "Zu viele falsche Versuche. Bitte fordern Sie einen neuen Code an.",
-  "verification_rate_limited": "Bitte warten Sie, bevor Sie einen weiteren Code anfordern.",
+  "verification_rate_limited": "Zu viele Anfragen. Bitte warten Sie {seconds} Sekunden und versuchen Sie es erneut.",
   "email_not_registered": "Kein Konto mit dieser E-Mail-Adresse gefunden.",
   "sensitive_word_blocked": "Ihre Nachricht wurde blockiert, da sie eingeschränkte Inhalte enthält.",
   "sensitive_word_duplicate": "Dieses sensible Wort existiert bereits.",
@@ -94,5 +95,9 @@
   "ip_not_allowed": "Der Zugriff von Ihrer IP-Adresse ist nicht zulässig. Wenden Sie sich an Ihren Administrator.",
   "ip_rule_self_lockout": "Diese Änderung würde Ihre eigene Adresse ({ip}) blockieren, daher wurde sie nicht gespeichert.",
   "2fa_too_many_attempts": "Zu viele falsche Codes. Warten Sie 15 Minuten und melden Sie sich erneut an.",
-  "approval_channel_denied": "Der Genehmigungskanal muss zu einer Organisation gehören, deren Mitglied Sie sind."
+  "approval_channel_denied": "Der Genehmigungskanal muss zu einer Organisation gehören, deren Mitglied Sie sind.",
+  "agent_model_endpoint_private": "Nur der Eigentümer kann diesen Agenten verwenden: Seine Modelleinstellungen senden Unterhaltungen an einen eigenen Endpunkt. Ein Administrator kann dies in den Systemeinstellungen erlauben.",
+  "agent_model_endpoint_not_shareable": "Dieser Agent kann nicht veröffentlicht werden, solange seine Modelleinstellungen einen eigenen Endpunkt angeben. Wählen Sie ein vom Administrator konfiguriertes Modell oder bitten Sie einen Administrator, geteilte Agenten mit eigenen Endpunkten zu erlauben.",
+  "workflow_trigger_suspended": "Der Trigger-Schlüssel dieses Workflows ist ausgesetzt. Der Eigentümer kann ihn wieder aktivieren.",
+  "security_notice_nothing_to_restore": "Es gibt nichts Gespeichertes zum Wiederherstellen."
 }

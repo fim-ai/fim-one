@@ -61,6 +61,12 @@ class _FakeMarkItDown:
         _FakeMarkItDown.last_init_kwargs = dict(kwargs)
 
     def convert(self, uri: str) -> _FakeResult:
+        raise AssertionError("convert() dereferences URIs and must not be used")
+
+    def convert_stream(self, stream: Any, **_: Any) -> _FakeResult:
+        return self.convert_local("<stream>")
+
+    def convert_local(self, uri: str, **_: Any) -> _FakeResult:
         _FakeMarkItDown.convert_call_count += 1
         _FakeMarkItDown.last_uri = uri
         if _FakeMarkItDown.convert_raises is not None:
@@ -85,6 +91,7 @@ def fake_markitdown(monkeypatch: pytest.MonkeyPatch) -> type[_FakeMarkItDown]:
 
     fake_module = types.ModuleType("markitdown")
     fake_module.MarkItDown = _FakeMarkItDown  # type: ignore[attr-defined]
+    fake_module.StreamInfo = lambda **kw: kw  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "markitdown", fake_module)
     yield _FakeMarkItDown
 
@@ -174,9 +181,9 @@ class TestConvertWithMarkitdown:
         # First call raises; the retry after stripping llm_client succeeds.
         call_state = {"raised": False}
 
-        original_convert = _FakeMarkItDown.convert
+        original_convert = _FakeMarkItDown.convert_local
 
-        def flaky_convert(self: _FakeMarkItDown, uri: str) -> _FakeResult:
+        def flaky_convert(self: _FakeMarkItDown, uri: str, **_: Any) -> _FakeResult:
             _FakeMarkItDown.convert_call_count += 1
             _FakeMarkItDown.last_uri = uri
             if not call_state["raised"]:
@@ -184,11 +191,11 @@ class TestConvertWithMarkitdown:
                 raise RuntimeError("vision endpoint returned 400")
             return _FakeResult("# Text-only fallback content")
 
-        _FakeMarkItDown.convert = flaky_convert  # type: ignore[method-assign]
+        _FakeMarkItDown.convert_local = flaky_convert  # type: ignore[method-assign]
         try:
             result = convert_with_markitdown("/tmp/scanned.pdf", vision_llm=llm)
         finally:
-            _FakeMarkItDown.convert = original_convert  # type: ignore[method-assign]
+            _FakeMarkItDown.convert_local = original_convert  # type: ignore[method-assign]
 
         assert result == "# Text-only fallback content"
         assert fake_markitdown.convert_call_count == 2  # initial + retry

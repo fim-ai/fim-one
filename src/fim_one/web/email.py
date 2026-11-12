@@ -17,7 +17,9 @@ logger = logging.getLogger(__name__)
 
 def _smtp_configured() -> bool:
     """Check whether SMTP env vars are set."""
-    return bool(os.getenv("SMTP_HOST") and os.getenv("SMTP_USER") and os.getenv("SMTP_PASS"))
+    from fim_one.core.security.address_proof import smtp_configured
+
+    return smtp_configured()
 
 
 def _send_email(to: str, subject: str, body_html: str) -> None:

@@ -377,26 +377,26 @@ async def _handle_login(
     else:
         # 2. No binding found -- check if a local account with this *verified*
         #    email exists. If found, auto-bind: log in as that existing user.
-        #    Auto-binding is gated on email_verified at BOTH ends:
-        #    - the incoming login (``user_info.email_verified``), because
-        #      matching on an unverified address would let an attacker set
-        #      their third-party email to a victim's and take over the
-        #      victim's local account;
-        #    - the stored account (``User.email_verified``), because an
-        #      account created from an unverified OAuth address is itself
-        #      unproven. Without this half an attacker parks the victim's
-        #      address on an account they control (step 3 below still creates
-        #      one), then waits for the victim's next verified sign-in from
-        #      another provider to land in it.
+        #    Auto-binding requires a proven address at both ends:
+        #    - the incoming login (``user_info.email_verified``): the provider
+        #      must vouch for the address;
+        #    - the stored account (``User.email_verified``): an account
+        #      created from an unverified OAuth address (step 3 below) is
+        #      unproven and never receives another provider's sign-in.
         user = None
         if user_info.email and user_info.email_verified:
             email_result = await db.execute(
-                select(User).where(
+                select(User)
+                .where(
                     func.lower(User.email) == user_info.email.lower(),
                     User.email_verified.is_(True),
                 )
+                # An unproven account can hold the same address (it is never
+                # a match); among proven ones the oldest is the account.
+                .order_by(User.created_at.asc(), User.id.asc())
+                .limit(1)
             )
-            matched = email_result.scalar_one_or_none()
+            matched = email_result.scalars().first()
             if matched is not None:
                 user = matched
 
@@ -511,10 +511,8 @@ async def _handle_login(
     if not user.oauth_provider:
         user.oauth_provider = user_info.provider
         user.oauth_id = user_info.id
-    # NOTE: We deliberately do NOT update user.email from the OAuth provider.
-    # Silently overwriting the stored email whenever a provider reports a new
-    # address would allow an attacker who changes their provider email to
-    # overwrite another user's email address.
+    # The stored email is never updated from the OAuth provider; it changes
+    # only through the account's own email-change flow.
 
     # 2FA: the provider sign-in replaces the password, not the second factor.
     # Hand the browser a short-lived 2FA token instead of session tokens; the

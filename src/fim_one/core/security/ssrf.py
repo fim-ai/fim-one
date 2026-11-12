@@ -8,11 +8,15 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import logging
+import os
 import socket
 from typing import Any
 from urllib.parse import urlparse
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 # ------------------------------------------------------------------
 # Blocked IP ranges
@@ -26,40 +30,107 @@ _BLOCKED_IPV4_NETWORKS = [
     ipaddress.IPv4Network("169.254.0.0/16"),
     ipaddress.IPv4Network("0.0.0.0/8"),
     # Shared address space; Alibaba Cloud's metadata service is 100.100.100.200.
-    # 198.18.0.0/15 is deliberately absent: fake-IP DNS proxies (Surge, Clash)
-    # resolve every public hostname into it.
     ipaddress.IPv4Network("100.64.0.0/10"),
     ipaddress.IPv4Network("192.0.0.0/24"),
     ipaddress.IPv4Network("224.0.0.0/4"),
     ipaddress.IPv4Network("240.0.0.0/4"),
 ]
 
+# Benchmarking range (RFC 2544).  Not routed on the public Internet, so a
+# real service there is an internal one.  Fake-IP DNS proxies (Surge, Clash)
+# resolve every public host name into it; a machine behind one sets
+# ``SSRF_ALLOW_FAKE_IP_RANGE=true``.
+_FAKE_IP_NETWORK = ipaddress.IPv4Network("198.18.0.0/15")
+FAKE_IP_ENV = "SSRF_ALLOW_FAKE_IP_RANGE"
+
 _BLOCKED_IPV6_NETWORKS = [
     ipaddress.IPv6Network("::/128"),
     ipaddress.IPv6Network("::1/128"),
     ipaddress.IPv6Network("fc00::/7"),
     ipaddress.IPv6Network("fe80::/10"),
+    ipaddress.IPv6Network("fec0::/10"),  # site-local (deprecated)
     ipaddress.IPv6Network("ff00::/8"),
+    # IPv4-compatible addresses (deprecated): ``::a.b.c.d``.
+    ipaddress.IPv6Network("::/96"),
+    # Teredo: carries an IPv4 endpoint behind a relay.
+    ipaddress.IPv6Network("2001::/32"),
 ]
+
+# Prefixes that carry an IPv4 address inside an IPv6 one.  A connection to
+# such an address ends at the embedded IPv4 host, so that is the address
+# that has to pass.
+_NAT64_WELL_KNOWN = ipaddress.IPv6Network("64:ff9b::/96")
+_NAT64_LOCAL_USE = ipaddress.IPv6Network("64:ff9b:1::/48")
+_SIX_TO_FOUR = ipaddress.IPv6Network("2002::/16")
+
+
+def _fake_ip_range_allowed() -> bool:
+    return os.environ.get(FAKE_IP_ENV, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _embedded_ipv4(addr: ipaddress.IPv6Address) -> ipaddress.IPv4Address | None:
+    """The IPv4 address *addr* stands for, if it is a translation address."""
+    if addr.ipv4_mapped is not None:
+        return addr.ipv4_mapped
+    packed = addr.packed
+    if addr in _NAT64_LOCAL_USE:
+        # RFC 6052, /48 prefix: 16 bits, the reserved octet, then 16 bits.
+        return ipaddress.IPv4Address(packed[6:8] + packed[9:11])
+    if addr in _NAT64_WELL_KNOWN:
+        return ipaddress.IPv4Address(packed[12:16])
+    if addr in _SIX_TO_FOUR:
+        return ipaddress.IPv4Address(packed[2:6])
+    return None
+
+
+def _is_blocked_ipv4(addr: ipaddress.IPv4Address) -> bool:
+    if any(addr in net for net in _BLOCKED_IPV4_NETWORKS):
+        return True
+    return addr in _FAKE_IP_NETWORK and not _fake_ip_range_allowed()
 
 
 def is_private_ip(ip_str: str) -> bool:
     """Return True if the IP address falls within a blocked range."""
     try:
-        addr = ipaddress.ip_address(ip_str)
+        addr = ipaddress.ip_address(ip_str.split("%", 1)[0] if isinstance(ip_str, str) else ip_str)
     except ValueError:
         return True  # Unparseable addresses are blocked.
 
     if isinstance(addr, ipaddress.IPv4Address):
-        return any(addr in net for net in _BLOCKED_IPV4_NETWORKS)
+        return _is_blocked_ipv4(addr)
 
-    # For IPv6, also check IPv4-mapped addresses (::ffff:0:0/96).
-    # Python's ipaddress treats ::ffff:127.0.0.1 as an IPv6Address, so without
-    # this check it bypasses the IPv4 blocklist entirely.
-    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
-        return any(addr.ipv4_mapped in net for net in _BLOCKED_IPV4_NETWORKS)
+    # IPv4-mapped (``::ffff:a.b.c.d``), NAT64 and 6to4 addresses reach an IPv4
+    # host: judge that host.  The IPv4 list applies to them as well.
+    embedded = _embedded_ipv4(addr)
+    if embedded is not None:
+        return _is_blocked_ipv4(embedded)
 
     return any(addr in net for net in _BLOCKED_IPV6_NETWORKS)
+
+
+def unreachable_host_message(hostname: str) -> str:
+    """What the caller is told of a host name that may not be reached.
+
+    One message whether the name resolves to an internal address, resolves
+    to nothing, or fails to resolve: a different answer for each would tell
+    a user which internal names exist.
+    """
+    return f"SSRF blocked: the host '{hostname}' does not resolve to a public address."
+
+
+def _internal_host_refusal(hostname: str, ip: str) -> ValueError:
+    """The refusal for a name that resolves to an internal address.
+
+    The address it resolved to is logged and never returned to the caller.
+    """
+    logger.warning("Outbound request refused: %r resolves to internal address %s", hostname, ip)
+    return ValueError(unreachable_host_message(hostname))
+
+
+def _unresolved_host_refusal(hostname: str, reason: object) -> ValueError:
+    """The refusal for a name that does not resolve; the same message as above."""
+    logger.info("Outbound request refused: %r did not resolve (%s)", hostname, reason)
+    return ValueError(unreachable_host_message(hostname))
 
 
 def resolve_and_check(hostname: str) -> None:
@@ -71,17 +142,15 @@ def resolve_and_check(hostname: str) -> None:
     try:
         results = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
     except socket.gaierror as exc:
-        raise ValueError(f"DNS resolution failed for '{hostname}': {exc}") from exc
+        raise _unresolved_host_refusal(hostname, exc) from None
 
     if not results:
-        raise ValueError(f"DNS resolution returned no results for '{hostname}'")
+        raise _unresolved_host_refusal(hostname, "no addresses")
 
     for _family, _type, _proto, _canonname, sockaddr in results:
         ip = str(sockaddr[0])
         if is_private_ip(ip):
-            raise ValueError(
-                "SSRF blocked: requests to private/internal addresses are not allowed"
-            )
+            raise _internal_host_refusal(hostname, ip)
 
 
 def validate_url(url: str, *, allow_dns_failure: bool = False) -> None:
@@ -113,20 +182,17 @@ def validate_url(url: str, *, allow_dns_failure: bool = False) -> None:
     except socket.gaierror as exc:
         if allow_dns_failure:
             return
-        raise ValueError(f"DNS resolution failed for '{hostname}': {exc}") from exc
+        raise _unresolved_host_refusal(hostname, exc) from None
 
     if not results:
         if allow_dns_failure:
             return
-        raise ValueError(f"DNS resolution returned no results for '{hostname}'")
+        raise _unresolved_host_refusal(hostname, "no addresses")
 
     for _family, _type, _proto, _canonname, sockaddr in results:
         ip = str(sockaddr[0])
         if is_private_ip(ip):
-            raise ValueError(
-                f"Blocked request to internal address '{ip}' "
-                f"resolved from hostname '{hostname}'."
-            )
+            raise _internal_host_refusal(hostname, ip)
 
 
 # ------------------------------------------------------------------
@@ -157,20 +223,17 @@ def _resolve_and_pin(hostname: str) -> str:
             hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM,
         )
     except socket.gaierror as exc:
-        raise ValueError(f"DNS resolution failed for '{hostname}': {exc}") from exc
+        raise _unresolved_host_refusal(hostname, exc) from None
 
     if not results:
-        raise ValueError(f"DNS resolution returned no results for '{hostname}'")
+        raise _unresolved_host_refusal(hostname, "no addresses")
 
     first_ip: str | None = None
     first_ipv4: str | None = None
     for family, _type, _proto, _canonname, sockaddr in results:
         ip = str(sockaddr[0])
         if is_private_ip(ip):
-            raise ValueError(
-                f"SSRF blocked: resolved IP '{ip}' for '{hostname}' "
-                "is a private/internal address"
-            )
+            raise _internal_host_refusal(hostname, ip)
         if first_ip is None:
             first_ip = ip
         if first_ipv4 is None and family == socket.AF_INET:
@@ -219,8 +282,16 @@ def get_safe_async_client(**kwargs: Any) -> httpx.AsyncClient:
 
         async with get_safe_async_client(timeout=30) as client:
             resp = await client.get("https://example.com")
+
+    Proxy settings and ``.netrc`` credentials from the environment are not
+    used (``trust_env=False``): a request through a proxy would be resolved
+    by the proxy, past the address check. A proxy or extra mounts cannot be
+    passed for the same reason.
     """
+    for key in ("proxy", "proxies", "mounts", "trust_env"):
+        if key in kwargs:
+            raise TypeError(f"get_safe_async_client() does not accept {key!r}")
     transport = kwargs.pop("transport", None)
     if transport is None:
         transport = SSRFSafeTransport()
-    return httpx.AsyncClient(transport=transport, **kwargs)
+    return httpx.AsyncClient(transport=transport, trust_env=False, **kwargs)

@@ -22,6 +22,11 @@ Two layers:
   4. *Database connectors* additionally require the acting principal to be
      the connector's owner (``owner_only``): their raw-SQL tools run on the
      owner's database account with no per-caller scoping.
+  5. *Agents whose inline model settings name their own endpoint* require
+     the acting principal to be the agent's owner
+     (``agent_model_endpoint_private``) unless an administrator allows
+     shared agents to keep such an endpoint
+     (:mod:`fim_one.core.assembly.model_endpoint`).
 
 Entry points that still treat a refusal differently from this rule say so at
 the call site with :meth:`UseDecision.including`, and each such difference is
@@ -37,7 +42,13 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from sqlalchemy import and_, or_, select
 
-from .errors import OWNER_ONLY, RESOURCE_INACTIVE, RESOURCE_NOT_FOUND, AssemblyRefusal
+from .errors import (
+    AGENT_MODEL_ENDPOINT_PRIVATE,
+    OWNER_ONLY,
+    RESOURCE_INACTIVE,
+    RESOURCE_NOT_FOUND,
+    AssemblyRefusal,
+)
 from .principal import CallContext, Principal, user_org_ids
 
 if TYPE_CHECKING:
@@ -257,6 +268,45 @@ def _row_refusal(kind: ResourceKind, row: Any, *, principal: Principal) -> Assem
     return None
 
 
+def _private_endpoint(row: Any) -> AssemblyRefusal:
+    name = getattr(row, "name", None) or getattr(row, "id", "")
+    return AssemblyRefusal(
+        AGENT_MODEL_ENDPOINT_PRIVATE,
+        403,
+        f"Agent '{name}' sends conversations to a model endpoint of its owner's "
+        "and can only be used by its owner",
+        {"name": name},
+    )
+
+
+async def _endpoint_refusals(
+    db: AsyncSession, kind: ResourceKind, rows: Sequence[Any], *, principal: Principal
+) -> dict[str, AssemblyRefusal]:
+    """Agents among *rows* refused to *principal* for their own model endpoint."""
+    if kind is not ResourceKind.AGENT:
+        return {}
+    from .model_endpoint import (
+        has_custom_model_endpoint,
+        shared_custom_endpoints_allowed,
+        user_endpoint_config_ids,
+    )
+
+    candidates = [row for row in rows if row.user_id != principal.user_id]
+    if not candidates:
+        return {}
+    user_endpoints = await user_endpoint_config_ids(
+        db, [getattr(row, "model_config_json", None) for row in candidates]
+    )
+    others = [
+        row
+        for row in candidates
+        if has_custom_model_endpoint(getattr(row, "model_config_json", None), user_endpoints)
+    ]
+    if not others or await shared_custom_endpoints_allowed(db):
+        return {}
+    return {row.id: _private_endpoint(row) for row in others}
+
+
 @dataclass
 class UseDecision:
     """Outcome of :func:`authorize_use` for a list of resource ids."""
@@ -339,6 +389,11 @@ async def authorize_use(
             decision.refused[rid] = refusal
         else:
             decision.usable.append(seen)
+    if decision.usable:
+        endpoint = await _endpoint_refusals(db, kind, decision.usable, principal=ctx.principal)
+        if endpoint:
+            decision.refused.update(endpoint)
+            decision.usable = [row for row in decision.usable if row.id not in endpoint]
     return decision
 
 
@@ -354,16 +409,18 @@ async def list_usable(
     """Everything of *kind* this call may use (auto-discovery).
 
     Returns ORM rows, or ``Row`` tuples of *columns* when given. *columns*
-    is not available for connectors, whose rule reads the row. *where* adds
-    conditions of the caller's own (a tool that only offers published
-    workflows, say); they narrow the result and are not part of the rule.
+    is not available for connectors and agents, whose rules read the row.
+    *where* adds conditions of the caller's own (a tool that only offers
+    published workflows, say); they narrow the result and are not part of
+    the rule.
     """
     model = _model_for(kind)
     clause = await use_clause_for(db, kind, ctx.subject_id)
     conditions = [clause, model.is_active == True, *where]  # noqa: E712
 
     if columns is not None:
-        if kind is ResourceKind.CONNECTOR:
+        # Both kinds have a rule that reads the row.
+        if kind in (ResourceKind.CONNECTOR, ResourceKind.AGENT):
             raise ValueError(f"list_usable(columns=...) is not supported for {kind.value}")
         col_stmt = select(*columns).where(*conditions)
         return list((await db.execute(col_stmt)).all())
@@ -372,7 +429,9 @@ async def list_usable(
     if options:
         stmt = stmt.options(*options)
     rows = (await db.execute(stmt)).scalars().unique().all()
-    return [row for row in rows if _row_refusal(kind, row, principal=ctx.principal) is None]
+    usable = [row for row in rows if _row_refusal(kind, row, principal=ctx.principal) is None]
+    endpoint = await _endpoint_refusals(db, kind, usable, principal=ctx.principal)
+    return [row for row in usable if row.id not in endpoint]
 
 
 async def authorize_entry(

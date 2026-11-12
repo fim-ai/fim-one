@@ -43,7 +43,7 @@ class TestResolveAndPin:
             mock_gai.return_value = [
                 (2, 1, 6, "", ("192.168.1.1", 0)),
             ]
-            with pytest.raises(ValueError, match="private"):
+            with pytest.raises(ValueError, match="does not resolve to a public address"):
                 _resolve_and_pin("evil.com")
 
     def test_localhost_blocked(self):
@@ -51,7 +51,7 @@ class TestResolveAndPin:
             mock_gai.return_value = [
                 (2, 1, 6, "", ("127.0.0.1", 0)),
             ]
-            with pytest.raises(ValueError, match="private"):
+            with pytest.raises(ValueError, match="does not resolve to a public address"):
                 _resolve_and_pin("evil.com")
 
     def test_dns_failure_raises(self):
@@ -59,7 +59,7 @@ class TestResolveAndPin:
 
         with patch("fim_one.core.security.ssrf.socket.getaddrinfo") as mock_gai:
             mock_gai.side_effect = socket.gaierror("Name resolution failed")
-            with pytest.raises(ValueError, match="DNS resolution failed"):
+            with pytest.raises(ValueError, match="does not resolve to a public address"):
                 _resolve_and_pin("nonexistent.example.com")
 
     def test_mixed_ips_blocked_if_any_private(self):
@@ -69,7 +69,7 @@ class TestResolveAndPin:
                 (2, 1, 6, "", ("93.184.216.34", 0)),
                 (2, 1, 6, "", ("10.0.0.1", 0)),  # Private!
             ]
-            with pytest.raises(ValueError, match="private"):
+            with pytest.raises(ValueError, match="does not resolve to a public address"):
                 _resolve_and_pin("sneaky.com")
 
 
@@ -160,7 +160,7 @@ class TestTransportBlocksPrivateTargets:
         ):
             mock_gai.return_value = [(2, 1, 6, "", ("169.254.169.254", 0))]
             async with get_safe_async_client() as client:
-                with pytest.raises(ValueError, match="private"):
+                with pytest.raises(ValueError, match="does not resolve to a public address"):
                     await client.post("http://rebind.example/")
         mock_send.assert_not_called()
 
@@ -182,7 +182,7 @@ class TestBlocklistRanges:
 
         assert is_private_ip(ip) is True
 
-    @pytest.mark.parametrize("ip", ["93.184.216.34", "100.63.255.255", "198.18.0.1", "2606:4700::1111"])
+    @pytest.mark.parametrize("ip", ["93.184.216.34", "100.63.255.255", "2606:4700::1111"])
     def test_public_allowed(self, ip: str) -> None:
         from fim_one.core.security.ssrf import is_private_ip
 
