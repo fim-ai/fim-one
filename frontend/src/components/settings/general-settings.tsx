@@ -35,6 +35,7 @@ import { UserAvatar } from "@/components/shared/user-avatar"
 import { AvatarPickerDialog } from "@/components/settings/avatar-picker-dialog"
 import { useAuth } from "@/contexts/auth-context"
 import { authApi } from "@/lib/api"
+import { usernameSaveError } from "@/lib/username-errors"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
@@ -80,6 +81,7 @@ export function GeneralSettings() {
   const { user, updateUser } = useAuth()
   const t = useTranslations("settings.general")
   const tc = useTranslations("common")
+  const tError = useTranslations("errors")
   const router = useRouter()
 
   // --- Avatar ---
@@ -155,20 +157,9 @@ export function GeneralSettings() {
       updateUser(updated)
       toast.success(t("usernameSaved"))
     } catch (err: unknown) {
-      const msg =
-        (err as { message?: string })?.message ||
-        (err as { error?: string })?.error ||
-        ""
-      if (msg.includes("username_taken")) {
-        setUsernameError(t("usernameTaken"))
-      } else if (msg.includes("username_reserved")) {
-        setUsernameError(t("usernameReserved"))
-      } else if (msg.includes("username_cooldown")) {
-        const days = (err as { errorArgs?: Record<string, unknown> })?.errorArgs?.days ?? 7
-        setUsernameError(t("usernameCooldown", { days: String(days) }))
-      } else {
-        toast.error(t("usernameSaveFailed"))
-      }
+      const shown = usernameSaveError(err, t, tError)
+      if ("field" in shown) setUsernameError(shown.field)
+      else toast.error(shown.toast)
     } finally {
       setSavingUsername(false)
     }
