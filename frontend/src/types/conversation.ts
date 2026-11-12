@@ -7,6 +7,8 @@ export interface ConversationResponse {
   model_name: string | null
   total_tokens: number
   starred: boolean
+  /** The host system's business-object id (e.g. a contract number), or null. */
+  business_ref?: string | null
   created_at: string
   updated_at: string | null
 }
@@ -29,6 +31,7 @@ export interface ConversationCreate {
   mode: "react" | "dag" | "auto"
   agent_id?: string
   model_name?: string
+  business_ref?: string
 }
 
 export interface PaginatedResponse<T> {

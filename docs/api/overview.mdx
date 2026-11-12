@@ -159,6 +159,38 @@ The reference frontend implementation (`useSseResume` hook in the playground) au
 Resume is stateless — it replays from the assistant message's stored `sse_events` array. If the agent's turn was interrupted before any assistant message was persisted (e.g., a crash before `done`), the dangling `tool_use` block is auto-repaired by `DbMemory._repair_dangling_tool_calls` on the next turn. Synthetic `tool_result` rows are persisted with `metadata_.synthetic=true` and `metadata_.reason="interrupted"` for audit.
 </Note>
 
+## Business References
+
+A system that embeds FIM One can tag each conversation with the id of the business object it is about, such as a contract number or a ticket id, and later reopen the latest conversation for that object.
+
+- `business_ref` is optional text. It is normalized to Unicode NFC, then surrounding whitespace is trimmed; an empty value means no reference. A value longer than 200 characters after normalization, or one containing control characters (C0 or C1), zero-width or other format characters, or the line and paragraph separators U+2028 and U+2029, is refused with `422` (`invalid_business_ref` for query parameters). The value is otherwise stored as given: it is not unique, not interpreted, and never passed to the model.
+- Filters and lookups match exactly and case-sensitively, after the same NFC normalization: `HT-1` does not find `ht-1`, while a reference sent in decomposed form finds the one stored in composed form.
+- A reference belongs to the conversation's owner. Filters and lookups only ever consider the caller's own conversations, and administrator lists and exports do not show it. The administrators' full backup (`GET /api/admin/export/full-backup`) leaves it out, so anything rebuilt from that backup has no references. The owner's data export (`GET /api/auth/me/export`) includes it.
+
+```bash
+# Start a conversation for contract HT-2026-0042
+curl -X POST "https://your-domain.com/api/conversations" \
+  -H "Authorization: Bearer fim_your_api_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{"mode": "react", "title": "Contract review", "business_ref": "HT-2026-0042"}'
+
+# The caller's most recently active conversation for it (data is null if none)
+curl "https://your-domain.com/api/conversations/latest?business_ref=HT-2026-0042" \
+  -H "Authorization: Bearer fim_your_api_key_here"
+
+# All of the caller's conversations for it; combines with status, q, page and size
+curl "https://your-domain.com/api/conversations?business_ref=HT-2026-0042" \
+  -H "Authorization: Bearer fim_your_api_key_here"
+
+# Change it, or clear it with null or ""
+curl -X PATCH "https://your-domain.com/api/conversations/<id>" \
+  -H "Authorization: Bearer fim_your_api_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{"business_ref": null}'
+```
+
+`GET /api/conversations/latest` orders by the newest message, falling back to the creation time, and considers active conversations unless `status=archived` is given. The list keeps its own order (starred first, then newest created).
+
 ## Rate Limiting
 
 Per-key rate limiting is planned for a future release. Currently there are no enforced per-key request limits, but please use the API responsibly.

@@ -730,6 +730,7 @@ async def export_my_data(
             "starred": conv.starred,
             "model_name": conv.model_name,
             "total_tokens": conv.total_tokens,
+            "business_ref": conv.business_ref,
             "created_at": _dt(conv.created_at),
             "updated_at": _dt(conv.updated_at),
             "messages": [

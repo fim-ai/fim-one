@@ -35,7 +35,6 @@ from sqlalchemy.orm import Session
 import fim_one
 import fim_one.db.models
 from fim_one.db.models.connector_call_log import ConnectorCallLog
-from fim_one.db.models.conversation import Conversation
 from fim_one.db.models.user import User
 from fim_one.db.models.workflow import Workflow, WorkflowRun
 
@@ -149,27 +148,28 @@ def before(database_url: str) -> Iterator[sa.Engine]:
     with Session(engine) as session:
         session.add(User(id="u-1", email="ada@x.io", username="ada", password_hash="x"))
         session.flush()
+        # Written as rows, not ORM objects: the model may have columns
+        # that later migrations add (``conversations.business_ref``).
+        insert_conversation = text(
+            "INSERT INTO conversations (id, user_id, title, mode, status, starred,"
+            " total_tokens, fast_llm_tokens, created_at, updated_at)"
+            " VALUES (:id, 'u-1', :title, 'react', 'active', FALSE, 0, 0, :created, :updated)"
+        )
         # Started 1 October, last answered 5 November: its calls were made
         # in between, so 1 October would date them too early.
-        session.add(
-            Conversation(
-                id="conv-1",
-                user_id="u-1",
-                title="t",
-                mode="react",
-                created_at=_at("2026-10-01"),
-                updated_at=_at("2026-11-05"),
-            )
+        session.execute(
+            insert_conversation,
+            {
+                "id": "conv-1",
+                "title": "t",
+                "created": _at("2026-10-01"),
+                "updated": _at("2026-11-05"),
+            },
         )
         # Never changed after it was created: no upper bound to go by.
-        session.add(
-            Conversation(
-                id="conv-quiet",
-                user_id="u-1",
-                title="q",
-                mode="react",
-                created_at=_at("2026-10-01"),
-            )
+        session.execute(
+            insert_conversation,
+            {"id": "conv-quiet", "title": "q", "created": _at("2026-10-01"), "updated": None},
         )
         session.add(Workflow(id="wf-1", user_id="u-1", name="w", blueprint={}))
         session.flush()
@@ -257,10 +257,11 @@ class TestMigration:
         assert _created_at(before) == dated
 
 
-def test_it_is_the_single_head_after_the_usage_ledger() -> None:
+def test_it_chains_after_the_usage_ledger_with_one_head() -> None:
     from alembic.script import ScriptDirectory
 
     script = ScriptDirectory(str(Path(fim_one.__file__).parent / "migrations"))
-    assert script.get_heads() == ["c2p4a1b2c3d4"]
+    assert len(script.get_heads()) == 1
+    assert "c2p4a1b2c3d4" in {r.revision for r in script.walk_revisions()}
     revision = script.get_revision("c2p4a1b2c3d4")
     assert revision is not None and revision.down_revision == _BEFORE
