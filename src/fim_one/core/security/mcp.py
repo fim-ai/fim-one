@@ -35,7 +35,7 @@ STDIO_MCP_ENV_NOT_ALLOWED = "stdio_mcp_env_not_allowed"
 
 STDIO_ADMIN_ONLY_DETAIL = (
     "Stdio MCP servers run a command inside the application container; "
-    "only a system administrator can create, edit, copy, test or publish one."
+    "only a system administrator can create, edit, copy or publish one."
 )
 
 # Environment variables that decide what a process loads or runs, whatever

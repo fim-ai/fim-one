@@ -115,6 +115,10 @@ export function MCPServerCard({
     try {
       const result = await onTest()
       setTestResult(result)
+    } catch (err) {
+      // A refusal (403 stdio_mcp_owner_not_admin, …) arrives as an ApiError,
+      // not as `{ ok: false }`: show it on the same result line.
+      setTestResult({ ok: false, error: getErrorMessage(err, tError) })
     } finally {
       setTesting(false)
     }

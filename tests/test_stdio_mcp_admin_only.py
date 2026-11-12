@@ -2,10 +2,11 @@
 
 The rules:
 
-- only a system administrator may create, edit, copy, test or publish a
-  stdio server (``web/api/mcp_servers.py``);
+- only a system administrator may create, edit, copy or publish a stdio
+  server (``web/api/mcp_servers.py``);
 - only a stdio server whose owner is an active system administrator *now*
-  is ever started, whichever way it is opened (``core/assembly/stdio.py``);
+  is ever started, whichever way it is opened, the test-connection endpoint
+  included, with the same answer (``core/assembly/stdio.py``);
 - somebody who is not an administrator and brings their own credential to
   a shared stdio server may only fill in the variables its owner declared
   (the environment decides what a command loads).
@@ -346,11 +347,25 @@ class TestTestConnection:
     async def test_an_ordinary_users_row_is_not_started(
         self, session: AsyncSession, client: Any
     ) -> None:
+        """Answered as the start-time refusal and the server list report it."""
         server = await _row(session, USER)
 
         error = await _refused(api.test_mcp_server(server.id, current_user=_as(USER), db=session))
 
-        assert error.error_code == "stdio_mcp_admin_only"
+        assert (error.status_code, error.error_code) == (403, "stdio_mcp_owner_not_admin")
+        detail = (await api.get_mcp_server(server.id, current_user=_as(USER), db=session)).data
+        assert detail["stdio_blocked"] == error.error_code
+        client.connect_stdio.assert_not_awaited()
+
+    async def test_nothing_is_started_while_stdio_is_off(
+        self, session: AsyncSession, client: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        server = await _row(session, ADMIN, command="npx", args=["-y", "srv"])
+        monkeypatch.setenv("ALLOW_STDIO_MCP", "false")
+
+        error = await _refused(api.test_mcp_server(server.id, current_user=_as(ADMIN), db=session))
+
+        assert (error.status_code, error.error_code) == (403, "stdio_mcp_disabled")
         client.connect_stdio.assert_not_awaited()
 
     async def test_a_row_whose_owner_stopped_being_an_administrator_is_not_started(

@@ -213,7 +213,8 @@ def _enforce_stdio_policy(transport: str, user: User) -> None:
 
     A stdio server is a command run inside the application container, so
     configuring one is an administrator's act: creating it, editing it,
-    copying it, testing it and publishing it all go through here. The
+    copying it and publishing it all go through here. Testing one starts
+    it, and goes through the start-time rule instead (``test_mcp_server``). The
     command allow-list is not what protects the container (``python -c``,
     ``npx <package>``); this check is.
     """
@@ -537,9 +538,12 @@ async def test_mcp_server(
 ) -> ApiResponse:
     """Test connectivity to an MCP server and update its tool_count."""
     server = await _get_owned_server(server_id, current_user.id, db)
-    _enforce_stdio_policy(server.transport, current_user)
-    # The run-time rule as well (the owner must be an active administrator),
-    # so this endpoint starts nothing an agent turn would not.
+    # Testing starts the server, so the rule is the one applied when a
+    # server is started (``core.assembly.stdio``), and so is the answer:
+    # ``stdio_mcp_disabled`` when stdio is off, ``stdio_mcp_owner_not_admin``
+    # when the owner (the caller) is not an active administrator, as the
+    # server list reports it. This endpoint starts nothing an agent turn
+    # would not.
     not_started = (await stdio_refusals(db, [server])).get(server.id)
     if not_started is not None:
         raise AppError(

@@ -118,8 +118,8 @@ Then set `DOCKER_SHELL_NETWORK=fim-sandbox-egress` in `.env`. The proxy joins `s
 
 **stdio MCP servers.** A stdio server is a command line. `ALLOWED_STDIO_COMMANDS` does not make that safe: `python -c`, `node -e` and `npx <any package>` run arbitrary code. The rule that protects the container is who may configure one:
 
-- only a system administrator can create, edit, copy, test or publish a stdio server;
-- a stdio server is started only while its owner is an active system administrator. A server created by somebody else, or by an administrator who has since lost the role or been deactivated, stays in the database and is never started. Its owner sees it marked "Not started" and can delete it or turn it into an HTTP server;
+- only a system administrator can create, edit, copy or publish a stdio server;
+- a stdio server is started only while its owner is an active system administrator, and "Test connection" starts it too: for a server whose owner is not an active administrator it answers `stdio_mcp_owner_not_admin`, the reason the server list shows. A server created by somebody else, or by an administrator who has since lost the role or been deactivated, stays in the database and is never started. Its owner sees it marked "Not started" and can delete it or turn it into an HTTP server;
 - a user who brings their own credential to a shared stdio server can set only the environment variables the administrator declared on it, and none that change what the process loads, fetches or trusts (`PATH`, `NODE_OPTIONS`, `PYTHONPATH`, `LD_PRELOAD`, proxy and certificate variables, and the like). List every variable users should fill in on the server, with a placeholder value.
 
 Enabling stdio means trusting your administrators with command execution in the application container, and trusting every MCP server they install with the data its tools are handed.
