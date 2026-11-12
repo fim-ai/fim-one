@@ -22,6 +22,8 @@ logger = logging.getLogger(__name__)
 class MySQLDriver(DatabaseDriver):
     """MySQL / MariaDB driver backed by aiomysql connection pool."""
 
+    default_port = 3306
+
     def __init__(self, config: dict[str, Any]) -> None:
         super().__init__(config)
         self._pool: aiomysql.Pool | None = None

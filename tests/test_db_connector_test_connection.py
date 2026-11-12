@@ -40,6 +40,14 @@ STORED = {
 }
 
 
+
+@pytest.fixture(autouse=True)
+def _hosts_resolve_to_public_addresses(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The made-up host names here stand for external databases."""
+    from fim_one.core.security import db_target
+
+    monkeypatch.setattr(db_target, "_resolve", lambda host, port: ["93.184.216.34"])
+
 class _RecordingDriver(DatabaseDriver):
     """Driver stub that records the config it was built with."""
 

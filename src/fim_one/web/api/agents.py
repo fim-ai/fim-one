@@ -175,6 +175,41 @@ async def _validate_binding_ownership(
             raise AppError("approval_channel_denied", status_code=403)
 
 
+def _model_routing(model_config_json: Any) -> dict[str, Any]:
+    """The keys of a model config that decide the endpoint and its key."""
+    if not isinstance(model_config_json, dict):
+        return {}
+    return {
+        key: model_config_json.get(key)
+        for key in ("base_url", "api_key", "provider")
+        if model_config_json.get(key)
+    }
+
+
+async def _validate_model_endpoint(model_config_json: Any) -> None:
+    """Refuse inline model settings that break the custom-endpoint rules.
+
+    A custom ``base_url`` needs its own ``api_key`` and must resolve to
+    public addresses; see :func:`fim_one.web.deps.check_inline_model_config`.
+    """
+    import asyncio
+
+    from fim_one.web.deps import InlineModelConfigError, check_inline_model_config
+
+    if model_config_json is None:
+        return
+    try:
+        # Resolves the host; keep it off the event loop.
+        await asyncio.to_thread(check_inline_model_config, model_config_json, resolve=True)
+    except InlineModelConfigError as exc:
+        raise AppError(
+            "agent_config_error",
+            status_code=400,
+            detail=str(exc),
+            detail_args={"reason": str(exc).rstrip(".")},
+        ) from exc
+
+
 @router.post("", response_model=ApiResponse)
 async def create_agent(
     body: AgentCreate,
@@ -188,6 +223,7 @@ async def create_agent(
         mcp_server_ids=body.mcp_server_ids,
         approval_channel_id=body.approval_channel_id,
     )
+    await _validate_model_endpoint(body.model_config_json)
     agent = Agent(
         user_id=current_user.id,
         name=body.name,
@@ -302,6 +338,13 @@ async def update_agent(
     agent = await _get_owned_agent(agent_id, current_user.id, db)
 
     update_data = body.model_dump(exclude_unset=True)
+    # Checked when the endpoint settings change: the settings form sends the
+    # whole model config with every save, and an agent whose stored endpoint
+    # no longer passes must stay editable otherwise (it is refused at run time).
+    if "model_config_json" in update_data and _model_routing(
+        update_data["model_config_json"]
+    ) != _model_routing(agent.model_config_json):
+        await _validate_model_endpoint(update_data["model_config_json"])
     await _validate_binding_ownership(
         current_user.id, db,
         connector_ids=update_data.get("connector_ids"),

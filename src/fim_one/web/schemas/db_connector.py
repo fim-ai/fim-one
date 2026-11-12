@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # -- Connection config --
 
@@ -29,6 +29,20 @@ class DbConnectionConfig(BaseModel):
     query_timeout: int = Field(default=30, ge=1, le=300)
 
     model_config = {"populate_by_name": True}
+
+    @model_validator(mode="after")
+    def _wire_safe(self) -> "DbConnectionConfig":
+        """Host syntax and control characters; no name resolution here."""
+        from fim_one.core.security.db_target import (
+            DatabaseTargetError,
+            check_db_config_fields,
+        )
+
+        try:
+            check_db_config_fields(self.model_dump(by_alias=True))
+        except DatabaseTargetError as exc:
+            raise ValueError(str(exc)) from exc
+        return self
 
 
 # -- Create / Update --

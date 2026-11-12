@@ -6,6 +6,7 @@ DeepSeek, Mistral, etc.) without provider-specific conditionals.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -232,6 +233,104 @@ async def close_shared_http_client() -> None:
 
 # Eagerly initialise the shared client so it is ready for the first LLM call.
 _get_shared_http_client()
+
+
+# ---------------------------------------------------------------------------
+# User-supplied endpoints
+# ---------------------------------------------------------------------------
+# An endpoint that came from a user (an agent's inline model settings, a
+# user-owned model config) is not trusted the way an operator-configured one
+# is.  Three rules, enforced here so that every caller gets them:
+#
+#   1. It is only ever called with the key that was supplied with it.  An
+#      empty key is refused: LiteLLM would otherwise fill it in from the
+#      process environment.
+#   2. It is reached through a dedicated HTTP client whose transport resolves
+#      the host itself and refuses private, loopback, link-local and metadata
+#      addresses at connect time, and which does not follow redirects.
+#   3. It is spoken to over the OpenAI-compatible chat-completions protocol,
+#      by the OpenAI SDK bound to that client and to the URL as typed.
+#      LiteLLM is not involved: its routing chooses a transport from the
+#      model name, and for these endpoints nothing the user writes (model
+#      name, provider, URL shape) may choose a transport.
+#   4. What the endpoint answers when it fails is not repeated: errors carry
+#      the kind of failure and the HTTP status, never the response body.
+
+_UNTRUSTED_HTTP_CLIENT: httpx.AsyncClient | None = None
+
+
+class UntrustedEndpointError(ValueError):
+    """A user-supplied model endpoint that may not be used as configured."""
+
+
+def check_untrusted_endpoint_url(base_url: str) -> str:
+    """Validate the *shape* of a user-supplied endpoint URL and return it.
+
+    Address checks happen when connecting (and, for a friendlier error, when
+    the setting is saved); this only rejects what can never be acceptable.
+    """
+    from urllib.parse import urlsplit
+
+    url = (base_url or "").strip()
+    if any(ord(ch) < 0x21 or ord(ch) == 0x7F for ch in url):
+        raise UntrustedEndpointError("The endpoint URL contains invalid characters.")
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname
+        _ = parts.port
+    except ValueError as exc:
+        raise UntrustedEndpointError("The endpoint URL is not valid.") from exc
+    if parts.scheme.lower() not in ("http", "https") or not host:
+        raise UntrustedEndpointError("The endpoint URL must be an http(s) URL.")
+    if parts.username is not None or parts.password is not None:
+        raise UntrustedEndpointError("The endpoint URL must not contain credentials.")
+    return url
+
+
+class UntrustedEndpointCallError(RuntimeError):
+    """A call to a user-supplied endpoint failed.
+
+    The message names the kind of failure and the HTTP status only.
+    """
+
+
+def _describe_endpoint_failure(exc: BaseException) -> str:
+    status = getattr(exc, "status_code", None)
+    kind = type(exc).__name__
+    if isinstance(status, int):
+        return f"The custom model endpoint answered HTTP {status} ({kind})."
+    return f"The custom model endpoint could not be used ({kind})."
+
+
+# The chat-completions parameters passed on to a user-supplied endpoint.
+_PINNED_PARAMS = frozenset(
+    {
+        "messages",
+        "temperature",
+        "max_tokens",
+        "max_completion_tokens",
+        "stream",
+        "stream_options",
+        "tools",
+        "tool_choice",
+        "response_format",
+        "reasoning_effort",
+    }
+)
+
+
+def _get_untrusted_http_client() -> httpx.AsyncClient:
+    """The HTTP client used for every user-supplied endpoint."""
+    from fim_one.core.security import get_safe_async_client
+
+    global _UNTRUSTED_HTTP_CLIENT
+    if _UNTRUSTED_HTTP_CLIENT is None or _UNTRUSTED_HTTP_CLIENT.is_closed:
+        _UNTRUSTED_HTTP_CLIENT = get_safe_async_client(
+            timeout=httpx.Timeout(300.0, connect=10.0),
+            limits=httpx.Limits(max_connections=50, max_keepalive_connections=0),
+            follow_redirects=False,
+        )
+    return _UNTRUSTED_HTTP_CLIENT
 
 # ---------------------------------------------------------------------------
 # Provider resolution
@@ -495,15 +594,29 @@ class OpenAICompatibleLLM(BaseLLM):
         json_mode_enabled: bool = True,
         tool_choice_enabled: bool = True,
         context_size: int | None = None,
+        untrusted_endpoint: bool = False,
     ) -> None:
+        self._untrusted_endpoint = untrusted_endpoint
+        if untrusted_endpoint:
+            base_url = check_untrusted_endpoint_url(base_url)
+            if not (api_key or "").strip():
+                raise UntrustedEndpointError(
+                    "A custom model endpoint needs its own API key."
+                )
         self._api_key = api_key
         self._base_url = base_url
         self._model = model
-        self._litellm_model, self._api_base = _resolve_litellm_model(
-            base_url,
-            model,
-            provider,
-        )
+        if untrusted_endpoint:
+            # A label for capability checks only: no request for this
+            # endpoint is ever made through LiteLLM (see ``_call_pinned``).
+            self._litellm_model: str = f"openai/{model}"
+            self._api_base: str | None = base_url
+        else:
+            self._litellm_model, self._api_base = _resolve_litellm_model(
+                base_url,
+                model,
+                provider,
+            )
         self._default_temperature = default_temperature
         self._default_max_tokens = default_max_tokens
         self._retry_config = retry_config or RetryConfig(max_retries=0)
@@ -543,6 +656,27 @@ class OpenAICompatibleLLM(BaseLLM):
     @property
     def model_id(self) -> str:
         return self._model
+
+    @property
+    def untrusted_endpoint(self) -> bool:
+        """Whether the endpoint was supplied by a user rather than the operator."""
+        return self._untrusted_endpoint
+
+    @property
+    def uses_pinned_client(self) -> bool:
+        """Whether calls must go through the address-checking HTTP client."""
+        return self._untrusted_endpoint
+
+    def _pinned_client(self) -> Any:
+        """An OpenAI SDK client bound to the address-checking HTTP client."""
+        from openai import AsyncOpenAI
+
+        return AsyncOpenAI(
+            api_key=self._api_key,
+            base_url=self._api_base,
+            http_client=_get_untrusted_http_client(),
+            max_retries=0,
+        )
 
     @property
     def context_size(self) -> int | None:
@@ -1044,6 +1178,9 @@ class OpenAICompatibleLLM(BaseLLM):
         """
         if not self._litellm_model.startswith("openai/"):
             return False
+        if self.uses_pinned_client:
+            # The Responses route does not take an injected client.
+            return False
         if not _is_openai_gpt5_family(self._model):
             return False
         if _gpt5_responses_mode() != _GPT5_MODE_NATIVE:
@@ -1177,6 +1314,10 @@ class OpenAICompatibleLLM(BaseLLM):
         "use chat completions instead"; any other error propagates so the
         retry layer can treat it as the transient failure it probably is.
         """
+        if self.uses_pinned_client:
+            raise UntrustedEndpointError(
+                "The Responses route is not available for a custom model endpoint."
+            )
         kwargs = self._build_responses_kwargs(
             messages,
             tools=tools,
@@ -1221,6 +1362,10 @@ class OpenAICompatibleLLM(BaseLLM):
         from here.  Once events start flowing the caller is committed, the
         same as on the completions path.
         """
+        if self.uses_pinned_client:
+            raise UntrustedEndpointError(
+                "The Responses route is not available for a custom model endpoint."
+            )
         kwargs = self._build_responses_kwargs(
             messages,
             tools=tools,
@@ -1245,6 +1390,49 @@ class OpenAICompatibleLLM(BaseLLM):
                 "litellm.aresponses(stream=True) returned a non-streaming response"
             )
         return stream_to_chunks(stream)
+
+    async def _call_pinned(self, **build_args: Any) -> Any:
+        """One chat-completions call to a user-supplied endpoint.
+
+        Made with the OpenAI SDK on the address-checking client; the model
+        name travels as a field of the request body and selects nothing.
+        """
+        kwargs = self._build_request_kwargs(via_responses=False, **build_args)
+        params = {k: v for k, v in kwargs.items() if k in _PINNED_PARAMS}
+        params["model"] = self._model
+        # The failure is described here and raised outside the handler, so
+        # the SDK's exception (which quotes the response body) is neither
+        # the cause nor the context of what propagates.
+        failure: str | None = None
+        result: Any = None
+        try:
+            result = await self._pinned_client().chat.completions.create(**params)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            failure = _describe_endpoint_failure(exc)
+        if failure is not None:
+            raise UntrustedEndpointCallError(failure)
+        if not params.get("stream"):
+            return result
+
+        async def _chunks() -> AsyncIterator[Any]:
+            iterator = result.__aiter__()
+            while True:
+                broken: str | None = None
+                try:
+                    chunk = await iterator.__anext__()
+                except StopAsyncIteration:
+                    return
+                except (asyncio.CancelledError, GeneratorExit):
+                    raise
+                except Exception as exc:
+                    broken = _describe_endpoint_failure(exc)
+                if broken is not None:
+                    raise UntrustedEndpointCallError(broken)
+                yield chunk
+
+        return _chunks()
 
     async def _dispatch_acompletion(self, **build_args: Any) -> Any:
         """Call ``litellm.acompletion``, optionally via the Responses bridge.
@@ -1276,6 +1464,8 @@ class OpenAICompatibleLLM(BaseLLM):
         their protocol (adaptive thinking, ...) is handled in
         ``_build_request_kwargs``.
         """
+        if self.uses_pinned_client:
+            return await self._call_pinned(**build_args)
         key = (self._api_base, self._litellm_model)
         if (
             self._litellm_model.startswith("openai/")

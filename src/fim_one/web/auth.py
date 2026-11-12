@@ -110,12 +110,43 @@ _bearer_scheme_optional = HTTPBearer(auto_error=False)
 _BCRYPT_COST = min(max(int(os.environ.get("FIM_BCRYPT_COST", "12")), 4), 31)
 
 
+# bcrypt reads at most 72 bytes of a password.  Earlier bcrypt releases cut
+# longer input silently; current ones refuse it.  The input is cut here, so
+# long passwords (a few dozen CJK characters already exceed 72 bytes) hash
+# and verify the way they always did.
+_BCRYPT_MAX_BYTES = 72
+
+
+def _bcrypt_input(password: str) -> bytes:
+    return password.encode("utf-8", "surrogatepass")[:_BCRYPT_MAX_BYTES]
+
+
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt(_BCRYPT_COST)).decode()
+    return bcrypt.hashpw(_bcrypt_input(password), bcrypt.gensalt(_BCRYPT_COST)).decode()
 
 
-def verify_password(password: str, hashed: str) -> bool:
-    return bcrypt.checkpw(password.encode(), hashed.encode())
+def verify_password(password: str, hashed: str | None) -> bool:
+    """Whether *password* matches *hashed*; ``False`` for a missing or malformed hash."""
+    if not isinstance(password, str) or not isinstance(hashed, str) or not hashed:
+        return False
+    try:
+        return bcrypt.checkpw(_bcrypt_input(password), hashed.encode())
+    except ValueError:
+        return False
+
+
+# A hash of a random value, compared against when there is no account or no
+# password, so that such an attempt takes as long as a wrong password.
+_DUMMY_HASH: str | None = None
+
+
+def dummy_password_hash() -> str:
+    global _DUMMY_HASH
+    if _DUMMY_HASH is None:
+        import secrets
+
+        _DUMMY_HASH = hash_password(secrets.token_urlsafe(16))
+    return _DUMMY_HASH
 
 
 async def hash_password_async(password: str) -> str:
@@ -123,7 +154,7 @@ async def hash_password_async(password: str) -> str:
     return await asyncio.to_thread(hash_password, password)
 
 
-async def verify_password_async(password: str, hashed: str) -> bool:
+async def verify_password_async(password: str, hashed: str | None) -> bool:
     """Async wrapper for bcrypt verify — avoids blocking the event loop (~200ms)."""
     return await asyncio.to_thread(verify_password, password, hashed)
 

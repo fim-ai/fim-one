@@ -8,7 +8,8 @@ import re
 
 from pydantic import BaseModel, Field, field_validator
 
-_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+# Not whitespace, "@", NUL or a lone surrogate (neither can be stored).
+_EMAIL_RE = re.compile(r"^[^\s@\x00\ud800-\udfff]+@[^\s@\x00\ud800-\udfff]+\.[^\s@\x00\ud800-\udfff]+$")
 
 
 class OAuthBindingInfo(BaseModel):
@@ -96,8 +97,17 @@ class LoginWithCodeRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: str
-    password: str
+    email: str = Field(..., max_length=255)
+    password: str = Field(..., max_length=1024)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        # Matched as typed, as before; only values no account can hold are
+        # refused here (422), since they cannot be stored or looked up.
+        if "\x00" in v or any("\ud800" <= ch <= "\udfff" for ch in v):
+            raise ValueError("Invalid email address")
+        return v
 
 
 class TokenResponse(BaseModel):
@@ -113,7 +123,14 @@ class UpdateProfileRequest(BaseModel):
     system_instructions: str | None = Field(None, max_length=2000)
     preferred_language: str | None = Field(None, pattern=r"^(auto|en|zh|ja|ko|de|fr)$")
     onboarding_completed: bool | None = None
-    avatar: str | None = None  # "builtin:cat", "builtin:star", etc. or None to remove
+    # A built-in avatar token ("builtin:cat", "builtin:cat:blue") or "" to
+    # remove.  Uploaded images are set by POST /api/auth/avatar only, so this
+    # field can never name a file.
+    avatar: str | None = Field(
+        None,
+        max_length=80,
+        pattern=r"^(builtin:[a-z0-9][a-z0-9_-]{0,31}(:[a-z0-9][a-z0-9_-]{0,31})?)?$",
+    )
     username: str | None = Field(None, min_length=2, max_length=50)
     # Personal settings
     timezone: str | None = Field(None, max_length=50)

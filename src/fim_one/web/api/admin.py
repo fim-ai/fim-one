@@ -40,6 +40,7 @@ from fim_one.web.schemas.billing import (
     AdminSubscriptionRead,
 )
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse
+from fim_one.web.services.verification_codes import clear_password_failures
 from fim_one.web.schemas.model_config import ModelConfigResponse
 from fim_one.web.services.user_deletion import purge_user_data
 
@@ -751,6 +752,7 @@ async def reset_password(
     target_user.refresh_token = None
     target_user.refresh_token_expires_at = None
     target_user.tokens_invalidated_at = datetime.now(timezone.utc)
+    await clear_password_failures(db, user_id=target_user.id)
     await db.commit()
 
     result = await db.execute(select(User).where(User.id == user_id))

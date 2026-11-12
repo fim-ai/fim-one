@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from fim_one.db import get_session
+from fim_one.web.avatars import public_avatar_value
 from fim_one.web.auth import (
     get_current_admin,
     get_current_user,
@@ -179,7 +180,7 @@ async def _membership_to_response(
         username=user.username if user else None,
         email=user.email if user else "",
         display_name=user.display_name if user else None,
-        avatar=user.avatar if user else None,
+        avatar=public_avatar_value(user.id, user.avatar) if user else None,
         role=membership.role,
         invited_by=membership.invited_by,
         created_at=membership.created_at.isoformat() if membership.created_at else "",

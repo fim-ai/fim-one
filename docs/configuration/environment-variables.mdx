@@ -388,6 +388,31 @@ Used for login codes and email notifications. The `email_send` built-in tool is 
 | `EMAIL_TOOL_ENABLED` | No | `false` | Offer `email_send` with no recipient allowlist. Enable only when every user of this instance may mail any address from this account |
 | `NOTIFICATION_TOOL_ENABLED` | No | `false` | Offer the `send_notification` agent tool, which posts to the instance-wide Slack / Lark / WeCom webhooks and the SMTP account. Enable only when every user of this instance may post to those channels |
 
+### Verification code limits
+
+Emailed codes (sign-in, registration, password reset) allow five tries each. These settings bound how many codes are issued and tried; `0` switches a rule off. Counting is done in the database, so the limits hold across workers and under simultaneous requests. Windows are aligned to the clock.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `AUTH_CODE_SENDS_PER_ADDRESS_HOUR` | No | `5` | Codes issued per address and purpose per hour |
+| `AUTH_CODE_SENDS_PER_ADDRESS_DAY` | No | `20` | Codes issued per address and purpose per day |
+| `AUTH_CODE_SENDS_PER_IP_HOUR` | No | `30` | Anonymous requests for a code per client address per hour |
+| `AUTH_CODE_CHECKS_PER_IP_HOUR` | No | `60` | Anonymous attempts to use a code per client address per hour |
+
+A request over a limit is answered with HTTP 429 (`verification_rate_limited`) before the address is looked up, so the answer is the same whether or not the address has an account. A signed-in request for a reset code is counted under the account, separately from anonymous requests for the same address. The client address is the one the application server sees: behind a reverse proxy, run the server so that it trusts the proxy's forwarded address, otherwise all clients share one count.
+
+Only codes that are actually issued count toward the per-address limits: a request inside the one-minute resend interval is refused and not counted. Requests for a sign-in or reset code are answered the same way whether or not the address has an account; a code is mailed only to an active account's address.
+
+### Password sign-in limits
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `AUTH_LOGIN_FAILURES_PER_ACCOUNT` | No | `5` | Failed password attempts for one account within `AUTH_LOGIN_LOCK_MINUTES` before password sign-in to it is refused |
+| `AUTH_LOGIN_LOCK_MINUTES` | No | `15` | Length of the first lock (and of the counting period); each further lock in a row lasts twice as long, up to 24 hours |
+| `AUTH_LOGIN_FAILURES_PER_IP_HOUR` | No | `20` | Failed password attempts per client address and clock hour; further attempts get HTTP 429 (`too_many_login_attempts`) until the hour ends |
+
+`0` switches a rule off. A locked account answers a password attempt exactly as a wrong password does; the lock is written to the server log and to the login history (`account_locked_now`, then `account_locked` for each refused attempt). A successful password or emailed-code sign-in clears the count; signing in with an emailed code is not blocked by a lock.
+
 ---
 
 ## Connectors
@@ -399,9 +424,33 @@ Used for login codes and email notifications. The `email_send` built-in tool is 
 | `CREDENTIAL_ENCRYPTION_KEY` | No | _(unset)_ | Fernet encryption key for connector credential blobs. When set, auth tokens stored in `connector_credentials` are encrypted at rest. If unset, credentials are stored as plaintext JSON (backward-compatible). Changing this key invalidates all existing encrypted credentials. |
 | `CONNECTOR_TOOL_MODE` | No | `progressive` | How connector tools are exposed to agents. `progressive`: single `ConnectorMetaTool` with `discover`/`execute` subcommands (~30 tokens/connector). `classic`: one tool per action (legacy, ~250 tokens/action). |
 | `DATABASE_TOOL_MODE` | No | `progressive` | How database connector tools are exposed to agents. `progressive`: single `DatabaseMetaTool` with `list_tables`/`discover`/`query` subcommands. `legacy`: one tool per action per database connector (3 tools each). |
+| `DB_CONNECTOR_ALLOWED_HOSTS` | No | *(empty)* | Internal database hosts that database connectors may connect to. By default a database connector can only reach public addresses: private, loopback, link-local, shared-address and cloud-metadata ranges are refused, judged on the address the host name resolves to, on every connection. List the internal databases your deployment needs as comma-separated entries: an IP address (`10.20.30.40`), a CIDR network (`10.20.0.0/16`), a host name (`db.corp.internal`) or a wildcard (`*.rds.internal`), each optionally limited to a port (`db.corp.internal:5432`, `[fd00::5]:5432`). The hosts of the application's own database and Redis (`DATABASE_URL`, `REDIS_URL`) are never allowed, on any port. An entry that cannot be parsed makes every database connector fail, public targets included, until it is corrected; the entry is written to the server log, not shown to users. Do not use `0.0.0.0/0` or `::/0`: they allow cloud metadata addresses and every internal service. See [Database connectors on internal networks](#database-connectors-on-internal-networks). |
 | `MCP_TOOL_MODE` | No | `progressive` | How MCP server tools are exposed to agents. `progressive`: single `MCPServerMetaTool` with `discover`/`call` subcommands. `legacy`: one tool per MCP server action (original individual tools). |
 
 ---
+
+### Database connectors on internal networks
+
+A database connector dials the host and port its creator entered, from the application server. So that a connector cannot be pointed at the application's own database, at other services on the server's network or at a cloud metadata address, the host is resolved by the application and every address it resolves to must be public. The check runs when a connector is saved, when a connection is tested and each time a connection pool is opened, and the driver then connects to the address that was checked.
+
+Private deployments usually do need internal databases. Allow them explicitly:
+
+```bash
+# one database
+DB_CONNECTOR_ALLOWED_HOSTS=10.20.30.40:5432
+# a database subnet and one named host
+DB_CONNECTOR_ALLOWED_HOSTS=10.20.0.0/16,erp-db.corp.internal:3306
+```
+
+- An address or network entry allows a target when all the internal addresses it resolves to fall inside the entry.
+- A host-name entry allows that name as it is typed in the connector, whatever it resolves to. `*.suffix` matches any name ending in `.suffix`.
+- A `:port` suffix limits the entry to that port.
+- The rule applies to every user, administrators included: the allow-list is the one place where internal reach is granted.
+- The hosts of `DATABASE_URL` and of `REDIS_URL` (also a `?host=` parameter and each host of a multi-host URL) are refused on every port, even when an entry covers them. They are compared by the addresses they resolve to; if one of them cannot be resolved, every database connector is refused and the server log names the host.
+- One entry that cannot be parsed refuses every database connector, public targets included, until it is corrected. Users are told that the setting is invalid; the entry itself is written to the server log.
+- List the networks and hosts your databases are on. An entry such as `0.0.0.0/0` or `::/0` allows every internal address, cloud metadata addresses included, and turns the check off.
+
+After an upgrade, existing connectors that point at internal hosts answer "This database host is on an internal network" until the host is added here and the application restarted. The host field itself takes a bare host name or IP address: no `user:password@`, port, path or list of hosts.
 
 ## Platform
 
@@ -418,6 +467,7 @@ Used for login codes and email notifications. The `email_send` built-in tool is 
 | `MAX_UPLOAD_SIZE_MB` | No | `50` | Max file upload size in megabytes (backend enforcement) |
 | `NEXT_PUBLIC_MAX_UPLOAD_SIZE_MB` | No | `50` | Max file upload size shown in frontend UI. **Build-time variable** — must match `MAX_UPLOAD_SIZE_MB`. |
 | `MCP_SERVERS` | No | — | JSON array of MCP server configs (requires `uv sync --extra mcp`) |
+| `SSRF_ALLOW_FAKE_IP_RANGE` | No | `false` | Outbound requests made for users (web fetch, HTTP request, connectors, URL import, database connectors) refuse internal addresses. `198.18.0.0/15` counts as internal. Set to `true` only on a machine whose DNS proxy (Surge, Clash and similar "fake-IP" modes) resolves public host names into that range; it opens that range and nothing else. |
 | `ALLOW_STDIO_MCP` | No | `false` | Allow stdio MCP servers. Set `true` only for trusted local deployments |
 | `ALLOWED_STDIO_COMMANDS` | No | `npx,uvx,node,python,python3,deno,bun` | Comma-separated list of allowed base commands for stdio MCP servers. Only effective when `ALLOW_STDIO_MCP=true` |
 | `LOG_LEVEL` | No | `INFO` | Logging level: `DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` |

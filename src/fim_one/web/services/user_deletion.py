@@ -170,11 +170,9 @@ async def purge_user_data(db: AsyncSession, user_id: str) -> dict[str, int]:
     shutil.rmtree(_vector_store_base() / f"user_{user_id}", ignore_errors=True)
     shutil.rmtree(uploads_base / f"user_{user_id}", ignore_errors=True)
 
-    avatar_dir = uploads_base / "avatars"
-    if avatar_dir.exists():
-        for pattern in (f"{user_id}_*", f"{user_id}.*"):
-            for avatar_file in avatar_dir.glob(pattern):
-                avatar_file.unlink(missing_ok=True)
+    from fim_one.web.avatars import remove_uploaded_avatars
+
+    remove_uploaded_avatars(user_id)
 
     # 4. Explicit, FK-safe deletes for tables that have a FK to users but no
     #    cascade relationship on the User model (so the ORM cascade in step 5

@@ -11,6 +11,7 @@
   "username_taken": "Username already taken.",
   "email_already_registered": "Email already registered.",
   "invalid_credentials": "Invalid credentials.",
+  "too_many_login_attempts": "Too many failed sign-in attempts from your network. Try again later.",
   "ip_not_allowed": "Access from your IP address is not allowed. Contact your administrator.",
   "ip_rule_self_lockout": "This change would block your own address ({ip}), so it was not saved.",
   "2fa_too_many_attempts": "Too many incorrect codes. Wait 15 minutes and sign in again.",
@@ -50,6 +51,7 @@
   "feishu_channel_requires_encrypt_key": "Feishu channels require an Encrypt Key — without it, callback signatures cannot be verified.",
 
   "connector_not_found": "Connector not found.",
+  "db_target_not_allowed": "{reason}",
   "db_password_required": "The connection settings changed. Enter the password again to test.",
   "action_not_found": "Action not found.",
   "spec_fetch_failed": "Failed to fetch OpenAPI spec: {reason}.",

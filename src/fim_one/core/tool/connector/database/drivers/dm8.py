@@ -70,6 +70,8 @@ class DM8Driver(DatabaseDriver):
     LRU pool, so no second pooling layer is needed.
     """
 
+    default_port = 5236
+
     def __init__(self, config: dict[str, Any]) -> None:
         super().__init__(config)
         self._conn: Any | None = None

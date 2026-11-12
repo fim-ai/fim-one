@@ -73,6 +73,35 @@ def _action_to_response(action: ConnectorAction) -> ActionResponse:
     )
 
 
+async def _validate_db_target(config: dict[str, Any], *, check_network: bool = True) -> None:
+    """Refuse a database connector config that may not be dialed.
+
+    Shape (host syntax, control characters) is always checked; with
+    *check_network* the host is also resolved and held to the address rules
+    of :mod:`fim_one.core.security.db_target`.  The drivers repeat the
+    network check on every connection; this is the early, readable refusal.
+    """
+    import asyncio
+
+    from fim_one.core.security.db_target import (
+        DatabaseTargetError,
+        authorize_database_target,
+        check_db_config_fields,
+    )
+
+    try:
+        check_db_config_fields(config)
+        if check_network:
+            await asyncio.to_thread(authorize_database_target, config)
+    except DatabaseTargetError as exc:
+        raise AppError(
+            "db_target_not_allowed",
+            status_code=400,
+            detail=str(exc),
+            detail_args={"reason": str(exc)},
+        ) from exc
+
+
 def _mask_db_config(db_config: dict[str, Any] | None) -> dict[str, Any] | None:
     """Return a copy of db_config with sensitive fields masked."""
     if not db_config:
@@ -262,6 +291,7 @@ async def create_connector(
             )
         from fim_one.core.security.encryption import encrypt_db_config
 
+        await _validate_db_target(body.db_config)
         db_config = encrypt_db_config(body.db_config)
     elif not body.base_url:
         raise AppError(
@@ -441,6 +471,19 @@ async def update_connector(
         )
 
         new_config = dict(update_data["db_config"])
+        # The address rules are applied when the target changes: the form
+        # sends the whole config with every save, and a connector whose
+        # stored host no longer passes must stay editable otherwise (the
+        # driver refuses it when it connects).
+        _stored = connector.db_config or {}
+        await _validate_db_target(
+            new_config,
+            check_network=(
+                str(new_config.get("host", "")).strip().lower()
+                != str(_stored.get("host", "")).strip().lower()
+                or str(new_config.get("port", "")) != str(_stored.get("port", ""))
+            ),
+        )
         # A missing/empty password or the masked sentinel "***" means "keep
         # the stored password". It is only kept when the target and TLS
         # settings are unchanged, so a saved password is never redirected

@@ -8,6 +8,7 @@ import logging
 import math
 import mimetypes
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -22,6 +23,8 @@ from fim_one.web.schemas.common import ApiResponse, PaginatedResponse
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/conversations", tags=["artifacts"])
+
+_ID_SEGMENT = re.compile(r"[0-9A-Za-z][0-9A-Za-z_-]{0,127}")
 global_artifacts_router = APIRouter(prefix="/api", tags=["artifacts"])
 
 UPLOAD_ROOT = Path(os.environ.get("UPLOADS_DIR", "uploads"))
@@ -109,13 +112,17 @@ async def download_artifact(
     is required so that ``<img src>`` and direct browser navigation work
     without extra round-trips.
     """
+    # Both ids are single path segments made of id characters; anything
+    # else (".." included) cannot name a conversation's artifact directory.
+    if not _ID_SEGMENT.fullmatch(conversation_id) or not _ID_SEGMENT.fullmatch(artifact_id):
+        raise AppError("artifact_not_found", status_code=404)
     d = _artifacts_dir(conversation_id)
-    if not d.exists():
+    if not d.is_dir():
         raise AppError("artifact_not_found", status_code=404)
 
     # Find file matching the artifact_id prefix.
     for f in d.iterdir():
-        if f.name.startswith(f"{artifact_id}_"):
+        if f.name.startswith(f"{artifact_id}_") and f.is_file() and not f.is_symlink():
             parts = f.name.split("_", 1)
             original_name = parts[1] if len(parts) > 1 else f.name
             return FileResponse(

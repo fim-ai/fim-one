@@ -14,6 +14,8 @@ from typing import Any
 
 from sqlalchemy import select
 
+from fim_one.core.security.redact import redact_secrets
+
 from ..base import BaseTool
 
 logger = logging.getLogger(__name__)
@@ -76,7 +78,7 @@ class AgentGetSettingsTool(_AgentBuilderBase):
                 "execution_mode": agent.execution_mode,
                 "tool_categories": agent.tool_categories or [],
                 "status": agent.status,
-                "model_config": agent.model_config_json,
+                "model_config": redact_secrets(agent.model_config_json),
                 "suggested_prompts": agent.suggested_prompts or [],
             }
             return json.dumps(result, ensure_ascii=False, indent=2)
@@ -428,6 +430,6 @@ class AgentSetModelTool(_AgentBuilderBase):
             await db.commit()
 
             return json.dumps(
-                {"updated": True, "model_config": current_cfg},
+                {"updated": True, "model_config": redact_secrets(current_cfg)},
                 ensure_ascii=False,
             )

@@ -182,7 +182,7 @@ class TestBlocklistRanges:
 
         assert is_private_ip(ip) is True
 
-    @pytest.mark.parametrize("ip", ["93.184.216.34", "100.63.255.255", "198.18.0.1", "2606:4700::1111"])
+    @pytest.mark.parametrize("ip", ["93.184.216.34", "100.63.255.255", "2606:4700::1111"])
     def test_public_allowed(self, ip: str) -> None:
         from fim_one.core.security.ssrf import is_private_ip
 

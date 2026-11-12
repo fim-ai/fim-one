@@ -63,6 +63,23 @@ If you are running FIM One on your own infrastructure, follow these recommendati
 | **Keep up to date** | Regularly pull the latest release. Security patches are backported to the previous minor version on a best-effort basis. |
 | **Limit network access** | Restrict database and application ports to trusted networks. Use firewall rules or security groups. |
 
+## Checking Stored Data Before an Upgrade
+
+Some releases tighten what stored settings may do, and rows saved under the earlier rules then stop working. With the new release installed and the same environment as the application (`DATABASE_URL`, `DB_CONNECTOR_ALLOWED_HOSTS`, `REDIS_URL`), run:
+
+```bash
+python -m fim_one.web.services.upgrade_check          # readable list
+python -m fim_one.web.services.upgrade_check --json   # for scripts
+```
+
+The check only reads: it runs `SELECT` statements, resolves host names and prints what it found, without credentials, model keys or stored avatar values. It lists:
+
+| Rows | What happens to them | What to do |
+|---|---|---|
+| Database connectors whose host is refused | They cannot connect. | Add the host or network to `DB_CONNECTOR_ALLOWED_HOSTS` and restart, or point the connector elsewhere. The hosts of the application's own database and Redis cannot be allowed. |
+| Agents with a custom model endpoint (`base_url` in their inline model settings) | An endpoint without its own key, or on an internal address, is refused. | The owner selects a model configured under Admin → Models, or adds a key. |
+| Accounts whose stored profile picture is neither a built-in avatar nor an uploaded image | No picture is shown. | The user picks a picture again. |
+
 ## Security Hall of Fame
 
 We credit all confirmed vulnerability reporters (unless they prefer to remain anonymous). Reporters also qualify for the [Pioneer Program](/contributing).
