@@ -643,3 +643,64 @@ def test_it_chains_after_c2p4_and_leaves_one_head() -> None:
     assert script.get_heads() == ["e4b1a2c3d4e5"]
     revision = script.get_revision("e4b1a2c3d4e5")
     assert revision is not None and revision.down_revision == "c2p4a1b2c3d4"
+
+
+# ---------------------------------------------------------------------------
+# Search on PostgreSQL
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture()
+async def pg_client(app: FastAPI) -> AsyncIterator[AsyncClient]:
+    """The API on the PostgreSQL database named by ``FIM_TEST_PG_URL``."""
+    if not _PG:
+        pytest.skip("FIM_TEST_PG_URL not set")
+    url = make_url(_PG).set(drivername="postgresql+asyncpg")
+    prev_url = os.environ.get("DATABASE_URL")
+    os.environ["DATABASE_URL"] = url.render_as_string(hide_password=False)
+    await init_db()
+    from fim_one.db import engine as engine_mod
+
+    assert engine_mod._engine is not None
+    async with engine_mod._engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://api.test"
+        ) as c:
+            yield c
+    finally:
+        async with engine_mod._engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+        await shutdown_db()
+        if prev_url is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = prev_url
+
+
+async def test_search_with_ref_on_postgresql(pg_client: AsyncClient) -> None:
+    """``q`` used DISTINCT over the row, which PostgreSQL refuses (JSON column)."""
+    _, h = await _user()
+    hit = await _create(pg_client, h, title="review contract", business_ref=REF)
+    by_message = await _create(pg_client, h, title="untitled", business_ref=REF)
+    await _create(pg_client, h, title="review elsewhere", business_ref="other")
+    await _add_message(by_message["id"], datetime.now(UTC))
+    await _add_message(by_message["id"], datetime.now(UTC))  # two matches, one row
+
+    page = await _list(pg_client, h, q="hello")
+    assert [c["id"] for c in page["items"]] == [by_message["id"]]
+    page = await _list(pg_client, h, business_ref=REF, q="review")
+    assert [c["id"] for c in page["items"]] == [hit["id"]]
+    assert page["total"] == 1
+    assert (await _latest(pg_client, h, REF))["id"] == by_message["id"]
+
+
+async def test_search_counts_each_conversation_once(client: AsyncClient) -> None:
+    _, h = await _user()
+    conv = await _create(client, h, title="hello there")
+    await _add_message(conv["id"], datetime.now(UTC))
+    await _add_message(conv["id"], datetime.now(UTC))
+    page = await _list(client, h, q="hello")
+    assert page["total"] == 1
+    assert [c["id"] for c in page["items"]] == [conv["id"]]

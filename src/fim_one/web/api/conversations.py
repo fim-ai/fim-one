@@ -159,17 +159,18 @@ async def list_conversations(
         base = base.where(Conversation.business_ref == ref)
 
     if q:
+        # EXISTS rather than a join + DISTINCT: DISTINCT over the whole row
+        # fails on PostgreSQL, which has no equality for the JSON ``kb_ids``.
         pattern = f"%{q}%"
-        base = (
-            base.outerjoin(Message, Message.conversation_id == Conversation.id)
+        message_matches = (
+            select(Message.id)
             .where(
-                or_(
-                    Conversation.title.ilike(pattern),
-                    Message.content.ilike(pattern),
-                )
+                Message.conversation_id == Conversation.id,
+                Message.content.ilike(pattern),
             )
-            .distinct()
+            .exists()
         )
+        base = base.where(or_(Conversation.title.ilike(pattern), message_matches))
 
     count_result = await db.execute(
         select(func.count()).select_from(base.subquery())
