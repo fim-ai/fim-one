@@ -508,7 +508,7 @@ async def test_sign_in_history_stays_without_name_or_address(db: AsyncSession) -
     # the account, so the row has no user id.
     shouted = LoginHistory(
         id=_uid(), user_id=None, email=carol.email.upper(), ip_address="203.0.113.51",
-        success=False, failure_reason="user_not_found",
+        user_agent="CarolBrowser/1", success=False, failure_reason="user_not_found",
     )  # fmt: skip
     # She signed in as carol-old@example.test before an administrator changed
     # her address; attempts with the old address, before and after the
@@ -519,7 +519,7 @@ async def test_sign_in_history_stays_without_name_or_address(db: AsyncSession) -
     )  # fmt: skip
     old_address = LoginHistory(
         id=_uid(), user_id=None, email="Carol-Old@Example.test", ip_address="203.0.113.52",
-        success=False, failure_reason="user_not_found",
+        user_agent="CarolBrowser/0", success=False, failure_reason="user_not_found",
     )  # fmt: skip
     first_address = LoginHistory(
         id=_uid(), user_id=None, email="cd@first.test", ip_address="203.0.113.53",
@@ -529,6 +529,17 @@ async def test_sign_in_history_stays_without_name_or_address(db: AsyncSession) -
         id=_uid(), action="user.update", actor_id=other.id, actor_label="other",
         actor_kind="admin", target_type="user", target_id=carol.id, target_label="carol",
         changes={"email": {"from": "CD@first.test", "to": "carol-old@example.test"}},
+    )  # fmt: skip
+    # She changed it herself once too (auth.email_change); a failed attempt
+    # with that address, typed in another case, before the deletion.
+    self_changed = AuditLog(
+        id=_uid(), action="auth.email_change", actor_id=carol.id, actor_label="carol",
+        actor_kind="user", target_type="user", target_id=carol.id, target_label="carol",
+        changes={"email": {"from": "carol-self@old.test", "to": carol.email}},
+    )  # fmt: skip
+    self_old = LoginHistory(
+        id=_uid(), user_id=None, email="CAROL-SELF@OLD.TEST", ip_address="203.0.113.55",
+        user_agent="CarolBrowser/2", success=False, failure_reason="user_not_found",
     )  # fmt: skip
     # Somebody else's address, typed: stays.
     stranger = LoginHistory(
@@ -541,7 +552,7 @@ async def test_sign_in_history_stays_without_name_or_address(db: AsyncSession) -
         for address in (carol.email.upper(), "carol-old@example.test", "someone@example.test")
     ]  # fmt: skip
     db.add_all([mine, before, theirs, shouted, as_before, old_address, first_address,
-                changed, stranger, *codes])  # fmt: skip
+                changed, self_changed, self_old, stranger, *codes])  # fmt: skip
     await db.commit()
 
     await purge_user_data(db, carol.id)
@@ -555,19 +566,22 @@ async def test_sign_in_history_stays_without_name_or_address(db: AsyncSession) -
     assert (kept.success, kept.failure_reason, kept.method) == (False, "wrong_password", "password")
     earlier = await _fresh(db, LoginHistory, before.id)
     assert earlier is not None and earlier.email == label
-    assert earlier.ip_address == "203.0.113.50"
+    # An attempt with her address keeps no address or device either: with
+    # the address relabelled, they would be hers under the label.
+    assert earlier.ip_address is None and earlier.user_agent is None
     untouched = await _fresh(db, LoginHistory, theirs.id)
     assert untouched is not None
     assert (untouched.username, untouched.ip_address) == ("other", "198.51.100.6")
     for row in (kept, earlier):
         assert "carol" not in _everything(row)
-    for row_id in (shouted.id, old_address.id, first_address.id):
+    for row_id in (shouted.id, old_address.id, first_address.id, self_old.id):
         attempt = await _fresh(db, LoginHistory, row_id)
         assert attempt.email == label, attempt.email
-        assert attempt.ip_address is not None
+        assert (attempt.ip_address, attempt.user_agent) == (None, None), attempt.email
     previous = await _fresh(db, LoginHistory, as_before.id)
     assert (previous.username, previous.email, previous.ip_address) == (label, label, None)
-    assert (await _fresh(db, LoginHistory, stranger.id)).email == "Someone@Example.test"
+    stays = await _fresh(db, LoginHistory, stranger.id)
+    assert (stays.email, stays.ip_address) == ("Someone@Example.test", "203.0.113.54")
     left = (await db.execute(select(EmailVerification.email))).scalars().all()
     assert left == ["someone@example.test"]
 
