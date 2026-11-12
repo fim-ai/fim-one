@@ -1322,8 +1322,12 @@ async def _stop_turn_task(task: asyncio.Task[Any] | None, what: str) -> None:
     # ``asyncio.wait`` rather than ``wait_for``: on a timeout ``wait_for``
     # cancels a second time, which interrupts the task's own clean-up, and
     # then waits for the task without limit.
-    with suppress(asyncio.CancelledError):
+    try:
         await asyncio.wait({task}, timeout=_TURN_STOP_GRACE)
+    except asyncio.CancelledError:
+        # The stream's own task is being cancelled: the task was not given
+        # its grace period, so that it is still running says nothing yet.
+        return
     if not task.done():
         logger.warning("The %s is still running after it was cancelled", what)
 
