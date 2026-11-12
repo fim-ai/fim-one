@@ -581,6 +581,64 @@ describe("useWorkflowDocument", () => {
       expect(result.current.hasUnsavedChanges()).toBe(false)
     })
 
+    it("does not save itself while the user is asked whether to give the edits up", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      vi.useFakeTimers()
+      act(() => result.current.changeBlueprint(canvasOf("second")))
+      act(() => result.current.holdAutoSave())
+      // An edit reported while the question is open does not restart it either.
+      act(() => result.current.changeBlueprint(canvasOf("third")))
+      await act(() => vi.advanceTimersByTimeAsync(20000))
+      expect(api.update).not.toHaveBeenCalled()
+      expect(result.current.isDirty).toBe(true)
+
+      // "Discard & Leave": the edits are given up, then the question closes.
+      act(() => result.current.discardChanges())
+      act(() => result.current.resumeAutoSave())
+      await act(() => vi.advanceTimersByTimeAsync(20000))
+      expect(api.update).not.toHaveBeenCalled()
+      expect(result.current.isDirty).toBe(false)
+    })
+
+    it("an automatic save waiting behind a slow request is held too", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      vi.useFakeTimers()
+      const slow = deferred<WorkflowResponse>()
+      api.update.mockReturnValueOnce(slow.promise)
+      act(() => result.current.changeBlueprint(canvasOf("second")))
+      let saving: Promise<unknown> = Promise.resolve()
+      act(() => {
+        saving = result.current.save()
+      })
+      // Edited while that request is out; the automatic save comes due and waits.
+      act(() => result.current.changeBlueprint(canvasOf("third")))
+      await act(() => vi.advanceTimersByTimeAsync(6000))
+      expect(api.update).toHaveBeenCalledTimes(1)
+
+      act(() => result.current.holdAutoSave())
+      await act(async () => {
+        slow.resolve(workflowWith(canvasOf("second")))
+        await saving
+      })
+      await act(() => vi.advanceTimersByTimeAsync(20000))
+      expect(api.update).toHaveBeenCalledTimes(1)
+      expect(result.current.isDirty).toBe(true)
+    })
+
+    it("saves itself again once the user chose to stay", async () => {
+      const { result } = await mountDocument(canvasOf("first"))
+      vi.useFakeTimers()
+      act(() => result.current.changeBlueprint(canvasOf("second")))
+      act(() => result.current.holdAutoSave())
+      await act(() => vi.advanceTimersByTimeAsync(20000))
+      expect(api.update).not.toHaveBeenCalled()
+
+      act(() => result.current.resumeAutoSave())
+      await act(() => vi.advanceTimersByTimeAsync(6000))
+      expect(api.update).toHaveBeenCalledTimes(1)
+      expect(result.current.isDirty).toBe(false)
+    })
+
     it("nothing is saved after the edits were discarded or the workflow deleted", async () => {
       const { result } = await mountDocument(canvasOf("first"))
       vi.useFakeTimers()

@@ -722,6 +722,9 @@ test("leaving the editor with unsaved changes asks first", async ({ page, reques
   // A sidebar link asks too; this time leave.
   await page.locator('a[href="/agents"]').first().click()
   await expect(question).toBeVisible()
+  // Longer than the automatic save's pause: while the question is open the
+  // editor must not save what the answer may be to give up.
+  await page.waitForTimeout(7000)
   await question.getByRole("button", { name: "Discard & Leave" }).click()
   await page.waitForURL(/\/agents$/)
   const stored = await fetchBlueprint(request, seeded.session, workflowId)
