@@ -8,6 +8,7 @@ import os
 import math
 import shutil
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, or_, select
@@ -26,6 +27,7 @@ from fim_one.web.schemas.conversation import (
     ConversationResponse,
     ConversationUpdate,
     MessageResponse,
+    normalize_business_ref,
 )
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
@@ -51,8 +53,30 @@ def _conv_to_response(conv: Conversation) -> ConversationResponse:
         starred=conv.starred,
         model_name=conv.model_name,
         total_tokens=conv.total_tokens,
+        business_ref=conv.business_ref,
         created_at=conv.created_at.isoformat() if conv.created_at else "",
         updated_at=conv.updated_at.isoformat() if conv.updated_at else None,
+    )
+
+
+def _business_ref_query(raw: str | None) -> str | None:
+    """A ``business_ref`` query parameter in its stored form (blank = none)."""
+    try:
+        return normalize_business_ref(raw)
+    except ValueError as exc:
+        raise AppError("invalid_business_ref", status_code=422, detail=str(exc)) from exc
+
+
+def _owned_list_base(user_id: str, conv_status: str) -> Any:
+    """The caller's own conversations shown in the list (builder chats excluded)."""
+    return (
+        select(Conversation)
+        .outerjoin(Agent, Agent.id == Conversation.agent_id)
+        .where(
+            Conversation.user_id == user_id,
+            Conversation.status == conv_status,
+            or_(Conversation.agent_id.is_(None), Agent.is_builder == False),  # noqa: E712
+        )
     )
 
 
@@ -108,6 +132,7 @@ async def create_conversation(
         mode=body.mode,
         agent_id=body.agent_id,
         model_name=model_name,
+        business_ref=body.business_ref,
     )
     db.add(conv)
     await db.commit()
@@ -124,18 +149,14 @@ async def list_conversations(
     size: int = Query(20, ge=1, le=100),
     conv_status: str = Query("active", alias="status"),
     q: str | None = Query(None, min_length=1, max_length=200),
+    business_ref: str | None = Query(None),
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> PaginatedResponse:
-    base = (
-        select(Conversation)
-        .outerjoin(Agent, Agent.id == Conversation.agent_id)
-        .where(
-            Conversation.user_id == current_user.id,
-            Conversation.status == conv_status,
-            or_(Conversation.agent_id.is_(None), Agent.is_builder == False),  # noqa: E712
-        )
-    )
+    ref = _business_ref_query(business_ref)
+    base = _owned_list_base(current_user.id, conv_status)
+    if ref is not None:
+        base = base.where(Conversation.business_ref == ref)
 
     if q:
         pattern = f"%{q}%"
@@ -169,6 +190,45 @@ async def list_conversations(
         size=size,
         pages=math.ceil(total / size) if total else 0,
     )
+
+
+@router.get("/latest", response_model=ApiResponse)
+async def latest_conversation_for_ref(
+    business_ref: str = Query(...),
+    conv_status: str = Query("active", alias="status"),
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """The caller's most recently active conversation for *business_ref*.
+
+    ``data`` is ``null`` when the caller has none, so a host system can
+    resume it or start a new one carrying the reference. Activity is the
+    newest message, or the creation time of a conversation without any.
+    Only the caller's own conversations are considered.
+    """
+    ref = _business_ref_query(business_ref)
+    if ref is None:
+        raise AppError(
+            "invalid_business_ref", status_code=422, detail="business_ref is required"
+        )
+    last_message = (
+        select(func.max(Message.created_at))
+        .where(Message.conversation_id == Conversation.id)
+        .correlate(Conversation)
+        .scalar_subquery()
+    )
+    result = await db.execute(
+        _owned_list_base(current_user.id, conv_status)
+        .where(Conversation.business_ref == ref)
+        .order_by(
+            func.coalesce(last_message, Conversation.created_at).desc(),
+            Conversation.created_at.desc(),
+            Conversation.id.desc(),
+        )
+        .limit(1)
+    )
+    conv = result.scalars().first()
+    return ApiResponse(data=_conv_to_response(conv).model_dump() if conv else None)
 
 
 @router.delete("/batch", response_model=ApiResponse)
@@ -237,6 +297,7 @@ async def get_conversation(
         starred=conv.starred,
         model_name=conv.model_name,
         total_tokens=conv.total_tokens,
+        business_ref=conv.business_ref,
         created_at=conv.created_at.isoformat() if conv.created_at else "",
         updated_at=conv.updated_at.isoformat() if conv.updated_at else None,
         messages=[_msg_to_response(m) for m in messages_sorted],
@@ -259,6 +320,8 @@ async def update_conversation(
         conv.status = body.status
     if body.starred is not None:
         conv.starred = body.starred
+    if "business_ref" in body.model_fields_set:
+        conv.business_ref = body.business_ref
 
     await db.commit()
     result = await db.execute(

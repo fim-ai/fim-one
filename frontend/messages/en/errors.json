@@ -49,6 +49,7 @@
   "invalid_access_model": "Invalid access model.",
   "no_active_execution": "No active execution to cancel.",
   "conversation_not_found": "Conversation not found.",
+  "invalid_business_ref": "Invalid business reference.",
   "agent_config_error": "Agent configuration error: {reason}.",
   "feishu_channel_requires_encrypt_key": "Feishu channels require an Encrypt Key — without it, callback signatures cannot be verified.",
   "feishu_channel_base_url_not_allowed": "This Feishu API address is not allowed. Leave it empty for open.feishu.cn, use https://open.larksuite.com, or ask the operator to list your private deployment in FEISHU_ALLOWED_BASE_URLS.",
