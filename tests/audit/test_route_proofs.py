@@ -63,10 +63,32 @@ def _proofs(observed: list[dict[str, object]]) -> dict[tuple[c.Route, str], str]
     return proofs
 
 
+# Covered only by the billing smoke test, which is skipped without Stripe keys.
+_BILLING_SMOKE_ROUTES = {
+    ("POST", "/api/admin/billing/plans"),
+    ("DELETE", "/api/admin/billing/plans/{plan_id}"),
+    ("PATCH", "/api/admin/billing/plans/{plan_id}"),
+    ("POST", "/api/admin/system/billing/activate"),
+    ("POST", "/api/admin/system/billing/toggle"),
+}
+
+
+def _stripe_keys_set() -> bool:
+    return bool(os.environ.get("STRIPE_SECRET_KEY", "").strip()) and bool(
+        os.environ.get("STRIPE_WEBHOOK_SECRET", "").strip()
+    )
+
+
 @pytest.mark.timeout(900)
 def test_every_audited_route_has_a_behaviour_proof(observed: list[dict[str, object]]) -> None:
     proofs = _proofs(observed)
     wanted = {**c.AUDITED, **c.AUDITED_READS}
+    if not _stripe_keys_set():
+        wanted = {
+            route: names
+            for route, names in wanted.items()
+            if route not in _BILLING_SMOKE_ROUTES
+        }
 
     unproven = [
         f"{method} {path}: {action}"

@@ -1589,49 +1589,6 @@ class OpenAICompatibleLLM(BaseLLM):
 
         return _chunks()
 
-    async def _call_pinned(self, **build_args: Any) -> Any:
-        """One chat-completions call to a user-supplied endpoint.
-
-        Made with the OpenAI SDK on the address-checking client; the model
-        name travels as a field of the request body and selects nothing.
-        """
-        kwargs = self._build_request_kwargs(via_responses=False, **build_args)
-        params = {k: v for k, v in kwargs.items() if k in _PINNED_PARAMS}
-        params["model"] = self._model
-        # The failure is described here and raised outside the handler, so
-        # the SDK's exception (which quotes the response body) is neither
-        # the cause nor the context of what propagates.
-        failure: str | None = None
-        result: Any = None
-        try:
-            result = await self._pinned_client().chat.completions.create(**params)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            failure = _describe_endpoint_failure(exc)
-        if failure is not None:
-            raise UntrustedEndpointCallError(failure)
-        if not params.get("stream"):
-            return result
-
-        async def _chunks() -> AsyncIterator[Any]:
-            iterator = result.__aiter__()
-            while True:
-                broken: str | None = None
-                try:
-                    chunk = await iterator.__anext__()
-                except StopAsyncIteration:
-                    return
-                except (asyncio.CancelledError, GeneratorExit):
-                    raise
-                except Exception as exc:
-                    broken = _describe_endpoint_failure(exc)
-                if broken is not None:
-                    raise UntrustedEndpointCallError(broken)
-                yield chunk
-
-        return _chunks()
-
     async def _dispatch_acompletion(self, **build_args: Any) -> Any:
         """Call ``litellm.acompletion``, optionally via the Responses bridge.
 

@@ -180,7 +180,8 @@ def _no_real_network() -> Iterator[None]:
     ``OSError``, so the code under test reports it like any unreachable
     host) and nothing goes out. Loopback and unix sockets stay open for
     local listeners and a local test database. Name lookups are left
-    alone: the outbound-address checks resolve the hosts they vet.
+    alone, apart from the test names :func:`_public_test_domains` answers:
+    the outbound-address checks still resolve every other host.
 
     The operating system's proxy settings are ignored as well: httpx and
     urllib read them (on macOS and Windows) when no proxy variable is set,
@@ -218,6 +219,93 @@ def _no_real_network() -> Iterator[None]:
     patch.setattr(socket.socket, "connect", connect)
     patch.setattr(socket.socket, "connect_ex", connect_ex)
     patch.setattr(socket.socket, "sendto", sendto)
+    yield
+    patch.undo()
+
+
+# TEST-NET-3 and the IPv6 documentation prefix. Neither is in the
+# outbound-address block list, and neither is a host anything can reach.
+_TEST_DOMAIN_IPV4 = "203.0.113.10"
+_TEST_DOMAIN_IPV6 = "2001:db8::10"
+
+
+def _test_domain_name(host: object) -> str | None:
+    """A reserved test name the suite uses as a public host, or None.
+
+    ``*.test`` and ``*.example.test`` are reserved and do not resolve
+    (``m.test``, ``api.example.test``). Subdomains of ``example.com``
+    (``api.example.com``, ``mcp.example.com``) mostly do not either. The
+    apex ``example.com`` does resolve, and is left to the real resolver.
+    """
+    if isinstance(host, bytes):
+        try:
+            host = host.decode("ascii")
+        except UnicodeError:
+            return None
+    if not isinstance(host, str) or not host:
+        return None
+    name = host.split("%", 1)[0].strip("[]").rstrip(".").lower()
+    if name == "example.com":
+        return None
+    if name.endswith(".test") or name.endswith(".example.com"):
+        return name
+    return None
+
+
+def _test_domain_port(port: object) -> int:
+    if port is None or port == "":
+        return 0
+    if isinstance(port, int):
+        return port
+    if isinstance(port, str):
+        if port.isdigit():
+            return int(port)
+        try:
+            return socket.getservbyname(port)
+        except OSError:
+            return 0
+    return 0
+
+
+def _test_domain_answer(
+    port: object, family: int, socktype: int, proto: int
+) -> list[tuple[int, int, int, str, tuple[Any, ...]]]:
+    """One public address for a test domain, in ``getaddrinfo``'s shape."""
+    number = _test_domain_port(port)
+    kind = socktype or socket.SOCK_STREAM
+    protocol = proto or (socket.IPPROTO_TCP if kind == socket.SOCK_STREAM else 0)
+    if family == socket.AF_INET6:
+        return [(socket.AF_INET6, kind, protocol, "", (_TEST_DOMAIN_IPV6, number, 0, 0))]
+    return [(socket.AF_INET, kind, protocol, "", (_TEST_DOMAIN_IPV4, number))]
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _public_test_domains() -> Iterator[None]:
+    """Resolve test-domain names to a public documentation address.
+
+    The outbound-address check refuses a name that does not resolve, with
+    the same answer it gives an internal address. A test that names a
+    public host ``m.test``, ``api.example.test`` or ``mcp.example.com`` was
+    refused because those names have no DNS record. The check is unchanged:
+    this only answers those names, and a test that replaces
+    ``socket.getaddrinfo`` still decides what its own lookups return.
+    """
+    real_getaddrinfo = socket.getaddrinfo
+
+    def getaddrinfo(
+        host: object,
+        port: object,
+        family: int = 0,
+        socktype: int = 0,
+        proto: int = 0,
+        flags: int = 0,
+    ) -> list[tuple[int, int, int, str, tuple[Any, ...]]]:
+        if _test_domain_name(host) is not None:
+            return _test_domain_answer(port, family, socktype, proto)
+        return real_getaddrinfo(host, port, family, socktype, proto, flags)
+
+    patch = pytest.MonkeyPatch()
+    patch.setattr(socket, "getaddrinfo", getaddrinfo)
     yield
     patch.undo()
 

@@ -11,6 +11,7 @@ to be among them.
 
 from __future__ import annotations
 
+import os
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -186,6 +187,13 @@ class TestSettingsAndContent:
 
         await _wrote(world, "conversation.viewed", "conversation.delete")
 
+    @pytest.mark.skipif(
+        not (
+            os.environ.get("STRIPE_SECRET_KEY", "").strip()
+            and os.environ.get("STRIPE_WEBHOOK_SECRET", "").strip()
+        ),
+        reason="STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET not set",
+    )
     async def test_billing(self, world: World, root: Any) -> None:
         await world.call("POST", "/api/admin/system/billing/activate", by=root)
         await world.call("POST", "/api/admin/system/billing/toggle", by=root, json={"enabled": False})
