@@ -42,6 +42,12 @@ SECRET_ARGS = ["-y", "some-server", "--api-key", "sk-owner-0123456789"]
 CODE = "mcp_server_address_private"
 
 
+@pytest.fixture(autouse=True)
+def _stdio_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests save a stdio server; the instance switch is off by default."""
+    monkeypatch.setenv("ALLOW_STDIO_MCP", "true")
+
+
 def _user(user_id: str) -> Any:
     # The owner is a system administrator: only one may configure a stdio server.
     return SimpleNamespace(id=user_id, username=user_id, is_admin=user_id == OWNER)
