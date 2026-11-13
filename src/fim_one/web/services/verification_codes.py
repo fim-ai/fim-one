@@ -391,7 +391,11 @@ def send_cooldown(sent_today: int, *, free: int, longest: timedelta) -> timedelt
     """
     if sent_today < max(free, 0) or longest <= timedelta(0):
         return timedelta(0)
-    return min(COOLDOWN_STEP * 2 ** min(sent_today - max(free, 0), 30), longest)
+    # ``2 ** n`` is typed as Any: a negative exponent is a float. The exponent
+    # here is 0..30, and a shift is that same doubling as an int.
+    steps = min(sent_today - max(free, 0), 30)
+    delay = COOLDOWN_STEP * (1 << steps)
+    return delay if delay < longest else longest
 
 
 async def take_after_cooldown(
