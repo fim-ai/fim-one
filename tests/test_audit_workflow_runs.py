@@ -857,19 +857,28 @@ class TestACancelIsRecordedWhenTheRunEndsCancelled:
         self, world: World, service: Any, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         reached = asyncio.Event()
+        release = asyncio.Event()
 
         async def end(_executor: Any, node: Any, *_args: Any, **_kwargs: Any) -> Any:
             from fim_one.core.workflow.types import NodeResult, NodeStatus
 
+            # Stay on this step until the cancels have been accepted. A
+            # fixed pause lost the race on a slow runner: the step
+            # returned, the run completed, and cancel answered 409.
             reached.set()
-            await asyncio.sleep(1)
+            await release.wait()
             return NodeResult(node_id=node.id, status=NodeStatus.COMPLETED, output={})
 
         alice, started = await self._executing(world, service, monkeypatch, end)
         await asyncio.wait_for(reached.wait(), timeout=5)
 
-        for _ in range(3):
-            await world.call("POST", f"/api/workflows/wf-1/runs/{started.run_id}/cancel", by=alice)
+        try:
+            for _ in range(3):
+                await world.call(
+                    "POST", f"/api/workflows/wf-1/runs/{started.run_id}/cancel", by=alice
+                )
+        finally:
+            release.set()
         outcome = await asyncio.wait_for(started.wait(), timeout=10)
 
         assert outcome.status == "cancelled"
