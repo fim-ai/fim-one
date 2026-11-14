@@ -629,6 +629,29 @@ class TestBuildRequestKwargs:
         assert "reasoning_effort" not in kwargs
         assert "temperature" not in kwargs
 
+    @pytest.mark.parametrize(
+        "model",
+        ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
+    )
+    def test_anthropic_claude_5_family_adaptive_no_sampling(self, model: str) -> None:
+        """Claude 5 (opus/sonnet/haiku) → adaptive thinking, no temperature."""
+        llm = OpenAICompatibleLLM(
+            api_key="sk-test",
+            base_url="https://api.anthropic.com/v1/",
+            model=model,
+            reasoning_effort="medium",
+        )
+        kwargs = llm._build_request_kwargs(
+            [ChatMessage(role="user", content="hi")],
+            tools=None,
+            temperature=None,
+            max_tokens=None,
+            stream=False,
+        )
+        assert kwargs["thinking"] == {"type": "adaptive"}
+        assert kwargs["output_config"] == {"effort": "medium"}
+        assert "temperature" not in kwargs
+
     def test_anthropic_opus_4_8_budget_ignored_uses_adaptive(self) -> None:
         """Opus 4.8 + budget set → adaptive wins; budget_tokens never sent (400)."""
         llm = OpenAICompatibleLLM(
