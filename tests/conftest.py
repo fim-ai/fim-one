@@ -19,6 +19,41 @@ from .fake_llm import FakeLLM
 
 
 # ---------------------------------------------------------------------------
+# SQLite test databases use the same journal settings as the application.
+#
+# ``fim_one.db.engine.init_db`` puts every SQLite connection in WAL mode, but
+# most tests build their own engine and so ran in the default rollback-journal
+# mode, where every commit creates, writes and deletes a ``-journal`` file.
+# On macOS each of those is an FSEvents notification that fseventsd and
+# Spotlight must process; on the file-DB tests WAL cut them from about 46,800
+# to 3,400 per run.  The PRAGMAs mirror ``init_db`` (``foreign_keys`` aside,
+# which tests opt into themselves) so lock behaviour matches the app.
+# Postgres connections are left untouched.
+# ---------------------------------------------------------------------------
+
+
+def _sqlite_wal_for_tests(dbapi_conn: Any, _record: Any) -> None:
+    if "sqlite" not in type(dbapi_conn).__module__:
+        return
+    cur = dbapi_conn.cursor()
+    try:
+        cur.execute("PRAGMA busy_timeout=30000")
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA synchronous=NORMAL")
+    finally:
+        cur.close()
+
+
+try:  # SQLAlchemy ships with the optional ``web`` extra.
+    from sqlalchemy import event
+    from sqlalchemy.engine import Engine
+except ImportError:
+    pass
+else:
+    event.listen(Engine, "connect", _sqlite_wal_for_tests)
+
+
+# ---------------------------------------------------------------------------
 # FakeLLM -- the shared scripted LLM, re-exported so tests can keep importing
 # it from conftest alongside EchoTool.  Implementation: tests/fake_llm.py.
 # ---------------------------------------------------------------------------
