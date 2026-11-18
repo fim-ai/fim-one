@@ -316,27 +316,27 @@ FIM One은 네 가지 `tool_choice` 상태 중 세 가지를 발생시킵니다:
 
 ### Table C: Thinking protocol
 
-`LLM_REASONING_EFFORT`는 `low`, `medium`, `high`를 허용하며, 다른 값은 미설정으로 읽힙니다 (`deps.py::_reasoning_effort`). FIM One이 와이어에 전송하는 것은 제공자별이며, 이 표는 그것을 기록합니다. replay 열은 `reasoning_replay_policy`의 반환값으로, 제공자별 목록이 아닌 4가지 상태의 작은 폐쇄 집합입니다.
+`LLM_REASONING_EFFORT` accepts `low`, `medium` and `high`; any other value is read as unset (`deps.py::_reasoning_effort`). What FIM One then puts on the wire is per-provider, and that is what this table records. The replay column is the return value of `reasoning_replay_policy`, which is a small closed set of four states rather than a per-provider list.
 
 | Provider | Thinking enabled by | Accepted `effort` values | Replay policy | Where the output lands | Code anchor |
 |---|---|---|---|---|---|
-| **OpenAI GPT-5.x** | Responses의 `reasoning` of `{effort, summary: "auto"}`; chat completions의 `reasoning_effort` | 설정의 `low`, `medium`, `high`, 그리고 chat completions에 도구가 있을 때 강제된 `none` | `openai_responses`: 불투명한 reasoning 항목은 Responses에서 그대로 재생되고, 읽을 수 있는 텍스트는 chat completions에서 `informational_only`처럼 정확히 삭제됨 | 암호화된 항목과 읽을 수 있는 요약, Reasoning 패널에서 렌더링됨. Chat completions는 reasoning 텍스트를 반환하지 않음 | `_build_responses_kwargs`, `reasoning_replay_policy` |
-| **OpenAI o-series** | 항상 활성화됨 | `reasoning_effort` 변경 없이 전달됨 | `informational_only`, `o1`, `o3`, `o4` 조각에서 일치 | 내부; 토큰은 청구되지만 반환되지 않음 | `reasoning_replay_policy` |
-| **Anthropic, adaptive** (Opus 4.6 / 4.7 / 4.8, Sonnet 4.6, Fable 5, Mythos 5) | `adaptive` 타입의 `thinking` 및 `output_config.effort` | `low`, `medium`, `high` | `anthropic_thinking`: 블록과 그 `signature`는 그대로 재생되거나 API가 턴을 거부함 | `reasoning_content` 및 `signature`, Reasoning 패널에서 렌더링됨 | `_uses_adaptive_thinking`, `_extract_thinking_signature` |
-| **Anthropic, legacy** (4.5 이상) | `LLM_REASONING_BUDGET_TOKENS`이 설정되었을 때 `budget_tokens`를 포함한 `enabled` 타입의 `thinking`, 그렇지 않으면 LiteLLM에 전달된 `reasoning_effort` | `low`, `medium`, `high`, 또는 1024의 하한값을 가진 명시적 토큰 예산 | `anthropic_thinking` | adaptive와 동일 | `_build_request_kwargs` |
-| **Gemini** | 호환성 엔드포인트의 `reasoning_effort` | `low`, `medium`, `high` | `flash-thinking` 조각을 포함하는 id의 경우 `informational_only`. 다른 Gemini id는 `unsupported`로 해석되며, 이는 필드를 동일하게 삭제함 | 내부 | `reasoning_replay_policy` |
-| **xAI (Grok)** | LiteLLM을 통한 `reasoning_effort` | 제공자 정의 | `informational_only`, 일반 `reasoning` 조각이 단어를 포함하는 모든 id와 일치하기 때문 | 내부 | `reasoning_replay_policy` |
-| **DeepSeek** | 모델 id: V3.2 thinking 모드의 경우 `deepseek-reasoner`, non-thinking의 경우 `deepseek-chat` | 없음. effort 매개변수가 없음 | `informational_only` | `reasoning_content` 필드, Reasoning 패널에서 렌더링됨 | `_parse_choice_message` |
-| **Qwen** | `enable_thinking`, 제공자 측. FIM One은 전송하지 않음 | 해당 없음 | `qwq` id의 경우 `informational_only`, 그 외의 경우 `unsupported` | 콘텐츠 내 `<think>` 태그, reasoning 스트림으로 재라우팅됨 | `_ThinkTagStreamParser` |
-| **GLM** | `glm-5`에 내장됨; API 토글 없음 | 해당 없음 | `unsupported` | 외부화되지 않음 | `reasoning_replay_policy` |
-| **MiniMax** | 항상 활성화됨; 토글 없음 | 해당 없음 | `unsupported` | 콘텐츠 내 `<think>` 태그, 재라우팅됨 | `_ThinkTagStreamParser`, `_THINK_RE` |
-| **Kimi** (Moonshot) | 모델 id: `kimi-k2-thinking`, 그리고 `kimi-k2.5`는 기본적으로 생각함 | 해당 없음 | `unsupported` | API reasoning 필드, `reasoning_content` 또는 `reasoning`으로 읽음 | `_parse_choice_message` |
-| **Doubao** | `reasoning_effort` | 제공자는 `minimal`, `low`, `medium`, `high`를 문서화함; FIM One은 중간 3개만 내보냄 | `unsupported` | 내부 | `_build_request_kwargs` |
-| **Mistral** | Thinking 모드 없음 | 해당 없음 | `unsupported` | 해당 없음 | `reasoning_replay_policy` |
-| **Ollama / local** | 모델 종속 | 해당 없음 | `deepseek-r1` distill 및 `qwq` 빌드의 경우 `informational_only`, 그 외의 경우 `unsupported` | 체크포인트가 내보내는 곳의 `<think>` 태그 | `_ThinkTagStreamParser` |
-| **Relay / proxy** | 업스트림이 허용하는 것 | 업스트림이 허용하는 것 | 직접 경로와 정확히 동일하게 모델 id에서 해석됨 | 업스트림에 따라 다름. 일반 `openai/` 릴레이 뒤의 Claude adaptive-thinking 모델은 thinking을 전혀 얻지 못하며, 생성자는 그렇다고 말하는 경고를 기록함 | `OpenAICompatibleLLM.__init__` |
+| **OpenAI GPT-5.x** | `reasoning` of `{effort, summary: "auto"}` on Responses; `reasoning_effort` on chat completions | `low`, `medium`, `high` from config, plus a forced `none` when tools are present on chat completions | `openai_responses`: the opaque reasoning items are replayed verbatim on Responses, and the readable text is dropped on chat completions exactly as `informational_only` would | Encrypted items plus a readable summary, rendered in the Reasoning panel. Chat completions returns no reasoning text | `_build_responses_kwargs`, `reasoning_replay_policy` |
+| **OpenAI o-series** | Always on | `reasoning_effort` passed through unchanged | `informational_only`, matched on the `o1`, `o3` and `o4` fragments | Internal; the tokens are billed but not returned | `reasoning_replay_policy` |
+| **Anthropic, adaptive** (Opus 4.6 / 4.7 / 4.8, Sonnet 4.6, Fable 5, Mythos 5) | `thinking` of type `adaptive` plus `output_config.effort` | `low`, `medium`, `high` | `anthropic_thinking`: the block and its `signature` are replayed verbatim or the API rejects the turn | `reasoning_content` plus `signature`, rendered in the Reasoning panel | `_uses_adaptive_thinking`, `_extract_thinking_signature` |
+| **Anthropic, legacy** (4.5 and older) | `thinking` of type `enabled` with `budget_tokens` when `LLM_REASONING_BUDGET_TOKENS` is set, otherwise `reasoning_effort` handed to LiteLLM | `low`, `medium`, `high`, or an explicit token budget with a floor of 1024 | `anthropic_thinking` | Same as adaptive | `_build_request_kwargs` |
+| **Gemini** | `reasoning_effort` on the compatibility endpoint | `low`, `medium`, `high` | `informational_only` for ids carrying a `flash-thinking` fragment. Other Gemini ids resolve to `unsupported`, which drops the field just the same | Internal | `reasoning_replay_policy` |
+| **xAI (Grok)** | `reasoning_effort` through LiteLLM | Provider-defined | `informational_only`, because the generic `reasoning` fragment matches any id containing the word | Internal | `reasoning_replay_policy` |
+| **DeepSeek** | Model id: `deepseek-reasoner` for V3.2 thinking mode, `deepseek-chat` for non-thinking; the V4 / flash models think by default | None. There is no effort parameter | `informational_only` for `deepseek-reasoner`; `replay_text` for the V4 / flash ids (`deepseek-v4*`, `deepseek-flash`), whose thinking-mode guide requires `reasoning_content` to be passed back on turns with tool calls (the text is replayed, there is no `signature`) | `reasoning_content` field, rendered in the Reasoning panel | `_parse_choice_message` |
+| **Qwen** | `enable_thinking`, provider-side. FIM One does not send it | Not applicable | `informational_only` for `qwq` ids, `unsupported` otherwise | `<think>` tags inside content, rerouted to the reasoning stream | `_ThinkTagStreamParser` |
+| **GLM** | Built into `glm-5`; no API toggle | Not applicable | `unsupported` | Not externalised | `reasoning_replay_policy` |
+| **MiniMax** | Always on; no toggle | Not applicable | `unsupported` | `<think>` tags inside content, rerouted | `_ThinkTagStreamParser`, `_THINK_RE` |
+| **Kimi** (Moonshot) | Model id: `kimi-k2-thinking`, and `kimi-k2.5` thinks by default | Not applicable | `replay_text`, matched on the `kimi-k2` fragment: the thinking guide asks for the reasoning content to be sent back with the request | An API reasoning field, read as `reasoning_content` or `reasoning` | `_parse_choice_message` |
+| **Doubao** | `reasoning_effort` | The provider documents `minimal`, `low`, `medium` and `high`; FIM One emits only the middle three | `unsupported` | Internal | `_build_request_kwargs` |
+| **Mistral** | No thinking mode | Not applicable | `unsupported` | Not applicable | `reasoning_replay_policy` |
+| **Ollama / local** | Model-dependent | Not applicable | `informational_only` for `deepseek-r1` distills and `qwq` builds, `unsupported` otherwise | `<think>` tags where the checkpoint emits them | `_ThinkTagStreamParser` |
+| **Relay / proxy** | Whatever the upstream accepts | Whatever the upstream accepts | Resolved from the model id exactly as on a direct route | Depends on the upstream. A Claude adaptive-thinking model behind a generic `openai/` relay never gets thinking at all, and the constructor logs a warning saying so | `OpenAICompatibleLLM.__init__` |
 
-`unsupported`와 `informational_only`는 와이어에서 동일한 바이트를 생성합니다: 둘 다 나가는 히스토리에서 `reasoning_content`와 `signature`를 제거합니다. 의도가 다르므로, 명확하게 reasoning하지만 `unsupported`에 속하는 모델은 라이브 버그가 아닌 조각 표의 간격입니다.
+`unsupported` and `informational_only` produce the same bytes on the wire: both strip `reasoning_content` and `signature` from outgoing history. They differ in intent, so a model that clearly does reason but lands in `unsupported` is a gap in the fragment table rather than a live bug.
 
 ### Relay/proxy gotchas
 

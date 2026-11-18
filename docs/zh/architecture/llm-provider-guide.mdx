@@ -314,29 +314,29 @@ FIM One 发出四个 `tool_choice` 状态中的三个：来自 ReAct 循环的 `
 | **Ollama / 本地** | ⚠️ 变化 | ⚠️ 变化 | ⚠️ 变化 | ⚠️ 变化 | 完全取决于检查点 | 14B 参数是可用工具调用的下限，32B 是实际目标。对较小的模型关闭两个标志，使结构化输出直接转为纯文本 | `OpenAICompatibleLLM.abilities` |
 | **Relay / 代理** | 继承上游 | 继承上游 | 继承上游 | 继承上游 | 继承上游，不支持的参数被丢弃而不是拒绝（`litellm.drop_params=True`） | 按模型标志，加上下面的中继注意事项 | `_build_request_kwargs` |
 
-### 表 C：思维协议
+### Table C: Thinking protocol
 
-`LLM_REASONING_EFFORT` 接受 `low`、`medium` 和 `high`；任何其他值都被读作未设置（`deps.py::_reasoning_effort`）。FIM One 随后在线路上放置的内容是按提供商的，这就是本表记录的内容。replay 列是 `reasoning_replay_policy` 的返回值，它是一个小的闭合集合，包含四种状态，而不是按提供商的列表。
+`LLM_REASONING_EFFORT` accepts `low`, `medium` and `high`; any other value is read as unset (`deps.py::_reasoning_effort`). What FIM One then puts on the wire is per-provider, and that is what this table records. The replay column is the return value of `reasoning_replay_policy`, which is a small closed set of four states rather than a per-provider list.
 
-| 提供商 | 思维启用方式 | 接受的 `effort` 值 | Replay 策略 | 输出位置 | 代码锚点 |
+| Provider | Thinking enabled by | Accepted `effort` values | Replay policy | Where the output lands | Code anchor |
 |---|---|---|---|---|---|
-| **OpenAI GPT-5.x** | Responses 上 `reasoning` 的 `{effort, summary: "auto"}`；聊天完成上的 `reasoning_effort` | 来自配置的 `low`、`medium`、`high`，加上聊天完成上存在工具时的强制 `none` | `openai_responses`：不透明的推理项在 Responses 上逐字重放，可读文本在聊天完成上恰好如 `informational_only` 那样被丢弃 | 加密项加可读摘要，在推理面板中呈现。聊天完成不返回推理文本 | `_build_responses_kwargs`、`reasoning_replay_policy` |
-| **OpenAI o 系列** | 始终启用 | `reasoning_effort` 原样传递 | `informational_only`，在 `o1`、`o3` 和 `o4` 片段上匹配 | 内部；令牌被计费但不返回 | `reasoning_replay_policy` |
-| **Anthropic，自适应**（Opus 4.6 / 4.7 / 4.8、Sonnet 4.6、Fable 5、Mythos 5） | `thinking` 类型为 `adaptive` 加 `output_config.effort` | `low`、`medium`、`high` | `anthropic_thinking`：块及其 `signature` 逐字重放或 API 拒绝该轮 | `reasoning_content` 加 `signature`，在推理面板中呈现 | `_uses_adaptive_thinking`、`_extract_thinking_signature` |
-| **Anthropic，遗留**（4.5 及更早版本） | `thinking` 类型为 `enabled` 加 `budget_tokens`（当设置 `LLM_REASONING_BUDGET_TOKENS` 时），否则 `reasoning_effort` 交给 LiteLLM | `low`、`medium`、`high`，或显式令牌预算（最小值为 1024） | `anthropic_thinking` | 与自适应相同 | `_build_request_kwargs` |
-| **Gemini** | 兼容性端点上的 `reasoning_effort` | `low`、`medium`、`high` | 对于携带 `flash-thinking` 片段的 id 为 `informational_only`。其他 Gemini id 解析为 `unsupported`，它同样丢弃该字段 | 内部 | `reasoning_replay_policy` |
-| **xAI（Grok）** | 通过 LiteLLM 的 `reasoning_effort` | 提供商定义 | `informational_only`，因为通用 `reasoning` 片段匹配任何包含该词的 id | 内部 | `reasoning_replay_policy` |
-| **DeepSeek** | 模型 id：V3.2 思维模式为 `deepseek-reasoner`，非思维模式为 `deepseek-chat` | 无。没有 effort 参数 | `informational_only` | `reasoning_content` 字段，在推理面板中呈现 | `_parse_choice_message` |
-| **Qwen** | `enable_thinking`，提供商端。FIM One 不发送它 | 不适用 | 对于 `qwq` id 为 `informational_only`，否则为 `unsupported` | 内容内的 `<think>` 标签，重新路由到推理流 | `_ThinkTagStreamParser` |
-| **GLM** | 内置于 `glm-5`；无 API 切换 | 不适用 | `unsupported` | 未外部化 | `reasoning_replay_policy` |
-| **MiniMax** | 始终启用；无切换 | 不适用 | `unsupported` | 内容内的 `<think>` 标签，重新路由 | `_ThinkTagStreamParser`、`_THINK_RE` |
-| **Kimi**（月之暗面） | 模型 id：`kimi-k2-thinking`，`kimi-k2.5` 默认思考 | 不适用 | `unsupported` | API 推理字段，读作 `reasoning_content` 或 `reasoning` | `_parse_choice_message` |
-| **Doubao** | `reasoning_effort` | 提供商文档记录 `minimal`、`low`、`medium` 和 `high`；FIM One 仅发出中间三个 | `unsupported` | 内部 | `_build_request_kwargs` |
-| **Mistral** | 无思维模式 | 不适用 | `unsupported` | 不适用 | `reasoning_replay_policy` |
-| **Ollama / 本地** | 模型相关 | 不适用 | 对于 `deepseek-r1` 蒸馏版和 `qwq` 构建为 `informational_only`，否则为 `unsupported` | `<think>` 标签，其中检查点发出它们 | `_ThinkTagStreamParser` |
-| **中继 / 代理** | 上游接受的任何内容 | 上游接受的任何内容 | 从模型 id 解析，完全如同直接路由 | 取决于上游。通用 `openai/` 中继后面的 Claude 自适应思维模型永远不会获得思维，构造函数记录一条警告说明这一点 | `OpenAICompatibleLLM.__init__` |
+| **OpenAI GPT-5.x** | `reasoning` of `{effort, summary: "auto"}` on Responses; `reasoning_effort` on chat completions | `low`, `medium`, `high` from config, plus a forced `none` when tools are present on chat completions | `openai_responses`: the opaque reasoning items are replayed verbatim on Responses, and the readable text is dropped on chat completions exactly as `informational_only` would | Encrypted items plus a readable summary, rendered in the Reasoning panel. Chat completions returns no reasoning text | `_build_responses_kwargs`, `reasoning_replay_policy` |
+| **OpenAI o-series** | Always on | `reasoning_effort` passed through unchanged | `informational_only`, matched on the `o1`, `o3` and `o4` fragments | Internal; the tokens are billed but not returned | `reasoning_replay_policy` |
+| **Anthropic, adaptive** (Opus 4.6 / 4.7 / 4.8, Sonnet 4.6, Fable 5, Mythos 5) | `thinking` of type `adaptive` plus `output_config.effort` | `low`, `medium`, `high` | `anthropic_thinking`: the block and its `signature` are replayed verbatim or the API rejects the turn | `reasoning_content` plus `signature`, rendered in the Reasoning panel | `_uses_adaptive_thinking`, `_extract_thinking_signature` |
+| **Anthropic, legacy** (4.5 and older) | `thinking` of type `enabled` with `budget_tokens` when `LLM_REASONING_BUDGET_TOKENS` is set, otherwise `reasoning_effort` handed to LiteLLM | `low`, `medium`, `high`, or an explicit token budget with a floor of 1024 | `anthropic_thinking` | Same as adaptive | `_build_request_kwargs` |
+| **Gemini** | `reasoning_effort` on the compatibility endpoint | `low`, `medium`, `high` | `informational_only` for ids carrying a `flash-thinking` fragment. Other Gemini ids resolve to `unsupported`, which drops the field just the same | Internal | `reasoning_replay_policy` |
+| **xAI (Grok)** | `reasoning_effort` through LiteLLM | Provider-defined | `informational_only`, because the generic `reasoning` fragment matches any id containing the word | Internal | `reasoning_replay_policy` |
+| **DeepSeek** | Model id: `deepseek-reasoner` for V3.2 thinking mode, `deepseek-chat` for non-thinking; the V4 / flash models think by default | None. There is no effort parameter | `informational_only` for `deepseek-reasoner`; `replay_text` for the V4 / flash ids (`deepseek-v4*`, `deepseek-flash`), whose thinking-mode guide requires `reasoning_content` to be passed back on turns with tool calls (the text is replayed, there is no `signature`) | `reasoning_content` field, rendered in the Reasoning panel | `_parse_choice_message` |
+| **Qwen** | `enable_thinking`, provider-side. FIM One does not send it | Not applicable | `informational_only` for `qwq` ids, `unsupported` otherwise | `<think>` tags inside content, rerouted to the reasoning stream | `_ThinkTagStreamParser` |
+| **GLM** | Built into `glm-5`; no API toggle | Not applicable | `unsupported` | Not externalised | `reasoning_replay_policy` |
+| **MiniMax** | Always on; no toggle | Not applicable | `unsupported` | `<think>` tags inside content, rerouted | `_ThinkTagStreamParser`, `_THINK_RE` |
+| **Kimi** (Moonshot) | Model id: `kimi-k2-thinking`, and `kimi-k2.5` thinks by default | Not applicable | `replay_text`, matched on the `kimi-k2` fragment: the thinking guide asks for the reasoning content to be sent back with the request | An API reasoning field, read as `reasoning_content` or `reasoning` | `_parse_choice_message` |
+| **Doubao** | `reasoning_effort` | The provider documents `minimal`, `low`, `medium` and `high`; FIM One emits only the middle three | `unsupported` | Internal | `_build_request_kwargs` |
+| **Mistral** | No thinking mode | Not applicable | `unsupported` | Not applicable | `reasoning_replay_policy` |
+| **Ollama / local** | Model-dependent | Not applicable | `informational_only` for `deepseek-r1` distills and `qwq` builds, `unsupported` otherwise | `<think>` tags where the checkpoint emits them | `_ThinkTagStreamParser` |
+| **Relay / proxy** | Whatever the upstream accepts | Whatever the upstream accepts | Resolved from the model id exactly as on a direct route | Depends on the upstream. A Claude adaptive-thinking model behind a generic `openai/` relay never gets thinking at all, and the constructor logs a warning saying so | `OpenAICompatibleLLM.__init__` |
 
-`unsupported` 和 `informational_only` 在线路上产生相同的字节：两者都从传出历史中剥离 `reasoning_content` 和 `signature`。它们的意图不同，因此明确进行推理但落在 `unsupported` 中的模型是片段表中的间隙，而不是实时错误。
+`unsupported` and `informational_only` produce the same bytes on the wire: both strip `reasoning_content` and `signature` from outgoing history. They differ in intent, so a model that clearly does reason but lands in `unsupported` is a gap in the fragment table rather than a live bug.
 
 ### Relay/proxy gotchas
 
