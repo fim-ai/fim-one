@@ -95,6 +95,7 @@ class ChatMessage:
         replay_policy: Literal[
             "anthropic_thinking",
             "openai_responses",
+            "replay_text",
             "informational_only",
             "unsupported",
         ]
@@ -147,10 +148,12 @@ class ChatMessage:
         # compatibility; centralised request builders (see
         # ``OpenAICompatibleLLM._build_request_kwargs``) always pass
         # a resolved policy.
-        include_reasoning = replay_policy in (None, "anthropic_thinking")
+        # DeepSeek V4 / Kimi K2 thinking models ("replay_text") need the
+        # text echoed back but have no signature to send.
+        include_reasoning = replay_policy in (None, "anthropic_thinking", "replay_text")
         if include_reasoning and self.reasoning_content:
             d["reasoning_content"] = self.reasoning_content
-        if include_reasoning and self.signature:
+        if replay_policy in (None, "anthropic_thinking") and self.signature:
             d["signature"] = self.signature
         # Anthropic prompt-caching breakpoint — LiteLLM forwards this
         # field at the message level for system messages and at the

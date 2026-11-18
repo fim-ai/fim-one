@@ -14,6 +14,11 @@ content on subsequent turns differ sharply across providers:
   them; the chat-completions shape does not, so the readable summary is
   dropped there just as it is for the informational-only family.
 
+* **DeepSeek V4 / flash thinking models, Kimi K2 thinking models** — the
+  provider guides require ``reasoning_content`` to be passed back on
+  turns that carry tool calls, and DeepSeek answers 400 when it is
+  missing.  The text is replayed, but there is no ``signature`` to send.
+
 * **DeepSeek R1 / v3, Qwen QwQ, Gemini thinking, OpenAI o-series** —
   provider documentation explicitly says the reasoning field is
   **informational only** and MUST NOT be sent back in subsequent turns.
@@ -45,6 +50,7 @@ from typing import Literal
 ReasoningReplayPolicy = Literal[
     "anthropic_thinking",
     "openai_responses",
+    "replay_text",
     "informational_only",
     "unsupported",
 ]
@@ -70,6 +76,17 @@ _ANTHROPIC_THINKING_FRAGMENTS: tuple[str, ...] = (
 # fragments and before the informational ones, whose generic "reasoning"
 # entry would otherwise swallow proxy-tagged GPT-5 ids.
 _OPENAI_RESPONSES_FRAGMENTS: tuple[str, ...] = ("gpt-5", "gpt-6")
+
+# Fragments that identify thinking models whose providers require the
+# readable ``reasoning_content`` to be echoed back on later requests
+# (DeepSeek's thinking-mode guide, Moonshot's K2 thinking guide).  Checked
+# before the informational fragments; ``deepseek-reasoner`` is not listed
+# here and keeps its existing policy.
+_REPLAY_TEXT_FRAGMENTS: tuple[str, ...] = (
+    "deepseek-v4",
+    "deepseek-flash",
+    "kimi-k2",
+)
 
 # Fragments that identify reasoning-capable models where the reasoning
 # field is informational-only and MUST NOT be replayed to the provider.
@@ -115,6 +132,9 @@ def reasoning_replay_policy(model_id: str | None) -> ReasoningReplayPolicy:
           ``reasoning_content`` is still dropped from outgoing requests,
           so on the chat-completions fallback this behaves exactly like
           ``"informational_only"``.
+        * ``"replay_text"`` — caller MUST replay ``reasoning_content``
+          (but has no ``signature`` to send) on assistant turns
+          (DeepSeek V4 / flash, Kimi K2 thinking models).
         * ``"informational_only"`` — caller MUST drop
           ``reasoning_content`` / ``signature`` from outgoing requests
           but MAY persist them locally for display (DeepSeek R1,
@@ -130,6 +150,8 @@ def reasoning_replay_policy(model_id: str | None) -> ReasoningReplayPolicy:
         return "anthropic_thinking"
     if any(fragment in lowered for fragment in _OPENAI_RESPONSES_FRAGMENTS):
         return "openai_responses"
+    if any(fragment in lowered for fragment in _REPLAY_TEXT_FRAGMENTS):
+        return "replay_text"
     if any(fragment in lowered for fragment in _INFORMATIONAL_REASONING_FRAGMENTS):
         return "informational_only"
     return "unsupported"

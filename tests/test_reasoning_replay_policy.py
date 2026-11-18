@@ -30,7 +30,7 @@ from typing import Any
 import pytest
 
 from fim_one.core.model import ChatMessage
-from fim_one.core.model.types import StreamChunk
+from fim_one.core.model.types import StreamChunk, ToolCallRequest
 from fim_one.core.prompt import reasoning_replay_policy
 
 # ======================================================================
@@ -74,6 +74,32 @@ class TestReasoningReplayPolicy:
     )
     def test_informational_only(self, model_id: str) -> None:
         assert reasoning_replay_policy(model_id) == "informational_only"
+
+    @pytest.mark.parametrize(
+        "model_id",
+        [
+            "deepseek-flash",
+            "deepseek/deepseek-flash",
+            "deepseek-v4-pro",
+            "kimi-k2.5",
+            "kimi-k2.6",
+            "moonshot/kimi-k2.7-code",
+        ],
+    )
+    def test_replay_text(self, model_id: str) -> None:
+        """DeepSeek V4 / Kimi K2 thinking models need reasoning_content back."""
+        assert reasoning_replay_policy(model_id) == "replay_text"
+
+    def test_replay_text_keeps_reasoning_content_without_signature(self) -> None:
+        msg = ChatMessage(
+            role="assistant",
+            content=None,
+            reasoning_content="thought",
+            signature="sig",
+        )
+        d = msg.to_openai_dict(replay_policy="replay_text")
+        assert d["reasoning_content"] == "thought"
+        assert "signature" not in d
 
     @pytest.mark.parametrize(
         "model_id",
@@ -264,6 +290,26 @@ class TestBuildRequestKwargsEnforcement:
         assistant = next(m for m in msgs if m["role"] == "assistant")
         assert assistant["reasoning_content"] == "private CoT"
         assert assistant["signature"] == "sig-abc"
+
+    @pytest.mark.parametrize("model", ["deepseek-flash", "deepseek-v4-pro", "kimi-k2.6"])
+    def test_replay_text_models_keep_reasoning_on_tool_turns(self, model: str) -> None:
+        history = [
+            ChatMessage(role="user", content="weather?"),
+            ChatMessage(
+                role="assistant",
+                content=None,
+                reasoning_content="need the tool",
+                tool_calls=[
+                    ToolCallRequest(id="c1", name="get_weather", arguments={"city": "Paris"})
+                ],
+            ),
+            ChatMessage(role="tool", content="sunny", tool_call_id="c1"),
+        ]
+        msgs = _build_kwargs_for(model, history)["messages"]
+        assistant = next(m for m in msgs if m["role"] == "assistant")
+        assert assistant["reasoning_content"] == "need the tool"
+        assert "signature" not in assistant
+        assert assistant["tool_calls"][0]["id"] == "c1"
 
     @pytest.mark.parametrize(
         "model",
