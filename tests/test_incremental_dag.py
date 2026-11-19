@@ -11,6 +11,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 from fim_one.core.model import ChatMessage, LLMResult
+from fim_one.core.model.usage import UsageSummary
 from fim_one.core.planner import DAGExecutor, DAGPlanner, ExecutionPlan, PlanStep, StepOutput
 from fim_one.core.planner.checkpoint import DAGCheckpoint
 
@@ -29,8 +30,9 @@ class _CountingAgent:
 
     tools = MagicMock()
 
-    def __init__(self) -> None:
+    def __init__(self, usage: UsageSummary | None = None) -> None:
         self.queries: list[str] = []
+        self._usage = usage
 
     async def run(
         self,
@@ -41,7 +43,7 @@ class _CountingAgent:
         from fim_one.core.agent.types import AgentResult
 
         self.queries.append(query)
-        return AgentResult(answer="step done", iterations=1)
+        return AgentResult(answer="step done", iterations=1, usage=self._usage)
 
 
 class TestExecutorSkipsCompleted:
@@ -66,6 +68,39 @@ class TestExecutorSkipsCompleted:
         assert result.steps[1].status == "completed"
         # The carried step's result was available as dependency context.
         assert "research findings" in agent.queries[0]
+
+    async def test_carried_step_usage_not_recounted(self) -> None:
+        """A replan round must not re-add usage already counted for carried steps."""
+        agent = _CountingAgent(
+            usage=UsageSummary(
+                prompt_tokens=6, completion_tokens=4, total_tokens=10, llm_calls=1
+            )
+        )
+        executor = DAGExecutor(
+            agent=agent,
+            enable_tool_cache=False,
+            enable_citation_verification=False,
+        )
+        done = _completed_step("step_1", "research topic", "research findings")
+        done.usage = UsageSummary(
+            prompt_tokens=60, completion_tokens=40, total_tokens=100, llm_calls=1
+        )
+        pending = PlanStep(id="step_2", task="write report", dependencies=["step_1"])
+        # Totals from the round that ran step_1.
+        plan = ExecutionPlan(
+            goal="g",
+            steps=[done, pending],
+            total_usage=UsageSummary(
+                prompt_tokens=60, completion_tokens=40, total_tokens=100, llm_calls=1
+            ),
+        )
+
+        result = await executor.execute(plan)
+
+        assert result.total_usage is not None
+        # 100 (round 1) + 10 (step_2 only), not 100 + 100 + 10.
+        assert result.total_usage.total_tokens == 110
+        assert result.total_usage.llm_calls == 2
 
     async def test_all_completed_plan_is_noop(self) -> None:
         agent = _CountingAgent()
