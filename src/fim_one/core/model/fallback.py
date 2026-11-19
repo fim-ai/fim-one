@@ -170,7 +170,14 @@ class FallbackLLM(BaseLLM):
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> AsyncIterator[StreamChunk]:
-        """Send a streaming request, falling back on availability errors."""
+        """Send a streaming request, falling back on availability errors.
+
+        Fallback only happens before the primary has produced any chunk.  Once
+        a chunk has been yielded to the caller, restarting the request on the
+        fallback would replay the response from the beginning and the caller
+        would receive duplicated text, so mid-stream failures propagate.
+        """
+        started = False
         try:
             iterator = self._primary.stream_chat(
                 messages,
@@ -179,36 +186,28 @@ class FallbackLLM(BaseLLM):
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
-            # We need to actually start iteration to detect connection errors.
             # The async generator from stream_chat may raise on the first
             # __anext__ call (when the HTTP connection is established), not
-            # at creation time.  We eagerly fetch the first chunk to detect
-            # such failures before committing to the primary stream.
-            first_chunk: StreamChunk | None = None
-            try:
-                first_chunk = await iterator.__anext__()
-            except StopAsyncIteration:
-                # Empty stream from primary -- that's fine, just return.
-                return
-
-            # Primary stream started successfully -- yield all chunks.
-            yield first_chunk
+            # at creation time, so iterate inside the try block.
             async for chunk in iterator:
+                started = True
                 yield chunk
+            return
 
         except Exception as exc:
-            if not is_availability_error(exc):
+            if started or not is_availability_error(exc):
                 raise
             logger.warning(
                 "Primary model unavailable (stream), falling back to %s: %s",
                 self._fallback.model_id or "fallback",
                 exc,
             )
-            async for chunk in self._fallback.stream_chat(
-                messages,
-                tools=tools,
-                tool_choice=tool_choice,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            ):
-                yield chunk
+
+        async for chunk in self._fallback.stream_chat(
+            messages,
+            tools=tools,
+            tool_choice=tool_choice,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        ):
+            yield chunk
