@@ -283,6 +283,28 @@ class TestFallbackStreamChat:
         assert exc_info.value is error
         assert fallback.stream_call_count == 0
 
+    async def test_no_fallback_after_primary_stream_started(self) -> None:
+        """An availability error after chunks were yielded must not replay on the fallback."""
+        error = _make_status_error(503)
+
+        class _MidStreamFailure(FakeLLM):
+            async def stream_chat(self, messages: Any, **kwargs: Any) -> AsyncIterator[StreamChunk]:
+                yield StreamChunk(delta_content="partial ")
+                raise error
+
+        primary = _MidStreamFailure([chunks([])])
+        fallback = FakeLLM([chunks([StreamChunk(delta_content="partial full answer")])])
+        llm = FallbackLLM(primary=primary, fallback=fallback)
+
+        collected: list[StreamChunk] = []
+        with pytest.raises(Exception) as exc_info:
+            async for c in llm.stream_chat([_msg("hi")]):
+                collected.append(c)
+
+        assert exc_info.value is error
+        assert [c.delta_content for c in collected] == ["partial "]
+        assert fallback.stream_call_count == 0
+
     async def test_empty_primary_stream(self) -> None:
         """Empty stream from primary is fine -- no fallback triggered."""
         primary = FakeLLM([chunks([])])
