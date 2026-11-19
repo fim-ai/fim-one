@@ -5,7 +5,7 @@
 FIM One is an AI agent platform for enterprise systems: agents plan and execute tasks across existing systems (ERP, CRM, OA, databases) through APIs, database connections, and MCP servers.
 
 ### Core Architecture
-- **Backend**: FastAPI (Python 3.11+) asynchronous framework.
+- **Backend**: FastAPI (Python 3.11.5+) asynchronous framework.
 - **Agent Core**: ReAct reasoning loops and dynamic DAG planning with concurrent execution.
 - **Provider Agnostic**: Protocol-first architecture using LiteLLM to support OpenAI, Anthropic, DeepSeek, Ollama, etc.
 - **RAG Pipeline**: LanceDB vector store with hybrid retrieval (FTS + RRF) and reranking.
@@ -15,7 +15,7 @@ FIM One is an AI agent platform for enterprise systems: agents plan and execute 
 ## Building and Running
 
 ### Prerequisites
-- **Python 3.11+** with `uv` package manager.
+- **Python 3.11.5+** with `uv` package manager.
 - **Node.js 18+** with `pnpm`.
 - **Docker** (optional, for sandboxed code execution).
 

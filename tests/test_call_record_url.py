@@ -14,9 +14,9 @@ from fim_one.core.assembly.calls import _where_it_went
         ("https://api.example.com/v1/items?api_key=sk-live-abc", "https://api.example.com/v1/items"),
         ("https://user:pass@api.example.com:8443/v1", "https://api.example.com:8443/v1"),
         ("https://api.example.com/v1#token=abc", "https://api.example.com/v1"),
-        # A credential in the path.
+        # A credential in the path. Synthetic, and shorter than a bot token.
         (
-            "https://api.telegram.org/bot123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw/sendMessage",
+            "https://api.telegram.org/bot0:FAKEtoken0000fixture/sendMessage",
             "https://api.telegram.org/***/sendMessage",
         ),
         ("https://h.example/app;jsessionid=SECRET/items", "https://h.example/app;***/items"),
