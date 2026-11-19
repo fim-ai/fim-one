@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 from fim_one.core.assembly.mcp_address import names_a_secret, value_is_secret_shaped
 from fim_one.core.audit import writer as audit
@@ -200,7 +201,10 @@ class TestFreeTextDetail:
         assert row.detail == "registration_mode=invite; a/b"
 
 
-TELEGRAM = "123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"
+# Synthetic path credential: one digit, then a 20-character mixed segment.
+# A published Telegram bot-token shape is 8-10 digits, a colon and 34-35
+# more characters. Redaction still has to cut this segment.
+TELEGRAM = "0:FAKEtoken0000fixture"
 API_KEY = "sk-live-0123456789abcdef0123456789abcdef"
 
 
@@ -219,6 +223,7 @@ class TestPathsAndTokensGluedToAName:
     def test_a_token_after_a_name_in_one_url_segment_is_cut(self) -> None:
         from fim_one.core.assembly.mcp_address import strip_url_secrets, url_carries_secret
 
+        assert re.fullmatch(r"[0-9]{8,10}:[A-Za-z0-9_-]{34,35}", TELEGRAM) is None
         url = f"https://api.telegram.org/bot{TELEGRAM}/getMe"
         assert strip_url_secrets(f"GET {url} failed") == "GET https://api.telegram.org/***/getMe failed"
         assert url_carries_secret(url)

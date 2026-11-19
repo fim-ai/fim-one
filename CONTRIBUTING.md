@@ -211,7 +211,7 @@ This avoids wasted effort if the direction doesn't align.
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.11.5+
 - [uv](https://docs.astral.sh/uv/) (Python package manager)
 - Node.js 20+ with [pnpm](https://pnpm.io/)
 - Git

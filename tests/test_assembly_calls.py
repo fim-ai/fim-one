@@ -198,11 +198,12 @@ async def test_the_address_is_stored_without_the_credential_in_its_path(
     factory: async_sessionmaker[AsyncSession],
 ) -> None:
     """The recorder cleaned only user-info, query string and fragment: a bot
-    token in the path was stored as it was."""
+    token in the path was stored as it was. The sample is synthetic and
+    shorter than a bot token; the path segment is still mixed, so it is cut."""
     await call_recorder(_ctx(), kind="connector")(
         connector_id="c",
         request_method="POST",
-        request_url="https://api.telegram.org/bot123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"
+        request_url="https://api.telegram.org/bot0:FAKEtoken0000fixture"
         "/sendMessage?chat_id=1",
         success=True,
     )

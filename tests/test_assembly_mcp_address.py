@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -210,7 +211,8 @@ class TestLaunchArguments:
         [
             # more token prefixes
             ["glpat-abcdefghij1234567890"],
-            ["AIzaSyA-abcdefghijklmnopqrstuvwxyz12345"],
+            # Synthetic, and shorter than a 35-character Google API key suffix.
+            ["AIzaFAKE-fixture-key-00000"],
             ["xoxa-2-1234567890-abcdef"],
             ["xapp-1-A0123456789-abcdef"],
             ["ntn_1234567890abcdefghijkl"],
@@ -347,6 +349,11 @@ class TestLaunchArguments:
     def test_arguments_that_are_not_text_are_read_as_text(self) -> None:
         assert launch_args_carry_secret(["--port", 8080]) is False
         assert launch_args_carry_secret(["--token", 12345]) is True
+
+    def test_a_short_synthetic_google_key_still_counts(self) -> None:
+        key = "AIzaFAKE-fixture-key-00000"
+        assert launch_args_carry_secret([key]) is True
+        assert re.fullmatch(r"AIza[A-Za-z0-9_\-]{35}", key) is None
 
 
 def _server(transport: str | None, **fields: object) -> SimpleNamespace:
