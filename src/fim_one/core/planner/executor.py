@@ -146,6 +146,9 @@ class DAGExecutor:
         completed_ids: set[str] = {
             step.id for step in plan.steps if step.status == "completed"
         }
+        # Carried-over steps already had their usage counted in an earlier
+        # round's total_usage; only steps run by this call are aggregated.
+        carried_ids = frozenset(completed_ids)
         failed_ids: set[str] = set()
         running_tasks: dict[asyncio.Task[None], str] = {}
         if completed_ids:
@@ -321,7 +324,7 @@ class DAGExecutor:
         async with self._usage_lock:
             step_usage = UsageSummary()
             for step in plan.steps:
-                if step.usage is not None:
+                if step.id not in carried_ids and step.usage is not None:
                     step_usage += step.usage
             if step_usage.llm_calls > 0:
                 if plan.total_usage is not None:
