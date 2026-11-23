@@ -222,6 +222,7 @@ class RefreshRequest(BaseModel):
 class SetupRequest(BaseModel):
     password: str = Field(min_length=8, max_length=100)
     email: str = Field(..., max_length=255)
+    setup_token: str = Field(min_length=1, max_length=256)
 
     @field_validator("email")
     @classmethod

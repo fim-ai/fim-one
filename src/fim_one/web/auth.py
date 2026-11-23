@@ -185,12 +185,14 @@ def create_access_token(user_id: str, email: str) -> str:
 
 
 def create_refresh_token(user_id: str, email: str) -> str:
-    expires = datetime.now(UTC) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    now = datetime.now(UTC)
+    expires = now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     payload = {
         "sub": user_id,
         "email": email,
         "type": "refresh",
         "exp": expires,
+        "iat": now,
         # jti 是必需的，不是装饰。exp 只精确到秒，同一秒内为同一用户签发的
         # refresh token 载荷完全一致，编码出来逐字节相同。于是 /refresh 的
         # 「轮转 + 旧 token 立即作废」静默失效：新旧 token 是同一个，
@@ -199,6 +201,35 @@ def create_refresh_token(user_id: str, email: str) -> str:
         "jti": secrets.token_urlsafe(8),
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def invalidate_login_sessions(user: User, *, now: datetime | None = None) -> None:
+    """Drop the stored refresh token and cut off access tokens already issued.
+
+    ``iat`` is a whole second. The cutoff is the end of the previous second,
+    so every token issued before this second is rejected and one issued now
+    (a sign-in that follows immediately) still works. The stored refresh
+    token is removed, so it cannot be exchanged.
+    """
+    moment = now or datetime.now(UTC)
+    user.refresh_token = None
+    user.refresh_token_expires_at = None
+    user.tokens_invalidated_at = moment.replace(microsecond=0) - timedelta(microseconds=1)
+
+
+def session_token_revoked(user: User, payload: dict[str, Any]) -> bool:
+    """Whether *payload* was issued at or before the account's session cutoff."""
+    cutoff = user.tokens_invalidated_at
+    if cutoff is None:
+        return False
+    iat = payload.get("iat")
+    if isinstance(iat, (int, float)):
+        issued = datetime.fromtimestamp(iat, tz=UTC)
+    elif isinstance(iat, datetime):
+        issued = iat
+    else:
+        return True
+    return issued <= _as_utc(cutoff)
 
 
 # ---------------------------------------------------------------------------
@@ -450,20 +481,11 @@ async def get_current_user(
             detail="Account disabled",
         )
     # Check if this token was issued before a force-logout event
-    if user.tokens_invalidated_at is not None:
-        iat = payload.get("iat")
-        if iat is None:
-            # Token predates the iat claim — can't verify it post-dates invalidation, reject it
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Session invalidated",
-            )
-        token_issued = datetime.fromtimestamp(iat, tz=UTC) if isinstance(iat, (int, float)) else iat
-        if token_issued <= _as_utc(user.tokens_invalidated_at):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Session invalidated",
-            )
+    if session_token_revoked(user, payload):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session invalidated",
+        )
     # JWT users are unrestricted (no scope limitations)
     request.state.api_key_scopes = None
     request_auth.set((AuthMethod.SESSION.value, None))
@@ -509,13 +531,8 @@ async def get_current_user_optional(
     if user is not None and not user.is_active:
         return None
     # Check if this token was issued before a force-logout event
-    if user is not None and user.tokens_invalidated_at is not None:
-        iat = payload.get("iat")
-        if iat is None:
-            return None
-        token_issued = datetime.fromtimestamp(iat, tz=UTC) if isinstance(iat, (int, float)) else iat
-        if token_issued <= _as_utc(user.tokens_invalidated_at):
-            return None
+    if user is not None and session_token_revoked(user, payload):
+        return None
     if user is not None:
         request.state.api_key_scopes = None
     return user

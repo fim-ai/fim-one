@@ -174,7 +174,11 @@ def configure_environment(state_dir: Path, stub_port: int) -> None:
             "EMBEDDING_MODEL": "stub-embedding",
             "EMBEDDING_DIMENSION": "8",
             # Tools stay on this machine; no container, no mail.
+            # The opt-in is what a containerized run needs in order to keep
+            # that in-process backend.
             "CODE_EXEC_BACKEND": "local",
+            "ALLOW_LOCAL_CODE_EXEC": "true",
+            "FIM_SETUP_TOKEN": "e2e-setup-token",
             "EMAIL_TOOL_ENABLED": "false",
             "ALLOW_STDIO_MCP": "true",
             "ALLOWED_STDIO_COMMANDS": "node",

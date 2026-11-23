@@ -29,9 +29,12 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "container_local_exec_refusal",
     "docker_socket_paths",
     "exposed_docker_socket",
     "harden_process",
+    "local_backend_refusal",
+    "local_code_exec_opt_in",
     "local_execution_refusal",
     "running_in_container",
 ]
@@ -192,6 +195,44 @@ def local_execution_refusal() -> str | None:
     if socket_path is None:
         return None
     return LOCAL_EXECUTION_REFUSED.format(socket=socket_path)
+
+
+_OPT_IN_TRUE = frozenset({"1", "true", "yes"})
+
+CONTAINER_LOCAL_EXEC_REFUSED = (
+    "Refused: CODE_EXEC_BACKEND=local runs code in the application process. "
+    "Inside a container that stays off unless ALLOW_LOCAL_CODE_EXEC=true. "
+    "Use CODE_EXEC_BACKEND=docker."
+)
+
+
+def local_code_exec_opt_in() -> bool:
+    """Whether the operator explicitly allowed in-process code execution."""
+    return os.environ.get("ALLOW_LOCAL_CODE_EXEC", "").strip().lower() in _OPT_IN_TRUE
+
+
+def container_local_exec_refusal() -> str | None:
+    """Why in-process code execution is off inside a container, or ``None``.
+
+    A container runtime socket is a separate refusal (:func:`local_execution_refusal`).
+    This one applies when the socket is gone too: ``local`` still runs in the
+    application process. ``ALLOW_LOCAL_CODE_EXEC=true`` is the opt-in, and it
+    does not override the socket refusal. Stdio MCP servers are not covered
+    here; they have their own administrator gate.
+    """
+    if not running_in_container():
+        return None
+    if local_code_exec_opt_in():
+        return None
+    return CONTAINER_LOCAL_EXEC_REFUSED
+
+
+def local_backend_refusal() -> str | None:
+    """Why the local code-execution backend may not run, or ``None``."""
+    blocked = local_execution_refusal()
+    if blocked is not None:
+        return blocked
+    return container_local_exec_refusal()
 
 
 def harden_process() -> bool:

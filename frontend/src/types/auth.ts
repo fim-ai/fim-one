@@ -86,4 +86,5 @@ export interface RegisterRequest {
 export interface SetupRequest {
   email: string
   password: string
+  setup_token: string
 }

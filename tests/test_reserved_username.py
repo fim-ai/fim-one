@@ -85,6 +85,7 @@ async def test_a_provider_login_with_it_gets_another_name(world: World) -> None:
         provider="github", id="gh-9", username=RESERVED, email="new@example.test",
         display_name="New", email_verified=True,
     )  # fmt: skip
+    await world.user("installed")
     provider = MagicMock(spec=OAuthProvider)
     provider.name = "github"
 

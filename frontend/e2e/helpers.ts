@@ -42,7 +42,11 @@ async function api<T>(
   return (await res.json()) as T
 }
 
-const ADMIN = { email: "smoke@example.com", password: "smoke-password-1" }
+const ADMIN = {
+  email: "smoke@example.com",
+  password: "smoke-password-1",
+  setup_token: "e2e-setup-token",
+}
 
 /**
  * The first administrator of the backend: set up by the first spec that

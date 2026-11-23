@@ -11,12 +11,14 @@ import { authApi, ApiError } from "@/lib/api"
 
 export default function SetupPage() {
   const t = useTranslations("auth")
+  const tError = useTranslations("errors")
   const router = useRouter()
 
   // Setup status check
   const [checking, setChecking] = useState(true)
 
   // Form state
+  const [setupToken, setSetupToken] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [email, setEmail] = useState("")
@@ -75,7 +77,17 @@ export default function SetupPage() {
         return
       }
 
-      const data = await authApi.setup({ email: email.trim(), password })
+      if (!setupToken.trim()) {
+        setError(t("setupTokenRequired"))
+        setSubmitting(false)
+        return
+      }
+
+      const data = await authApi.setup({
+        email: email.trim(),
+        password,
+        setup_token: setupToken.trim(),
+      })
 
       // Store tokens (same pattern as login)
       localStorage.setItem(ACCESS_TOKEN_KEY, data.access_token)
@@ -85,12 +97,15 @@ export default function SetupPage() {
       // Full page navigation to onboarding (ensure auth context reloads)
       window.location.href = "/onboarding"
     } catch (err) {
-      if (err instanceof ApiError && err.status === 403) {
-        // System already initialized — someone else set it up
+      if (err instanceof ApiError && err.errorCode === "system_already_initialized") {
         router.replace("/login")
         return
       }
-      setError(err instanceof Error ? err.message : t("setupFailed"))
+      if (err instanceof ApiError && err.errorCode && tError.has(err.errorCode)) {
+        setError(tError(err.errorCode))
+      } else {
+        setError(err instanceof Error ? err.message : t("setupFailed"))
+      }
     } finally {
       setSubmitting(false)
     }
@@ -189,12 +204,21 @@ export default function SetupPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Input
+                type="password"
+                placeholder={t("setupTokenPlaceholder")}
+                value={setupToken}
+                onChange={(e) => setSetupToken(e.target.value)}
+                required
+                autoFocus
+                autoComplete="off"
+              />
+              <p className="text-sm text-muted-foreground">{t("setupTokenHint")}</p>
+              <Input
                 type="email"
                 placeholder={t("emailPlaceholder")}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                autoFocus
                 autoComplete="email"
               />
               <Input

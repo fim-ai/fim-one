@@ -401,7 +401,26 @@ async def _handle_login(
                 user = matched
 
         if user is None:
-            # 3. No email match -- create new user, but check registration_mode first
+            # 3. No email match -- create new user, but check registration_mode first.
+            # An instance with no account yet has no administrator; creating one
+            # here would close /setup without ever granting that role.
+            from fim_one.web.services.bootstrap import locked_user_count
+
+            if await locked_user_count(db) == 0:
+                await audit.record_login(
+                    user_id=None,
+                    username=None,
+                    email=user_info.email,
+                    success=False,
+                    method=method,
+                    failure_reason="system_not_initialized",
+                    db=db,
+                )
+                await db.commit()
+                return RedirectResponse(
+                    url=f"{frontend_url}/auth/callback?error=system_not_initialized",
+                    status_code=302,
+                )
             reg_mode = await get_setting(db, SETTING_REGISTRATION_MODE, default="")
             if not reg_mode:
                 # Backward compat: fall back to legacy boolean

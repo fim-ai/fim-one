@@ -210,6 +210,7 @@ class TestEmailVerifiedGating:
         self, session: AsyncSession
     ) -> None:
         """The fresh account inherits the provider's verdict, not a blank slate."""
+        await _seed_user(session, "installed-admin@example.com")
         info = OAuthUserInfo(
             provider="github",
             id="gh-fresh-unverified",
@@ -231,6 +232,7 @@ class TestEmailVerifiedGating:
     async def test_new_user_from_verified_email_is_stored_verified(
         self, session: AsyncSession
     ) -> None:
+        await _seed_user(session, "installed-admin@example.com")
         info = OAuthUserInfo(
             provider="github",
             id="gh-fresh-verified",
@@ -259,6 +261,7 @@ class TestEmailVerifiedGating:
         from a different provider, with the address genuinely verified --
         would land them inside the attacker's account.
         """
+        await _seed_user(session, "installed-admin@example.com")
         attacker_info = OAuthUserInfo(
             provider="github",
             id="gh-attacker",
@@ -290,6 +293,7 @@ class TestEmailVerifiedGating:
         self, session: AsyncSession
     ) -> None:
         """The legitimate cross-provider case the gate must not break."""
+        await _seed_user(session, "installed-admin@example.com")
         info = OAuthUserInfo(
             provider="github",
             id="gh-owner",
@@ -695,6 +699,7 @@ def _new_user_info(provider: str = "github", oauth_id: str = "new-1") -> OAuthUs
 
 class TestRegistrationModeGating:
     async def test_disabled_mode_blocks_new_user(self, session: AsyncSession) -> None:
+        await _seed_user(session, "admin@example.com")
         await _set_setting(session, SETTING_REGISTRATION_MODE, "disabled")
         resp = await _handle_login(session, _new_user_info(), "github", "http://frontend")
         location = _redirect_location(resp)
@@ -704,6 +709,7 @@ class TestRegistrationModeGating:
 
     async def test_invite_mode_blocks_new_user(self, session: AsyncSession) -> None:
         # OAuth can't carry an invite code, so "invite" mode also blocks new users.
+        await _seed_user(session, "admin@example.com")
         await _set_setting(session, SETTING_REGISTRATION_MODE, "invite")
         resp = await _handle_login(session, _new_user_info(), "github", "http://frontend")
         location = _redirect_location(resp)
@@ -711,6 +717,7 @@ class TestRegistrationModeGating:
         assert await _binding_for(session, "github", "new-1") is None
 
     async def test_open_mode_allows_new_user(self, session: AsyncSession) -> None:
+        await _seed_user(session, "admin@example.com")
         await _set_setting(session, SETTING_REGISTRATION_MODE, "open")
         resp = await _handle_login(session, _new_user_info(), "github", "http://frontend")
         location = _redirect_location(resp)
@@ -722,15 +729,22 @@ class TestRegistrationModeGating:
 
     async def test_legacy_registration_enabled_false_blocks(self, session: AsyncSession) -> None:
         # No registration_mode set → falls back to the legacy boolean.
+        await _seed_user(session, "admin@example.com")
         await _set_setting(session, SETTING_REGISTRATION_ENABLED, "false")
         resp = await _handle_login(session, _new_user_info(), "github", "http://frontend")
         assert _query_param(_redirect_location(resp), "error") == "registration_disabled"
 
     async def test_no_settings_defaults_to_open(self, session: AsyncSession) -> None:
         # Neither setting present → defaults to "open" (new user allowed).
+        await _seed_user(session, "admin@example.com")
         resp = await _handle_login(session, _new_user_info(), "github", "http://frontend")
         assert await _binding_for(session, "github", "new-1") is not None
         assert "error=" not in _redirect_location(resp)
+
+    async def test_uninitialized_instance_creates_no_user(self, session: AsyncSession) -> None:
+        resp = await _handle_login(session, _new_user_info(), "github", "http://frontend")
+        assert _query_param(_redirect_location(resp), "error") == "system_not_initialized"
+        assert await _binding_for(session, "github", "new-1") is None
 
 
 class TestUsernameCollision:

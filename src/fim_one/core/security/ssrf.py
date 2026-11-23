@@ -251,6 +251,33 @@ def _resolve_and_pin(hostname: str) -> str:
     return first_ipv4 or first_ip
 
 
+def apply_dns_pin(request: Any) -> None:
+    """Pin *request* to one checked address before it is sent.
+
+    Works for any client whose request has ``url.host``, ``url.copy_with``,
+    ``headers`` and ``extensions`` (httpx and httpx2). A hostname is resolved
+    here, every address is checked, and the URL is rewritten to the address
+    that will be connected to, with the original name kept for TLS and the
+    Host header. An address literal is checked and left as it is. Called
+    again for every request, including one a redirect follows.
+    """
+    host = request.url.host
+    if not host:
+        return
+    if _is_ip_literal(host):
+        if is_private_ip(host):
+            raise ValueError(f"SSRF blocked: '{host}' is a private/internal address")
+        return
+    ip = _resolve_and_pin(host)
+    request.url = request.url.copy_with(host=ip)
+    # Preserve original hostname for TLS SNI so certificate verification
+    # matches the domain (not the pinned IP). As text: the TLS layer
+    # encodes it itself, and fails on bytes.
+    request.extensions["sni_hostname"] = host
+    if "host" not in request.headers:
+        request.headers["host"] = host
+
+
 class SSRFSafeTransport(httpx.AsyncHTTPTransport):
     """httpx transport that pins DNS resolution to prevent rebinding.
 
@@ -262,24 +289,8 @@ class SSRFSafeTransport(httpx.AsyncHTTPTransport):
     """
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        host = request.url.host
-        if host and _is_ip_literal(host):
-            if is_private_ip(host):
-                raise ValueError(
-                    f"SSRF blocked: '{host}' is a private/internal address"
-                )
-        elif host:
-            # getaddrinfo blocks; keep it off the event loop.
-            ip = await asyncio.to_thread(_resolve_and_pin, host)
-            # Rewrite URL to use the pinned IP; preserve original Host header
-            request.url = request.url.copy_with(host=ip)
-            # Preserve original hostname for TLS SNI so certificate verification
-            # matches the domain (not the pinned IP). As text: the TLS layer
-            # encodes it itself, and fails on bytes.
-            request.extensions["sni_hostname"] = host
-            # Ensure the original hostname is sent in the Host header
-            if "host" not in request.headers:
-                request.headers["host"] = host
+        # getaddrinfo blocks; keep it off the event loop.
+        await asyncio.to_thread(apply_dns_pin, request)
         return await super().handle_async_request(request)
 
 

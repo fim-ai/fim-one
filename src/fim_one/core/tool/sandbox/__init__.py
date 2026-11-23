@@ -1,8 +1,12 @@
 """Sandbox backends — pluggable OS-level execution isolation.
 
 Switch backends via the ``CODE_EXEC_BACKEND`` environment variable:
-  - ``local``  (default) — in-process exec + subprocess, no OS isolation
-  - ``docker``            — Docker containers, full OS-level isolation
+  - ``docker`` — Docker containers, full OS-level isolation. This is the
+    default inside a container (``running_in_container``).
+  - ``local``  — in-process exec + subprocess, no OS isolation. This is the
+    default outside a container (``./start.sh``). Inside a container it runs
+    only when ``ALLOW_LOCAL_CODE_EXEC=true``; otherwise the entrypoint selects
+    ``docker`` and the local backend refuses the run.
 
 Public API
 ----------
@@ -25,11 +29,12 @@ from .protocol import SandboxBackend, SandboxResult
 logger = logging.getLogger(__name__)
 
 __all__ = [
-    "get_sandbox_backend",
-    "SandboxResult",
-    "SandboxBackend",
-    "LocalBackend",
     "DockerBackend",
+    "LocalBackend",
+    "SandboxBackend",
+    "SandboxResult",
+    "code_exec_backend",
+    "get_sandbox_backend",
     "take_proxy_token",
 ]
 
@@ -54,6 +59,30 @@ def take_proxy_token() -> str | None:
     return _proxy_token
 
 
+def code_exec_backend() -> str:
+    """``docker`` or ``local``, from ``CODE_EXEC_BACKEND``.
+
+    Unset means ``docker`` inside a container and ``local`` outside one.
+    An unknown value inside a container is ``docker`` as well. Outside a
+    container an unknown value stays ``local``, which is what an unset value
+    used to select everywhere.
+    """
+    from fim_one.core.security.host_access import running_in_container
+
+    raw = os.environ.get("CODE_EXEC_BACKEND", "").strip().lower()
+    in_container = running_in_container()
+    if raw in ("", "docker"):
+        if raw == "" and not in_container:
+            return "local"
+        return "docker"
+    if raw == "local":
+        return "local"
+    if in_container:
+        logger.warning("CODE_EXEC_BACKEND=%r is not docker or local; using docker.", raw)
+        return "docker"
+    return "local"
+
+
 def get_sandbox_backend() -> SandboxBackend:
     """Return the configured sandbox backend (singleton).
 
@@ -67,7 +96,7 @@ def get_sandbox_backend() -> SandboxBackend:
     """
     global _backend
     if _backend is None:
-        mode = os.environ.get("CODE_EXEC_BACKEND", "local").lower()
+        mode = code_exec_backend()
         if mode == "docker":
             host_data_dir = os.environ.get("DOCKER_HOST_DATA_DIR") or None
             _backend = DockerBackend(

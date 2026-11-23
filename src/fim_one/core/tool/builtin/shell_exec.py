@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import logging
-import os
 import re
 from pathlib import Path
 from typing import Any
 
 from ..base import BaseTool, ToolResult
-from ..sandbox import get_sandbox_backend
+from ..sandbox import code_exec_backend, get_sandbox_backend
 from ..truncation import truncate_bytes
 
 logger = logging.getLogger(__name__)
@@ -257,7 +256,7 @@ class ShellExecTool(BaseTool):
         self._cpu = cpu
         self._artifacts_dir = artifacts_dir
 
-        backend_name = os.environ.get("CODE_EXEC_BACKEND", "local").lower()
+        backend_name = code_exec_backend()
         if backend_name == "local":
             logger.warning(
                 "shell_exec is using the LOCAL backend — commands run directly on the "

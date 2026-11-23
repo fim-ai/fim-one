@@ -25,6 +25,8 @@ def _loopback(monkeypatch: pytest.MonkeyPatch) -> None:
     # The address check refuses loopback, and a system proxy would answer
     # for the server that is not there.
     monkeypatch.setattr(client_module, "_validate_url", lambda url: None)
+    # The pinned client would refuse loopback before the connection is tried.
+    monkeypatch.setattr("fim_one.core.security.ssrf.apply_dns_pin", lambda _request: None)
     monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
 
 

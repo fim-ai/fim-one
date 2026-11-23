@@ -30,6 +30,10 @@
   "oauth_binding_not_found": "No OAuth binding found for provider \"{provider}\".",
   "cannot_unbind_only_login": "Cannot unbind the only login method. Set a password first.",
   "system_already_initialized": "System already initialized.",
+  "system_not_initialized": "The administrator account has not been created yet.",
+  "setup_token_not_configured": "The server has no setup token. Set FIM_SETUP_TOKEN and restart, then enter it here.",
+  "setup_token_invalid": "The setup token does not match.",
+  "session_invalidated": "This session is no longer valid. Sign in again.",
 
   "cannot_revoke_own_admin": "Cannot revoke your own admin role.",
   "cannot_disable_own_account": "Cannot disable your own account.",

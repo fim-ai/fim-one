@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import hashlib
 import uuid
+
+import pytest
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -35,9 +37,16 @@ async def _user_by_email(world: World, email: str) -> User:
 
 
 class TestCreatingAnAccount:
-    async def test_first_time_setup(self, world: World) -> None:
+    async def test_first_time_setup(self, world: World, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("FIM_SETUP_TOKEN", "audit-setup-token")
         await world.call(
-            "POST", "/api/auth/setup", json={"email": "root@example.test", "password": PASSWORD}
+            "POST",
+            "/api/auth/setup",
+            json={
+                "email": "root@example.test",
+                "password": PASSWORD,
+                "setup_token": "audit-setup-token",
+            },
         )
 
         root = await _user_by_email(world, "root@example.test")
@@ -59,16 +68,15 @@ class TestCreatingAnAccount:
         assert (row.actor_label, row.detail) == ("new@example.test", None)
         world.assert_absent(row, PASSWORD)
 
-    async def test_the_first_account_registered_is_marked(self, world: World) -> None:
+    async def test_register_before_setup_is_refused(self, world: World) -> None:
         await world.call(
             "POST",
             "/api/auth/register",
             json={"email": "first@example.test", "password": PASSWORD},
+            expect=403,
         )
-
-        first = await _user_by_email(world, "first@example.test")
-        row = await world.one("auth.register", actor=first, target=("user", first.id))
-        assert row.detail == "first account, made administrator"
+        async with world.factory() as db:
+            assert (await db.execute(select(User).where(User.email == "first@example.test"))).scalar_one_or_none() is None
 
 
 class TestPasswords:

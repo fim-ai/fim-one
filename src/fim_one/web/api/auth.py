@@ -16,6 +16,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import delete, func, select, update
+from sqlalchemy.engine import CursorResult
 
 from fim_one.core.utils import spawn_background
 from fim_one.web.admin_notify import notify_admins
@@ -41,6 +42,11 @@ from fim_one.web.api.admin import (
 )
 from fim_one.web.api.admin_utils import get_setting
 from fim_one.web.services.address_claim import notice_for_display
+from fim_one.web.services.bootstrap import (
+    locked_user_count,
+    setup_token_configured,
+    setup_token_matches,
+)
 from fim_one.web.services.default_plan import get_default_plan_id
 from fim_one.web.services.verification_codes import (
     check_emailed_code,
@@ -68,6 +74,8 @@ from fim_one.web.auth import (
     hash_password,
     hash_password_async,
     hash_refresh_token,
+    invalidate_login_sessions,
+    session_token_revoked,
     verify_password,
     verify_password_async,
 )
@@ -570,22 +578,24 @@ async def register(
     request: Request,
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> TokenResponse:
-    # Check if registration is enabled (first user is always allowed as bootstrap)
-    user_count_check = await db.execute(select(func.count(User.id)))
-    is_first_user_check = user_count_check.scalar_one() == 0
-    reg_mode = ""
-    if not is_first_user_check:
-        # Try new registration_mode first, fall back to legacy registration_enabled
-        reg_mode = await get_setting(db, "registration_mode", "")
-        if not reg_mode:
-            reg_enabled = await get_setting(db, SETTING_REGISTRATION_ENABLED, default="true")
-            reg_mode = "open" if reg_enabled.lower() != "false" else "disabled"
+    # The first administrator is created only by /setup. This lock is the
+    # same one /setup takes, so a registration cannot slip in as that account.
+    if await locked_user_count(db) == 0:
+        raise AppError(
+            "system_not_initialized",
+            status_code=403,
+            detail="Create the first administrator from the setup page.",
+        )
+    # Try new registration_mode first, fall back to legacy registration_enabled
+    reg_mode = await get_setting(db, "registration_mode", "")
+    if not reg_mode:
+        reg_enabled = await get_setting(db, SETTING_REGISTRATION_ENABLED, default="true")
+        reg_mode = "open" if reg_enabled.lower() != "false" else "disabled"
 
-        if reg_mode == "disabled":
-            raise AppError("registration_disabled", status_code=403)
-        elif reg_mode == "invite":
-            if not body.invite_code:
-                raise AppError("invite_code_required")
+    if reg_mode == "disabled":
+        raise AppError("registration_disabled", status_code=403)
+    if reg_mode == "invite" and not body.invite_code:
+        raise AppError("invite_code_required")
 
     # Check email uniqueness
     email_result = await db.execute(_by_email(body.email).limit(1))
@@ -597,7 +607,7 @@ async def register(
 
     # Validate email verification code if email verification is enabled AND SMTP is available
     email_verif_enabled = await get_setting(db, "email_verification_enabled", default="false")
-    if email_verif_enabled.lower() == "true" and _smtp_configured() and not is_first_user_check:
+    if email_verif_enabled.lower() == "true" and _smtp_configured():
         if not body.verification_code:
             raise AppError("email_verification_required")
         await _admit_code_check(db, request)
@@ -622,7 +632,7 @@ async def register(
 
     # The invite is consumed last, after the address has passed its own
     # check, so that a wrong verification code does not use up an invite.
-    if not is_first_user_check and reg_mode == "invite":
+    if reg_mode == "invite":
         # Atomic increment: the UPDATE only succeeds when the code exists,
         # is active, has not expired, and still has remaining uses.
         # This prevents the non-atomic read-modify-write race condition where
@@ -658,7 +668,6 @@ async def register(
                 raise AppError("invite_code_exhausted")
         await db.flush()
 
-    # First registered user automatically becomes admin.
     # Auto-bind to the default plan (Free, by convention) so the quota
     # resolver always finds a finite tier; the helper returns ``None``
     # on a missing seed row, in which case the backfill migration (or
@@ -672,18 +681,13 @@ async def register(
         # signing in, but an unproven address is never a match target for a
         # provider sign-in (see the auto-bind gate in ``web/api/oauth.py``),
         # so a provider sign-in for the address never lands in this account.
-        # The first account is the installer's own, as in ``/setup``.
-        email_verified=address_proven or is_first_user_check,
-        is_admin=is_first_user_check,
+        email_verified=address_proven,
+        is_admin=False,
         privacy_accepted_at=datetime.now(UTC) if body.privacy_accepted else None,
         plan_id=default_plan_id,
     )
     db.add(user)
     await db.flush()
-
-    # Create Market org on first user registration (admin becomes owner)
-    if is_first_user_check:
-        await ensure_market_org(db, owner_id=user.id)
 
     access = create_access_token(user.id, user.email)
     refresh = create_refresh_token(user.id, user.email)
@@ -696,22 +700,21 @@ async def register(
         db,
         user,
         actions.AUTH_REGISTER,
-        detail="first account, made administrator" if is_first_user_check else None,
+        detail=None,
     )
     await db.commit()
 
-    # Notify admins of new registration (fire-and-forget, skip for first user)
-    if not is_first_user_check:
-        spawn_background(
-            notify_admins(
-                "new_user_registration",
-                "New User Registered",
-                [
-                    f"Email: {body.email}",
-                ],
-                event_time=datetime.now(UTC),
-            )
+    # Notify admins of new registration (fire-and-forget).
+    spawn_background(
+        notify_admins(
+            "new_user_registration",
+            "New User Registered",
+            [
+                f"Email: {body.email}",
+            ],
+            event_time=datetime.now(UTC),
         )
+    )
 
     # Reload with oauth_bindings for response serialization
     result = await db.execute(
@@ -975,8 +978,12 @@ async def refresh_token(
     if not user.is_active:
         raise AppError("account_disabled", status_code=403)
 
-    if user.refresh_token != hash_refresh_token(body.refresh_token):
+    presented = hash_refresh_token(body.refresh_token)
+    if user.refresh_token != presented:
         raise AppError("refresh_token_mismatch", status_code=401)
+
+    if session_token_revoked(user, payload):
+        raise AppError("session_invalidated", status_code=401)
 
     if (
         user.refresh_token_expires_at is not None
@@ -984,14 +991,22 @@ async def refresh_token(
     ):
         raise AppError("refresh_token_expired", status_code=401)
 
-    # Token rotation: issue new pair
+    # Token rotation: issue new pair. The stored hash is replaced only when
+    # it is still the one just checked, so a revocation that committed in
+    # between is not overwritten by this rotation.
     access = create_access_token(user.id, user.email)
     refresh = create_refresh_token(user.id, user.email)
-
-    user.refresh_token = hash_refresh_token(refresh)
-    user.refresh_token_expires_at = datetime.now(UTC) + timedelta(
-        days=REFRESH_TOKEN_EXPIRE_DAYS
+    rotated = await db.execute(
+        update(User)
+        .where(User.id == user.id, User.refresh_token == presented)
+        .values(
+            refresh_token=hash_refresh_token(refresh),
+            refresh_token_expires_at=datetime.now(UTC) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+        )
     )
+    if not isinstance(rotated, CursorResult) or rotated.rowcount != 1:
+        await db.rollback()
+        raise AppError("refresh_token_mismatch", status_code=401)
     await db.commit()
 
     # Reload with oauth_bindings (commit expires loaded attributes)
@@ -1561,6 +1576,7 @@ async def change_password(
     if not await verify_password_async(body.current_password, user.password_hash):
         raise AppError("current_password_incorrect")
     user.password_hash = await hash_password_async(body.new_password)
+    invalidate_login_sessions(user)
     await record_account(db, user, actions.AUTH_PASSWORD_CHANGE)
     await db.commit()
     return ApiResponse(data={"message": "Password changed successfully"})
@@ -1578,6 +1594,7 @@ async def set_password(
     if user.password_hash is not None:
         raise AppError("password_already_set")
     user.password_hash = await hash_password_async(body.new_password)
+    invalidate_login_sessions(user)
     await record_account(db, user, actions.AUTH_PASSWORD_SET)
     await db.commit()
 
@@ -1664,6 +1681,7 @@ async def reset_password(
     if not user.email_verified:
         await _first_proof_of_address(db, user, keep_password=True, issues_session=False)
     user.password_hash = await hash_password_async(body.new_password)
+    invalidate_login_sessions(user)
     await clear_password_failures(db, user_id=user.id)
     await record_account(db, user, actions.AUTH_PASSWORD_RESET, detail="emailed code, signed in")
     await db.commit()
@@ -1796,6 +1814,7 @@ async def forgot_password(
 
     # Set new password
     user.password_hash = await hash_password_async(body.new_password)
+    invalidate_login_sessions(user)
     await clear_password_failures(db, user_id=user.id)
     # Clear the reset token so it can't be reused
     verif.reset_token = None
@@ -1880,11 +1899,22 @@ async def setup(
     body: SetupRequest,
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> TokenResponse:
-    """First-time admin setup. Only works when no users exist yet."""
-    result = await db.execute(select(func.count(User.id)))
-    count = result.scalar_one()
+    """First-time admin setup. Only works when no users exist yet.
+
+    Requires ``FIM_SETUP_TOKEN``. The user count is taken under the instance
+    lock, so two concurrent calls cannot both create an administrator.
+    """
+    count = await locked_user_count(db)
     if count > 0:
         raise AppError("system_already_initialized", status_code=403)
+    if not setup_token_configured():
+        raise AppError(
+            "setup_token_not_configured",
+            status_code=503,
+            detail="Set FIM_SETUP_TOKEN before creating the first administrator.",
+        )
+    if not setup_token_matches(body.setup_token):
+        raise AppError("setup_token_invalid", status_code=403)
 
     default_plan_id = await get_default_plan_id(db)
     user = User(
@@ -1898,6 +1928,7 @@ async def setup(
     )
     db.add(user)
     await db.flush()
+    await ensure_market_org(db, owner_id=user.id)
 
     access = create_access_token(user.id, user.email)
     refresh = create_refresh_token(user.id, user.email)
