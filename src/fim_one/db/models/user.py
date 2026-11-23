@@ -43,8 +43,10 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     # Incremented whenever every existing session must stop. Access and refresh
     # tokens carry the value as ``gen``. Comparison is exact, so a token issued
     # in the same second as the increment does not stay valid.
+    # No Python-side default: an insert that names only the columns an older
+    # migration had must not mention this one. The database fills 0.
     session_generation: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
+        Integer, nullable=False, server_default="0"
     )
     token_quota: Mapped[int | None] = mapped_column(Integer, nullable=True)
     system_instructions: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
