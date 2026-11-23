@@ -358,7 +358,7 @@ note.
 - [x] Usage read from an append-only ledger: deleting does not lower "used"; stopped and failed turns and the AI helpers count
 - [x] Audit retention with a daily sweep; organization admins and users read their own audit; deleted users de-identified in kept records
 - [x] In a container, code execution uses the sandbox unless `ALLOW_LOCAL_CODE_EXEC=true`; a leftover `local` in `.env` does not apply
-- [x] Password changes and “sign out everywhere” drop refresh tokens and reject access tokens already issued
+- [x] Password changes and “sign out everywhere” reject tokens already issued, including one refreshed in the same second
 - [x] The first administrator requires `FIM_SETUP_TOKEN`, and only one setup can win
 - [x] MCP HTTP and SSE connections re-check the host address on each request
 - [ ] Verify Responses-bridge streaming usage numbers on the next LiteLLM upgrade (upstream mis-mapping suspected)

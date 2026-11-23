@@ -31,8 +31,7 @@ from fim_one.web.services.user_deletion import is_reserved_username
 from fim_one.web.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     REFRESH_TOKEN_EXPIRE_DAYS,
-    create_access_token,
-    create_refresh_token,
+    issue_session_tokens,
     get_current_user,
     hash_refresh_token,
 )
@@ -550,8 +549,7 @@ async def _handle_login(
         )
 
     # Issue JWT tokens
-    jwt_access = create_access_token(user.id, user.email)
-    jwt_refresh = create_refresh_token(user.id, user.email)
+    jwt_access, jwt_refresh = issue_session_tokens(user)
     # Store the SHA-256 digest, never the raw token: the /refresh endpoint
     # compares against hash_refresh_token(...), so storing the plaintext here
     # both leaks a long-lived credential into the DB and permanently breaks

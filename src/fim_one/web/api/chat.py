@@ -53,7 +53,6 @@ import time
 import uuid
 from collections.abc import AsyncGenerator, Coroutine, Sequence
 from contextlib import suppress
-from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -974,16 +973,11 @@ async def _resolve_user(
             if not user.is_active:
                 return None, None, None, None
 
-            # Fix #11b: reject tokens issued before a force-logout event
-            if user.tokens_invalidated_at is not None:
-                iat = payload.get("iat")
-                if iat is None:
-                    return None, None, None, None
-                token_issued = (
-                    datetime.fromtimestamp(iat, tz=UTC) if isinstance(iat, (int, float)) else iat
-                )
-                if token_issued <= user.tokens_invalidated_at.replace(tzinfo=UTC):
-                    return None, None, None, None
+            # Reject a session signed out by password change, revoke, or force-logout.
+            from fim_one.web.auth import session_token_revoked
+
+            if session_token_revoked(user, payload):
+                return None, None, None, None
 
             system_instructions = user.system_instructions
             preferred_language = user.preferred_language

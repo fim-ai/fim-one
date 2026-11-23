@@ -144,7 +144,11 @@ class Usage:
 
     @staticmethod
     def token(user: User) -> str:
-        return create_access_token(user.id, user.email or "")
+        return create_access_token(
+            user.id,
+            user.email or "",
+            session_generation=int(getattr(user, "session_generation", 0) or 0),
+        )
 
     def auth(self, user: User) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.token(user)}"}

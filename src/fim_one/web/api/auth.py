@@ -66,8 +66,6 @@ from fim_one.db.models.invite_code import InviteCode
 from fim_one.web.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     REFRESH_TOKEN_EXPIRE_DAYS,
-    create_access_token,
-    create_refresh_token,
     decode_token,
     dummy_password_hash,
     get_current_user,
@@ -75,6 +73,7 @@ from fim_one.web.auth import (
     hash_password_async,
     hash_refresh_token,
     invalidate_login_sessions,
+    issue_session_tokens,
     session_token_revoked,
     verify_password,
     verify_password_async,
@@ -431,9 +430,11 @@ async def _first_proof_of_address(
         user.password_hash = None
     user.refresh_token = None
     user.refresh_token_expires_at = None
+    user.session_generation = int(user.session_generation or 0) + 1
     # Tokens carry their issue time in whole seconds and one issued in the
     # second of the cut-off counts as older.  A request that goes on to
-    # issue a session therefore cuts off one second earlier.
+    # issue a session therefore cuts off one second earlier.  ``gen`` is the
+    # precise cut; this timestamp remains for tokens that have no generation.
     user.tokens_invalidated_at = (
         now.replace(microsecond=0) - timedelta(seconds=1) if issues_session else now
     )
@@ -689,8 +690,7 @@ async def register(
     db.add(user)
     await db.flush()
 
-    access = create_access_token(user.id, user.email)
-    refresh = create_refresh_token(user.id, user.email)
+    access, refresh = issue_session_tokens(user)
 
     user.refresh_token = hash_refresh_token(refresh)
     user.refresh_token_expires_at = datetime.now(UTC) + timedelta(
@@ -809,8 +809,7 @@ async def login(
         await _record_login(db, request, user, method="password", success=False, failure_reason=audit.PENDING_SECOND_FACTOR)
         return JSONResponse(content={"requires_2fa": True, "temp_token": temp_token})
 
-    access = create_access_token(user.id, user.email)
-    refresh = create_refresh_token(user.id, user.email)
+    access, refresh = issue_session_tokens(user)
 
     user.refresh_token = hash_refresh_token(refresh)
     user.refresh_token_expires_at = datetime.now(UTC) + timedelta(
@@ -935,8 +934,7 @@ async def login_with_code(
         return JSONResponse(content={"requires_2fa": True, "temp_token": temp_token})
 
     # Issue tokens (same pattern as /login)
-    access = create_access_token(user.id, user.email)
-    refresh = create_refresh_token(user.id, user.email)
+    access, refresh = issue_session_tokens(user)
 
     user.refresh_token = hash_refresh_token(refresh)
     user.refresh_token_expires_at = datetime.now(UTC) + timedelta(
@@ -994,11 +992,15 @@ async def refresh_token(
     # Token rotation: issue new pair. The stored hash is replaced only when
     # it is still the one just checked, so a revocation that committed in
     # between is not overwritten by this rotation.
-    access = create_access_token(user.id, user.email)
-    refresh = create_refresh_token(user.id, user.email)
+    generation = int(user.session_generation or 0)
+    access, refresh = issue_session_tokens(user)
     rotated = await db.execute(
         update(User)
-        .where(User.id == user.id, User.refresh_token == presented)
+        .where(
+            User.id == user.id,
+            User.refresh_token == presented,
+            User.session_generation == generation,
+        )
         .values(
             refresh_token=hash_refresh_token(refresh),
             refresh_token_expires_at=datetime.now(UTC) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
@@ -1930,8 +1932,7 @@ async def setup(
     await db.flush()
     await ensure_market_org(db, owner_id=user.id)
 
-    access = create_access_token(user.id, user.email)
-    refresh = create_refresh_token(user.id, user.email)
+    access, refresh = issue_session_tokens(user)
 
     user.refresh_token = hash_refresh_token(refresh)
     user.refresh_token_expires_at = datetime.now(UTC) + timedelta(
@@ -2284,8 +2285,7 @@ async def verify_2fa_login(
     await release_second_factor_attempt(db, user_id=user.id)
 
     # Issue tokens (same as normal login)
-    access = create_access_token(user.id, user.email)
-    refresh = create_refresh_token(user.id, user.email)
+    access, refresh = issue_session_tokens(user)
 
     user.refresh_token = hash_refresh_token(refresh)
     user.refresh_token_expires_at = datetime.now(UTC) + timedelta(

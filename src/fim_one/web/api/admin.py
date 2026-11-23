@@ -800,9 +800,9 @@ async def reset_password(
         raise AppError("user_not_found", status_code=404)
 
     target_user.password_hash = await hash_password_async(body.new_password)
-    target_user.refresh_token = None
-    target_user.refresh_token_expires_at = None
-    target_user.tokens_invalidated_at = datetime.now(timezone.utc)
+    from fim_one.web.auth import invalidate_login_sessions
+
+    invalidate_login_sessions(target_user)
     await clear_password_failures(db, user_id=target_user.id)
     await db.flush()
     await stage_audit(
@@ -1236,14 +1236,13 @@ async def force_logout_all(
 ) -> dict[str, Any]:
     """Invalidate all refresh tokens and mark a force-logout timestamp,
     causing active access tokens to also be rejected immediately."""
-    now = datetime.now(timezone.utc)
+    from fim_one.web.auth import invalidate_login_sessions
+
     result = await db.execute(select(User).where(User.id != current_user.id))
     users = result.scalars().all()
     count = len(users)
     for u in users:
-        u.refresh_token = None
-        u.refresh_token_expires_at = None
-        u.tokens_invalidated_at = now
+        invalidate_login_sessions(u)
     await db.flush()
     await stage_audit(db, current_user, "auth.force_logout_all", detail=f"invalidated {count} sessions")
     await db.commit()
@@ -1541,9 +1540,9 @@ async def force_logout_user(
     user = result.scalar_one_or_none()
     if user is None:
         raise AppError("user_not_found", status_code=404)
-    user.refresh_token = None
-    user.refresh_token_expires_at = None
-    user.tokens_invalidated_at = datetime.now(timezone.utc)
+    from fim_one.web.auth import invalidate_login_sessions
+
+    invalidate_login_sessions(user)
     await db.flush()
     await stage_audit(
         db, current_user, "user.force_logout",

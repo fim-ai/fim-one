@@ -1,12 +1,19 @@
-"""Refresh and access tokens die when a session is revoked or the password changes."""
+"""Refresh and access tokens die when a session is revoked or the password changes.
+
+The cut is the account's session generation, not the clock. A token issued in
+the same second as the change is rejected, and so is a refresh that rotates
+while the change is in flight.
+"""
 
 from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
 
+import jwt
+
 from fim_one.db.models import User
-from fim_one.web.auth import create_refresh_token, hash_refresh_token
+from fim_one.web.auth import ALGORITHM, SECRET_KEY, create_refresh_token, hash_refresh_token
 from tests.audit.harness import PASSWORD, World, world  # noqa: F401
 
 NEW_PASSWORD = "a brand new passphrase 42"
@@ -35,7 +42,6 @@ class TestSessionRevocation:
         assert rotated.status_code == 200
         access = rotated.json()["access_token"]
         refresh = rotated.json()["refresh_token"]
-        await asyncio.sleep(1.1)
 
         await world.call(
             "POST",
@@ -50,7 +56,6 @@ class TestSessionRevocation:
     async def test_password_change_blocks_old_tokens(self, world: World) -> None:
         alice = await world.user("alice", password=PASSWORD)
         access, refresh = await _login(world, alice.email or "")
-        await asyncio.sleep(1.1)
 
         await world.call(
             "POST",
@@ -64,17 +69,128 @@ class TestSessionRevocation:
         me = await world.client.get("/api/auth/me", headers={"Authorization": f"Bearer {fresh}"})
         assert me.status_code == 200
 
-    async def test_cutoff_blocks_refresh_when_the_hash_matches(self, world: World) -> None:
+    async def test_generation_blocks_refresh_when_the_hash_matches(self, world: World) -> None:
         alice = await world.user("alice", password=PASSWORD)
-        token = create_refresh_token(alice.id, alice.email or "")
+        token = create_refresh_token(alice.id, alice.email or "", session_generation=0)
         async with world.factory() as db:
             user = await db.get(User, alice.id)
             assert user is not None
             user.refresh_token = hash_refresh_token(token)
             user.refresh_token_expires_at = datetime.now(UTC) + timedelta(days=1)
-            user.tokens_invalidated_at = datetime.now(UTC) + timedelta(minutes=5)
+            user.session_generation = 1
             await db.commit()
 
         response = await world.client.post("/api/auth/refresh", json={"refresh_token": token})
         assert response.status_code == 401
         assert response.json()["error_code"] == "session_invalidated"
+
+    async def test_legacy_token_dies_after_generation_moves(self, world: World) -> None:
+        alice = await world.user("alice", password=PASSWORD)
+        now = datetime.now(UTC)
+        legacy = jwt.encode(
+            {
+                "sub": alice.id,
+                "email": alice.email,
+                "type": "access",
+                "iat": now,
+                "exp": now + timedelta(minutes=30),
+            },
+            SECRET_KEY,
+            algorithm=ALGORITHM,
+        )
+        alive = await world.client.get(
+            "/api/auth/me", headers={"Authorization": f"Bearer {legacy}"}
+        )
+        assert alive.status_code == 200
+
+        async with world.factory() as db:
+            user = await db.get(User, alice.id)
+            assert user is not None
+            user.session_generation = 1
+            await db.commit()
+
+        dead = await world.client.get(
+            "/api/auth/me", headers={"Authorization": f"Bearer {legacy}"}
+        )
+        assert dead.status_code == 401
+
+    async def test_refresh_during_password_change_cannot_keep_a_session(self, world: World) -> None:
+        alice = await world.user("alice", password=PASSWORD)
+        access, refresh = await _login(world, alice.email or "")
+
+        changed, rotated = await asyncio.gather(
+            world.client.post(
+                "/api/auth/change-password",
+                headers={"Authorization": f"Bearer {access}"},
+                json={"current_password": PASSWORD, "new_password": NEW_PASSWORD},
+            ),
+            world.client.post("/api/auth/refresh", json={"refresh_token": refresh}),
+        )
+
+        assert changed.status_code == 200
+        assert rotated.status_code in (200, 401)
+        if rotated.status_code == 200:
+            kept = await world.client.get(
+                "/api/auth/me",
+                headers={"Authorization": f"Bearer {rotated.json()['access_token']}"},
+            )
+            assert kept.status_code == 401
+            again = await world.client.post(
+                "/api/auth/refresh",
+                json={"refresh_token": rotated.json()["refresh_token"]},
+            )
+            assert again.status_code == 401
+        await _rejected(world, access, refresh)
+        fresh, _next = await _login(world, alice.email or "", NEW_PASSWORD)
+        me = await world.client.get("/api/auth/me", headers={"Authorization": f"Bearer {fresh}"})
+        assert me.status_code == 200
+
+    async def test_completed_refresh_dies_after_password_change(self, world: World) -> None:
+        alice = await world.user("alice", password=PASSWORD)
+        access, refresh = await _login(world, alice.email or "")
+        rotated = await world.client.post("/api/auth/refresh", json={"refresh_token": refresh})
+        assert rotated.status_code == 200
+        new_access = rotated.json()["access_token"]
+        new_refresh = rotated.json()["refresh_token"]
+
+        changed = await world.client.post(
+            "/api/auth/change-password",
+            headers={"Authorization": f"Bearer {new_access}"},
+            json={"current_password": PASSWORD, "new_password": NEW_PASSWORD},
+        )
+        assert changed.status_code == 200
+        await _rejected(world, new_access, new_refresh)
+        await _rejected(world, access, refresh)
+
+    async def test_refresh_loses_if_generation_moved(self, world: World) -> None:
+        from sqlalchemy import update
+
+        alice = await world.user("alice", password=PASSWORD)
+        _access, refresh = await _login(world, alice.email or "")
+        presented = hash_refresh_token(refresh)
+
+        async with world.factory() as db:
+            user = await db.get(User, alice.id)
+            assert user is not None
+            generation = int(user.session_generation or 0)
+
+        changed = await world.client.post(
+            "/api/auth/change-password",
+            headers={"Authorization": f"Bearer {_access}"},
+            json={"current_password": PASSWORD, "new_password": NEW_PASSWORD},
+        )
+        assert changed.status_code == 200
+
+        async with world.factory() as db:
+            rotated = await db.execute(
+                update(User)
+                .where(
+                    User.id == alice.id,
+                    User.refresh_token == presented,
+                    User.session_generation == generation,
+                )
+                .values(refresh_token="rotated-hash")
+            )
+            await db.commit()
+        assert getattr(rotated, "rowcount", None) == 0
+        await _rejected(world, _access, refresh)

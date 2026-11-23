@@ -40,6 +40,12 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     refresh_token: Mapped[str | None] = mapped_column(String(500), nullable=True)
     refresh_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     tokens_invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Incremented whenever every existing session must stop. Access and refresh
+    # tokens carry the value as ``gen``. Comparison is exact, so a token issued
+    # in the same second as the increment does not stay valid.
+    session_generation: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     token_quota: Mapped[int | None] = mapped_column(Integer, nullable=True)
     system_instructions: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     preferred_language: Mapped[str] = mapped_column(

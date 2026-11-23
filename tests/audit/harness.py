@@ -20,7 +20,6 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -118,15 +117,12 @@ class World:
 
     @staticmethod
     def auth(user: User) -> dict[str, str]:
-        import jwt as pyjwt
+        from fim_one.web.auth import create_access_token
 
-        from fim_one.web.auth import ALGORITHM, SECRET_KEY
-
-        now = datetime.now(UTC)
-        token = pyjwt.encode(
-            {"sub": user.id, "type": "access", "iat": now, "exp": now + timedelta(hours=1)},
-            SECRET_KEY,
-            algorithm=ALGORITHM,
+        token = create_access_token(
+            user.id,
+            user.email or "",
+            session_generation=int(getattr(user, "session_generation", 0) or 0),
         )
         return {"Authorization": f"Bearer {token}"}
 
@@ -141,7 +137,14 @@ class World:
         **kwargs: Any,
     ) -> Response:
         """One request, as *by* (or nobody). Fails the test on an unexpected status."""
-        sent = {"User-Agent": USER_AGENT, **(self.auth(by) if by else {}), **(headers or {})}
+        actor = by
+        if actor is not None:
+            # Password changes and revokes move session_generation. The object
+            # the test still holds may be the value from before that.
+            fresh = await self.get(User, actor.id)
+            if fresh is not None:
+                actor = fresh
+        sent = {"User-Agent": USER_AGENT, **(self.auth(actor) if actor else {}), **(headers or {})}
         observing = os.environ.get(OBSERVE_ENV)
         before = await self._row_ids() if observing else None
         response = await self.client.request(method, path, headers=sent, **kwargs)
