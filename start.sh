@@ -96,7 +96,8 @@ case "$CMD" in
     uv run uvicorn fim_one.web:create_app --factory --host 0.0.0.0 --port 8000 --workers "$WORKERS" --log-level "$UVICORN_LOG_LEVEL" &
     API_PID=$!
     trap "kill $API_PID 2>/dev/null" EXIT
-    cd frontend && pnpm dev
+    # Production: build once, then serve with `next start` (not the dev server)
+    cd frontend && pnpm build && pnpm start
     ;;
   dev)
     free_port 8000
