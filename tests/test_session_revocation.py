@@ -194,3 +194,30 @@ class TestSessionRevocation:
             await db.commit()
         assert getattr(rotated, "rowcount", None) == 0
         await _rejected(world, _access, refresh)
+
+    async def test_reenable_does_not_restore_access_token(self, world: World) -> None:
+        root = await world.user("root", admin=True, password=PASSWORD)
+        alice = await world.user("alice", password=PASSWORD)
+        access, refresh = await _login(world, alice.email or "")
+
+        await world.call(
+            "PATCH",
+            f"/api/admin/users/{alice.id}/active",
+            by=root,
+            json={"is_active": False},
+        )
+        disabled = await world.client.get(
+            "/api/auth/me", headers={"Authorization": f"Bearer {access}"}
+        )
+        assert disabled.status_code == 403
+
+        await world.call(
+            "PATCH",
+            f"/api/admin/users/{alice.id}/active",
+            by=root,
+            json={"is_active": True},
+        )
+        await _rejected(world, access, refresh)
+        fresh, _next = await _login(world, alice.email or "")
+        me = await world.client.get("/api/auth/me", headers={"Authorization": f"Bearer {fresh}"})
+        assert me.status_code == 200

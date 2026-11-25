@@ -823,7 +823,11 @@ async def toggle_user_active(
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> AdminUserInfo:
-    """Enable or disable a user account. Requires admin privileges."""
+    """Enable or disable a user account. Requires admin privileges.
+
+    Disabling signs the account's sessions out. Enabling it again does not
+    bring those tokens back.
+    """
     if current_user.id == user_id and not body.is_active:
         raise AppError("cannot_disable_own_account")
 
@@ -834,9 +838,11 @@ async def toggle_user_active(
 
     target_user.is_active = body.is_active
     if not body.is_active:
-        # Invalidate refresh token to kick the user offline
-        target_user.refresh_token = None
-        target_user.refresh_token_expires_at = None
+        # Sign every session out. Clearing the refresh token alone left an
+        # access token usable again as soon as the account was turned back on.
+        from fim_one.web.auth import invalidate_login_sessions
+
+        invalidate_login_sessions(target_user)
     await db.flush()
     await stage_audit(
         db, current_user,
