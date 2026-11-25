@@ -8,7 +8,7 @@ version = "0.9.4"
 description = "LLM-powered Agent Runtime with dynamic DAG planning and concurrent execution"
 readme = "README.md"
 license = "LicenseRef-FIM-One"
-# soupsieve >=4.1.2 does not install before 3.11.5, and no patched
+# soupsieve >=4.1.3 does not install before 3.11.5, and no patched
 # release of that library does either.
 requires-python = ">=3.11.5"
 authors = [
@@ -131,9 +131,9 @@ constraint-dependencies = [
     # GHSA-mf5v-w3w3-f6cg: quadratic-time traceparent parsing, fixed in 1.45.2.
     "opentelemetry-api>=1.45.2",
     "pillow>=13.0.0",
-    # 4.0.0 is the advisory floor. 4.1.2 is the first release that also
+    # 4.0.0 is the advisory floor. 4.1.3 is the first release that also
     # includes the later quadratic-selector fixes. Requires Python >=3.11.5.
-    "soupsieve>=4.1.2",
+    "soupsieve>=4.1.3",
     "starlette>=1.3.1",
     "urllib3>=2.8.0",
 ]
