@@ -103,6 +103,7 @@ class TestOAuthSignIn:
         from fim_one.db.models import SystemSetting
         from fim_one.web.api.admin import SETTING_REGISTRATION_MODE
 
+        await world.user("installed")
         await world.add(SystemSetting(key=SETTING_REGISTRATION_MODE, value="disabled"))
 
         response = await _callback(world)

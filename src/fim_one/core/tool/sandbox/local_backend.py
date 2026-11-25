@@ -27,7 +27,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from fim_one.core.security.host_access import local_execution_refusal
+from fim_one.core.security.host_access import local_backend_refusal
 
 from .protocol import SandboxResult
 from ._env_utils import build_safe_env
@@ -289,7 +289,7 @@ class LocalBackend:
         cpu: float | None = None,
     ) -> SandboxResult:
         # Off the event loop: it may ask a network endpoint what it is.
-        refusal = await asyncio.to_thread(local_execution_refusal)
+        refusal = await asyncio.to_thread(local_backend_refusal)
         if refusal is not None:
             return SandboxResult(stdout="", stderr="", exit_code=-1, error=refusal)
         if language == "python":
@@ -316,7 +316,7 @@ class LocalBackend:
         # Not a word list: with the Docker socket in reach, no command is
         # started at all (core/security/host_access.py).
         # Off the event loop: it may ask a network endpoint what it is.
-        refusal = await asyncio.to_thread(local_execution_refusal)
+        refusal = await asyncio.to_thread(local_backend_refusal)
         if refusal is not None:
             return SandboxResult(stdout="", stderr="", exit_code=-1, error=refusal)
         sandbox_dir.mkdir(parents=True, exist_ok=True)

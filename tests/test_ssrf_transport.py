@@ -9,6 +9,7 @@ from fim_one.core.security.ssrf import (
     SSRFSafeTransport,
     _is_ip_literal,
     _resolve_and_pin,
+    apply_dns_pin,
     get_safe_async_client,
 )
 
@@ -208,3 +209,39 @@ class TestPinPrefersIPv4:
                 (socket.AF_INET6, 1, 6, "", ("2606:2800:220:1::1", 0, 0, 0)),
             ]
             assert _resolve_and_pin("example.com") == "2606:2800:220:1::1"
+
+
+class _URL:
+    def __init__(self, host: str) -> None:
+        self.host = host
+
+    def copy_with(self, *, host: str) -> _URL:
+        return _URL(host)
+
+
+class _Request:
+    def __init__(self, host: str) -> None:
+        self.url = _URL(host)
+        self.headers: dict[str, str] = {}
+        self.extensions: dict[str, object] = {}
+
+
+class TestApplyDnsPin:
+    def test_hostname_is_rewritten_to_the_checked_address(self) -> None:
+        request = _Request("example.com")
+        with patch("fim_one.core.security.ssrf._resolve_and_pin", return_value="93.184.216.34"):
+            apply_dns_pin(request)
+        assert request.url.host == "93.184.216.34"
+        assert request.extensions["sni_hostname"] == "example.com"
+        assert request.headers["host"] == "example.com"
+
+    def test_private_address_literal_is_refused(self) -> None:
+        request = _Request("169.254.169.254")
+        with pytest.raises(ValueError, match="private"):
+            apply_dns_pin(request)
+
+    def test_public_address_literal_is_left_unchanged(self) -> None:
+        request = _Request("93.184.216.34")
+        apply_dns_pin(request)
+        assert request.url.host == "93.184.216.34"
+        assert "sni_hostname" not in request.extensions

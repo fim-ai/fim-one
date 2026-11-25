@@ -31,8 +31,7 @@ from fim_one.web.services.user_deletion import is_reserved_username
 from fim_one.web.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     REFRESH_TOKEN_EXPIRE_DAYS,
-    create_access_token,
-    create_refresh_token,
+    issue_session_tokens,
     get_current_user,
     hash_refresh_token,
 )
@@ -401,7 +400,26 @@ async def _handle_login(
                 user = matched
 
         if user is None:
-            # 3. No email match -- create new user, but check registration_mode first
+            # 3. No email match -- create new user, but check registration_mode first.
+            # An instance with no account yet has no administrator; creating one
+            # here would close /setup without ever granting that role.
+            from fim_one.web.services.bootstrap import locked_user_count
+
+            if await locked_user_count(db) == 0:
+                await audit.record_login(
+                    user_id=None,
+                    username=None,
+                    email=user_info.email,
+                    success=False,
+                    method=method,
+                    failure_reason="system_not_initialized",
+                    db=db,
+                )
+                await db.commit()
+                return RedirectResponse(
+                    url=f"{frontend_url}/auth/callback?error=system_not_initialized",
+                    status_code=302,
+                )
             reg_mode = await get_setting(db, SETTING_REGISTRATION_MODE, default="")
             if not reg_mode:
                 # Backward compat: fall back to legacy boolean
@@ -531,8 +549,7 @@ async def _handle_login(
         )
 
     # Issue JWT tokens
-    jwt_access = create_access_token(user.id, user.email)
-    jwt_refresh = create_refresh_token(user.id, user.email)
+    jwt_access, jwt_refresh = issue_session_tokens(user)
     # Store the SHA-256 digest, never the raw token: the /refresh endpoint
     # compares against hash_refresh_token(...), so storing the plaintext here
     # both leaks a long-lived credential into the DB and permanently breaks

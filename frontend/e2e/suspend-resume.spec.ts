@@ -138,7 +138,7 @@ test.beforeAll(async ({ request }) => {
     request,
     "POST",
     "/api/auth/setup",
-    { email: "approver@example.com", password: "smoke-password-1" },
+    { email: "approver@example.com", password: "smoke-password-1", setup_token: "e2e-setup-token" },
     null,
   )
   session = { accessToken: auth.access_token, refreshToken: auth.refresh_token, user: auth.user }

@@ -172,14 +172,15 @@ class TestRegistrationRecordsWhetherTheAddressWasProven:
         (user,) = await env.users()
         assert user.email_verified is True
 
-    async def test_the_first_account_is_the_installers(self, tmp_path: Path, env: _Env) -> None:
+    async def test_register_does_not_create_the_installer(self, tmp_path: Path, env: _Env) -> None:
         async with env.sessions() as s:
             for user in (await s.scalars(select(User))).all():
                 await s.delete(user)
             await s.commit()
-        assert (await env.register(email="root@example.com")).status_code == 200
-        (user,) = await env.users("root@example.com")
-        assert user.is_admin is True and user.email_verified is True
+        refused = await env.register(email="root@example.com")
+        assert refused.status_code == 403
+        assert refused.json()["error_code"] == "system_not_initialized"
+        assert await env.users("root@example.com") == []
 
 
 class TestProviderSignInIsNeitherMergedNorBlocked:

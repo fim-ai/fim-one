@@ -524,6 +524,8 @@ def _start(
             "REAL_PYTHON": sys.executable,
             "FIM_SECRETS_DIR": str(store),
             "CODE_EXEC_BACKEND": "local",
+            # The entrypoint keeps in-process execution only with this opt-in.
+            "ALLOW_LOCAL_CODE_EXEC": "true",
             **env,
         },
         capture_output=True,

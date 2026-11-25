@@ -7,6 +7,7 @@ import contextlib
 import logging
 from typing import Any
 
+from fim_one.core.mcp.http_client import ssrf_safe_httpx2_client
 from fim_one.core.security import validate_url as _validate_url
 from fim_one.core.security.log_secrets import install_url_secret_log_filter
 from fim_one.core.tool.base import Tool
@@ -375,7 +376,11 @@ class MCPClient:
         previous = self._sessions.get(name)
         try:
             read, write = await self._exit_stack.enter_async_context(
-                sse_client(url, headers=headers or {})
+                sse_client(
+                    url,
+                    headers=headers or {},
+                    httpx_client_factory=ssrf_safe_httpx2_client,
+                )
             )
             session: ClientSession = await self._exit_stack.enter_async_context(
                 ClientSession(read, write)
@@ -456,8 +461,8 @@ class MCPClient:
         # ``get_session_id`` yield). Headers and the v1 timeouts
         # (30s default, 300s read) now live on an httpx2 client, which
         # we own for the life of the connection. The transport does not
-        # close a client it was given.
-        http_client = httpx2.AsyncClient(
+        # close a client it was given. The client pins DNS on each request.
+        http_client = ssrf_safe_httpx2_client(
             headers=headers or {},
             timeout=httpx2.Timeout(30.0, read=300.0),
         )

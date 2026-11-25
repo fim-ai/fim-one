@@ -1,6 +1,41 @@
 #!/bin/sh
 set -e
 
+# Inside this image, unset means the sandbox backend. An explicit ``local``
+# is kept only with ALLOW_LOCAL_CODE_EXEC=true; otherwise it is docker, so a
+# leftover value in .env does not run code in the application process.
+# Sourced by tests with CODE_EXEC_BACKEND_LIB_ONLY=1, which returns here.
+resolve_code_exec_backend() {
+  backend=$(printf '%s' "${CODE_EXEC_BACKEND:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+  allow=$(printf '%s' "${ALLOW_LOCAL_CODE_EXEC:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+  case "$backend" in
+    ""|docker)
+      CODE_EXEC_BACKEND=docker
+      ;;
+    local)
+      case "$allow" in
+        1|true|yes)
+          echo "WARNING: ALLOW_LOCAL_CODE_EXEC is set; code runs in the application process." >&2
+          CODE_EXEC_BACKEND=local
+          ;;
+        *)
+          echo "WARNING: CODE_EXEC_BACKEND=local is ignored inside the container unless ALLOW_LOCAL_CODE_EXEC=true. Using docker." >&2
+          CODE_EXEC_BACKEND=docker
+          ;;
+      esac
+      ;;
+    *)
+      echo "WARNING: CODE_EXEC_BACKEND=$backend is not docker or local. Using docker." >&2
+      CODE_EXEC_BACKEND=docker
+      ;;
+  esac
+  export CODE_EXEC_BACKEND
+}
+
+if [ "${CODE_EXEC_BACKEND_LIB_ONLY:-}" = "1" ]; then
+  return 0 2>/dev/null || exit 0
+fi
+
 cd /app
 
 # ---------------------------------------------------------------------------
@@ -20,6 +55,8 @@ fail() {
   echo "ERROR: $*" >&2
   exit 1
 }
+
+resolve_code_exec_backend
 
 if [ "$(id -u)" = "0" ]; then
   APP_UID="$(id -u fim)"
@@ -74,7 +111,7 @@ if [ "$(id -u)" = "0" ]; then
 
   # The sandbox proxy's token: written by the docker-socket-proxy service
   # into a volume only root can read. Without it the proxy answers 401.
-  if [ "${CODE_EXEC_BACKEND:-local}" = "docker" ] && [ -z "${SANDBOX_PROXY_TOKEN:-}" ]; then
+  if [ "$CODE_EXEC_BACKEND" = "docker" ] && [ -z "${SANDBOX_PROXY_TOKEN:-}" ]; then
     TOKEN_FILE="${SANDBOX_PROXY_TOKEN_FILE:-/run/fim-sandbox-proxy/token}"
     waited=0
     while [ ! -s "$TOKEN_FILE" ] && [ "$waited" -lt 30 ]; do

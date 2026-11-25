@@ -21,6 +21,7 @@ from .connector_call_log import ConnectorCallLog
 from .database_schema import DatabaseSchema, SchemaColumn
 from .conversation import Conversation
 from .email_verification import EmailVerification
+from .instance_guard import InstanceGuard
 from .invite_code import InviteCode
 from .ip_rule import IpRule
 from .login_history import LoginHistory
@@ -60,6 +61,7 @@ __all__ = [
     "Conversation",
     "DatabaseSchema",
     "EmailVerification",
+    "InstanceGuard",
     "InviteCode",
     "IpRule",
     "KBDocument",

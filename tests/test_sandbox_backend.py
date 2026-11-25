@@ -374,9 +374,16 @@ class TestGetSandboxBackend:
         _reset_singleton()
 
     def test_default_is_local(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("FIM_IN_CONTAINER", "0")
         monkeypatch.delenv("CODE_EXEC_BACKEND", raising=False)
         backend = get_sandbox_backend()
         assert isinstance(backend, LocalBackend)
+
+    def test_default_in_a_container_is_docker(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("FIM_IN_CONTAINER", "1")
+        monkeypatch.delenv("CODE_EXEC_BACKEND", raising=False)
+        backend = get_sandbox_backend()
+        assert isinstance(backend, DockerBackend)
 
     def test_docker_backend_selected(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("CODE_EXEC_BACKEND", "docker")
@@ -384,12 +391,14 @@ class TestGetSandboxBackend:
         assert isinstance(backend, DockerBackend)
 
     def test_singleton_behaviour(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("FIM_IN_CONTAINER", "0")
         monkeypatch.delenv("CODE_EXEC_BACKEND", raising=False)
         b1 = get_sandbox_backend()
         b2 = get_sandbox_backend()
         assert b1 is b2
 
     def test_singleton_reset(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("FIM_IN_CONTAINER", "0")
         monkeypatch.delenv("CODE_EXEC_BACKEND", raising=False)
         b1 = get_sandbox_backend()
         _reset_singleton()

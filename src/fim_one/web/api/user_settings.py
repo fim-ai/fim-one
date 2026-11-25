@@ -322,10 +322,12 @@ async def revoke_all_sessions(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> dict[str, str]:
-    """Invalidate all refresh tokens by setting tokens_invalidated_at = now()."""
+    """Sign out every session: drop the refresh token and cut off access tokens."""
+    from fim_one.web.auth import invalidate_login_sessions
+
     result = await db.execute(select(User).where(User.id == current_user.id))
     user = result.scalar_one()
-    user.tokens_invalidated_at = datetime.now(UTC)
+    invalidate_login_sessions(user)
     await record_account(db, user, actions.AUTH_SESSIONS_REVOKE)
     await db.commit()
     return {"message": "All sessions revoked"}

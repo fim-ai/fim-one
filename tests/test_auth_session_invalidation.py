@@ -66,12 +66,33 @@ async def session() -> AsyncIterator[AsyncSession]:
     await engine.dispose()
 
 
+def _legacy_access(user: User) -> str:
+    """An access token from before the ``gen`` claim existed."""
+    import jwt
+
+    from fim_one.web.auth import ALGORITHM, SECRET_KEY
+
+    now = datetime.now(UTC)
+    return jwt.encode(
+        {
+            "sub": user.id,
+            "email": user.email,
+            "type": "access",
+            "iat": now,
+            "exp": now + timedelta(hours=1),
+        },
+        SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+
+
 async def _make_user(session: AsyncSession, invalidated_at: datetime | None) -> User:
     user = User(
         id=str(uuid.uuid4()),
         username=f"u_{uuid.uuid4().hex[:8]}",
         email=f"{uuid.uuid4().hex[:6]}@example.com",
         tokens_invalidated_at=invalidated_at,
+        session_generation=0,
     )
     session.add(user)
     await session.commit()
@@ -85,7 +106,7 @@ class TestForceLogoutComparison:
         # Invalidation is in the future relative to the token's iat.
         future = datetime.now(UTC) + timedelta(hours=1)
         user = await _make_user(session, future)
-        token = create_access_token(user.id, user.email)
+        token = _legacy_access(user)
         with pytest.raises(HTTPException) as exc:
             await get_current_user(_request(), credentials=_creds(token), db=session)
         assert exc.value.status_code == 401
@@ -96,7 +117,7 @@ class TestForceLogoutComparison:
     ) -> None:
         past = datetime.now(UTC) - timedelta(hours=1)
         user = await _make_user(session, past)
-        token = create_access_token(user.id, user.email)
+        token = _legacy_access(user)
         result = await get_current_user(_request(), credentials=_creds(token), db=session)
         assert result.id == user.id
 
@@ -105,3 +126,16 @@ class TestForceLogoutComparison:
         token = create_access_token(user.id, user.email)
         result = await get_current_user(_request(), credentials=_creds(token), db=session)
         assert result.id == user.id
+
+    async def test_a_moved_generation_rejects_the_previous_one(
+        self, session: AsyncSession
+    ) -> None:
+        # The timestamp would still accept this token. The generation does not.
+        past = datetime.now(UTC) - timedelta(hours=1)
+        user = await _make_user(session, past)
+        user.session_generation = 2
+        await session.commit()
+        token = create_access_token(user.id, user.email, session_generation=1)
+        with pytest.raises(HTTPException) as exc:
+            await get_current_user(_request(), credentials=_creds(token), db=session)
+        assert exc.value.status_code == 401

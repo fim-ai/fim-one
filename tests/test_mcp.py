@@ -302,15 +302,25 @@ class TestMCPClient:
             async def call_tool(self, *_args: object, **_kwargs: object) -> None:
                 return None
 
+        class _Transport:
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                del args, kwargs
+
         class _AsyncClient:
             def __init__(
                 self,
                 *,
                 headers: dict[str, str] | None = None,
                 timeout: object = None,
+                transport: object = None,
+                trust_env: bool = True,
             ) -> None:
                 self.headers = headers or {}
                 self.timeout = timeout
+                self.transport = transport
+                self.trust_env = trust_env
+                captured["trust_env"] = trust_env
+                captured["transport"] = transport
 
             async def __aenter__(self) -> _AsyncClient:
                 return self
@@ -342,6 +352,7 @@ class TestMCPClient:
         stream_mod.streamable_http_client = _transport
         httpx2_mod = types.ModuleType("httpx2")
         httpx2_mod.AsyncClient = _AsyncClient
+        httpx2_mod.AsyncHTTPTransport = _Transport
         httpx2_mod.Timeout = _Timeout
 
         client = MCPClient()
@@ -365,9 +376,43 @@ class TestMCPClient:
 
         assert captured["url"] == "https://mcp.example.com/mcp"
         assert captured["headers"] == {"Authorization": "Bearer t"}
+        assert captured["trust_env"] is False
+        assert captured["transport"] is not None
         assert captured["streams"] == ("read-stream", "write-stream")
         assert "get_session_id" not in captured["kwargs"]
         assert len(tools) == 1
         assert tools[0].name == "remote__echo"
         assert tools[0].parameters_schema["properties"]["q"]["type"] == "string"
         await client.disconnect_all()
+
+    async def test_sse_passes_the_pinned_client_factory(self) -> None:
+        from fim_one.core.mcp.http_client import ssrf_safe_httpx2_client
+
+        captured: dict[str, Any] = {}
+
+        @asynccontextmanager
+        async def _sse(url: str, **kwargs: object):
+            captured["url"] = url
+            captured["factory"] = kwargs.get("httpx_client_factory")
+            raise RuntimeError("stop after recording the factory")
+            yield "read", "write"  # pragma: no cover
+
+        mcp_mod = types.ModuleType("mcp")
+        mcp_mod.ClientSession = object
+        client_mod = types.ModuleType("mcp.client")
+        sse_mod = types.ModuleType("mcp.client.sse")
+        sse_mod.sse_client = _sse
+
+        client = MCPClient()
+        with (
+            patch.dict(
+                sys.modules,
+                {"mcp": mcp_mod, "mcp.client": client_mod, "mcp.client.sse": sse_mod},
+            ),
+            patch("fim_one.core.mcp.client._validate_url"),
+            pytest.raises(RuntimeError, match="stop after recording"),
+        ):
+            await client.connect_sse("remote", "https://mcp.example.com/sse")
+
+        assert captured["url"] == "https://mcp.example.com/sse"
+        assert captured["factory"] is ssrf_safe_httpx2_client

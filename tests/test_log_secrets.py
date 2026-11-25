@@ -188,6 +188,7 @@ class TestAgainstALoopbackServer:
         with (
             caplog.at_level(logging.DEBUG),
             patch("fim_one.core.mcp.client._validate_url", lambda _url: None),
+            patch("fim_one.core.security.ssrf.apply_dns_pin", lambda _request: None),
         ):
             connected = called = False
             try:

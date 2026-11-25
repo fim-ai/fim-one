@@ -129,6 +129,6 @@ def test_it_is_the_single_head() -> None:
     from alembic.script import ScriptDirectory
 
     script = ScriptDirectory(str(Path(fim_one.__file__).parent / "migrations"))
-    assert script.get_heads() == [_REVISION]
+    assert script.get_heads() == ["g4c0e2f7a813"]
     revision = script.get_revision(_REVISION)
     assert revision is not None and revision.down_revision == _BEFORE

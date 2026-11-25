@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from ..base import BaseTool, ToolResult
-from ..sandbox import get_sandbox_backend
+from ..sandbox import code_exec_backend, get_sandbox_backend
 from ..truncation import truncate_bytes
 
 _DEFAULT_TIMEOUT_SECONDS: int = int(os.environ.get("SANDBOX_TIMEOUT", "120"))
@@ -62,7 +62,7 @@ class NodeExecTool(BaseTool):
 
     def availability(self) -> tuple[bool, str | None]:
         # Docker backend pulls its own Node image — always available.
-        if os.environ.get("CODE_EXEC_BACKEND", "local").lower() == "docker":
+        if code_exec_backend() == "docker":
             return True, None
         import shutil
         if shutil.which("node") is None:

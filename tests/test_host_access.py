@@ -126,12 +126,30 @@ class TestLocalBackendRefuses:
         assert isinstance(answer, str)
         assert answer.startswith("[Error]") and "container runtime" in answer
 
-    async def test_without_the_socket_it_runs(
+    async def test_without_the_socket_it_is_still_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Inside a container, in-process execution stays off with no socket too."""
+        from fim_one.core.security import host_access
+
+        monkeypatch.setenv("FIM_IN_CONTAINER", "1")
+        monkeypatch.delenv("ALLOW_LOCAL_CODE_EXEC", raising=False)
+        monkeypatch.delenv("DOCKER_HOST", raising=False)
+        monkeypatch.setattr(host_access, "_WELL_KNOWN_SOCKETS", ())
+
+        result = await LocalBackend().run_shell("echo ok", sandbox_dir=tmp_path, timeout=10)
+
+        assert result.exit_code == -1
+        assert "ALLOW_LOCAL_CODE_EXEC" in (result.error or "")
+        assert result.stdout == ""
+
+    async def test_opt_in_runs_when_no_socket_is_reachable(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from fim_one.core.security import host_access
 
         monkeypatch.setenv("FIM_IN_CONTAINER", "1")
+        monkeypatch.setenv("ALLOW_LOCAL_CODE_EXEC", "true")
         monkeypatch.delenv("DOCKER_HOST", raising=False)
         monkeypatch.setattr(host_access, "_WELL_KNOWN_SOCKETS", ())
 

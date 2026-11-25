@@ -171,7 +171,7 @@ def hash_refresh_token(token: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def create_access_token(user_id: str, email: str) -> str:
+def create_access_token(user_id: str, email: str, *, session_generation: int = 0) -> str:
     now = datetime.now(UTC)
     expires = now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     payload = {
@@ -180,17 +180,21 @@ def create_access_token(user_id: str, email: str) -> str:
         "type": "access",
         "exp": expires,
         "iat": now,
+        "gen": session_generation,
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def create_refresh_token(user_id: str, email: str) -> str:
-    expires = datetime.now(UTC) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+def create_refresh_token(user_id: str, email: str, *, session_generation: int = 0) -> str:
+    now = datetime.now(UTC)
+    expires = now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     payload = {
         "sub": user_id,
         "email": email,
         "type": "refresh",
         "exp": expires,
+        "iat": now,
+        "gen": session_generation,
         # jti 是必需的，不是装饰。exp 只精确到秒，同一秒内为同一用户签发的
         # refresh token 载荷完全一致，编码出来逐字节相同。于是 /refresh 的
         # 「轮转 + 旧 token 立即作废」静默失效：新旧 token 是同一个，
@@ -199,6 +203,60 @@ def create_refresh_token(user_id: str, email: str) -> str:
         "jti": secrets.token_urlsafe(8),
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def issue_session_tokens(user: User) -> tuple[str, str]:
+    """Access and refresh tokens for the user's current session generation."""
+    generation = int(user.session_generation or 0)
+    email = user.email or ""
+    return (
+        create_access_token(user.id, email, session_generation=generation),
+        create_refresh_token(user.id, email, session_generation=generation),
+    )
+
+
+def invalidate_login_sessions(user: User, *, now: datetime | None = None) -> None:
+    """Drop every session: refresh token, generation, and the legacy cutoff.
+
+    ``session_generation`` is what makes the cut precise. Tokens carry it as
+    ``gen``. A token from before this call, including one issued in the same
+    second, no longer matches. The next sign-in reads the new value and works
+    immediately. ``tokens_invalidated_at`` remains for tokens issued before
+    generations existed.
+    """
+    user.refresh_token = None
+    user.refresh_token_expires_at = None
+    user.session_generation = int(user.session_generation or 0) + 1
+    user.tokens_invalidated_at = now or datetime.now(UTC)
+
+
+def _issued_at_or_before_cutoff(user: User, payload: dict[str, Any]) -> bool:
+    """Legacy ``iat`` cutoff. ``iat`` is a whole second."""
+    cutoff = user.tokens_invalidated_at
+    if cutoff is None:
+        return False
+    iat = payload.get("iat")
+    if isinstance(iat, bool) or not isinstance(iat, (int, float, datetime)):
+        return True
+    issued = datetime.fromtimestamp(iat, tz=UTC) if isinstance(iat, (int, float)) else iat
+    return issued <= _as_utc(cutoff)
+
+
+def session_token_revoked(user: User, payload: dict[str, Any]) -> bool:
+    """Whether *payload* belongs to a session that has been signed out.
+
+    A ``gen`` claim must equal ``session_generation``. Tokens without one were
+    issued before that claim existed and count as generation 0; once the
+    account's generation has moved, they are rejected. While it is still 0,
+    the older ``tokens_invalidated_at`` comparison still applies.
+    """
+    current = int(user.session_generation or 0)
+    presented = payload.get("gen")
+    if isinstance(presented, int) and not isinstance(presented, bool):
+        return presented != current
+    if current != 0:
+        return True
+    return _issued_at_or_before_cutoff(user, payload)
 
 
 # ---------------------------------------------------------------------------
@@ -450,20 +508,11 @@ async def get_current_user(
             detail="Account disabled",
         )
     # Check if this token was issued before a force-logout event
-    if user.tokens_invalidated_at is not None:
-        iat = payload.get("iat")
-        if iat is None:
-            # Token predates the iat claim — can't verify it post-dates invalidation, reject it
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Session invalidated",
-            )
-        token_issued = datetime.fromtimestamp(iat, tz=UTC) if isinstance(iat, (int, float)) else iat
-        if token_issued <= _as_utc(user.tokens_invalidated_at):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Session invalidated",
-            )
+    if session_token_revoked(user, payload):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session invalidated",
+        )
     # JWT users are unrestricted (no scope limitations)
     request.state.api_key_scopes = None
     request_auth.set((AuthMethod.SESSION.value, None))
@@ -509,13 +558,8 @@ async def get_current_user_optional(
     if user is not None and not user.is_active:
         return None
     # Check if this token was issued before a force-logout event
-    if user is not None and user.tokens_invalidated_at is not None:
-        iat = payload.get("iat")
-        if iat is None:
-            return None
-        token_issued = datetime.fromtimestamp(iat, tz=UTC) if isinstance(iat, (int, float)) else iat
-        if token_issued <= _as_utc(user.tokens_invalidated_at):
-            return None
+    if user is not None and session_token_revoked(user, payload):
+        return None
     if user is not None:
         request.state.api_key_scopes = None
     return user

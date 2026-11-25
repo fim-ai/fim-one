@@ -349,7 +349,8 @@ Reranker re-scores retrieved documents to improve relevance. Three providers are
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `CODE_EXEC_BACKEND` | No | `docker` with the bundled `docker-compose.yml`, `local` otherwise | `docker`: each execution in a throw-away sandbox container, started through the sandbox proxy. `local`: inside the application process and container, with no isolation |
+| `CODE_EXEC_BACKEND` | No | `docker` inside a container, `local` otherwise | `docker`: each execution in a throw-away sandbox container, started through the sandbox proxy. `local`: inside the application process, with no isolation. Inside a container a leftover `local` is ignored unless `ALLOW_LOCAL_CODE_EXEC=true` |
+| `ALLOW_LOCAL_CODE_EXEC` | No | off | Set to `true` to run `CODE_EXEC_BACKEND=local` inside a container. Code then runs in the application process. Has no effect outside a container |
 | `DOCKER_PYTHON_IMAGE` | No | `python:3.11-slim` | Docker image for Python execution |
 | `DOCKER_NODE_IMAGE` | No | `node:20-slim` | Docker image for Node.js execution |
 | `DOCKER_SHELL_IMAGE` | No | `python:3.11-slim` | Docker image for shell execution |
@@ -533,6 +534,7 @@ After an upgrade, existing connectors that point at internal hosts answer "This 
 | `SQLITE_MAX_OVERFLOW` | No | `5` | Extra connections allowed beyond the SQLite pool size |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | No | `fim` / `fim` / `fim_one` | Docker Compose only: credentials of the bundled PostgreSQL service; the compose `DATABASE_URL` is derived from them. Change the password before exposing the database port |
 | `JWT_SECRET_KEY` | No | `CHANGE_ME` | Secret key for JWT token signing. Placeholder value `CHANGE_ME` (or any legacy default) triggers auto-generation of a secure 256-bit random key on first start, which is written back to `.env`. Set explicitly in production to keep tokens valid across restarts and replicas. In the Docker image the same rules apply as for `CREDENTIAL_ENCRYPTION_KEY`. |
+| `FIM_SETUP_TOKEN` | Yes, until the first administrator exists | — | Secret entered on the setup page to create the first administrator. Use a long random value. Registration and provider sign-in cannot create that account. After an administrator exists the token is not used |
 | `FIM_ALLOW_NEW_KEYS` | No | *(not set)* | Docker image only. `true` lets the container generate missing keys although the database already has data. What was encrypted with the previous `CREDENTIAL_ENCRYPTION_KEY` stays unreadable. Set it once, then remove it |
 | `FIM_ALLOW_UNMOUNTED_KEY_STORE` | No | *(not set)* | Docker image only. Missing keys are generated only into a key store on a mount of its own (`/var/lib/fim-one/secrets`, the `app_secrets` volume, or a persistent volume mounted at a directory above it; a tmpfs does not count); without one, the container refuses to start rather than keep keys that the next recreate deletes. `true` generates them into the container anyway. Prefer mounting the volume or setting the keys in `.env` |
 | `FIM_SECRETS_DIR` | No | `/var/lib/fim-one/secrets` | Docker image only. The key store: a directory of root's that the application's user cannot read. Mount a volume on it. Refused when it is at or under `data/` or the uploads directory (by real path), or when a directory between its mount and it is not root's or is writable by group or others |
