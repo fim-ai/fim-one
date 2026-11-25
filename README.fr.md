@@ -2,7 +2,7 @@
 
 ![Bannière FIM One](./assets/banner.jpg)
 
-![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
+![Python 3.11.5+](https://img.shields.io/badge/python-3.11.5%2B-blue)
 [![CI](https://github.com/fim-ai/fim-one/actions/workflows/test.yml/badge.svg)](https://github.com/fim-ai/fim-one/actions/workflows/test.yml)
 ![License](https://img.shields.io/badge/license-Source%20Available-orange)
 [![Discord](https://img.shields.io/discord/1480638265206771742?logo=discord&label=discord)](https://discord.gg/z64czxdC7z)
@@ -95,7 +95,7 @@ docker compose logs -f        # view logs
 
 ### Développement local
 
-Prérequis : Python 3.11+, [uv](https://docs.astral.sh/uv/), Node.js 18+, pnpm.
+Prérequis : Python 3.11.5+, [uv](https://docs.astral.sh/uv/), Node.js 18+, pnpm.
 
 ```bash
 git clone https://github.com/fim-ai/fim-one.git && cd fim-one
@@ -211,7 +211,7 @@ JINA_API_KEY=jina_...                       # unlocks web tools + RAG
 
 | Layer       | Technology                                                          |
 | ----------- | ------------------------------------------------------------------- |
-| Backend     | Python 3.11+, FastAPI, SQLAlchemy, Alembic, asyncio                 |
+| Backend     | Python 3.11.5+, FastAPI, SQLAlchemy, Alembic, asyncio                 |
 | Frontend    | Next.js 15, React 18, Tailwind CSS, shadcn/ui, React Flow v12      |
 | AI / RAG    | OpenAI-compatible LLMs, Jina AI (embed + search), LanceDB          |
 | Database    | SQLite (dev) / PostgreSQL (prod)                                    |

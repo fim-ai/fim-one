@@ -10,6 +10,20 @@ import pytest
 from fim_one.core.utils import _BACKGROUND_TASKS, spawn_background
 
 
+async def _released(task: asyncio.Task[object]) -> None:
+    """The registry drops the task from a done callback.
+
+    ``await task`` can resume before that callback, which asyncio queues
+    for a later loop turn. The assertion is unchanged: the task must leave
+    the registry.
+    """
+    for _ in range(5):
+        if task not in _BACKGROUND_TASKS:
+            break
+        await asyncio.sleep(0)
+    assert task not in _BACKGROUND_TASKS
+
+
 @pytest.mark.asyncio
 async def test_spawn_background_runs_to_completion() -> None:
     """The scheduled coroutine runs and the task is tracked then released."""
@@ -26,7 +40,7 @@ async def test_spawn_background_runs_to_completion() -> None:
     await task
 
     # Done-callback removes it so the set does not grow unbounded.
-    assert task not in _BACKGROUND_TASKS
+    await _released(task)
 
 
 @pytest.mark.asyncio
@@ -60,7 +74,7 @@ async def test_spawn_background_logs_exception(
 
     assert any("Background task" in r.message and "failed" in r.message
                for r in caplog.records)
-    assert task not in _BACKGROUND_TASKS
+    await _released(task)
 
 
 @pytest.mark.asyncio
@@ -74,4 +88,4 @@ async def test_spawn_background_cancellation_is_clean() -> None:
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
-    assert task not in _BACKGROUND_TASKS
+    await _released(task)

@@ -7,7 +7,7 @@ import { ComposerRow, ComposerSendButton, ComposerShell, ComposerTextarea } from
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Loader2, PanelRightOpen, PanelRightClose, ArrowDown, Zap, GitBranch, Bot, Paperclip, X, Plus, ChevronsUpDown, Check, Undo2, RotateCcw, Download, FileText, ChevronDown, ChevronUp, Sparkles, AlertTriangle } from "lucide-react"
+import { Loader2, PanelRightOpen, PanelRightClose, ArrowDown, Zap, GitBranch, Paperclip, X, Plus, ChevronsUpDown, Check, Undo2, RotateCcw, Download, FileText, ChevronDown, ChevronUp, Sparkles, AlertTriangle } from "lucide-react"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/error-utils"
@@ -1160,8 +1160,6 @@ function PlaygroundContent({
     const evt = messages.find((m) => m.event === "compact")
     return evt?.data as { original_messages: number; kept_messages: number } | null
   }, [messages, modeMatches])
-
-  const hasRichHistory = !hasLiveMessages && allHistoryTurns !== null
 
   // Sidebar only shown during live DAG streaming (React mode no longer uses sidebar)
   const showSidebar = hasLiveMessages && sidebarOpen && isWideScreen && resolvedLiveMode === "dag"

@@ -1055,6 +1055,21 @@ def _refusal(status: int, message: str) -> bytes:
     ).encode() + body
 
 
+async def _send_final(writer: asyncio.StreamWriter, payload: bytes) -> None:
+    """Send one complete response and end the write side.
+
+    Closing the socket while the client's request is still unread aborts
+    the connection, and the response is lost. Half-closing the write side
+    first delivers it. Those bytes are never forwarded; the handler closes
+    the socket afterwards.
+    """
+    writer.write(payload)
+    await writer.drain()
+    with contextlib.suppress(OSError, RuntimeError):
+        if not writer.is_closing() and writer.can_write_eof():
+            writer.write_eof()
+
+
 @dataclass
 class _Request:
     method: str
@@ -1169,8 +1184,9 @@ async def _handle(
             address = str(peer[0]) if peer else ""
             if not await peers.allows(address):
                 logger.warning("refused a connection from %s: not the application", address)
-                writer.write(_refusal(403, "this client may not use the sandbox proxy"))
-                await writer.drain()
+                await _send_final(
+                    writer, _refusal(403, "this client may not use the sandbox proxy")
+                )
                 return
         try:
             request = await _read_head(reader)
@@ -1181,20 +1197,17 @@ async def _handle(
                 request.headers.get(TOKEN_HEADER.lower(), "").encode(), policy.token.encode()
             ):
                 logger.warning("refused %s: no or wrong token", request.method)
-                writer.write(_refusal(401, "the sandbox token is missing or wrong"))
-                await writer.drain()
+                await _send_final(writer, _refusal(401, "the sandbox token is missing or wrong"))
                 return
             if admit is not None and not admit():
                 # A sandbox run holds two connections while it lasts; beyond
                 # the cap a client waits its turn rather than the proxy its
                 # memory.
-                writer.write(_refusal(503, "too many connections; try again"))
-                await writer.drain()
+                await _send_final(writer, _refusal(503, "too many connections; try again"))
                 return
             await _read_body(reader, request)
         except _BadRequestError as exc:
-            writer.write(_refusal(exc.status, str(exc)))
-            await writer.drain()
+            await _send_final(writer, _refusal(exc.status, str(exc)))
             return
 
         verdict = policy.authorize(request.method, request.target, request.body)
@@ -1231,16 +1244,14 @@ async def _handle(
             # The target is the client's text: only its plain characters are logged.
             shown = re.sub(r"[^A-Za-z0-9/._-]", "?", request.target.split("?")[0])[:120]
             logger.warning("refused %s %s: %s", request.method, shown, verdict.reason)
-            writer.write(_refusal(403, verdict.reason))
-            await writer.drain()
+            await _send_final(writer, _refusal(403, verdict.reason))
             return
 
         try:
             upstream_reader, upstream_writer = await asyncio.open_unix_connection(docker_socket)
         except OSError as exc:
             logger.error("cannot reach the Docker daemon at %s: %s", docker_socket, exc)
-            writer.write(_refusal(502, "the Docker daemon cannot be reached"))
-            await writer.drain()
+            await _send_final(writer, _refusal(502, "the Docker daemon cannot be reached"))
             return
         upstream_writer.write(_forwarded(verdict))
         await upstream_writer.drain()
@@ -1291,8 +1302,7 @@ async def _handle(
                     # whichever it was (a limit kept by name, see above).
                     drop_lifetime_limit(container_name)
             if not head:
-                writer.write(_refusal(502, "the Docker daemon did not answer"))
-                await writer.drain()
+                await _send_final(writer, _refusal(502, "the Docker daemon did not answer"))
                 return
             writer.write(head + body)
             await writer.drain()
@@ -1303,8 +1313,9 @@ async def _handle(
             try:
                 head = await upstream_reader.readuntil(b"\r\n\r\n")
             except (asyncio.IncompleteReadError, asyncio.LimitOverrunError):
-                writer.write(_refusal(502, "the Docker daemon did not answer the attach"))
-                await writer.drain()
+                await _send_final(
+                    writer, _refusal(502, "the Docker daemon did not answer the attach")
+                )
                 return
             writer.write(head)
             await writer.drain()
@@ -1423,14 +1434,14 @@ async def serve(
                 # Every pending place is a connection that has just arrived:
                 # this one is the one turned away, at once.
                 with contextlib.suppress(Exception):
-                    writer.write(_refusal(503, "too many connections; try again"))
+                    await _send_final(writer, _refusal(503, "too many connections; try again"))
                     writer.close()
                 return
             _, victim_writer, _ = pending.pop(victim)
             evicted.add(victim)
             with contextlib.suppress(Exception):
                 # Written before the cancel: closing the connection sends it.
-                victim_writer.write(_refusal(503, "too many connections; try again"))
+                await _send_final(victim_writer, _refusal(503, "too many connections; try again"))
             victim.cancel()
 
         def admit() -> bool:

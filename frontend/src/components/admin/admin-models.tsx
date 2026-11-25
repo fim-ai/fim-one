@@ -36,15 +36,6 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -96,7 +87,6 @@ import type {
   ModelProviderModelResponse,
   ModelGroupResponse,
   ModelActiveConfig,
-  EnvFallbackInfo,
   ModelSlotInfo,
 } from "@/types/model_provider"
 
@@ -1676,7 +1666,6 @@ export function AdminModels() {
   const [activeConfig, setActiveConfig] = useState<ModelActiveConfig | null>(null)
   const [providers, setProviders] = useState<ModelProviderResponse[]>([])
   const [groups, setGroups] = useState<ModelGroupResponse[]>([])
-  const [envFallback, setEnvFallback] = useState<EnvFallbackInfo | null>(null) // kept for API compat, not displayed
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSwitching, setIsSwitching] = useState(false)
@@ -1695,9 +1684,6 @@ export function AdminModels() {
   const [showCreateGroup, setShowCreateGroup] = useState(false)
   const [editGroupTarget, setEditGroupTarget] = useState<ModelGroupResponse | null>(null)
   const [deleteGroupTarget, setDeleteGroupTarget] = useState<ModelGroupResponse | null>(null)
-
-  // ENV fallback collapsible
-  const [envExpanded, setEnvExpanded] = useState(false)
 
   // Import/Export
   const [isExporting, setIsExporting] = useState(false)
@@ -1730,7 +1716,6 @@ export function AdminModels() {
       setActiveConfig(configData)
       setProviders(providerData.providers)
       setGroups(groupData.groups)
-      setEnvFallback(groupData.env_fallback)
       setActiveGroupId(groupData.active_group_id)
     } catch (err) {
       toast.error(getErrorMessage(err, tError))
