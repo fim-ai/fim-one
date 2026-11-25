@@ -21,16 +21,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # python-version sets UV_PYTHON for every later step, which overrides
+      # .python-version. Installing the interpreter alone does not: uv sync
+      # and uv run would keep using the pin in that file.
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
-
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
+          python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
         run: uv sync --all-extras
+
+      - name: Confirm the interpreter
+        run: |
+          uv run python -c "import sys; got=f'{sys.version_info[0]}.{sys.version_info[1]}'; want='${{ matrix.python-version }}'; assert got==want, f'{got} != {want}: {sys.version}'"
 
       - name: Type check (mypy, strict)
         run: uv run mypy src/fim_one/
@@ -84,16 +89,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The smoke's backend is `uv run python` (see frontend/playwright.config.ts).
+      # That follows UV_PYTHON. python-version 3.12 is the interpreter this job
+      # means to run; .python-version must not redirect it.
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
-
-      - name: Set up Python
-        run: uv python install 3.12
+          python-version: "3.12"
 
       - name: Install backend dependencies
         run: uv sync --all-extras
+
+      - name: Confirm the e2e interpreter
+        run: |
+          uv run python -c "import sys; got=f'{sys.version_info[0]}.{sys.version_info[1]}'; assert got=='3.12', sys.version"
 
       - uses: pnpm/action-setup@v4
         with:
