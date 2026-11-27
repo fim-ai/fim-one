@@ -148,6 +148,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **MCP servers that return their tool list in pages now expose all their tools.** Only the first page of `tools/list` was loaded, so the remaining tools were missing from agents and workflows.
 - **DeepSeek V4 / flash and Kimi K2 agents no longer fail after the first tool call.** The reasoning text these models return next to a tool call was dropped from the history, and DeepSeek answers a request without it with a 400. It is now sent back on later turns for `deepseek-v4*`, `deepseek-flash` and `kimi-k2*` models.
 - **"Test connection" on a stdio MCP server shows why it was refused.** For a stdio server whose owner is not an administrator the endpoint answered `stdio_mcp_admin_only`, while the server list and every start-time refusal say `stdio_mcp_owner_not_admin`; it now answers `stdio_mcp_owner_not_admin` (and `stdio_mcp_disabled` when stdio is off), and the card shows the refusal on its result line instead of nothing (the error went to the browser console).
 - **Asking for a verification code again within a minute no longer uses up the day's codes.** A request refused by the one-code-a-minute rule was still counted against the address, so four requests within a minute used up the 3 codes a day issued without a wait. Only a code that is issued is counted now, in the same atomic step that applies the one-minute rule; of requests arriving together one gets a code. The answer is the same whether or not the address has an account.
