@@ -47,6 +47,25 @@ def _tool_def_from_mcp(tool: Any) -> dict[str, Any]:
     }
 
 
+async def _list_all_tools(session: Any) -> list[Any]:
+    """Every tool of the server: ``tools/list`` may answer in pages."""
+    result = await session.list_tools()
+    # By name, so that a server repeating a page does not list a tool twice.
+    tools = {tool.name: tool for tool in result.tools}
+    seen: set[str] = set()
+    # Only an absent cursor ends the listing; an empty string is a cursor.
+    while (cursor := getattr(result, "next_cursor", None)) is not None:
+        if cursor in seen:
+            logger.warning("MCP server repeated a tools/list cursor; listing stopped there")
+            break
+        seen.add(cursor)
+        from mcp.types import PaginatedRequestParams
+
+        result = await session.list_tools(params=PaginatedRequestParams(cursor=cursor))
+        tools.update((tool.name, tool) for tool in result.tools)
+    return list(tools.values())
+
+
 class _Contexts:
     """The transports and sessions a client has open, closed last-in first-out.
 
@@ -305,13 +324,13 @@ class MCPClient:
             self._sessions[name] = session
 
             # Discover tools exposed by the server.
-            tools_result = await session.list_tools()
+            server_tools = await _list_all_tools(session)
         except BaseException as exc:
             await self._give_up_connecting(name, mark, exc, previous)
             raise
 
         adapters: list[Tool] = []
-        for tool in tools_result.tools:
+        for tool in server_tools:
             adapter = MCPToolAdapter(
                 server_name=name,
                 tool_def=_tool_def_from_mcp(tool),
@@ -383,13 +402,13 @@ class MCPClient:
             await session.initialize()
             self._sessions[name] = session
 
-            tools_result = await session.list_tools()
+            server_tools = await _list_all_tools(session)
         except BaseException as exc:
             await self._give_up_connecting(name, mark, exc, previous)
             raise
 
         adapters: list[Tool] = []
-        for tool in tools_result.tools:
+        for tool in server_tools:
             adapter = MCPToolAdapter(
                 server_name=name,
                 tool_def=_tool_def_from_mcp(tool),
@@ -474,13 +493,13 @@ class MCPClient:
             await session.initialize()
             self._sessions[name] = session
 
-            tools_result = await session.list_tools()
+            server_tools = await _list_all_tools(session)
         except BaseException as exc:
             await self._give_up_connecting(name, mark, exc, previous)
             raise
 
         adapters: list[Tool] = []
-        for tool in tools_result.tools:
+        for tool in server_tools:
             adapter = MCPToolAdapter(
                 server_name=name,
                 tool_def=_tool_def_from_mcp(tool),
