@@ -224,6 +224,16 @@ async def _handle_subscription_updated(
         )
         return
 
+    # A canceled subscription never comes back in Stripe, and Stripe does not
+    # guarantee event order: an older ``updated`` can arrive after ``deleted``.
+    # Applying it would turn the canceled row back into an active one.
+    if sub_row.status == "canceled":
+        logger.info(
+            "customer.subscription.updated for already canceled sub %s — skipping",
+            subscription_id,
+        )
+        return
+
     sub_row.status = str(obj.get("status") or sub_row.status)
     period_start = _from_stripe_ts(obj.get("current_period_start"))
     period_end = _from_stripe_ts(obj.get("current_period_end"))

@@ -395,6 +395,43 @@ async def test_subscription_updated_syncs_status_and_price(
     )
 
 
+@pytest.mark.asyncio
+async def test_late_subscription_updated_does_not_reactivate_canceled(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    user_alice: User,
+    pro_plan: BillingPlan,
+) -> None:
+    """Stripe does not guarantee order: ``updated`` after ``deleted`` is stale."""
+    now = datetime.now(UTC)
+    sub = Subscription(
+        user_id=user_alice.id,
+        plan_id=pro_plan.id,
+        stripe_subscription_id="sub_test_late",
+        stripe_price_id=pro_plan.stripe_price_id or "price_test_pro",
+        status="canceled",
+        current_period_start=now - timedelta(days=10),
+        current_period_end=now + timedelta(days=20),
+        updated_at=now,
+    )
+    db_session.add(sub)
+    await db_session.commit()
+
+    event = _subscription_updated_event(
+        sub_id="sub_test_late",
+        status="active",
+        cancel=False,
+        price_id=pro_plan.stripe_price_id,
+        period_end=now + timedelta(days=50),
+    )
+    with _patch_construct(event):
+        resp = await _post_event(client, event)
+    assert resp.status_code == 200
+
+    await db_session.refresh(sub)
+    assert sub.status == "canceled"
+
+
 # ---------------------------------------------------------------------------
 # customer.subscription.deleted
 # ---------------------------------------------------------------------------
